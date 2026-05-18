@@ -1,0 +1,88 @@
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { useAuth } from './context/AuthContext'
+
+import LandingPage from './pages/LandingPage'
+import LoginPage from './pages/LoginPage'
+import ExplorerPage from './pages/ExplorerPage'
+import EcolesPage from './pages/EcolesPage'
+import DashboardLayout from './components/layout/DashboardLayout'
+import DashboardPage from './pages/DashboardPage'
+import ElevesPage from './pages/ElevesPage'
+import EnseignantsPage from './pages/EnseignantsPage'
+import NotesPage from './pages/NotesPage'
+import PresencePage from './pages/PresencePage'
+import MessagingPage from './pages/MessagingPage'
+import SouscriptionsPage from './pages/SouscriptionsPage'
+import PlaceholderPage from './pages/PlaceholderPage'
+
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <svg className="animate-spin h-8 w-8 text-blue-600" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className="text-sm text-gray-500">Chargement...</span>
+        </div>
+      </div>
+    )
+  }
+  return user ? children : <Navigate to="/login" replace />
+}
+
+export default function App() {
+  return (
+    <Routes>
+      {/* Public routes */}
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/explorer" element={<ExplorerPage />} />
+      <Route path="/ecoles" element={<EcolesPage />} />
+      <Route path="/about" element={<LandingPage />} />
+      <Route path="/tarifs" element={<LandingPage />} />
+      <Route path="/contact" element={<LandingPage />} />
+
+      {/* Protected dashboard routes */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<DashboardPage />} />
+        <Route path="eleves" element={<ElevesPage />} />
+        <Route path="enseignants" element={<EnseignantsPage />} />
+        <Route path="notes" element={<NotesPage />} />
+        <Route path="presence" element={<PresencePage />} />
+        <Route path="messagerie" element={<MessagingPage />} />
+        <Route path="souscriptions" element={<SouscriptionsPage />} />
+
+        <Route path="profil" element={<PlaceholderPage title="Profil de l'école" />} />
+        <Route path="infos" element={<PlaceholderPage title="Informations générales" />} />
+        <Route path="classes" element={<PlaceholderPage title="Classes & Salles" />} />
+        <Route path="matieres" element={<PlaceholderPage title="Matières & Programmes" />} />
+        <Route path="emploi-du-temps" element={<PlaceholderPage title="Emploi du temps" />} />
+        <Route path="parents" element={<PlaceholderPage title="Parents / Responsables" />} />
+        <Route path="personnel" element={<PlaceholderPage title="Personnel" />} />
+        <Route path="devoirs" element={<PlaceholderPage title="Devoirs & Évaluations" />} />
+        <Route path="activites" element={<PlaceholderPage title="Activités scolaires" />} />
+        <Route path="ressources" element={<PlaceholderPage title="Ressources pédagogiques" />} />
+        <Route path="annonces" element={<PlaceholderPage title="Annonces" />} />
+        <Route path="documents" element={<PlaceholderPage title="Documents partagés" />} />
+        <Route path="paiements" element={<PlaceholderPage title="Historique des paiements" />} />
+        <Route path="factures" element={<PlaceholderPage title="Factures" />} />
+        <Route path="rapports" element={<PlaceholderPage title="Tableaux de bord" />} />
+        <Route path="rapports/detail" element={<PlaceholderPage title="Rapports détaillés" />} />
+        <Route path="statistiques" element={<PlaceholderPage title="Statistiques" />} />
+      </Route>
+
+      {/* 404 fallback */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}
