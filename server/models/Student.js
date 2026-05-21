@@ -10,6 +10,7 @@ const studentSchema = new mongoose.Schema(
     photo: { type: String },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     class: { type: mongoose.Schema.Types.ObjectId, ref: 'Class' },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     cycle: { type: String, enum: ['Maternelle', 'Primaire', 'Secondaire'] },
     parent: {
       name: { type: String },

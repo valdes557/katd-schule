@@ -14,6 +14,8 @@ import PresencePage from './pages/PresencePage'
 import MessagingPage from './pages/MessagingPage'
 import SouscriptionsPage from './pages/SouscriptionsPage'
 import PlaceholderPage from './pages/PlaceholderPage'
+import EnrollmentPage from './pages/EnrollmentPage'
+import InscriptionsPage from './pages/InscriptionsPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -41,6 +43,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/explorer" element={<ExplorerPage />} />
       <Route path="/ecoles" element={<EcolesPage />} />
+      <Route path="/inscription/:schoolId" element={<EnrollmentPage />} />
       <Route path="/about" element={<LandingPage />} />
       <Route path="/tarifs" element={<LandingPage />} />
       <Route path="/contact" element={<LandingPage />} />
@@ -61,6 +64,7 @@ export default function App() {
         <Route path="presence" element={<PresencePage />} />
         <Route path="messagerie" element={<MessagingPage />} />
         <Route path="souscriptions" element={<SouscriptionsPage />} />
+        <Route path="inscriptions" element={<InscriptionsPage />} />
 
         <Route path="profil" element={<PlaceholderPage title="Profil de l'école" />} />
         <Route path="infos" element={<PlaceholderPage title="Informations générales" />} />

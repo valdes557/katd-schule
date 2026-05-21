@@ -3,7 +3,7 @@ import {
   LayoutDashboard, School, Info, BookOpen, Clock, Users, GraduationCap,
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
-  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut,
+  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
@@ -24,6 +24,7 @@ const sidebarSections = [
     items: [
       { label: 'Enseignants', icon: UserCheck, path: '/dashboard/enseignants' },
       { label: 'Élèves', icon: GraduationCap, path: '/dashboard/eleves' },
+      { label: 'Inscriptions en ligne', icon: UserPlus, path: '/dashboard/inscriptions' },
       { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents' },
       { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel' },
     ],

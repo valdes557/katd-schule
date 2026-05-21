@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Search, MapPin, Users, BookOpen, Loader2 } from 'lucide-react'
+import { Search, MapPin, Users, BookOpen, Loader2, GraduationCap } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { schoolsApi } from '../lib/api'
@@ -87,6 +88,9 @@ export default function EcolesPage() {
                     <span className="flex items-center gap-1"><Users size={11} /> {school.stats?.totalStudents || 0}</span>
                     <span className="flex items-center gap-1"><BookOpen size={11} /> {school.stats?.totalClasses || 0} classes</span>
                   </div>
+                  <Link to={`/inscription/${school._id}`} className="mt-4 w-full flex items-center justify-center gap-1.5 bg-blue-600 text-white text-xs font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                    <GraduationCap size={13} /> S'inscrire
+                  </Link>
                 </div>
               )
             })}

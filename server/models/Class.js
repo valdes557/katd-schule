@@ -8,6 +8,7 @@ const classSchema = new mongoose.Schema(
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     mainTeacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
     capacity: { type: Number, default: 40 },
+    enrollmentFee: { type: Number, default: 0 },
     academicYear: { type: String },
     stats: {
       totalStudents: { type: Number, default: 0 },

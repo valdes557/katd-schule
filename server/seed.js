@@ -57,19 +57,19 @@ async function seed() {
 
   // Create classes
   const classesData = [
-    { name: 'SIL', level: 'SIL', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 35 },
-    { name: 'CP', level: 'CP', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 35 },
-    { name: 'CE1', level: 'CE1', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 40 },
-    { name: 'CE2', level: 'CE2', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 40 },
-    { name: 'CM1', level: 'CM1', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 40 },
-    { name: 'CM2', level: 'CM2', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 45 },
-    { name: '6ème A', level: '6ème', cycle: 'Secondaire', school: school._id, academicYear: '2025-2026', capacity: 50 },
-    { name: '5ème A', level: '5ème', cycle: 'Secondaire', school: school._id, academicYear: '2025-2026', capacity: 50 },
-    { name: '4ème A', level: '4ème', cycle: 'Secondaire', school: school._id, academicYear: '2025-2026', capacity: 50 },
-    { name: '3ème A', level: '3ème', cycle: 'Secondaire', school: school._id, academicYear: '2025-2026', capacity: 50 },
-    { name: 'PS', level: 'PS', cycle: 'Maternelle', school: school._id, academicYear: '2025-2026', capacity: 25 },
-    { name: 'MS', level: 'MS', cycle: 'Maternelle', school: school._id, academicYear: '2025-2026', capacity: 25 },
-    { name: 'GS', level: 'GS', cycle: 'Maternelle', school: school._id, academicYear: '2025-2026', capacity: 30 },
+    { name: 'SIL', level: 'SIL', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 35, enrollmentFee: 25000 },
+    { name: 'CP', level: 'CP', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 35, enrollmentFee: 25000 },
+    { name: 'CE1', level: 'CE1', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 40, enrollmentFee: 30000 },
+    { name: 'CE2', level: 'CE2', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 40, enrollmentFee: 30000 },
+    { name: 'CM1', level: 'CM1', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 40, enrollmentFee: 35000 },
+    { name: 'CM2', level: 'CM2', cycle: 'Primaire', school: school._id, academicYear: '2025-2026', capacity: 45, enrollmentFee: 35000 },
+    { name: '6ème A', level: '6ème', cycle: 'Secondaire', school: school._id, academicYear: '2025-2026', capacity: 50, enrollmentFee: 50000 },
+    { name: '5ème A', level: '5ème', cycle: 'Secondaire', school: school._id, academicYear: '2025-2026', capacity: 50, enrollmentFee: 50000 },
+    { name: '4ème A', level: '4ème', cycle: 'Secondaire', school: school._id, academicYear: '2025-2026', capacity: 50, enrollmentFee: 55000 },
+    { name: '3ème A', level: '3ème', cycle: 'Secondaire', school: school._id, academicYear: '2025-2026', capacity: 50, enrollmentFee: 60000 },
+    { name: 'PS', level: 'PS', cycle: 'Maternelle', school: school._id, academicYear: '2025-2026', capacity: 25, enrollmentFee: 20000 },
+    { name: 'MS', level: 'MS', cycle: 'Maternelle', school: school._id, academicYear: '2025-2026', capacity: 25, enrollmentFee: 20000 },
+    { name: 'GS', level: 'GS', cycle: 'Maternelle', school: school._id, academicYear: '2025-2026', capacity: 30, enrollmentFee: 22000 },
   ]
   const classes = await Class.insertMany(classesData)
 

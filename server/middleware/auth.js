@@ -12,6 +12,9 @@ const protect = async (req, res, next) => {
       if (!req.user) {
         return res.status(401).json({ message: 'Utilisateur non trouvé' })
       }
+      if (req.user.isActive === false) {
+        return res.status(403).json({ message: 'Votre compte a été bloqué. Contactez l\'administration.' })
+      }
       next()
     } catch (error) {
       return res.status(401).json({ message: 'Token invalide ou expiré' })

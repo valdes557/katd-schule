@@ -97,4 +97,21 @@ export const schoolsApi = {
   get: (id) => api.get(`/schools/${id}`),
 }
 
+export const enrollmentApi = {
+  getClasses: (schoolId) => api.get(`/enrollments/school/${schoolId}/classes`),
+  submit: async (formData) => {
+    const token = localStorage.getItem('token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const res = await fetch(`${API_URL}/enrollments`, { method: 'POST', headers, body: formData })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    return data
+  },
+  list: (params = '') => api.get(`/enrollments?${params}`),
+  approve: (id) => api.put(`/enrollments/${id}/approve`),
+  reject: (id, reason) => api.put(`/enrollments/${id}/reject`, { reason }),
+  blockStudent: (id) => api.put(`/enrollments/students/${id}/block`),
+  unblockStudent: (id) => api.put(`/enrollments/students/${id}/unblock`),
+}
+
 export default api
