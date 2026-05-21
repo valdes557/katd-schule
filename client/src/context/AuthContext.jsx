@@ -77,11 +77,10 @@ const mockSchool = {
 }
 
 export const DEMO_USERS = {
-  'admin@katdschule.com':    { name: 'Super Admin KATD',          role: 'super_admin', password: 'admin123' },
-  'directeur@ecole.ci':      { name: 'Mme Diop Aïcha (Directrice)', role: 'directeur',   password: 'demo123' },
-  'enseignant@ecole.ci':     { name: 'M. Diop Ousmane',           role: 'enseignant',  password: 'demo123' },
-  'parent@ecole.ci':         { name: 'Mme Kouassi Fatou',         role: 'parent',      password: 'demo123' },
-  'eleve@ecole.ci':          { name: 'Yao Amani',                 role: 'eleve',       password: 'demo123' },
+  'directeur@katd.com':  { name: 'Directeur KATD',      role: 'directeur',   password: 'password123' },
+  'enseignant@katd.com': { name: 'M. Nkoulou Pierre',   role: 'enseignant',  password: 'password123' },
+  'parent@katd.com':     { name: 'Parent Mbarga',       role: 'parent',      password: 'password123' },
+  'admin@katd.com':      { name: 'Super Admin',         role: 'super_admin', password: 'password123' },
 }
 
 export const useAuth = () => {

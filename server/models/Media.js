@@ -4,7 +4,7 @@ const mediaSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
     description: { type: String },
-    type: { type: String, enum: ['video', 'photo', 'audio'], required: true },
+    type: { type: String, enum: ['video', 'photo', 'image', 'audio'], required: true },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     files: [

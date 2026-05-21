@@ -7,7 +7,7 @@ const { protect, authorize } = require('../middleware/auth')
 router.get('/', async (req, res) => {
   try {
     const { search, cycle, page = 1, limit = 20 } = req.query
-    const query = { isValidated: true, isActive: true }
+    const query = { isActive: { $ne: false } }
 
     if (search) {
       query.$or = [

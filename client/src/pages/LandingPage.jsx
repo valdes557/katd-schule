@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight, Play, Users, GraduationCap, BookOpen, Award,
@@ -6,7 +7,7 @@ import {
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
-import { mediaItems, schools } from '../data/mockData'
+import { mediaApi, schoolsApi } from '../lib/api'
 
 const features = [
   { icon: Users, title: 'Gestion complète', desc: 'Élèves, enseignants, classes, parents — tout dans une interface intuitive.', color: 'bg-blue-50 text-blue-600' },
@@ -63,11 +64,18 @@ function Stat({ value, label }) {
   )
 }
 
-function MediaPreviewCard({ item }) {
+const GRADIENTS = ['from-blue-400 to-indigo-500', 'from-purple-400 to-pink-500', 'from-green-400 to-teal-500', 'from-orange-400 to-red-500']
+
+function MediaPreviewCard({ item, index }) {
+  const thumb = item.thumbnail || item.files?.[0]?.url || null
   return (
     <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 hover:shadow-card-lg transition-all hover:-translate-y-0.5">
-      <div className={`relative h-40 sm:h-44 bg-gradient-to-br ${item.gradient}`}>
-        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.2) 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+      <div className={`relative h-40 sm:h-44 ${thumb ? 'bg-gray-100' : `bg-gradient-to-br ${GRADIENTS[index % GRADIENTS.length]}`}`}>
+        {thumb ? (
+          <img src={thumb} alt={item.title} className="w-full h-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.2) 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+        )}
         {item.type === 'video' && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-12 h-12 bg-white/25 backdrop-blur-md rounded-full flex items-center justify-center border border-white/30">
@@ -77,17 +85,17 @@ function MediaPreviewCard({ item }) {
         )}
         <div className="absolute top-3 left-3">
           <span className="bg-black/40 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full capitalize font-medium">
-            {item.category}
+            {item.category || item.type}
           </span>
         </div>
       </div>
       <div className="p-4">
         <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug mb-2">{item.title}</h3>
         <div className="flex items-center justify-between text-xs text-gray-400">
-          <span className="truncate">{item.school}</span>
+          <span className="truncate">{item.school?.name || 'École'}</span>
           <div className="flex items-center gap-3 flex-shrink-0">
-            <span className="flex items-center gap-1"><Heart size={11} />{item.likes}</span>
-            <span className="flex items-center gap-1"><MessageCircle size={11} />{item.comments}</span>
+            <span className="flex items-center gap-1"><Heart size={11} />{item.stats?.likes || 0}</span>
+            <span className="flex items-center gap-1"><MessageCircle size={11} />{item.stats?.comments || 0}</span>
           </div>
         </div>
       </div>
@@ -96,6 +104,14 @@ function MediaPreviewCard({ item }) {
 }
 
 export default function LandingPage() {
+  const [mediaItems, setMediaItems] = useState([])
+  const [schoolsList, setSchoolsList] = useState([])
+
+  useEffect(() => {
+    mediaApi.list('sort=popular&limit=4').then((res) => setMediaItems(res.data || [])).catch(() => {})
+    schoolsApi.list('limit=8').then((res) => setSchoolsList(res.data || [])).catch(() => {})
+  }, [])
+
   return (
     <div className="min-h-screen bg-white">
       <PublicHeader />
@@ -254,9 +270,11 @@ export default function LandingPage() {
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {mediaItems.slice(0, 4).map((item) => (
-              <MediaPreviewCard key={item.id} item={item} />
-            ))}
+            {mediaItems.length > 0 ? mediaItems.map((item, i) => (
+              <MediaPreviewCard key={item._id} item={item} index={i} />
+            )) : (
+              <p className="col-span-full text-center text-sm text-gray-400 py-8">Aucun contenu multimédia pour le moment</p>
+            )}
           </div>
         </div>
       </section>
@@ -269,22 +287,29 @@ export default function LandingPage() {
             <p className="text-sm text-gray-600">Plus de 120 établissements nous font confiance</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {schools.slice(0, 8).map((school) => (
-              <Link
-                key={school.id}
-                to="/ecoles"
-                className="bg-white border border-gray-100 rounded-2xl p-5 hover:border-blue-300 hover:shadow-card transition-all group"
-              >
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-base font-bold mb-3"
-                  style={{ backgroundColor: school.color }}
+            {schoolsList.length > 0 ? schoolsList.map((school) => {
+              const initials = (school.name || '').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+              const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4']
+              const color = colors[Math.abs(school.name?.charCodeAt(0) || 0) % colors.length]
+              return (
+                <Link
+                  key={school._id}
+                  to="/ecoles"
+                  className="bg-white border border-gray-100 rounded-2xl p-5 hover:border-blue-300 hover:shadow-card transition-all group"
                 >
-                  {school.initials}
-                </div>
-                <div className="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-600">{school.name}</div>
-                <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><MapPin size={10} />{school.city}</div>
-              </Link>
-            ))}
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-base font-bold mb-3"
+                    style={{ backgroundColor: color }}
+                  >
+                    {initials}
+                  </div>
+                  <div className="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-600">{school.name}</div>
+                  <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><MapPin size={10} />{school.address?.city || 'Cameroun'}</div>
+                </Link>
+              )
+            }) : (
+              <p className="col-span-full text-center text-sm text-gray-400 py-8">Aucune école inscrite pour le moment</p>
+            )}
           </div>
         </div>
       </section>

@@ -30,4 +30,71 @@ export const authApi = {
   me: () => api.get('/auth/me'),
 }
 
+export const dashboardApi = {
+  getStats: () => api.get('/dashboard/stats'),
+}
+
+export const studentsApi = {
+  list: (params = '') => api.get(`/students?${params}`),
+  get: (id) => api.get(`/students/${id}`),
+  create: (data) => api.post('/students', data),
+  update: (id, data) => api.put(`/students/${id}`, data),
+  remove: (id) => api.del(`/students/${id}`),
+}
+
+export const teachersApi = {
+  list: (params = '') => api.get(`/teachers?${params}`),
+  get: (id) => api.get(`/teachers/${id}`),
+  create: (data) => api.post('/teachers', data),
+  update: (id, data) => api.put(`/teachers/${id}`, data),
+  remove: (id) => api.del(`/teachers/${id}`),
+}
+
+export const classesApi = {
+  list: (params = '') => api.get(`/classes?${params}`),
+  get: (id) => api.get(`/classes/${id}`),
+  create: (data) => api.post('/classes', data),
+  update: (id, data) => api.put(`/classes/${id}`, data),
+  remove: (id) => api.del(`/classes/${id}`),
+}
+
+export const gradesApi = {
+  list: (params = '') => api.get(`/grades?${params}`),
+  stats: (params = '') => api.get(`/grades/stats?${params}`),
+  bulletin: (studentId, term) => api.get(`/grades/bulletin/${studentId}?term=${term}`),
+  create: (data) => api.post('/grades', data),
+  update: (id, data) => api.put(`/grades/${id}`, data),
+  remove: (id) => api.del(`/grades/${id}`),
+}
+
+export const attendanceApi = {
+  list: (params = '') => api.get(`/attendance?${params}`),
+  stats: (params = '') => api.get(`/attendance/stats?${params}`),
+  save: (data) => api.post('/attendance', data),
+}
+
+export const messagesApi = {
+  conversations: () => api.get('/messages/conversations'),
+  conversation: (id) => api.get(`/messages/conversation/${id}`),
+  send: (data) => api.post('/messages', data),
+  contacts: () => api.get('/messages/contacts'),
+  unreadCount: () => api.get('/messages/unread-count'),
+}
+
+export const mediaApi = {
+  list: (params = '') => api.get(`/media?${params}`),
+  get: (id) => api.get(`/media/${id}`),
+  like: (id) => api.put(`/media/${id}/like`),
+  comment: (id, text) => api.post(`/media/${id}/comments`, { text }),
+  getComments: (id) => api.get(`/media/${id}/comments`),
+  share: (id) => api.put(`/media/${id}/share`),
+  download: (id) => api.put(`/media/${id}/download`),
+  remove: (id) => api.del(`/media/${id}`),
+}
+
+export const schoolsApi = {
+  list: (params = '') => api.get(`/schools?${params}`),
+  get: (id) => api.get(`/schools/${id}`),
+}
+
 export default api

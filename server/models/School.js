@@ -13,9 +13,12 @@ const schoolSchema = new mongoose.Schema(
     },
     address: {
       city: { type: String },
-      country: { type: String, default: "Côte d'Ivoire" },
+      neighborhood: { type: String },
+      country: { type: String, default: 'Cameroun' },
       address: { type: String },
     },
+    phone: { type: String },
+    email: { type: String },
     contact: {
       email: { type: String },
       phone: { type: String },
@@ -25,7 +28,7 @@ const schoolSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     subscription: {
       cycle: { type: String, enum: ['Maternelle', 'Primaire', 'Secondaire'] },
-      plan: { type: String, enum: ['quarterly', 'annual'], default: 'annual' },
+      plan: { type: String, enum: ['quarterly', 'annual', 'standard', 'premium', 'free'], default: 'annual' },
       status: { type: String, enum: ['active', 'expired', 'pending'], default: 'pending' },
       startDate: { type: Date },
       endDate: { type: Date },

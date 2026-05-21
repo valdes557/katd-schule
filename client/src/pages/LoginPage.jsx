@@ -4,11 +4,10 @@ import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, School } from 'lucide-rea
 import { useAuth } from '../context/AuthContext'
 
 const DEMO_USERS = [
-  { role: 'Super Admin',  name: 'Super Admin KATD',           email: 'admin@katdschule.com',  password: 'admin123', color: 'bg-rose-600' },
-  { role: 'Directrice',   name: 'Mme Diop Aïcha',              email: 'directeur@ecole.ci',    password: 'demo123',  color: 'bg-blue-600' },
-  { role: 'Enseignant',   name: 'M. Diop Ousmane',             email: 'enseignant@ecole.ci',   password: 'demo123',  color: 'bg-green-600' },
-  { role: 'Parent',       name: 'Mme Kouassi Fatou',           email: 'parent@ecole.ci',       password: 'demo123',  color: 'bg-purple-600' },
-  { role: 'Élève',         name: 'Yao Amani',                   email: 'eleve@ecole.ci',        password: 'demo123',  color: 'bg-amber-600' },
+  { role: 'Directeur',    name: 'Directeur KATD',      email: 'directeur@katd.com',  password: 'password123', color: 'bg-blue-600' },
+  { role: 'Enseignant',   name: 'M. Nkoulou Pierre',   email: 'enseignant@katd.com', password: 'password123', color: 'bg-green-600' },
+  { role: 'Parent',       name: 'Parent Mbarga',       email: 'parent@katd.com',     password: 'password123', color: 'bg-purple-600' },
+  { role: 'Super Admin',  name: 'Super Admin',         email: 'admin@katd.com',      password: 'password123', color: 'bg-rose-600' },
 ]
 
 export default function LoginPage() {

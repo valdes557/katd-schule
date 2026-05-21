@@ -3,7 +3,22 @@ const router = express.Router()
 const multer = require('multer')
 const path = require('path')
 const Media = require('../models/Media')
+const Comment = require('../models/Comment')
 const { protect } = require('../middleware/auth')
+
+// Optional auth middleware — sets req.user if token present, else continues
+const optionalAuth = async (req, res, next) => {
+  const jwt = require('jsonwebtoken')
+  const User = require('../models/User')
+  const token = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET)
+      req.user = await User.findById(decoded.id).select('-password')
+    } catch (_) {}
+  }
+  next()
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
@@ -74,23 +89,94 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
   }
 })
 
-// @route  PUT /api/media/:id/like  (authenticated)
-router.put('/:id/like', protect, async (req, res) => {
+// @route  GET /api/media/:id  (public)
+router.get('/:id', async (req, res) => {
+  try {
+    const media = await Media.findById(req.params.id)
+      .populate('school', 'name logo')
+      .populate('uploadedBy', 'name')
+    if (!media) return res.status(404).json({ message: 'Contenu non trouvé' })
+    media.stats.views += 1
+    await media.save({ validateBeforeSave: false })
+    const comments = await Comment.find({ media: media._id }).populate('user', 'name role').sort({ createdAt: -1 }).limit(50)
+    res.json({ success: true, data: { ...media.toObject(), comments } })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// @route  PUT /api/media/:id/like  (public — any visitor can like)
+router.put('/:id/like', optionalAuth, async (req, res) => {
   try {
     const media = await Media.findById(req.params.id)
     if (!media) return res.status(404).json({ message: 'Contenu non trouvé' })
 
-    const alreadyLiked = media.likedBy.includes(req.user._id)
-    if (alreadyLiked) {
-      media.likedBy.pull(req.user._id)
-      media.stats.likes = Math.max(0, media.stats.likes - 1)
+    if (req.user) {
+      const alreadyLiked = media.likedBy.includes(req.user._id)
+      if (alreadyLiked) {
+        media.likedBy.pull(req.user._id)
+        media.stats.likes = Math.max(0, media.stats.likes - 1)
+      } else {
+        media.likedBy.push(req.user._id)
+        media.stats.likes += 1
+      }
     } else {
-      media.likedBy.push(req.user._id)
       media.stats.likes += 1
     }
     await media.save()
 
-    res.json({ success: true, liked: !alreadyLiked, likes: media.stats.likes })
+    res.json({ success: true, likes: media.stats.likes })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// @route  POST /api/media/:id/comments  (authenticated)
+router.post('/:id/comments', protect, async (req, res) => {
+  try {
+    const media = await Media.findById(req.params.id)
+    if (!media) return res.status(404).json({ message: 'Contenu non trouvé' })
+    const comment = await Comment.create({ media: media._id, user: req.user._id, text: req.body.text })
+    media.stats.comments += 1
+    await media.save({ validateBeforeSave: false })
+    const populated = await comment.populate('user', 'name role')
+    res.status(201).json({ success: true, data: populated })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// @route  GET /api/media/:id/comments  (public)
+router.get('/:id/comments', async (req, res) => {
+  try {
+    const comments = await Comment.find({ media: req.params.id }).populate('user', 'name role').sort({ createdAt: -1 })
+    res.json({ success: true, data: comments })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// @route  PUT /api/media/:id/share  (authenticated)
+router.put('/:id/share', protect, async (req, res) => {
+  try {
+    const media = await Media.findById(req.params.id)
+    if (!media) return res.status(404).json({ message: 'Contenu non trouvé' })
+    media.stats.shares += 1
+    await media.save({ validateBeforeSave: false })
+    res.json({ success: true, shares: media.stats.shares })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// @route  PUT /api/media/:id/download  (authenticated)
+router.put('/:id/download', protect, async (req, res) => {
+  try {
+    const media = await Media.findById(req.params.id)
+    if (!media) return res.status(404).json({ message: 'Contenu non trouvé' })
+    media.stats.downloads += 1
+    await media.save({ validateBeforeSave: false })
+    res.json({ success: true, downloads: media.stats.downloads })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

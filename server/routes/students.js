@@ -6,8 +6,8 @@ const { protect, authorize } = require('../middleware/auth')
 // @route  GET /api/students
 router.get('/', protect, async (req, res) => {
   try {
-    const { search, class: className, cycle, page = 1, limit = 50 } = req.query
-    const query = { school: req.user.school }
+    const { search, class: className, classId, cycle, page = 1, limit = 50 } = req.query
+    const query = { school: req.user.school._id || req.user.school }
 
     if (search) {
       query.$or = [
@@ -16,7 +16,8 @@ router.get('/', protect, async (req, res) => {
         { matricule: { $regex: search, $options: 'i' } },
       ]
     }
-    if (className) query.class = className
+    if (classId) query.class = classId
+    else if (className) query.class = className
     if (cycle) query.cycle = cycle
 
     const total = await Student.countDocuments(query)

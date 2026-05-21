@@ -29,7 +29,13 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/schools', require('./routes/schools'))
 app.use('/api/students', require('./routes/students'))
+app.use('/api/teachers', require('./routes/teachers'))
+app.use('/api/classes', require('./routes/classes'))
+app.use('/api/grades', require('./routes/grades'))
+app.use('/api/attendance', require('./routes/attendance'))
+app.use('/api/messages', require('./routes/messages'))
 app.use('/api/media', require('./routes/media'))
+app.use('/api/dashboard', require('./routes/dashboard'))
 
 app.get('/api/health', (req, res) => {
   res.json({
