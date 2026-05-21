@@ -304,9 +304,14 @@ export default function LandingPage() {
                   </div>
                   <div className="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-600">{school.name}</div>
                   <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><MapPin size={10} />{school.address?.city || 'Cameroun'}</div>
-                  <Link to={`/inscription/${school._id}`} className="mt-3 w-full flex items-center justify-center gap-1.5 bg-blue-600 text-white text-[11px] font-semibold py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
-                    S'inscrire
-                  </Link>
+                  <div className="flex gap-2 mt-3">
+                    <Link to={`/ecole/${school._id}`} className="flex-1 flex items-center justify-center gap-1 border border-gray-200 text-gray-700 text-[11px] font-semibold py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
+                      Voir les détails
+                    </Link>
+                    <Link to={`/inscription/${school._id}`} className="flex-1 flex items-center justify-center gap-1 bg-blue-600 text-white text-[11px] font-semibold py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
+                      S'inscrire
+                    </Link>
+                  </div>
                 </div>
               )
             }) : (

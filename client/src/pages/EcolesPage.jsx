@@ -88,9 +88,14 @@ export default function EcolesPage() {
                     <span className="flex items-center gap-1"><Users size={11} /> {school.stats?.totalStudents || 0}</span>
                     <span className="flex items-center gap-1"><BookOpen size={11} /> {school.stats?.totalClasses || 0} classes</span>
                   </div>
-                  <Link to={`/inscription/${school._id}`} className="mt-4 w-full flex items-center justify-center gap-1.5 bg-blue-600 text-white text-xs font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                    <GraduationCap size={13} /> S'inscrire
-                  </Link>
+                  <div className="flex gap-2 mt-4">
+                    <Link to={`/ecole/${school._id}`} className="flex-1 flex items-center justify-center gap-1 border border-gray-200 text-gray-700 text-xs font-semibold py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                      Voir les détails
+                    </Link>
+                    <Link to={`/inscription/${school._id}`} className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 text-white text-xs font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                      <GraduationCap size={13} /> S'inscrire
+                    </Link>
+                  </div>
                 </div>
               )
             })}

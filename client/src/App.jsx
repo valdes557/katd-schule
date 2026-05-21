@@ -20,6 +20,8 @@ import TarifsPage from './pages/TarifsPage'
 import SchoolRegistrationPage from './pages/SchoolRegistrationPage'
 import AdminLocationsPage from './pages/AdminLocationsPage'
 import AdminSchoolRegistrationsPage from './pages/AdminSchoolRegistrationsPage'
+import SchoolDetailPage from './pages/SchoolDetailPage'
+import ManageSchoolPage from './pages/ManageSchoolPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -52,6 +54,7 @@ export default function App() {
       <Route path="/tarifs" element={<TarifsPage />} />
       <Route path="/souscrire" element={<SchoolRegistrationPage />} />
       <Route path="/contact" element={<LandingPage />} />
+      <Route path="/ecole/:schoolId" element={<SchoolDetailPage />} />
 
       {/* Protected dashboard routes */}
       <Route
@@ -90,6 +93,7 @@ export default function App() {
         <Route path="statistiques" element={<PlaceholderPage title="Statistiques" />} />
         <Route path="localites" element={<AdminLocationsPage />} />
         <Route path="demandes-ecoles" element={<AdminSchoolRegistrationsPage />} />
+        <Route path="page-ecole" element={<ManageSchoolPage />} />
       </Route>
 
       {/* 404 fallback */}

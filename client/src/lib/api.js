@@ -114,6 +114,52 @@ export const schoolRegistrationApi = {
   reject: (id, reason) => api.put(`/school-registrations/${id}/reject`, { reason }),
 }
 
+export const schoolPagesApi = {
+  get: (schoolId) => api.get(`/school-pages/${schoolId}`),
+  update: (schoolId, data) => api.put(`/school-pages/${schoolId}`, data),
+  uploadImages: async (schoolId, files) => {
+    const fd = new FormData()
+    files.forEach((f) => fd.append('images', f))
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/school-pages/${schoolId}/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    return res.json()
+  },
+  // Team
+  getTeam: (schoolId) => api.get(`/school-pages/${schoolId}/team`),
+  addTeamMember: async (schoolId, formData) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/school-pages/${schoolId}/team`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    return res.json()
+  },
+  updateTeamMember: async (id, formData) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/school-pages/team/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    return res.json()
+  },
+  deleteTeamMember: (id) => api.del(`/school-pages/team/${id}`),
+  // Posts
+  getPosts: (schoolId, page = 1) => api.get(`/school-pages/${schoolId}/posts?page=${page}`),
+  createPost: async (schoolId, formData) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/school-pages/${schoolId}/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    return res.json()
+  },
+  likePost: (id) => api.put(`/school-pages/posts/${id}/like`),
+  commentPost: (id, content) => api.post(`/school-pages/posts/${id}/comment`, { content }),
+  deletePost: (id) => api.del(`/school-pages/posts/${id}`),
+  // Reviews
+  getReviews: (schoolId) => api.get(`/school-pages/${schoolId}/reviews`),
+  getAllReviews: (schoolId) => api.get(`/school-pages/${schoolId}/reviews/all`),
+  submitReview: (schoolId, data) => api.post(`/school-pages/${schoolId}/reviews`, data),
+  approveReview: (id) => api.put(`/school-pages/reviews/${id}/approve`),
+  deleteReview: (id) => api.del(`/school-pages/reviews/${id}`),
+  // Payments
+  getPayments: (schoolId) => api.get(`/school-pages/${schoolId}/payments`),
+  addPayment: (schoolId, data) => api.post(`/school-pages/${schoolId}/payments`, data),
+  updatePayment: (id, data) => api.put(`/school-pages/payments/${id}`, data),
+  deletePayment: (id) => api.del(`/school-pages/payments/${id}`),
+}
+
 export const enrollmentApi = {
   getClasses: (schoolId) => api.get(`/enrollments/school/${schoolId}/classes`),
   submit: async (formData) => {

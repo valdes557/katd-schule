@@ -3,7 +3,7 @@ import {
   LayoutDashboard, School, Info, BookOpen, Clock, Users, GraduationCap,
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
-  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus, MapPin,
+  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus, MapPin, Globe,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
@@ -17,6 +17,7 @@ const sidebarSections = [
       { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes' },
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
+      { label: 'Page de l\'école', icon: Globe, path: '/dashboard/page-ecole' },
     ],
   },
   {
