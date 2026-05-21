@@ -96,12 +96,14 @@ async function seed() {
   const lastNames = ['Mbarga', 'Nguema', 'Atangana', 'Fouda', 'Nkoulou', 'Essomba', 'Biya', 'Meka', 'Onana', 'Tchoumi', 'Kamga', 'Nganou', 'Fotso', 'Tchinda', 'Mbouda']
 
   const studentsData = []
+  const year = new Date().getFullYear()
   for (let i = 0; i < 60; i++) {
     const classIndex = i % classes.length
     const cls = classes[classIndex]
     studentsData.push({
       firstName: firstNames[i % firstNames.length],
       lastName: lastNames[i % lastNames.length],
+      matricule: `STU-${year}-${String(i + 1).padStart(4, '0')}`,
       gender: i % 2 === 0 ? 'M' : 'F',
       school: school._id,
       class: cls._id,
