@@ -392,14 +392,14 @@ export default function LandingPage() {
                   ))}
                 </ul>
                 <Link
-                  to="/login"
+                  to={`/souscrire?cycle=${p.cycle}&plan=annual&amount=${p.annual}`}
                   className={`block w-full text-center py-2.5 rounded-lg text-sm font-semibold transition-colors ${
                     p.featured
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  Souscrire
+                  S'inscrire
                 </Link>
               </div>
             ))}

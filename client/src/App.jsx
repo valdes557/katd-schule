@@ -16,6 +16,10 @@ import SouscriptionsPage from './pages/SouscriptionsPage'
 import PlaceholderPage from './pages/PlaceholderPage'
 import EnrollmentPage from './pages/EnrollmentPage'
 import InscriptionsPage from './pages/InscriptionsPage'
+import TarifsPage from './pages/TarifsPage'
+import SchoolRegistrationPage from './pages/SchoolRegistrationPage'
+import AdminLocationsPage from './pages/AdminLocationsPage'
+import AdminSchoolRegistrationsPage from './pages/AdminSchoolRegistrationsPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -45,7 +49,8 @@ export default function App() {
       <Route path="/ecoles" element={<EcolesPage />} />
       <Route path="/inscription/:schoolId" element={<EnrollmentPage />} />
       <Route path="/about" element={<LandingPage />} />
-      <Route path="/tarifs" element={<LandingPage />} />
+      <Route path="/tarifs" element={<TarifsPage />} />
+      <Route path="/souscrire" element={<SchoolRegistrationPage />} />
       <Route path="/contact" element={<LandingPage />} />
 
       {/* Protected dashboard routes */}
@@ -83,6 +88,8 @@ export default function App() {
         <Route path="rapports" element={<PlaceholderPage title="Tableaux de bord" />} />
         <Route path="rapports/detail" element={<PlaceholderPage title="Rapports détaillés" />} />
         <Route path="statistiques" element={<PlaceholderPage title="Statistiques" />} />
+        <Route path="localites" element={<AdminLocationsPage />} />
+        <Route path="demandes-ecoles" element={<AdminSchoolRegistrationsPage />} />
       </Route>
 
       {/* 404 fallback */}

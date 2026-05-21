@@ -12,6 +12,9 @@ const Grade = require('./models/Grade')
 const Attendance = require('./models/Attendance')
 const Media = require('./models/Media')
 const Message = require('./models/Message')
+const Location = require('./models/Location')
+const Enrollment = require('./models/Enrollment')
+const SchoolRegistration = require('./models/SchoolRegistration')
 
 async function seed() {
   await connectDB()
@@ -28,7 +31,45 @@ async function seed() {
     Attendance.deleteMany({}),
     Media.deleteMany({}),
     Message.deleteMany({}),
+    Location.deleteMany({}),
+    Enrollment.deleteMany({}),
+    SchoolRegistration.deleteMany({}),
   ])
+
+  // Create locations
+  const cameroun = await Location.create({ type: 'country', name: 'Cameroun', code: 'CM' })
+  const gabon = await Location.create({ type: 'country', name: 'Gabon', code: 'GA' })
+  const congo = await Location.create({ type: 'country', name: 'Congo', code: 'CG' })
+  const civ = await Location.create({ type: 'country', name: "Côte d'Ivoire", code: 'CI' })
+  const senegal = await Location.create({ type: 'country', name: 'Sénégal', code: 'SN' })
+
+  const yaounde = await Location.create({ type: 'city', name: 'Yaoundé', parent: cameroun._id })
+  const douala = await Location.create({ type: 'city', name: 'Douala', parent: cameroun._id })
+  const bafoussam = await Location.create({ type: 'city', name: 'Bafoussam', parent: cameroun._id })
+  const garoua = await Location.create({ type: 'city', name: 'Garoua', parent: cameroun._id })
+  const bamenda = await Location.create({ type: 'city', name: 'Bamenda', parent: cameroun._id })
+  await Location.create({ type: 'city', name: 'Libreville', parent: gabon._id })
+  await Location.create({ type: 'city', name: 'Port-Gentil', parent: gabon._id })
+  await Location.create({ type: 'city', name: 'Brazzaville', parent: congo._id })
+  await Location.create({ type: 'city', name: 'Pointe-Noire', parent: congo._id })
+  await Location.create({ type: 'city', name: 'Abidjan', parent: civ._id })
+  await Location.create({ type: 'city', name: 'Yamoussoukro', parent: civ._id })
+  await Location.create({ type: 'city', name: 'Dakar', parent: senegal._id })
+
+  await Location.insertMany([
+    { type: 'neighborhood', name: 'Bastos', parent: yaounde._id },
+    { type: 'neighborhood', name: 'Nlongkak', parent: yaounde._id },
+    { type: 'neighborhood', name: 'Essos', parent: yaounde._id },
+    { type: 'neighborhood', name: 'Mvog-Mbi', parent: yaounde._id },
+    { type: 'neighborhood', name: 'Mvan', parent: yaounde._id },
+    { type: 'neighborhood', name: 'Bonamoussadi', parent: douala._id },
+    { type: 'neighborhood', name: 'Akwa', parent: douala._id },
+    { type: 'neighborhood', name: 'Deïdo', parent: douala._id },
+    { type: 'neighborhood', name: 'Bonapriso', parent: douala._id },
+    { type: 'neighborhood', name: 'Tamdja', parent: bafoussam._id },
+    { type: 'neighborhood', name: 'Djeleng', parent: bafoussam._id },
+  ])
+  console.log('📍 Locations created')
 
   // Create school
   const school = await School.create({

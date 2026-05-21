@@ -97,6 +97,23 @@ export const schoolsApi = {
   get: (id) => api.get(`/schools/${id}`),
 }
 
+export const locationsApi = {
+  countries: () => api.get('/locations/countries'),
+  cities: (countryId) => api.get(`/locations/cities/${countryId}`),
+  neighborhoods: (cityId) => api.get(`/locations/neighborhoods/${cityId}`),
+  list: (params = '') => api.get(`/locations?${params}`),
+  create: (data) => api.post('/locations', data),
+  update: (id, data) => api.put(`/locations/${id}`, data),
+  remove: (id) => api.del(`/locations/${id}`),
+}
+
+export const schoolRegistrationApi = {
+  submit: (data) => api.post('/school-registrations', data),
+  list: (params = '') => api.get(`/school-registrations?${params}`),
+  approve: (id) => api.put(`/school-registrations/${id}/approve`),
+  reject: (id, reason) => api.put(`/school-registrations/${id}/reject`, { reason }),
+}
+
 export const enrollmentApi = {
   getClasses: (schoolId) => api.get(`/enrollments/school/${schoolId}/classes`),
   submit: async (formData) => {

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, School, Info, BookOpen, Clock, Users, GraduationCap,
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
-  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus,
+  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus, MapPin,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
@@ -63,10 +63,18 @@ const sidebarSections = [
       { label: 'Statistiques', icon: PieChart, path: '/dashboard/statistiques' },
     ],
   },
+  {
+    label: 'ADMINISTRATION',
+    adminOnly: true,
+    items: [
+      { label: 'Localités (Pays/Villes)', icon: MapPin, path: '/dashboard/localites' },
+      { label: 'Demandes d\'écoles', icon: School, path: '/dashboard/demandes-ecoles' },
+    ],
+  },
 ]
 
 export default function Sidebar({ mobileOpen, onClose }) {
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const navigate = useNavigate()
 
   const handleLogout = () => {
@@ -109,7 +117,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
 
       {/* Scrollable nav sections */}
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3">
-        {sidebarSections.map((section) => (
+        {sidebarSections.filter((s) => !s.adminOnly || user?.role === 'super_admin').map((section) => (
           <div key={section.label}>
             <div className="section-label">{section.label}</div>
             <ul className="space-y-0.5">
