@@ -58,9 +58,20 @@ router.get('/feed', async (req, res) => {
 })
 
 // POST /api/platform/posts — Super Admin: create platform-level post
-router.post('/posts', protect, authorize('super_admin'), upload.array('images', 5), async (req, res) => {
+router.post('/posts', protect, authorize('super_admin'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'audio', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
-    const images = req.files?.map((f) => f.path) || []
+    const images = (req.files?.images || []).map((f) => f.path)
+    const audioFile = req.files?.audio?.[0]?.path || ''
+    const videoFile = req.files?.video?.[0]?.path || ''
+    const mediaType = req.body.mediaType || 'text'
+
+    let type = 'text'
+    let videoUrl = req.body.videoUrl || videoFile || ''
+    let audioUrl = audioFile
+    if (mediaType === 'audio' || audioFile) type = 'audio'
+    else if (mediaType === 'video' || videoUrl) type = 'video'
+    else if (images.length > 0 || mediaType === 'photo') type = 'photo'
+
     const post = await SchoolPost.create({
       author: req.user._id,
       content: req.body.content,
@@ -68,8 +79,9 @@ router.post('/posts', protect, authorize('super_admin'), upload.array('images', 
       category: req.body.category || '',
       images,
       thumbnail: images[0] || req.body.thumbnail || '',
-      type: req.body.videoUrl ? 'video' : images.length > 0 ? 'photo' : 'text',
-      videoUrl: req.body.videoUrl || undefined,
+      type,
+      videoUrl: videoUrl || undefined,
+      audioUrl: audioUrl || undefined,
       duration: req.body.duration || '',
       isPlatform: true,
       isPublic: true,
@@ -109,6 +121,22 @@ router.post('/posts/:id/comment', protect, async (req, res) => {
     await post.save()
     const populated = await post.populate('author', 'name avatar')
     res.json({ success: true, data: populated })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/platform/posts/:id/share — Increment share count (public)
+router.put('/posts/:id/share', async (req, res) => {
+  try {
+    const post = await SchoolPost.findByIdAndUpdate(req.params.id, { $inc: { shares: 1 } }, { new: true })
+    res.json({ success: true, data: post })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/platform/posts/:id/download — Increment download count (authenticated)
+router.put('/posts/:id/download', protect, async (req, res) => {
+  try {
+    const post = await SchoolPost.findByIdAndUpdate(req.params.id, { $inc: { downloads: 1 } }, { new: true })
+    res.json({ success: true, data: post })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

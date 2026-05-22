@@ -151,6 +151,8 @@ export const platformApi = {
   likePost: (id) => api.put(`/platform/posts/${id}/like`),
   commentPost: (id, content) => api.post(`/platform/posts/${id}/comment`, { content }),
   viewPost: (id) => api.put(`/platform/posts/${id}/view`),
+  sharePost: (id) => { try { api.put(`/platform/posts/${id}/share`) } catch (_) {} },
+  downloadPost: (id) => api.put(`/platform/posts/${id}/download`),
   // Experiences
   getExperiences: () => api.get('/platform/experiences'),
   getAllExperiences: () => api.get('/platform/experiences/all'),

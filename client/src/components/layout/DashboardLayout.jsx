@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import DashboardHeader from './DashboardHeader'
+import PublicNavBar from './PublicNavBar'
 
 export default function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
 
-  // Close mobile drawer on route change
   useEffect(() => {
     setMobileOpen(false)
   }, [location.pathname])
@@ -24,8 +24,10 @@ export default function DashboardLayout() {
 
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
       <DashboardHeader onMenuClick={() => setMobileOpen(true)} />
+      <PublicNavBar />
 
-      <main className="lg:ml-[260px] pt-14 transition-all">
+      {/* pt-24 = h-14 (header) + h-10 (public nav) */}
+      <main className="lg:ml-[260px] pt-24 transition-all">
         <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
           <Outlet />
         </div>

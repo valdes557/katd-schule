@@ -18,36 +18,57 @@ const TABS = [
 ]
 
 // ─── Posts Panel ─────────────────────────────────────────────────────────────
+const MEDIA_TYPES = [
+  { id: 'photo', label: 'Photo', icon: '🖼️' },
+  { id: 'video', label: 'Vidéo', icon: '🎬' },
+  { id: 'audio', label: 'Audio', icon: '🎵' },
+]
+const CATEGORIES = ['Éducation', 'Sport', 'Culture', 'Sciences', 'Technologie']
+const TYPE_ICON = { photo: '🖼️', video: '🎬', audio: '🎵', text: '📝' }
+
 function PostsPanel() {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [mediaType, setMediaType] = useState('photo')
   const [form, setForm] = useState({ title: '', content: '', category: '', videoUrl: '', duration: '' })
-  const [files, setFiles] = useState([])
-  const fileRef = useRef()
+  const [imageFiles, setImageFiles] = useState([])
+  const [audioFile, setAudioFile] = useState(null)
+  const [videoFile, setVideoFile] = useState(null)
+  const [previews, setPreviews] = useState([])
+  const imageRef = useRef()
+  const audioRef = useRef()
+  const videoRef = useRef()
 
   useEffect(() => {
     platformApi.getFeed(1).then((r) => setPosts(r.data || [])).finally(() => setLoading(false))
   }, [])
 
+  const handleImages = (e) => {
+    const files = Array.from(e.target.files)
+    setImageFiles(files)
+    setPreviews(files.map((f) => URL.createObjectURL(f)))
+  }
+
+  const resetForm = () => {
+    setForm({ title: '', content: '', category: '', videoUrl: '', duration: '' })
+    setImageFiles([]); setAudioFile(null); setVideoFile(null); setPreviews([])
+  }
+
   const handleCreate = async (e) => {
     e.preventDefault()
     setSubmitting(true)
     const fd = new FormData()
+    fd.append('mediaType', mediaType)
     Object.entries(form).forEach(([k, v]) => v && fd.append(k, v))
-    files.forEach((f) => fd.append('images', f))
+    imageFiles.forEach((f) => fd.append('images', f))
+    if (audioFile) fd.append('audio', audioFile)
+    if (videoFile) fd.append('video', videoFile)
     try {
       const r = await platformApi.createPost(fd)
-      if (r.success) {
-        setPosts((p) => [r.data, ...p])
-        setForm({ title: '', content: '', category: '', videoUrl: '', duration: '' })
-        setFiles([])
-      } else {
-        alert(r.message || 'Erreur')
-      }
-    } catch (err) {
-      alert(err.message)
-    }
+      if (r.success) { setPosts((p) => [r.data, ...p]); resetForm() }
+      else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
     setSubmitting(false)
   }
 
@@ -59,59 +80,79 @@ function PostsPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Create form */}
+      {/* ── Create form ── */}
       <div className="bg-white border border-gray-100 rounded-xl p-5">
         <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <Plus size={14} className="text-blue-600" /> Nouvelle publication plateforme
+          <Plus size={14} className="text-blue-600" /> Nouvelle publication multimédia
         </h3>
-        <form onSubmit={handleCreate} className="space-y-3">
-          <input
-            required
-            value={form.title}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
-            className="input text-sm w-full"
-            placeholder="Titre *"
-          />
-          <textarea
-            required
-            value={form.content}
-            onChange={(e) => setForm({ ...form, content: e.target.value })}
-            rows={3}
-            className="input text-sm resize-none w-full"
-            placeholder="Contenu *"
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="input text-sm"
+
+        {/* Media type selector */}
+        <div className="flex gap-2 mb-4">
+          {MEDIA_TYPES.map((t) => (
+            <button
+              key={t.id} type="button"
+              onClick={() => { setMediaType(t.id); resetForm() }}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                mediaType === t.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300'
+              }`}
             >
-              <option value="">Catégorie</option>
-              {['Éducation', 'Sport', 'Culture', 'Sciences', 'Technologie'].map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-            <input
-              value={form.videoUrl}
-              onChange={(e) => setForm({ ...form, videoUrl: e.target.value })}
-              className="input text-sm"
-              placeholder="URL vidéo (optionnel)"
-            />
-            <input
-              value={form.duration}
-              onChange={(e) => setForm({ ...form, duration: e.target.value })}
-              className="input text-sm"
-              placeholder="Durée ex: 3:45"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => fileRef.current?.click()} className="btn-ghost text-sm border border-gray-200">
-              <Image size={14} /> Images / Thumbnail
+              <span>{t.icon}</span> {t.label}
             </button>
-            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
-              onChange={(e) => setFiles(Array.from(e.target.files))} />
-            {files.length > 0 && <span className="text-xs text-gray-500">{files.length} fichier(s)</span>}
+          ))}
+        </div>
+
+        <form onSubmit={handleCreate} className="space-y-3">
+          <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="input text-sm w-full" placeholder="Titre *" />
+          <textarea required value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={3} className="input text-sm resize-none w-full" placeholder="Description *" />
+
+          <div className="grid grid-cols-2 gap-3">
+            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input text-sm">
+              <option value="">Catégorie</option>
+              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="input text-sm" placeholder="Durée ex: 3:45 (optionnel)" />
           </div>
+
+          {/* Media-type-specific upload */}
+          {mediaType === 'photo' && (
+            <div>
+              <button type="button" onClick={() => imageRef.current?.click()} className="btn-ghost text-sm border border-dashed border-gray-300 w-full justify-center py-3 hover:border-blue-400">
+                <Image size={15} className="text-blue-500" /> Sélectionner les photos (max 5)
+              </button>
+              <input ref={imageRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImages} />
+              {previews.length > 0 && (
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {previews.map((p, i) => <img key={i} src={p} alt="" className="w-20 h-14 object-cover rounded-lg border border-gray-200" />)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mediaType === 'video' && (
+            <div className="space-y-2">
+              <div>
+                <input value={form.videoUrl} onChange={(e) => setForm({ ...form, videoUrl: e.target.value })} className="input text-sm w-full" placeholder="URL YouTube / lien vidéo externe (optionnel)" />
+              </div>
+              <div className="text-xs text-gray-400 text-center">— ou uploader un fichier vidéo —</div>
+              <button type="button" onClick={() => videoRef.current?.click()} className="btn-ghost text-sm border border-dashed border-gray-300 w-full justify-center py-3 hover:border-blue-400">
+                <Film size={15} className="text-purple-500" /> {videoFile ? videoFile.name : 'Sélectionner une vidéo (MP4, MOV…)'}
+              </button>
+              <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
+            </div>
+          )}
+
+          {mediaType === 'audio' && (
+            <div>
+              <button type="button" onClick={() => audioRef.current?.click()} className="btn-ghost text-sm border border-dashed border-gray-300 w-full justify-center py-3 hover:border-blue-400">
+                <Star size={15} className="text-green-500" /> {audioFile ? audioFile.name : 'Sélectionner un fichier audio (MP3, WAV…)'}
+              </button>
+              <input ref={audioRef} type="file" accept="audio/*" className="hidden" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} />
+              {audioFile && (
+                <audio controls src={URL.createObjectURL(audioFile)} className="w-full mt-2 rounded-lg" />
+              )}
+            </div>
+          )}
+
           <button type="submit" disabled={submitting} className="btn-primary text-sm">
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
             Publier
@@ -119,9 +160,9 @@ function PostsPanel() {
         </form>
       </div>
 
-      {/* Posts list */}
+      {/* ── Posts list ── */}
       <div className="space-y-3">
-        <h3 className="text-sm font-bold text-gray-900">Publications existantes ({posts.length})</h3>
+        <h3 className="text-sm font-bold text-gray-900">Publications ({posts.length})</h3>
         {loading ? (
           <div className="text-center py-8"><Loader2 size={24} className="animate-spin text-blue-600 mx-auto" /></div>
         ) : posts.length === 0 ? (
@@ -130,21 +171,24 @@ function PostsPanel() {
           posts.map((p) => (
             <div key={p._id} className="bg-white border border-gray-100 rounded-xl p-4 flex items-start justify-between gap-4">
               <div className="flex items-start gap-3 min-w-0">
-                {p.thumbnail || p.images?.[0] ? (
-                  <img src={p.thumbnail || p.images[0]} className="w-16 h-12 rounded-lg object-cover flex-shrink-0" alt="" />
-                ) : (
-                  <div className="w-16 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                    {p.type === 'video' ? <Film size={16} className="text-gray-400" /> : <Image size={16} className="text-gray-400" />}
-                  </div>
-                )}
+                <div className="w-14 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {p.thumbnail || p.images?.[0]
+                    ? <img src={p.thumbnail || p.images[0]} className="w-full h-full object-cover" alt="" />
+                    : <span className="text-xl">{TYPE_ICON[p.type] || '📝'}</span>
+                  }
+                </div>
                 <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded font-medium text-gray-500">{p.type?.toUpperCase()}</span>
+                    {p.category && <span className="text-[10px] bg-blue-50 px-1.5 py-0.5 rounded text-blue-600">{p.category}</span>}
+                  </div>
                   {p.title && <div className="text-sm font-semibold text-gray-900 truncate">{p.title}</div>}
-                  <p className="text-xs text-gray-500 line-clamp-2">{p.content}</p>
+                  <p className="text-xs text-gray-500 line-clamp-1">{p.content}</p>
                   <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400">
-                    {p.category && <span className="bg-gray-100 px-1.5 py-0.5 rounded">{p.category}</span>}
-                    <span>{p.likes?.length || 0} j'aime</span>
-                    <span>{p.comments?.length || 0} comm.</span>
-                    <span>{p.views || 0} vues</span>
+                    <span>👍 {p.likes?.length || 0}</span>
+                    <span>💬 {p.comments?.length || 0}</span>
+                    <span>👁 {p.views || 0}</span>
+                    <span>⬇️ {p.downloads || 0}</span>
                   </div>
                 </div>
               </div>
