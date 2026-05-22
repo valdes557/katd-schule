@@ -40,6 +40,7 @@ app.use('/api/enrollments', require('./routes/enrollments'))
 app.use('/api/locations', require('./routes/locations'))
 app.use('/api/school-registrations', require('./routes/schoolRegistrations'))
 app.use('/api/school-pages', require('./routes/schoolPages'))
+app.use('/api/platform', require('./routes/platform'))
 
 app.get('/api/health', (req, res) => {
   res.json({

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, School, Info, BookOpen, Clock, Users, GraduationCap,
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
-  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus, MapPin, Globe,
+  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus, MapPin, Globe, LayoutGrid,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
@@ -70,6 +70,7 @@ const sidebarSections = [
     items: [
       { label: 'Localités (Pays/Villes)', icon: MapPin, path: '/dashboard/localites' },
       { label: 'Demandes d\'écoles', icon: School, path: '/dashboard/demandes-ecoles' },
+      { label: 'Gestion Plateforme', icon: LayoutGrid, path: '/dashboard/plateforme' },
     ],
   },
 ]

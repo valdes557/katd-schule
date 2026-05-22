@@ -1,19 +1,12 @@
 const express = require('express')
 const router = express.Router()
-const multer = require('multer')
-const path = require('path')
 const SchoolPage = require('../models/SchoolPage')
 const TeamMember = require('../models/TeamMember')
 const SchoolPost = require('../models/SchoolPost')
 const SchoolReview = require('../models/SchoolReview')
 const PaymentModality = require('../models/PaymentModality')
 const { protect, authorize } = require('../middleware/auth')
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`),
-})
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } })
+const { upload } = require('../config/cloudinary')
 
 // ===================== SCHOOL PAGE (about, terms, privacy, help, donations, contacts) =====================
 
@@ -41,7 +34,7 @@ router.put('/:schoolId', protect, authorize('directeur', 'super_admin'), async (
 // POST /api/school-pages/:schoolId/upload — Upload images for about section
 router.post('/:schoolId/upload', protect, authorize('directeur', 'super_admin'), upload.array('images', 5), async (req, res) => {
   try {
-    const urls = req.files?.map((f) => `/uploads/${f.filename}`) || []
+    const urls = req.files?.map((f) => f.path) || []
     res.json({ success: true, data: urls })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
@@ -60,7 +53,7 @@ router.get('/:schoolId/team', async (req, res) => {
 router.post('/:schoolId/team', protect, authorize('directeur', 'super_admin'), upload.single('photo'), async (req, res) => {
   try {
     const data = { ...req.body, school: req.params.schoolId }
-    if (req.file) data.photo = `/uploads/${req.file.filename}`
+    if (req.file) data.photo = req.file.path
     const member = await TeamMember.create(data)
     res.status(201).json({ success: true, data: member })
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -70,7 +63,7 @@ router.post('/:schoolId/team', protect, authorize('directeur', 'super_admin'), u
 router.put('/team/:id', protect, authorize('directeur', 'super_admin'), upload.single('photo'), async (req, res) => {
   try {
     const data = { ...req.body }
-    if (req.file) data.photo = `/uploads/${req.file.filename}`
+    if (req.file) data.photo = req.file.path
     const member = await TeamMember.findByIdAndUpdate(req.params.id, data, { new: true })
     if (!member) return res.status(404).json({ message: 'Membre non trouvé' })
     res.json({ success: true, data: member })
@@ -104,14 +97,18 @@ router.get('/:schoolId/posts', async (req, res) => {
 // POST /api/school-pages/:schoolId/posts — Director
 router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), upload.array('images', 5), async (req, res) => {
   try {
-    const images = req.files?.map((f) => `/uploads/${f.filename}`) || []
+    const images = req.files?.map((f) => f.path) || []
     const post = await SchoolPost.create({
       school: req.params.schoolId,
       author: req.user._id,
       content: req.body.content,
+      title: req.body.title || '',
+      category: req.body.category || '',
       images,
-      type: images.length > 0 ? 'photo' : (req.body.videoUrl ? 'video' : 'text'),
+      thumbnail: images[0] || req.body.thumbnail || '',
+      type: req.body.videoUrl ? 'video' : images.length > 0 ? 'photo' : 'text',
       videoUrl: req.body.videoUrl || undefined,
+      duration: req.body.duration || '',
     })
     const populated = await post.populate('author', 'name avatar')
     res.status(201).json({ success: true, data: populated })

@@ -114,6 +114,35 @@ export const schoolRegistrationApi = {
   reject: (id, reason) => api.put(`/school-registrations/${id}/reject`, { reason }),
 }
 
+export const platformApi = {
+  get: () => api.get('/platform'),
+  update: (data) => api.put('/platform', data),
+  uploadImages: async (files) => {
+    const fd = new FormData()
+    files.forEach((f) => fd.append('images', f))
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/platform/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    return res.json()
+  },
+  // Feed
+  getFeed: (page = 1, category = '') => api.get(`/platform/feed?page=${page}${category ? `&category=${category}` : ''}`),
+  createPost: async (formData) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/platform/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    return res.json()
+  },
+  deletePost: (id) => api.del(`/platform/posts/${id}`),
+  likePost: (id) => api.put(`/platform/posts/${id}/like`),
+  commentPost: (id, content) => api.post(`/platform/posts/${id}/comment`, { content }),
+  viewPost: (id) => api.put(`/platform/posts/${id}/view`),
+  // Experiences
+  getExperiences: () => api.get('/platform/experiences'),
+  getAllExperiences: () => api.get('/platform/experiences/all'),
+  submitExperience: (data) => api.post('/platform/experiences', data),
+  approveExperience: (id) => api.put(`/platform/experiences/${id}/approve`),
+  deleteExperience: (id) => api.del(`/platform/experiences/${id}`),
+}
+
 export const schoolPagesApi = {
   get: (schoolId) => api.get(`/school-pages/${schoolId}`),
   update: (schoolId, data) => api.put(`/school-pages/${schoolId}`, data),

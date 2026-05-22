@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  ArrowLeft, Heart, MessageCircle, Share2, Send, Star, Phone, Mail,
+  ArrowLeft, MessageCircle, Share2, Send, Star, Phone, Mail,
   Globe, Users, FileText, Shield, HelpCircle, Gift, CreditCard, Loader2,
-  ThumbsUp, ChevronDown, ChevronUp, Play, Image as ImageIcon,
+  ThumbsUp, ChevronDown, ChevronUp, Play, Eye,
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
@@ -141,96 +141,151 @@ export default function SchoolDetailPage() {
 
 /* ===================== SOCIAL TAB ===================== */
 function SocialTab({ schoolId, posts, setPosts, user }) {
-  const [newPost, setNewPost] = useState('')
-  const [commenting, setCommenting] = useState(null)
-  const [commentText, setCommentText] = useState('')
+  const [commentText, setCommentText] = useState({})
+  const [expandedComments, setExpandedComments] = useState({})
+
+  const timeAgo = (date) => {
+    const diff = Date.now() - new Date(date).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 60) return `Il y a ${mins} min`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `Il y a ${hrs} h`
+    const days = Math.floor(hrs / 24)
+    if (days < 30) return `Il y a ${days} j`
+    return new Date(date).toLocaleDateString('fr-FR')
+  }
 
   const handleLike = async (id) => {
     if (!user) return
     try {
-      await schoolPagesApi.likePost(id)
-      const r = await schoolPagesApi.getPosts(schoolId)
-      setPosts(r.data || [])
+      const r = await schoolPagesApi.likePost(id)
+      setPosts((prev) => prev.map((p) => p._id === id ? r.data : p))
     } catch (e) { console.error(e) }
   }
 
   const handleComment = async (id) => {
-    if (!commentText.trim()) return
+    const txt = commentText[id]?.trim()
+    if (!txt) return
     try {
-      await schoolPagesApi.commentPost(id, commentText)
-      setCommentText('')
-      setCommenting(null)
-      const r = await schoolPagesApi.getPosts(schoolId)
-      setPosts(r.data || [])
+      const r = await schoolPagesApi.commentPost(id, txt)
+      setPosts((prev) => prev.map((p) => p._id === id ? r.data : p))
+      setCommentText((prev) => ({ ...prev, [id]: '' }))
     } catch (e) { console.error(e) }
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
+    <div className="space-y-4">
       {posts.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <Globe size={40} className="mx-auto mb-3 opacity-20" />
           <p>Aucune publication pour le moment</p>
         </div>
-      ) : posts.map((post) => (
-        <div key={post._id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-          {/* Post header */}
-          <div className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-sm">
-              {post.author?.name?.[0] || '?'}
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-900">{post.author?.name || 'Admin'}</p>
-              <p className="text-xs text-gray-400">{new Date(post.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-            </div>
-          </div>
-          {/* Content */}
-          <div className="px-4 pb-3">
-            <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
-          </div>
-          {/* Images */}
-          {post.images?.length > 0 && (
-            <div className={`grid gap-0.5 ${post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-              {post.images.map((img, i) => (
-                <img key={i} src={img} alt="" className="w-full h-64 object-cover" />
-              ))}
-            </div>
-          )}
-          {/* Actions */}
-          <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-6">
-            <button onClick={() => handleLike(post._id)} className={`flex items-center gap-1.5 text-xs font-medium ${post.likes?.includes(user?._id) ? 'text-blue-600' : 'text-gray-500 hover:text-blue-600'}`}>
-              <ThumbsUp size={14} /> {post.likes?.length || 0} J'aime
-            </button>
-            <button onClick={() => setCommenting(commenting === post._id ? null : post._id)} className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-blue-600">
-              <MessageCircle size={14} /> {post.comments?.length || 0} Commentaires
-            </button>
-            <button className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-blue-600">
-              <Share2 size={14} /> Partager
-            </button>
-          </div>
-          {/* Comments */}
-          {post.comments?.length > 0 && (
-            <div className="px-4 py-2 bg-gray-50 space-y-2">
-              {post.comments.slice(-3).map((c, i) => (
-                <div key={i} className="flex gap-2">
-                  <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-600 flex-shrink-0">{c.author?.[0]}</div>
-                  <div className="bg-white rounded-xl px-3 py-2 text-xs flex-1">
-                    <span className="font-semibold text-gray-800">{c.author}</span>
-                    <p className="text-gray-600 mt-0.5">{c.content}</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {posts.map((post) => (
+            <div key={post._id} className="bg-white border border-gray-100 rounded-xl overflow-hidden hover:shadow-card transition-all">
+              {/* Thumbnail */}
+              <div className="relative aspect-video bg-gray-100">
+                {post.thumbnail ? (
+                  <img src={post.thumbnail} alt="" className="w-full h-full object-cover" />
+                ) : post.images?.[0] ? (
+                  <img src={post.images[0]} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-indigo-100">
+                    <Globe size={28} className="text-blue-300" />
+                  </div>
+                )}
+                {post.type === 'video' && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center">
+                      <Play size={16} className="text-white fill-white ml-0.5" />
+                    </div>
+                  </div>
+                )}
+                {post.duration && (
+                  <span className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{post.duration}</span>
+                )}
+                {post.category && (
+                  <span className="absolute top-2 left-2 bg-black/40 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full">{post.category}</span>
+                )}
+              </div>
+
+              {/* Body */}
+              <div className="p-3">
+                <div className="flex items-start gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-[10px] font-bold flex-shrink-0">
+                    {(post.author?.name || 'K')[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {post.title && <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">{post.title}</h3>}
+                    <p className="text-xs text-gray-600 line-clamp-2 mt-0.5">{post.content}</p>
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
+                      <span>{post.author?.name || 'Admin'}</span>
+                      <span>·</span>
+                      <span>{timeAgo(post.createdAt)}</span>
+                    </div>
                   </div>
                 </div>
-              ))}
+
+                {/* Stats */}
+                <div className="flex items-center justify-between text-[10px] text-gray-400 pt-2 border-t border-gray-50">
+                  <span className="flex items-center gap-1"><Eye size={10} /> {post.views || 0} vues</span>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 mt-2 pt-2 border-t border-gray-50">
+                  <button
+                    onClick={() => handleLike(post._id)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                      user && post.likes?.includes(user._id) ? 'text-blue-600 bg-blue-50' : 'text-gray-500 hover:bg-gray-100'
+                    }`}
+                  >
+                    <ThumbsUp size={12} /> {post.likes?.length || 0}
+                  </button>
+                  <button
+                    onClick={() => setExpandedComments((p) => ({ ...p, [post._id]: !p[post._id] }))}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+                  >
+                    <MessageCircle size={12} /> {post.comments?.length || 0}
+                  </button>
+                  <button className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium text-gray-500 hover:bg-gray-100 transition-colors ml-auto">
+                    <Share2 size={12} /> Partager
+                  </button>
+                </div>
+
+                {/* Comments expand */}
+                {expandedComments[post._id] && (
+                  <div className="mt-2 pt-2 border-t border-gray-50 space-y-2">
+                    {post.comments?.slice(0, 5).map((c, i) => (
+                      <div key={i} className="flex gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold flex-shrink-0">{c.author?.[0]?.toUpperCase()}</div>
+                        <div className="bg-gray-50 rounded-lg px-2 py-1 text-xs">
+                          <span className="font-semibold text-gray-700">{c.author}</span>
+                          <p className="text-gray-600">{c.content}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {user && (
+                      <div className="flex gap-1.5">
+                        <input
+                          value={commentText[post._id] || ''}
+                          onChange={(e) => setCommentText((p) => ({ ...p, [post._id]: e.target.value }))}
+                          onKeyDown={(e) => e.key === 'Enter' && handleComment(post._id)}
+                          placeholder="Ajouter un commentaire..."
+                          className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-400"
+                        />
+                        <button onClick={() => handleComment(post._id)} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg">
+                          <Send size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-          {/* Comment input */}
-          {commenting === post._id && user && (
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex gap-2">
-              <input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Écrire un commentaire..." className="flex-1 bg-white border border-gray-200 rounded-full px-4 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" onKeyDown={(e) => e.key === 'Enter' && handleComment(post._id)} />
-              <button onClick={() => handleComment(post._id)} className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700"><Send size={12} /></button>
-            </div>
-          )}
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }

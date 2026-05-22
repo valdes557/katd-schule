@@ -2,7 +2,7 @@ const mongoose = require('mongoose')
 
 const schoolReviewSchema = new mongoose.Schema(
   {
-    school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
+    school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', default: null },
     authorName: { type: String, required: true, trim: true },
     authorEmail: { type: String, trim: true },
     rating: { type: Number, min: 1, max: 5, default: 5 },
