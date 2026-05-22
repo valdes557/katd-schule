@@ -19,14 +19,8 @@ const schoolRegistrationSchema = new mongoose.Schema(
     cityName: { type: String },
     neighborhoodName: { type: String },
 
-    // Payment methods
-    paymentMethods: [
-      {
-        accountName: { type: String, required: true },
-        accountNumber: { type: String, required: true },
-        provider: { type: String },
-      },
-    ],
+    // Payment proof (image URL)
+    paymentProof: { type: String, default: '' },
 
     // Contact
     whatsapp: { type: String, required: true },

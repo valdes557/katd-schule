@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
 
+// cycles: null = all cycles, ['Secondaire'] = only Secondaire, etc.
 const sidebarSections = [
   {
     label: 'GESTION DE L\'ÉCOLE',
@@ -76,8 +77,18 @@ const sidebarSections = [
 ]
 
 export default function Sidebar({ mobileOpen, onClose }) {
-  const { logout, user } = useAuth()
+  const { logout, user, school } = useAuth()
   const navigate = useNavigate()
+
+  // School cycles of the logged-in director
+  const schoolCycles = school?.cycles || []
+  const isDirecteur = user?.role === 'directeur'
+
+  // For directors: filter items that are cycle-restricted
+  const filterByCycle = (items) => {
+    if (!isDirecteur || schoolCycles.length === 0) return items
+    return items.filter((item) => !item.cycles || item.cycles.some((c) => schoolCycles.includes(c)))
+  }
 
   const handleLogout = () => {
     logout()
@@ -117,29 +128,44 @@ export default function Sidebar({ mobileOpen, onClose }) {
         </NavLink>
       </div>
 
+      {/* Cycle badge for directors */}
+      {isDirecteur && schoolCycles.length > 0 && (
+        <div className="px-3 pb-2 flex-shrink-0">
+          <div className="flex flex-wrap gap-1">
+            {schoolCycles.map((c) => (
+              <span key={c} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-medium">{c}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Scrollable nav sections */}
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3">
-        {sidebarSections.filter((s) => !s.adminOnly || user?.role === 'super_admin').map((section) => (
-          <div key={section.label}>
-            <div className="section-label">{section.label}</div>
-            <ul className="space-y-0.5">
-              {section.items.map((item) => (
-                <li key={item.path}>
-                  <NavLink
-                    to={item.path}
-                    className={({ isActive }) =>
-                      cn('sidebar-item', isActive && 'active')
-                    }
-                    onClick={onClose}
-                  >
-                    <item.icon size={15} className="flex-shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        {sidebarSections.filter((s) => !s.adminOnly || user?.role === 'super_admin').map((section) => {
+          const visibleItems = filterByCycle(section.items)
+          if (visibleItems.length === 0) return null
+          return (
+            <div key={section.label}>
+              <div className="section-label">{section.label}</div>
+              <ul className="space-y-0.5">
+                {visibleItems.map((item) => (
+                  <li key={item.path}>
+                    <NavLink
+                      to={item.path}
+                      className={({ isActive }) =>
+                        cn('sidebar-item', isActive && 'active')
+                      }
+                      onClick={onClose}
+                    >
+                      <item.icon size={15} className="flex-shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        })}
       </nav>
 
       {/* Bottom: Help + Assistance */}

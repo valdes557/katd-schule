@@ -4,6 +4,7 @@ const PlatformPage = require('../models/PlatformPage')
 const SchoolPost = require('../models/SchoolPost')
 const SchoolReview = require('../models/SchoolReview')
 const PlatformPaymentMethod = require('../models/PlatformPaymentMethod')
+const SubscriptionPlan = require('../models/SubscriptionPlan')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
 
@@ -200,6 +201,48 @@ router.delete('/payment-methods/:id', protect, authorize('super_admin'), async (
   try {
     await PlatformPaymentMethod.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Méthode supprimée' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ===================== SUBSCRIPTION PLANS =====================
+
+// GET /api/platform/plans — Public: list active plans
+router.get('/plans', async (req, res) => {
+  try {
+    const plans = await SubscriptionPlan.find({ isActive: true }).sort({ sortOrder: 1, cycle: 1 })
+    res.json({ success: true, data: plans })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/platform/plans/all — Super Admin: all plans
+router.get('/plans/all', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const plans = await SubscriptionPlan.find().sort({ sortOrder: 1, cycle: 1 })
+    res.json({ success: true, data: plans })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/platform/plans — Super Admin
+router.post('/plans', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const plan = await SubscriptionPlan.create(req.body)
+    res.status(201).json({ success: true, data: plan })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/platform/plans/:id — Super Admin
+router.put('/plans/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const plan = await SubscriptionPlan.findByIdAndUpdate(req.params.id, req.body, { new: true })
+    res.json({ success: true, data: plan })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// DELETE /api/platform/plans/:id — Super Admin
+router.delete('/plans/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    await SubscriptionPlan.findByIdAndDelete(req.params.id)
+    res.json({ success: true, message: 'Plan supprimé' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

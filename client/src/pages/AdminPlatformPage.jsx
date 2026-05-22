@@ -4,7 +4,7 @@ import {
   Image, Film, Save, Loader2, Star,
   MessageCircle, CreditCard, Phone, Info,
 } from 'lucide-react'
-import { platformApi } from '../lib/api'
+import { platformApi, plansApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 const TABS = [
@@ -14,6 +14,7 @@ const TABS = [
   { id: 'support', label: 'Donations', icon: CreditCard },
   { id: 'experiences', label: 'Témoignages', icon: Star },
   { id: 'payments', label: 'Paiements', icon: CreditCard },
+  { id: 'plans', label: 'Plans tarifaires', icon: Star },
 ]
 
 // ─── Posts Panel ─────────────────────────────────────────────────────────────
@@ -556,6 +557,158 @@ function PaymentsPanel() {
   )
 }
 
+// ─── Plans Panel ─────────────────────────────────────────────────────
+const CYCLES = ['Maternelle', 'Primaire', 'Secondaire']
+const CYCLE_COLORS = { Maternelle: 'bg-orange-100 text-orange-700', Primaire: 'bg-blue-100 text-blue-700', Secondaire: 'bg-emerald-100 text-emerald-700' }
+const DEFAULT_FEATURES = ['Gestion des élèves', 'Notes & Bulletins', 'Présence', 'Messagerie', 'Page publique']
+
+function PlansPanel() {
+  const [plans, setPlans] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [form, setForm] = useState({ cycle: 'Primaire', name: '', quarterlyPrice: '', annualPrice: '', features: DEFAULT_FEATURES.join('\n'), isActive: true })
+
+  const load = () => {
+    setLoading(true)
+    plansApi.listAll().then((r) => setPlans(r.data || [])).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const resetForm = () => {
+    setForm({ cycle: 'Primaire', name: '', quarterlyPrice: '', annualPrice: '', features: DEFAULT_FEATURES.join('\n'), isActive: true })
+    setEditId(null)
+    setShowForm(false)
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const payload = {
+        ...form,
+        quarterlyPrice: Number(form.quarterlyPrice),
+        annualPrice: Number(form.annualPrice),
+        features: form.features.split('\n').map((s) => s.trim()).filter(Boolean),
+      }
+      if (editId) { await plansApi.update(editId, payload) }
+      else { await plansApi.create(payload) }
+      load()
+      resetForm()
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  const handleEdit = (p) => {
+    setForm({
+      cycle: p.cycle, name: p.name,
+      quarterlyPrice: p.quarterlyPrice, annualPrice: p.annualPrice,
+      features: (p.features || []).join('\n'), isActive: p.isActive,
+    })
+    setEditId(p._id)
+    setShowForm(true)
+  }
+
+  const remove = async (id) => {
+    if (!window.confirm('Supprimer ce plan ?')) return
+    await plansApi.remove(id)
+    load()
+  }
+
+  const toggle = async (p) => {
+    await plansApi.update(p._id, { isActive: !p.isActive })
+    load()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">Plans tarifaires</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Ces plans sont affichés sur la page d'accueil et dans le formulaire de souscription</p>
+        </div>
+        <button onClick={() => { resetForm(); setShowForm(true) }} className="btn-primary text-sm flex items-center gap-1.5">
+          <Plus size={14} /> Nouveau plan
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-3">
+          <h4 className="text-sm font-bold text-gray-900">{editId ? 'Modifier' : 'Nouveau'} plan</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Cycle *</label>
+              <select required value={form.cycle} onChange={(e) => setForm({ ...form, cycle: e.target.value })} className="input text-sm w-full">
+                {CYCLES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Nom du plan *</label>
+              <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input text-sm w-full" placeholder="Ex: Standard" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Prix trimestriel (F CFA) *</label>
+              <input required type="number" min="0" value={form.quarterlyPrice} onChange={(e) => setForm({ ...form, quarterlyPrice: e.target.value })} className="input text-sm w-full" placeholder="Ex: 30000" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Prix annuel (F CFA) *</label>
+              <input required type="number" min="0" value={form.annualPrice} onChange={(e) => setForm({ ...form, annualPrice: e.target.value })} className="input text-sm w-full" placeholder="Ex: 100000" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Fonctionnalités incluses <span className="text-gray-400 font-normal">(une par ligne)</span></label>
+            <textarea rows={5} value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} className="input text-sm resize-none w-full font-mono" placeholder="Gestion des élèves&#10;Notes & Bulletins&#10;..." />
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="planActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
+            <label htmlFor="planActive" className="text-xs text-gray-600">Plan actif (visible publiquement)</label>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={resetForm} className="btn-ghost text-sm">Annuler</button>
+            <button type="submit" disabled={saving} className="btn-primary text-sm flex items-center gap-1.5">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {editId ? 'Mettre à jour' : 'Créer'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+      ) : plans.length === 0 ? (
+        <p className="text-center text-sm text-gray-400 py-10">Aucun plan créé.</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {plans.map((p) => (
+            <div key={p._id} className={`bg-white border rounded-xl p-4 space-y-2 ${!p.isActive ? 'opacity-50' : ''}`}>
+              <div className="flex items-center justify-between">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CYCLE_COLORS[p.cycle] || 'bg-gray-100 text-gray-600'}`}>{p.cycle}</span>
+                {!p.isActive && <span className="text-[10px] bg-red-50 text-red-500 border border-red-100 px-2 py-0.5 rounded-full">Inactif</span>}
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">{p.name}</p>
+                <p className="text-xs text-gray-500">{p.quarterlyPrice?.toLocaleString()} F / trim · {p.annualPrice?.toLocaleString()} F / an</p>
+              </div>
+              {p.features?.length > 0 && (
+                <ul className="space-y-0.5">
+                  {p.features.slice(0, 3).map((f) => <li key={f} className="text-xs text-gray-500 flex items-center gap-1"><span className="text-green-500">✓</span>{f}</li>)}
+                  {p.features.length > 3 && <li className="text-xs text-gray-400">+{p.features.length - 3} autres...</li>}
+                </ul>
+              )}
+              <div className="flex items-center gap-1 pt-2 border-t border-gray-100">
+                <button onClick={() => toggle(p)} title={p.isActive ? 'Désactiver' : 'Activer'} className={`p-1.5 rounded-lg ${p.isActive ? 'text-green-500 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}><CheckCircle size={14} /></button>
+                <button onClick={() => handleEdit(p)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Save size={14} /></button>
+                <button onClick={() => remove(p._id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg ml-auto"><Trash2 size={14} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminPlatformPage() {
   const { user } = useAuth()
@@ -614,6 +767,7 @@ export default function AdminPlatformPage() {
           {tab === 'support' && <DonationsPanel platformData={platformData} refresh={load} />}
           {tab === 'experiences' && <ExperiencesPanel />}
           {tab === 'payments' && <PaymentsPanel />}
+          {tab === 'plans' && <PlansPanel />}
         </>
       )}
     </div>

@@ -108,10 +108,26 @@ export const locationsApi = {
 }
 
 export const schoolRegistrationApi = {
-  submit: (data) => api.post('/school-registrations', data),
+  submit: async (formData) => {
+    const token = localStorage.getItem('token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const res = await fetch(`${API_URL}/school-registrations`, { method: 'POST', headers, body: formData })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    return data
+  },
   list: (params = '') => api.get(`/school-registrations?${params}`),
+  get: (id) => api.get(`/school-registrations/${id}`),
   approve: (id) => api.put(`/school-registrations/${id}/approve`),
   reject: (id, reason) => api.put(`/school-registrations/${id}/reject`, { reason }),
+}
+
+export const plansApi = {
+  list: () => api.get('/platform/plans'),
+  listAll: () => api.get('/platform/plans/all'),
+  create: (data) => api.post('/platform/plans', data),
+  update: (id, data) => api.put(`/platform/plans/${id}`, data),
+  remove: (id) => api.del(`/platform/plans/${id}`),
 }
 
 export const platformApi = {
