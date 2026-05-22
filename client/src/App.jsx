@@ -30,6 +30,7 @@ import AidePage from './pages/AidePage'
 import ResourcesPage from './pages/ResourcesPage'
 import ExperiencesPage from './pages/ExperiencesPage'
 import SupportPage from './pages/SupportPage'
+import DashboardSchoolProfilePage from './pages/DashboardSchoolProfilePage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -87,7 +88,7 @@ export default function App() {
         <Route path="souscriptions" element={<SouscriptionsPage />} />
         <Route path="inscriptions" element={<InscriptionsPage />} />
 
-        <Route path="profil" element={<PlaceholderPage title="Profil de l'école" />} />
+        <Route path="profil" element={<DashboardSchoolProfilePage />} />
         <Route path="infos" element={<PlaceholderPage title="Informations générales" />} />
         <Route path="classes" element={<PlaceholderPage title="Classes & Salles" />} />
         <Route path="matieres" element={<PlaceholderPage title="Matières & Programmes" />} />

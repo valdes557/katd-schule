@@ -95,6 +95,17 @@ export const mediaApi = {
 export const schoolsApi = {
   list: (params = '') => api.get(`/schools?${params}`),
   get: (id) => api.get(`/schools/${id}`),
+  mine: () => api.get('/schools/mine'),
+  create: async (formData) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/schools`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    return res.json()
+  },
+  setup: async (id, formData) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/schools/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    return res.json()
+  },
 }
 
 export const locationsApi = {
