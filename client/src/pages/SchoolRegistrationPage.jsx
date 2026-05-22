@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { GraduationCap, ArrowLeft, CheckCircle2, Loader2, AlertCircle, Plus, Trash2 } from 'lucide-react'
+import { GraduationCap, ArrowLeft, CheckCircle2, Loader2, AlertCircle, Plus, Trash2, CreditCard } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
-import { locationsApi, schoolRegistrationApi } from '../lib/api'
+import { locationsApi, schoolRegistrationApi, platformApi } from '../lib/api'
 
 export default function SchoolRegistrationPage() {
   const [params] = useSearchParams()
@@ -18,6 +18,7 @@ export default function SchoolRegistrationPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
+  const [paymentMethods, setPaymentMethods] = useState([])
 
   const [form, setForm] = useState({
     schoolName: '',
@@ -32,6 +33,7 @@ export default function SchoolRegistrationPage() {
 
   useEffect(() => {
     locationsApi.countries().then((res) => setCountries(res.data || [])).catch(() => {})
+    platformApi.getPaymentMethods().then((res) => setPaymentMethods(res.data || [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -240,6 +242,41 @@ export default function SchoolRegistrationPage() {
                 ))}
               </div>
             </div>
+
+            {/* Platform payment methods info */}
+            {paymentMethods.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <CreditCard size={15} className="text-amber-600" />
+                  <span className="text-sm font-bold text-amber-800">Comment effectuer votre paiement</span>
+                </div>
+                <p className="text-xs text-amber-700 mb-3">
+                  Montant à régler : <strong>{amount.toLocaleString()} F CFA</strong> ({planLabel}).
+                  Utilisez l'un des moyens ci-dessous et mentionnez le nom de votre école en référence.
+                </p>
+                <div className="space-y-2">
+                  {paymentMethods.map((m) => (
+                    <div key={m._id} className="bg-white border border-amber-100 rounded-lg p-3 flex items-start gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        m.type === 'mobile_money' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        <CreditCard size={14} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-gray-900">{m.name}</div>
+                        {m.accountNumber && (
+                          <div className="text-xs text-gray-600 mt-0.5">
+                            {m.accountName && <span className="font-medium">{m.accountName} · </span>}
+                            <span className="font-mono">{m.accountNumber}</span>
+                          </div>
+                        )}
+                        {m.instructions && <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{m.instructions}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Submit */}
             <button type="submit" disabled={submitting} className="btn-primary w-full justify-center py-3 text-sm mt-4">

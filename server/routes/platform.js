@@ -3,6 +3,7 @@ const router = express.Router()
 const PlatformPage = require('../models/PlatformPage')
 const SchoolPost = require('../models/SchoolPost')
 const SchoolReview = require('../models/SchoolReview')
+const PlatformPaymentMethod = require('../models/PlatformPaymentMethod')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
 
@@ -157,6 +158,48 @@ router.delete('/experiences/:id', protect, authorize('super_admin'), async (req,
   try {
     await SchoolReview.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Témoignage supprimé' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ===================== PAYMENT METHODS =====================
+
+// GET /api/platform/payment-methods — Public
+router.get('/payment-methods', async (req, res) => {
+  try {
+    const methods = await PlatformPaymentMethod.find({ isActive: true }).sort({ sortOrder: 1, createdAt: 1 })
+    res.json({ success: true, data: methods })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/platform/payment-methods/all — Super Admin (includes inactive)
+router.get('/payment-methods/all', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const methods = await PlatformPaymentMethod.find().sort({ sortOrder: 1, createdAt: 1 })
+    res.json({ success: true, data: methods })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/platform/payment-methods — Super Admin
+router.post('/payment-methods', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const method = await PlatformPaymentMethod.create(req.body)
+    res.status(201).json({ success: true, data: method })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/platform/payment-methods/:id — Super Admin
+router.put('/payment-methods/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const method = await PlatformPaymentMethod.findByIdAndUpdate(req.params.id, req.body, { new: true })
+    res.json({ success: true, data: method })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// DELETE /api/platform/payment-methods/:id — Super Admin
+router.delete('/payment-methods/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    await PlatformPaymentMethod.findByIdAndDelete(req.params.id)
+    res.json({ success: true, message: 'Méthode supprimée' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

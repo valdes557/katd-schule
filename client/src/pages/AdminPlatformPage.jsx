@@ -13,6 +13,7 @@ const TABS = [
   { id: 'contacts', label: 'Contacts', icon: Phone },
   { id: 'support', label: 'Donations', icon: CreditCard },
   { id: 'experiences', label: 'Témoignages', icon: Star },
+  { id: 'payments', label: 'Paiements', icon: CreditCard },
 ]
 
 // ─── Posts Panel ─────────────────────────────────────────────────────────────
@@ -406,6 +407,155 @@ function ExperiencesPanel() {
   )
 }
 
+// ─── Payment Methods Panel ───────────────────────────────────────────────────
+function PaymentsPanel() {
+  const [methods, setMethods] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ name: '', type: 'mobile_money', accountNumber: '', accountName: '', instructions: '', sortOrder: 0 })
+  const [editId, setEditId] = useState(null)
+
+  const load = () => {
+    setLoading(true)
+    platformApi.getAllPaymentMethods().then((r) => setMethods(r.data || [])).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const resetForm = () => {
+    setForm({ name: '', type: 'mobile_money', accountNumber: '', accountName: '', instructions: '', sortOrder: 0 })
+    setEditId(null)
+    setShowForm(false)
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      if (editId) {
+        await platformApi.updatePaymentMethod(editId, form)
+      } else {
+        await platformApi.createPaymentMethod(form)
+      }
+      load()
+      resetForm()
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  const handleEdit = (m) => {
+    setForm({ name: m.name, type: m.type, accountNumber: m.accountNumber, accountName: m.accountName, instructions: m.instructions, sortOrder: m.sortOrder || 0 })
+    setEditId(m._id)
+    setShowForm(true)
+  }
+
+  const toggleActive = async (m) => {
+    await platformApi.updatePaymentMethod(m._id, { isActive: !m.isActive })
+    load()
+  }
+
+  const remove = async (id) => {
+    if (!window.confirm('Supprimer ce moyen de paiement ?')) return
+    await platformApi.deletePaymentMethod(id)
+    load()
+  }
+
+  const TYPE_LABELS = { mobile_money: 'Mobile Money', bank: 'Virement bancaire', cash: 'Espèces', other: 'Autre' }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">Moyens de paiement</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Ces méthodes sont automatiquement affichées dans les formulaires d'inscription</p>
+        </div>
+        <button onClick={() => { resetForm(); setShowForm(true) }} className="btn-primary text-sm flex items-center gap-1.5">
+          <Plus size={14} /> Ajouter
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-3">
+          <h4 className="text-sm font-bold text-gray-900">{editId ? 'Modifier' : 'Nouveau'} moyen de paiement</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Nom *</label>
+              <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input text-sm w-full" placeholder="ex: MTN Mobile Money" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Type</label>
+              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input text-sm w-full">
+                <option value="mobile_money">Mobile Money</option>
+                <option value="bank">Virement bancaire</option>
+                <option value="cash">Espèces</option>
+                <option value="other">Autre</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Numéro / IBAN</label>
+              <input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} className="input text-sm w-full" placeholder="ex: 6 99 00 00 00" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Nom du compte</label>
+              <input value={form.accountName} onChange={(e) => setForm({ ...form, accountName: e.target.value })} className="input text-sm w-full" placeholder="ex: KATD-SCHÜLE" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Instructions de paiement</label>
+            <textarea rows={2} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} className="input text-sm resize-none w-full" placeholder="Instructions affichées aux utilisateurs..." />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={resetForm} className="btn-ghost text-sm">Annuler</button>
+            <button type="submit" disabled={saving} className="btn-primary text-sm flex items-center gap-1.5">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {editId ? 'Mettre à jour' : 'Créer'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+      ) : methods.length === 0 ? (
+        <p className="text-center text-sm text-gray-400 py-10">Aucun moyen de paiement configuré.</p>
+      ) : (
+        <div className="space-y-2">
+          {methods.map((m) => (
+            <div key={m._id} className={`bg-white border rounded-xl p-4 flex items-center gap-3 ${!m.isActive ? 'opacity-50' : ''}`}>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                m.type === 'mobile_money' ? 'bg-yellow-100 text-yellow-700' :
+                m.type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+              }`}>
+                <CreditCard size={16} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-900">{m.name}</span>
+                  <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{TYPE_LABELS[m.type] || m.type}</span>
+                  {!m.isActive && <span className="text-[10px] bg-red-50 text-red-500 px-2 py-0.5 rounded-full">Inactif</span>}
+                </div>
+                {m.accountNumber && <p className="text-xs text-gray-500 mt-0.5">{m.accountName} · {m.accountNumber}</p>}
+                {m.instructions && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{m.instructions}</p>}
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button onClick={() => toggleActive(m)} title={m.isActive ? 'Désactiver' : 'Activer'} className={`p-1.5 rounded-lg transition-colors ${m.isActive ? 'text-green-500 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}>
+                  <CheckCircle size={15} />
+                </button>
+                <button onClick={() => handleEdit(m)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors">
+                  <Save size={15} />
+                </button>
+                <button onClick={() => remove(m._id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminPlatformPage() {
   const { user } = useAuth()
@@ -463,6 +613,7 @@ export default function AdminPlatformPage() {
           {tab === 'contacts' && <ContactsPanel platformData={platformData} refresh={load} />}
           {tab === 'support' && <DonationsPanel platformData={platformData} refresh={load} />}
           {tab === 'experiences' && <ExperiencesPanel />}
+          {tab === 'payments' && <PaymentsPanel />}
         </>
       )}
     </div>

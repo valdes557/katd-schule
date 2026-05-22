@@ -141,6 +141,12 @@ export const platformApi = {
   submitExperience: (data) => api.post('/platform/experiences', data),
   approveExperience: (id) => api.put(`/platform/experiences/${id}/approve`),
   deleteExperience: (id) => api.del(`/platform/experiences/${id}`),
+  // Payment methods
+  getPaymentMethods: () => api.get('/platform/payment-methods'),
+  getAllPaymentMethods: () => api.get('/platform/payment-methods/all'),
+  createPaymentMethod: (data) => api.post('/platform/payment-methods', data),
+  updatePaymentMethod: (id, data) => api.put(`/platform/payment-methods/${id}`, data),
+  deletePaymentMethod: (id) => api.del(`/platform/payment-methods/${id}`),
 }
 
 export const schoolPagesApi = {

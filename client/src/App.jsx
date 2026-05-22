@@ -23,6 +23,13 @@ import AdminSchoolRegistrationsPage from './pages/AdminSchoolRegistrationsPage'
 import SchoolDetailPage from './pages/SchoolDetailPage'
 import ManageSchoolPage from './pages/ManageSchoolPage'
 import AdminPlatformPage from './pages/AdminPlatformPage'
+import SocialPage from './pages/SocialPage'
+import AboutPage from './pages/AboutPage'
+import ContactsPage from './pages/ContactsPage'
+import AidePage from './pages/AidePage'
+import ResourcesPage from './pages/ResourcesPage'
+import ExperiencesPage from './pages/ExperiencesPage'
+import SupportPage from './pages/SupportPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -51,10 +58,15 @@ export default function App() {
       <Route path="/explorer" element={<ExplorerPage />} />
       <Route path="/ecoles" element={<EcolesPage />} />
       <Route path="/inscription/:schoolId" element={<EnrollmentPage />} />
-      <Route path="/about" element={<LandingPage />} />
+      <Route path="/social" element={<SocialPage />} />
+      <Route path="/apropos" element={<AboutPage />} />
+      <Route path="/contacts" element={<ContactsPage />} />
+      <Route path="/aide" element={<AidePage />} />
+      <Route path="/ressources" element={<ResourcesPage />} />
+      <Route path="/experiences" element={<ExperiencesPage />} />
+      <Route path="/support-social" element={<SupportPage />} />
       <Route path="/tarifs" element={<TarifsPage />} />
       <Route path="/souscrire" element={<SchoolRegistrationPage />} />
-      <Route path="/contact" element={<LandingPage />} />
       <Route path="/ecole/:schoolId" element={<SchoolDetailPage />} />
 
       {/* Protected dashboard routes */}
