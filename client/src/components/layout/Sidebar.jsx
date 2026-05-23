@@ -3,7 +3,7 @@ import {
   LayoutDashboard, School, Info, BookOpen, Clock, Users, GraduationCap,
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
-  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus, MapPin, Globe, LayoutGrid,
+  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus, MapPin, Globe, LayoutGrid, Shield,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
@@ -23,8 +23,24 @@ const sidebarSections = [
     ],
   },
   {
+    label: 'SUIVI SCOLAIRE',
+    roles: ['parent'],
+    items: [
+      { label: 'Mes enfants', icon: GraduationCap, path: '/dashboard' },
+      { label: 'Finances & Paiements', icon: CreditCard, path: '/dashboard/parent/finances' },
+      { label: 'Rendez-vous', icon: CalendarCheck, path: '/dashboard/parent/rendez-vous' },
+    ],
+  },
+  {
+    label: 'CONTRÔLE PARENTAL',
+    roles: ['parent'],
+    items: [
+      { label: 'Paramètres', icon: Shield, path: '/dashboard/parent/controles' },
+    ],
+  },
+  {
     label: 'GESTION DES PERSONNES',
-    roles: ['directeur', 'enseignant', 'parent'],
+    roles: ['directeur', 'enseignant'],
     items: [
       { label: 'Enseignants', icon: UserCheck, path: '/dashboard/enseignants' },
       { label: 'Élèves', icon: GraduationCap, path: '/dashboard/eleves' },
@@ -35,11 +51,11 @@ const sidebarSections = [
   },
   {
     label: 'VIE SCOLAIRE',
-    roles: ['directeur', 'enseignant', 'parent'],
+    roles: ['enseignant'],
     items: [
-      { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes', roles: ['enseignant', 'parent'] },
-      { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres', roles: ['enseignant', 'parent'] },
-      { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps', roles: ['enseignant', 'parent'] },
+      { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes' },
+      { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
+      { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
     ],
   },
   {

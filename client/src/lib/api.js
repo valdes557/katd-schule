@@ -262,4 +262,16 @@ export const enrollmentApi = {
   unblockStudent: (id) => api.put(`/enrollments/students/${id}/unblock`),
 }
 
+export const parentApi = {
+  dashboard: () => api.get('/parent/dashboard'),
+  childDetail: (studentId) => api.get(`/parent/children/${studentId}`),
+  fees: () => api.get('/parent/fees'),
+  payFee: (feeId, data) => api.post(`/parent/fees/${feeId}/pay`, data),
+  appointments: () => api.get('/parent/appointments'),
+  createAppointment: (data) => api.post('/parent/appointments', data),
+  getControls: (studentId) => api.get(`/parent/controls/${studentId}`),
+  updateControls: (studentId, data) => api.put(`/parent/controls/${studentId}`, data),
+  weeklyReport: (studentId) => api.get(`/parent/report/${studentId}`),
+}
+
 export default api

@@ -13,6 +13,7 @@ const studentSchema = new mongoose.Schema(
     class: { type: mongoose.Schema.Types.ObjectId, ref: 'Class' },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     cycle: { type: String, enum: ['Maternelle', 'Primaire', 'Secondaire'] },
+    parentUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     parent: {
       name: { type: String },
       phone: { type: String },

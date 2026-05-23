@@ -35,6 +35,10 @@ import ClassesPage from './pages/ClassesPage'
 import MatieresPage from './pages/MatieresPage'
 import EmploiDuTempsPage from './pages/EmploiDuTempsPage'
 import AdminEcolesPage from './pages/AdminEcolesPage'
+import ParentChildDetailPage from './pages/ParentChildDetailPage'
+import ParentFinancesPage from './pages/ParentFinancesPage'
+import ParentControlsPage from './pages/ParentControlsPage'
+import ParentAppointmentsPage from './pages/ParentAppointmentsPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -114,6 +118,12 @@ export default function App() {
         <Route path="ecoles-admin" element={<AdminEcolesPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
         <Route path="plateforme" element={<AdminPlatformPage />} />
+
+        {/* Parent routes */}
+        <Route path="parent/enfant/:studentId" element={<ParentChildDetailPage />} />
+        <Route path="parent/finances" element={<ParentFinancesPage />} />
+        <Route path="parent/controles" element={<ParentControlsPage />} />
+        <Route path="parent/rendez-vous" element={<ParentAppointmentsPage />} />
       </Route>
 
       {/* 404 fallback */}
