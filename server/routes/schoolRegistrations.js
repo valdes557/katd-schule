@@ -161,9 +161,13 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
     reg.userCreated = user._id
     await reg.save()
 
-    // Send email with receipt
+    // Send email with receipt + credentials IMMEDIATELY
     const planLabel = reg.plan === 'annual' ? 'Annuel' : 'Trimestriel'
-    await sendEmail({
+    const receiptNumber = `KATD-${Date.now().toString(36).toUpperCase()}`
+    const approvalDate = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    const endDate = new Date(Date.now() + (reg.plan === 'annual' ? 365 : 90) * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR')
+
+    const emailResult = await sendEmail({
       to: reg.email,
       subject: `✅ Souscription approuvée — ${reg.schoolName} | KATD-SCHÜLE`,
       html: `
@@ -174,42 +178,58 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
           </div>
           <div style="background: #F9FAFB; padding: 30px; border: 1px solid #E5E7EB; border-top: 0; border-radius: 0 0 12px 12px;">
             <h2 style="color: #111827; font-size: 18px; margin-bottom: 20px;">Félicitations ${reg.directorName} !</h2>
-            <p style="color: #4B5563;">Votre école <strong>${reg.schoolName}</strong> a été enregistrée avec succès sur KATD-SCHÜLE.</p>
+            <p style="color: #4B5563;">Votre école <strong>${reg.schoolName}</strong> a été enregistrée avec succès sur la plateforme KATD-SCHÜLE.</p>
             
             <div style="background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin: 20px 0;">
-              <h3 style="color: #374151; margin-top: 0; font-size: 14px; text-transform: uppercase;">📋 Reçu de souscription</h3>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #2563EB; padding-bottom: 10px;">
+                <h3 style="color: #374151; margin: 0; font-size: 14px; text-transform: uppercase;">📋 REÇU DE SOUSCRIPTION</h3>
+                <span style="color: #6B7280; font-size: 11px;">N° ${receiptNumber}</span>
+              </div>
               <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr><td style="padding: 8px 0; color: #6B7280;">Date d'approbation</td><td style="padding: 8px 0; color: #111827; text-align: right;">${approvalDate}</td></tr>
                 <tr><td style="padding: 8px 0; color: #6B7280;">Établissement</td><td style="padding: 8px 0; color: #111827; font-weight: 600; text-align: right;">${reg.schoolName}</td></tr>
                 <tr><td style="padding: 8px 0; color: #6B7280;">Directeur</td><td style="padding: 8px 0; color: #111827; text-align: right;">${reg.directorName}</td></tr>
                 <tr><td style="padding: 8px 0; color: #6B7280;">Cycle</td><td style="padding: 8px 0; color: #111827; text-align: right;">${reg.cycle}</td></tr>
-                <tr><td style="padding: 8px 0; color: #6B7280;">Plan</td><td style="padding: 8px 0; color: #111827; font-weight: 600; text-align: right;">${planLabel}</td></tr>
+                <tr><td style="padding: 8px 0; color: #6B7280;">Plan choisi</td><td style="padding: 8px 0; color: #2563EB; font-weight: 600; text-align: right;">${planLabel}</td></tr>
+                <tr><td style="padding: 8px 0; color: #6B7280;">Validité</td><td style="padding: 8px 0; color: #111827; text-align: right;">Jusqu'au ${endDate}</td></tr>
                 <tr><td style="padding: 8px 0; color: #6B7280;">Localisation</td><td style="padding: 8px 0; color: #111827; text-align: right;">${reg.neighborhoodName ? reg.neighborhoodName + ', ' : ''}${reg.cityName}, ${reg.countryName}</td></tr>
-                <tr style="border-top: 1px solid #E5E7EB;"><td style="padding: 8px 0; color: #6B7280;">Montant</td><td style="padding: 8px 0; color: #059669; font-weight: 700; font-size: 16px; text-align: right;">${reg.amount.toLocaleString()} F CFA</td></tr>
+                <tr style="border-top: 2px solid #E5E7EB;"><td style="padding: 12px 0; color: #6B7280; font-weight: 600;">MONTANT PAYÉ</td><td style="padding: 12px 0; color: #059669; font-weight: 700; font-size: 18px; text-align: right;">${reg.amount.toLocaleString()} F CFA</td></tr>
               </table>
             </div>
 
             <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 20px; margin: 20px 0;">
               <h3 style="color: #1E40AF; margin-top: 0; font-size: 14px;">🔐 Vos identifiants de connexion</h3>
-              <table style="width: 100%; font-size: 14px;">
-                <tr><td style="padding: 6px 0; color: #4B5563;">Email</td><td style="padding: 6px 0; color: #111827; font-weight: 600;">${reg.email}</td></tr>
-                <tr><td style="padding: 6px 0; color: #4B5563;">Mot de passe</td><td style="padding: 6px 0; color: #111827; font-weight: 600;">${rawPassword}</td></tr>
+              <p style="color: #4B5563; font-size: 13px; margin-bottom: 15px;">Utilisez ces identifiants pour vous connecter à votre tableau de bord directeur :</p>
+              <table style="width: 100%; font-size: 14px; background: white; border-radius: 6px; padding: 12px;">
+                <tr><td style="padding: 8px 12px; color: #4B5563;">Email</td><td style="padding: 8px 12px; color: #111827; font-weight: 700; font-size: 15px;">${reg.email}</td></tr>
+                <tr><td style="padding: 8px 12px; color: #4B5563;">Mot de passe</td><td style="padding: 8px 12px; color: #111827; font-weight: 700; font-size: 15px; letter-spacing: 1px;">${rawPassword}</td></tr>
               </table>
-              <p style="color: #6B7280; font-size: 12px; margin-bottom: 0; margin-top: 12px;">⚠️ Changez votre mot de passe après votre première connexion.</p>
+              <p style="color: #DC2626; font-size: 12px; margin-bottom: 0; margin-top: 12px; font-weight: 600;">⚠️ Important : Changez votre mot de passe après votre première connexion pour sécuriser votre compte.</p>
             </div>
 
-            <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}/login" style="display: inline-block; background: #2563EB; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-top: 10px;">
-              Accéder à mon espace
-            </a>
+            <div style="text-align: center; margin-top: 25px;">
+              <a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="display: inline-block; background: linear-gradient(135deg, #2563EB, #4F46E5); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">
+                🚀 Accéder à mon espace directeur
+              </a>
+            </div>
+
+            <p style="color: #9CA3AF; font-size: 12px; margin-top: 25px; text-align: center; border-top: 1px solid #E5E7EB; padding-top: 15px;">
+              Conservez cet email comme preuve de paiement.<br/>
+              Pour toute question, contactez-nous à <a href="mailto:${process.env.SMTP_USER || 'support@katd-schule.com'}" style="color: #2563EB;">${process.env.SMTP_USER || 'support@katd-schule.com'}</a>
+            </p>
           </div>
-          <p style="text-align: center; color: #9CA3AF; font-size: 11px; margin-top: 20px;">© ${new Date().getFullYear()} KATD-SCHÜLE</p>
+          <p style="text-align: center; color: #9CA3AF; font-size: 11px; margin-top: 20px;">© ${new Date().getFullYear()} KATD-SCHÜLE — Plateforme de gestion scolaire</p>
         </div>
       `,
     })
 
     res.json({
       success: true,
-      message: 'Souscription approuvée. L\'école et le compte directeur ont été créés.',
-      data: { registration: reg, school, user },
+      message: emailResult.success
+        ? 'Souscription approuvée. Email avec reçu et identifiants envoyé au directeur.'
+        : 'Souscription approuvée. Compte créé mais l\'email n\'a pas pu être envoyé : ' + (emailResult.error || 'erreur inconnue'),
+      emailSent: emailResult.success,
+      data: { registration: reg, school, user: { ...user.toObject(), rawPassword } },
     })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Un compte avec cet email existe déjà' })

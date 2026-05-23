@@ -33,10 +33,15 @@ export default function AdminSchoolRegistrationsPage() {
     if (!window.confirm('Approuver cette demande ? Un compte directeur sera créé et les identifiants envoyés par email.')) return
     setProcessing(id)
     try {
-      await schoolRegistrationApi.approve(id)
+      const result = await schoolRegistrationApi.approve(id)
+      if (result.emailSent) {
+        alert('✅ Approuvé ! Le reçu et les identifiants ont été envoyés par email au directeur.')
+      } else {
+        alert('⚠️ Compte créé avec succès mais l\'email n\'a pas pu être envoyé. Identifiants : ' + (result.data?.user?.rawPassword ? `Email: ${result.data.user.email}, Mot de passe: ${result.data.user.rawPassword}` : 'Consultez les logs.'))
+      }
       load()
       setExpandedId(null)
-    } catch (e) { alert(e.message) }
+    } catch (e) { alert('❌ Erreur : ' + e.message) }
     setProcessing(null)
   }
 
