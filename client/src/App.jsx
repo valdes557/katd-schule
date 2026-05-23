@@ -39,6 +39,9 @@ import ParentChildDetailPage from './pages/ParentChildDetailPage'
 import ParentFinancesPage from './pages/ParentFinancesPage'
 import ParentControlsPage from './pages/ParentControlsPage'
 import ParentAppointmentsPage from './pages/ParentAppointmentsPage'
+import TeacherHomeworkPage from './pages/TeacherHomeworkPage'
+import TeacherAnalyticsPage from './pages/TeacherAnalyticsPage'
+import TeacherStudentsPage from './pages/TeacherStudentsPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -103,7 +106,7 @@ export default function App() {
         <Route path="emploi-du-temps" element={<EmploiDuTempsPage />} />
         <Route path="parents" element={<PlaceholderPage title="Parents / Responsables" />} />
         <Route path="personnel" element={<PlaceholderPage title="Personnel" />} />
-        <Route path="devoirs" element={<PlaceholderPage title="Devoirs & Évaluations" />} />
+        <Route path="devoirs" element={<TeacherHomeworkPage />} />
         <Route path="activites" element={<PlaceholderPage title="Activités scolaires" />} />
         <Route path="ressources" element={<PlaceholderPage title="Ressources pédagogiques" />} />
         <Route path="annonces" element={<PlaceholderPage title="Annonces" />} />
@@ -118,6 +121,10 @@ export default function App() {
         <Route path="ecoles-admin" element={<AdminEcolesPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
         <Route path="plateforme" element={<AdminPlatformPage />} />
+
+        {/* Teacher routes */}
+        <Route path="teacher/eleves" element={<TeacherStudentsPage />} />
+        <Route path="teacher/analytics" element={<TeacherAnalyticsPage />} />
 
         {/* Parent routes */}
         <Route path="parent/enfant/:studentId" element={<ParentChildDetailPage />} />

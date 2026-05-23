@@ -11,6 +11,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { dashboardApi } from '../lib/api'
 import ParentDashboardPage from './ParentDashboardPage'
+import TeacherDashboardPage from './TeacherDashboardPage'
 
 const PIE_COLORS = ['#3B82F6', '#F59E0B', '#10B981']
 
@@ -239,5 +240,6 @@ export default function DashboardPage() {
   const { user, school } = useAuth()
   if (user?.role === 'super_admin') return <AdminDashboard user={user} />
   if (user?.role === 'parent') return <ParentDashboardPage />
+  if (user?.role === 'enseignant') return <TeacherDashboardPage />
   return <DirectorDashboard user={user} school={school} />
 }

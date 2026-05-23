@@ -40,19 +40,20 @@ const sidebarSections = [
   },
   {
     label: 'GESTION DES PERSONNES',
-    roles: ['directeur', 'enseignant'],
+    roles: ['directeur'],
     items: [
       { label: 'Enseignants', icon: UserCheck, path: '/dashboard/enseignants' },
       { label: 'Élèves', icon: GraduationCap, path: '/dashboard/eleves' },
-      { label: 'Inscriptions en ligne', icon: UserPlus, path: '/dashboard/inscriptions', roles: ['directeur'] },
-      { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents', roles: ['directeur'] },
-      { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel', roles: ['directeur'] },
+      { label: 'Inscriptions en ligne', icon: UserPlus, path: '/dashboard/inscriptions' },
+      { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents' },
+      { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel' },
     ],
   },
   {
-    label: 'VIE SCOLAIRE',
+    label: 'MES CLASSES',
     roles: ['enseignant'],
     items: [
+      { label: 'Mes élèves', icon: Users, path: '/dashboard/teacher/eleves' },
       { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes' },
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
@@ -67,6 +68,7 @@ const sidebarSections = [
       { label: 'Présence', icon: CalendarCheck, path: '/dashboard/presence' },
       { label: 'Activités scolaires', icon: Activity, path: '/dashboard/activites' },
       { label: 'Ressources pédagogiques', icon: Library, path: '/dashboard/ressources' },
+      { label: 'Statistiques & Analytics', icon: BarChart2, path: '/dashboard/teacher/analytics', roles: ['enseignant'] },
     ],
   },
   {

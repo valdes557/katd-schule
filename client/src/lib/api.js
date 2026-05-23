@@ -262,6 +262,17 @@ export const enrollmentApi = {
   unblockStudent: (id) => api.put(`/enrollments/students/${id}/unblock`),
 }
 
+export const teacherApi = {
+  dashboard: () => api.get('/teacher/dashboard'),
+  students: () => api.get('/teacher/students'),
+  homeworks: (params = '') => api.get(`/teacher/homeworks?${params}`),
+  createHomework: (data) => api.post('/teacher/homeworks', data),
+  updateHomework: (id, data) => api.put(`/teacher/homeworks/${id}`, data),
+  deleteHomework: (id) => api.del(`/teacher/homeworks/${id}`),
+  gradeSubmission: (hwId, subId, data) => api.put(`/teacher/homeworks/${hwId}/submissions/${subId}/grade`, data),
+  analytics: () => api.get('/teacher/analytics'),
+}
+
 export const parentApi = {
   dashboard: () => api.get('/parent/dashboard'),
   childDetail: (studentId) => api.get(`/parent/children/${studentId}`),
