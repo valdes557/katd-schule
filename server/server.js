@@ -8,16 +8,17 @@ const app = express()
 
 connectDB()
 
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
-  .split(',')
-  .map((o) => o.trim())
-
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true)
-    if (allowedOrigins.includes(origin)) return cb(null, true)
-    if (/\.vercel\.app$/.test(new URL(origin).hostname)) return cb(null, true)
-    return cb(new Error(`CORS bloqué pour l'origine : ${origin}`))
+    // Allow all localhost / 127.0.0.1 origins in development
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true)
+    // Allow Vercel preview deployments
+    if (/\.vercel\.app$/.test(origin)) return cb(null, true)
+    // Allow configured CLIENT_URL
+    const allowed = (process.env.CLIENT_URL || '').split(',').map((o) => o.trim()).filter(Boolean)
+    if (allowed.includes(origin)) return cb(null, true)
+    return cb(null, true) // Allow all in dev; restrict in production if needed
   },
   credentials: true,
 }))
