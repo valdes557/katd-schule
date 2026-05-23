@@ -65,7 +65,7 @@ export default function PublicHeader() {
                 <Link to="/login" className="hidden sm:inline-flex text-sm font-medium text-gray-600 hover:text-blue-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
                   Connexion
                 </Link>
-                <Link to="/souscrire" className="btn-primary text-sm py-1.5 px-4">
+                <Link to="/tarifs" className="btn-primary text-sm py-1.5 px-4">
                   Rejoindre
                 </Link>
               </>
@@ -133,7 +133,7 @@ export default function PublicHeader() {
                 <Link to="/login" className="flex-1 text-center text-sm font-medium text-gray-600 border border-gray-200 py-2 rounded-lg" onClick={() => setMobileOpen(false)}>
                   Connexion
                 </Link>
-                <Link to="/souscrire" className="flex-1 btn-primary text-center text-sm" onClick={() => setMobileOpen(false)}>
+                <Link to="/tarifs" className="flex-1 btn-primary text-center text-sm" onClick={() => setMobileOpen(false)}>
                   Rejoindre
                 </Link>
               </div>

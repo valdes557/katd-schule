@@ -6,6 +6,7 @@ const studentSchema = new mongoose.Schema(
     lastName: { type: String, required: true, trim: true },
     matricule: { type: String, unique: true },
     dateOfBirth: { type: Date },
+    placeOfBirth: { type: String, trim: true },
     gender: { type: String, enum: ['M', 'F'], required: true },
     photo: { type: String },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },

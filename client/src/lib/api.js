@@ -178,6 +178,22 @@ export const platformApi = {
   deletePaymentMethod: (id) => api.del(`/platform/payment-methods/${id}`),
 }
 
+export const subjectsApi = {
+  list: (params = '') => api.get(`/subjects?${params}`),
+  get: (id) => api.get(`/subjects/${id}`),
+  create: (data) => api.post('/subjects', data),
+  update: (id, data) => api.put(`/subjects/${id}`, data),
+  remove: (id) => api.del(`/subjects/${id}`),
+}
+
+export const timetablesApi = {
+  list: () => api.get('/timetables'),
+  getByClass: (classId) => api.get(`/timetables/class/${classId}`),
+  update: (id, data) => api.put(`/timetables/${id}`, data),
+  addSlot: (id, data) => api.post(`/timetables/${id}/slots`, data),
+  removeSlot: (id, slotId) => api.del(`/timetables/${id}/slots/${slotId}`),
+}
+
 export const schoolPagesApi = {
   get: (schoolId) => api.get(`/school-pages/${schoolId}`),
   update: (schoolId, data) => api.put(`/school-pages/${schoolId}`, data),

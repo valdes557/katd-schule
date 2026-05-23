@@ -7,7 +7,9 @@ const { protect, authorize } = require('../middleware/auth')
 router.get('/', protect, async (req, res) => {
   try {
     const { search, class: className, classId, cycle, page = 1, limit = 50 } = req.query
-    const query = { school: req.user.school._id || req.user.school }
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) return res.json({ success: true, total: 0, data: [] })
+    const query = { school: schoolId }
 
     if (search) {
       query.$or = [
@@ -47,7 +49,7 @@ router.get('/:id', protect, async (req, res) => {
 // @route  POST /api/students
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const student = await Student.create({ ...req.body, school: req.user.school })
+    const student = await Student.create({ ...req.body, school: req.user.school?._id || req.user.school })
     res.status(201).json({ success: true, data: student })
   } catch (err) {
     res.status(500).json({ message: err.message })

@@ -41,6 +41,8 @@ app.use('/api/locations', require('./routes/locations'))
 app.use('/api/school-registrations', require('./routes/schoolRegistrations'))
 app.use('/api/school-pages', require('./routes/schoolPages'))
 app.use('/api/platform', require('./routes/platform'))
+app.use('/api/subjects', require('./routes/subjects'))
+app.use('/api/timetables', require('./routes/timetables'))
 
 app.get('/api/health', (req, res) => {
   res.json({

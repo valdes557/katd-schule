@@ -84,6 +84,17 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* No school warning */}
+      {!school && user?.role === 'directeur' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Aucune école associée</p>
+            <p className="text-xs text-amber-600 mt-0.5">Créez votre école depuis la page <Link to="/dashboard/profil" className="underline font-medium">Profil de l'école</Link> pour accéder à toutes les fonctionnalités.</p>
+          </div>
+        </div>
+      )}
+
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {statsCards.map((card) => (

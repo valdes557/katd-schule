@@ -7,6 +7,7 @@ const classSchema = new mongoose.Schema(
     cycle: { type: String, enum: ['Maternelle', 'Primaire', 'Secondaire'], required: true },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     mainTeacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
+    room: { type: String, trim: true },
     capacity: { type: Number, default: 40 },
     enrollmentFee: { type: Number, default: 0 },
     academicYear: { type: String },

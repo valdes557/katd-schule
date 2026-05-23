@@ -10,15 +10,32 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('katd_user')
-    const storedSchool = localStorage.getItem('katd_school')
+    const token = localStorage.getItem('token')
     const storedCycle = localStorage.getItem('katd_cycle')
-    if (storedUser) {
-      setUser(JSON.parse(storedUser))
-      if (storedSchool) setSchool(JSON.parse(storedSchool))
-      if (storedCycle) setCycle(storedCycle)
+    if (storedCycle) setCycle(storedCycle)
+
+    if (token) {
+      // Rehydrate from /me to get fresh user + school
+      authApi.me()
+        .then((res) => {
+          const u = res.user
+          const s = res.school || null
+          setUser(u)
+          setSchool(s)
+          localStorage.setItem('katd_user', JSON.stringify(u))
+          if (s) localStorage.setItem('katd_school', JSON.stringify(s))
+        })
+        .catch(() => {
+          // Fallback to stored data if /me fails
+          const storedUser = localStorage.getItem('katd_user')
+          const storedSchool = localStorage.getItem('katd_school')
+          if (storedUser) setUser(JSON.parse(storedUser))
+          if (storedSchool) setSchool(JSON.parse(storedSchool))
+        })
+        .finally(() => setLoading(false))
+    } else {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   // Real backend login (with demo fallback if API unreachable)
@@ -62,7 +79,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, school, cycle, login, logout, loading, changeCycle }}>
+    <AuthContext.Provider value={{ user, school, setSchool, cycle, login, logout, loading, changeCycle }}>
       {children}
     </AuthContext.Provider>
   )

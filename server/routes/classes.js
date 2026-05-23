@@ -7,7 +7,9 @@ const { protect, authorize } = require('../middleware/auth')
 // GET /api/classes
 router.get('/', protect, async (req, res) => {
   try {
-    const query = { school: req.user.school._id || req.user.school }
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) return res.json({ success: true, data: [] })
+    const query = { school: schoolId }
     if (req.query.cycle) query.cycle = req.query.cycle
     const classes = await Class.find(query).populate('mainTeacher', 'firstName lastName').sort({ cycle: 1, name: 1 })
     res.json({ success: true, data: classes })
@@ -31,7 +33,7 @@ router.get('/:id', protect, async (req, res) => {
 // POST /api/classes
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const cls = await Class.create({ ...req.body, school: req.user.school._id || req.user.school })
+    const cls = await Class.create({ ...req.body, school: req.user.school?._id || req.user.school })
     res.status(201).json({ success: true, data: cls })
   } catch (err) {
     res.status(500).json({ message: err.message })

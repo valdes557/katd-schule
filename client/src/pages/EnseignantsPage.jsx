@@ -1,57 +1,68 @@
 import { useEffect, useState } from 'react'
-import { UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Mail, Phone } from 'lucide-react'
-import { teachersApi } from '../lib/api'
+import { UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Mail, Phone, Key, Eye, EyeOff } from 'lucide-react'
+import { teachersApi, classesApi } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 import { getInitials } from '../lib/utils'
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4']
+const EMPTY = { firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '', password: '', classes: [] }
 
 export default function EnseignantsPage() {
+  const { user } = useAuth()
+  const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+
   const [teachers, setTeachers] = useState([])
+  const [allClasses, setAllClasses] = useState([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '' })
+  const [form, setForm] = useState(EMPTY)
+  const [showPwd, setShowPwd] = useState(false)
 
   const fetchTeachers = async () => {
     setLoading(true)
     try {
-      const params = search ? `search=${search}` : ''
-      const res = await teachersApi.list(params)
+      const [res, cr] = await Promise.all([teachersApi.list(search ? `search=${search}` : ''), classesApi.list()])
       setTeachers(res.data || [])
       setTotal(res.total || 0)
-    } catch (e) { console.error(e) }
+      setAllClasses(cr.data || [])
+    } catch (e) {}
     setLoading(false)
   }
 
   useEffect(() => { fetchTeachers() }, [])
   useEffect(() => { const t = setTimeout(fetchTeachers, 400); return () => clearTimeout(t) }, [search])
 
+  const toggleClass = (id) => setForm((f) => ({ ...f, classes: f.classes.includes(id) ? f.classes.filter((c) => c !== id) : [...f.classes, id] }))
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      const data = { ...form, subjects: form.subjects.split(',').map((s) => s.trim()).filter(Boolean) }
+      const data = { ...form, subjects: typeof form.subjects === 'string' ? form.subjects.split(',').map((s) => s.trim()).filter(Boolean) : form.subjects }
+      if (!editing && !form.password) { alert('Le mot de passe est requis pour créer le compte de connexion'); return }
       if (editing) {
-        await teachersApi.update(editing._id, data)
+        const { password, ...rest } = data
+        await teachersApi.update(editing._id, password ? data : rest)
       } else {
         await teachersApi.create(data)
       }
       setShowModal(false)
       setEditing(null)
-      setForm({ firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '' })
+      setForm(EMPTY)
       fetchTeachers()
     } catch (e) { alert(e.message) }
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Supprimer cet enseignant ?')) return
+    if (!confirm('Supprimer cet enseignant et son compte de connexion ?')) return
     try { await teachersApi.remove(id); fetchTeachers() } catch (e) { alert(e.message) }
   }
 
   const openEdit = (t) => {
     setEditing(t)
-    setForm({ firstName: t.firstName, lastName: t.lastName, email: t.email || '', phone: t.phone || '', gender: t.gender || 'M', subjects: (t.subjects || []).join(', '), speciality: t.speciality || '' })
+    setForm({ firstName: t.firstName, lastName: t.lastName, email: t.email || '', phone: t.phone || '', gender: t.gender || 'M', subjects: (t.subjects || []).join(', '), speciality: t.speciality || '', password: '', classes: (t.classes || []).map((c) => c._id || c) })
     setShowModal(true)
   }
 
@@ -62,9 +73,11 @@ export default function EnseignantsPage() {
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><UserCheck size={22} className="text-teal-600" /> Enseignants</h1>
           <p className="text-sm text-gray-500">{total} enseignant(s)</p>
         </div>
-        <button onClick={() => { setEditing(null); setForm({ firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '' }); setShowModal(true) }} className="btn-primary text-sm self-start">
-          <Plus size={15} /> Ajouter
-        </button>
+        {isDirecteur && (
+          <button onClick={() => { setEditing(null); setForm(EMPTY); setShowModal(true) }} className="btn-primary text-sm self-start">
+            <Plus size={15} /> Ajouter
+          </button>
+        )}
       </div>
 
       <div className="relative max-w-sm">
@@ -90,19 +103,27 @@ export default function EnseignantsPage() {
                     <div className="text-xs text-gray-500">{t.speciality || 'Enseignant'}</div>
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  <button onClick={() => openEdit(t)} className="p-1 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={13} /></button>
-                  <button onClick={() => handleDelete(t._id)} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 size={13} /></button>
-                </div>
+                {isDirecteur && (
+                  <div className="flex gap-1">
+                    <button onClick={() => openEdit(t)} className="p-1 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={13} /></button>
+                    <button onClick={() => handleDelete(t._id)} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 size={13} /></button>
+                  </div>
+                )}
               </div>
               {t.subjects?.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-3">
+                <div className="flex flex-wrap gap-1 mb-2">
                   {t.subjects.map((s) => <span key={s} className="badge badge-blue text-[10px]">{s}</span>)}
+                </div>
+              )}
+              {t.classes?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {t.classes.map((c) => <span key={c._id || c} className="badge bg-purple-50 text-purple-600 text-[10px]">{c.name || c}</span>)}
                 </div>
               )}
               <div className="space-y-1 text-xs text-gray-500">
                 {t.email && <div className="flex items-center gap-1.5"><Mail size={11} />{t.email}</div>}
                 {t.phone && <div className="flex items-center gap-1.5"><Phone size={11} />{t.phone}</div>}
+                {t.user && <div className="flex items-center gap-1.5"><Key size={11} className="text-green-500" /><span className="text-green-600">Compte actif</span></div>}
               </div>
             </div>
           ))}
@@ -111,25 +132,71 @@ export default function EnseignantsPage() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">{editing ? 'Modifier' : 'Nouvel enseignant'}</h3>
+              <h3 className="text-lg font-bold text-gray-900">{editing ? 'Modifier l\'enseignant' : 'Nouvel enseignant'}</h3>
               <button onClick={() => setShowModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs font-medium text-gray-600">Prénom</label><input required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="input text-sm mt-1" /></div>
-                <div><label className="text-xs font-medium text-gray-600">Nom</label><input required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="input text-sm mt-1" /></div>
+                <div><label className="text-xs font-medium text-gray-600">Prénom *</label><input required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="input text-sm mt-1" /></div>
+                <div><label className="text-xs font-medium text-gray-600">Nom *</label><input required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="input text-sm mt-1" /></div>
               </div>
+
+              {/* Login credentials */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                <p className="text-xs font-bold text-blue-800 mb-2 flex items-center gap-1.5"><Key size={12} /> Identifiants de connexion</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Email *</label>
+                    <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input text-sm mt-1 bg-white" placeholder="enseignant@ecole.cm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">{editing ? 'Nouveau mot de passe' : 'Mot de passe *'}</label>
+                    <div className="relative">
+                      <input
+                        type={showPwd ? 'text' : 'password'}
+                        required={!editing}
+                        value={form.password}
+                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                        className="input text-sm mt-1 pr-8 bg-white"
+                        placeholder={editing ? 'Laisser vide si inchangé' : 'Min 6 caractères'}
+                      />
+                      <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-2 top-1/2 -translate-y-1/2 mt-0.5 text-gray-400">
+                        {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs font-medium text-gray-600">Email</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input text-sm mt-1" /></div>
                 <div><label className="text-xs font-medium text-gray-600">Téléphone</label><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input text-sm mt-1" /></div>
+                <div><label className="text-xs font-medium text-gray-600">Genre</label>
+                  <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} className="input text-sm mt-1">
+                    <option value="M">Homme</option><option value="F">Femme</option>
+                  </select>
+                </div>
               </div>
-              <div><label className="text-xs font-medium text-gray-600">Matières (séparées par des virgules)</label><input value={form.subjects} onChange={(e) => setForm({ ...form, subjects: e.target.value })} placeholder="Mathématiques, Français" className="input text-sm mt-1" /></div>
+              <div><label className="text-xs font-medium text-gray-600">Matières (virgules)</label><input value={form.subjects} onChange={(e) => setForm({ ...form, subjects: e.target.value })} placeholder="Mathématiques, Français" className="input text-sm mt-1" /></div>
               <div><label className="text-xs font-medium text-gray-600">Spécialité</label><input value={form.speciality} onChange={(e) => setForm({ ...form, speciality: e.target.value })} className="input text-sm mt-1" /></div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Classes assignées</label>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto bg-gray-50 p-2 rounded-lg">
+                  {allClasses.map((c) => (
+                    <button key={c._id} type="button" onClick={() => toggleClass(c._id)}
+                      className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${form.classes.includes(c._id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>
+                      {c.name}
+                    </button>
+                  ))}
+                  {allClasses.length === 0 && <span className="text-xs text-gray-400">Aucune classe créée</span>}
+                </div>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
-                <button type="submit" className="btn-primary flex-1 justify-center">{editing ? 'Enregistrer' : 'Ajouter'}</button>
+                <button type="submit" className="btn-primary flex-1 justify-center">{editing ? 'Enregistrer' : 'Créer le compte'}</button>
               </div>
             </form>
           </div>

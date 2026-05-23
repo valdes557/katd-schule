@@ -14,6 +14,101 @@ const CYCLE_COLORS = {
   Secondaire: 'bg-green-100 text-green-700 border-green-200',
 }
 
+function CreateSchoolForm({ onCreated }) {
+  const { setSchool: setCtxSchool } = useAuth()
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const logoRef = useRef()
+  const [logoFile, setLogoFile] = useState(null)
+  const [logoPreview, setLogoPreview] = useState('')
+  const [cForm, setCForm] = useState({ name: '', description: '', cycles: [], phone: '', email: '' })
+
+  const toggleCycle = (c) => setCForm((f) => ({ ...f, cycles: f.cycles.includes(c) ? f.cycles.filter((x) => x !== c) : [...f.cycles, c] }))
+
+  const handleCreate = async (e) => {
+    e.preventDefault()
+    if (cForm.cycles.length === 0) { setError('Sélectionnez au moins un cycle'); return }
+    setSaving(true); setError('')
+    try {
+      const fd = new FormData()
+      fd.append('name', cForm.name)
+      fd.append('description', cForm.description)
+      fd.append('cycles', JSON.stringify(cForm.cycles))
+      fd.append('phone', cForm.phone)
+      fd.append('email', cForm.email)
+      fd.append('contact', JSON.stringify({ email: cForm.email, phone: cForm.phone }))
+      if (logoFile) fd.append('logo', logoFile)
+      const r = await schoolsApi.create(fd)
+      if (r.success || r.data) {
+        setCtxSchool(r.data)
+        localStorage.setItem('katd_school', JSON.stringify(r.data))
+        onCreated(r.data)
+      } else {
+        setError(r.message || 'Erreur lors de la création')
+      }
+    } catch (err) { setError(err.message) }
+    setSaving(false)
+  }
+
+  return (
+    <div className="max-w-xl mx-auto py-10 animate-fade-in">
+      <div className="text-center mb-6">
+        <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+          <School size={28} className="text-blue-600" />
+        </div>
+        <h2 className="text-lg font-bold text-gray-900">Créer votre école</h2>
+        <p className="text-sm text-gray-500">Remplissez les informations pour créer le profil de votre établissement</p>
+      </div>
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4 flex items-center gap-2"><AlertCircle size={15} /> {error}</div>}
+      <form onSubmit={handleCreate} className="bg-white border border-gray-100 rounded-xl p-6 space-y-4">
+        {/* Logo */}
+        <div className="flex items-center gap-4">
+          <div onClick={() => logoRef.current?.click()} className="w-20 h-20 rounded-2xl border-2 border-dashed border-gray-300 hover:border-blue-400 cursor-pointer flex items-center justify-center overflow-hidden flex-shrink-0 transition-colors">
+            {logoPreview ? <img src={logoPreview} className="w-full h-full object-cover" /> : <Camera size={24} className="text-gray-300" />}
+          </div>
+          <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setLogoFile(f); setLogoPreview(URL.createObjectURL(f)) } }} />
+          <div>
+            <p className="text-xs font-medium text-gray-600">Photo / Logo de l'école</p>
+            <p className="text-[10px] text-gray-400">JPG, PNG — max 5 Mo</p>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Nom de l'établissement *</label>
+          <input required value={cForm.name} onChange={(e) => setCForm({ ...cForm, name: e.target.value })} className="input text-sm" placeholder="Ex: Groupe Scolaire Les Champions" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Description</label>
+          <textarea rows={3} value={cForm.description} onChange={(e) => setCForm({ ...cForm, description: e.target.value })} className="input text-sm resize-none" placeholder="Présentation de votre établissement..." />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Cycles d'enseignement *</label>
+          <div className="flex gap-3">
+            {CYCLES.map((c) => (
+              <button key={c} type="button" onClick={() => toggleCycle(c)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${cForm.cycles.includes(c) ? CYCLE_COLORS[c] + ' border-current' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Téléphone</label>
+            <input value={cForm.phone} onChange={(e) => setCForm({ ...cForm, phone: e.target.value })} className="input text-sm" placeholder="+237 6XX XXX XXX" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Email</label>
+            <input type="email" value={cForm.email} onChange={(e) => setCForm({ ...cForm, email: e.target.value })} className="input text-sm" placeholder="contact@ecole.cm" />
+          </div>
+        </div>
+        <button type="submit" disabled={saving} className="btn-primary w-full justify-center py-3 text-sm">
+          {saving ? <><Loader2 size={14} className="animate-spin" /> Création en cours...</> : <><Save size={14} /> Créer mon école</>}
+        </button>
+      </form>
+    </div>
+  )
+}
+
 export default function DashboardSchoolProfilePage() {
   const { school: ctxSchool, user } = useAuth()
   const navigate = useNavigate()
@@ -136,17 +231,7 @@ export default function DashboardSchoolProfilePage() {
     </div>
   )
 
-  if (!school) return (
-    <div className="max-w-xl mx-auto py-16 text-center space-y-4">
-      <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto">
-        <AlertCircle size={28} className="text-orange-500" />
-      </div>
-      <h2 className="text-lg font-bold text-gray-900">Aucune école associée</h2>
-      <p className="text-sm text-gray-500">
-        Votre compte n'est pas encore lié à une école. Veuillez contacter l'administration KATD-SCHÜLE.
-      </p>
-    </div>
-  )
+  if (!school) return <CreateSchoolForm onCreated={(s) => { setSchool(s); setLogoPreview(s.logo || ''); setForm({ name: s.name || '', description: s.description || '', phone: s.phone || '', email: s.email || '', website: '', city: s.address?.city || '', neighborhood: s.address?.neighborhood || '', country: s.address?.country || 'Cameroun', cycles: s.cycles || [] }) }} />
 
   const initials = school.name?.split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase() || '?'
 

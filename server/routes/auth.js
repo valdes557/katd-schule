@@ -85,7 +85,12 @@ router.post(
 
 // @route  GET /api/auth/me
 router.get('/me', protect, async (req, res) => {
-  res.json({ success: true, user: req.user })
+  const u = req.user
+  res.json({
+    success: true,
+    user: { id: u._id, name: u.name, email: u.email, role: u.role },
+    school: u.school || null,
+  })
 })
 
 // @route  PUT /api/auth/password

@@ -12,7 +12,10 @@ const { protect } = require('../middleware/auth')
 // GET /api/dashboard/stats — all KPIs for the school
 router.get('/stats', protect, async (req, res) => {
   try {
-    const schoolId = req.user.school._id || req.user.school
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) {
+      return res.json({ success: true, data: { totalStudents: 0, totalTeachers: 0, totalClasses: 0, totalMedia: 0, averageGrade: 0, attendanceRate: 0, unreadMessages: 0, gradesBySubject: [], recentAttendance: [], studentsByCycle: [] } })
+    }
 
     const [totalStudents, totalTeachers, totalClasses, totalMedia] = await Promise.all([
       Student.countDocuments({ school: schoolId, status: 'active' }),

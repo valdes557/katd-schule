@@ -31,6 +31,9 @@ import ResourcesPage from './pages/ResourcesPage'
 import ExperiencesPage from './pages/ExperiencesPage'
 import SupportPage from './pages/SupportPage'
 import DashboardSchoolProfilePage from './pages/DashboardSchoolProfilePage'
+import ClassesPage from './pages/ClassesPage'
+import MatieresPage from './pages/MatieresPage'
+import EmploiDuTempsPage from './pages/EmploiDuTempsPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -90,9 +93,9 @@ export default function App() {
 
         <Route path="profil" element={<DashboardSchoolProfilePage />} />
         <Route path="infos" element={<PlaceholderPage title="Informations générales" />} />
-        <Route path="classes" element={<PlaceholderPage title="Classes & Salles" />} />
-        <Route path="matieres" element={<PlaceholderPage title="Matières & Programmes" />} />
-        <Route path="emploi-du-temps" element={<PlaceholderPage title="Emploi du temps" />} />
+        <Route path="classes" element={<ClassesPage />} />
+        <Route path="matieres" element={<MatieresPage />} />
+        <Route path="emploi-du-temps" element={<EmploiDuTempsPage />} />
         <Route path="parents" element={<PlaceholderPage title="Parents / Responsables" />} />
         <Route path="personnel" element={<PlaceholderPage title="Personnel" />} />
         <Route path="devoirs" element={<PlaceholderPage title="Devoirs & Évaluations" />} />

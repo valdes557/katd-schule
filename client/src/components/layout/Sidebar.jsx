@@ -9,16 +9,17 @@ import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
 
 // cycles: null = all cycles, ['Secondaire'] = only Secondaire, etc.
+// roles: array of allowed roles. undefined = all roles.
 const sidebarSections = [
   {
     label: 'GESTION DE L\'ÉCOLE',
     items: [
-      { label: "Profil de l'école", icon: School, path: '/dashboard/profil' },
-      { label: 'Informations générales', icon: Info, path: '/dashboard/infos' },
+      { label: "Profil de l'école", icon: School, path: '/dashboard/profil', roles: ['directeur', 'super_admin'] },
+      { label: 'Informations générales', icon: Info, path: '/dashboard/infos', roles: ['directeur', 'super_admin'] },
       { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes' },
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
-      { label: 'Page de l\'école', icon: Globe, path: '/dashboard/page-ecole' },
+      { label: 'Page de l\'école', icon: Globe, path: '/dashboard/page-ecole', roles: ['directeur', 'super_admin'] },
     ],
   },
   {
@@ -26,9 +27,9 @@ const sidebarSections = [
     items: [
       { label: 'Enseignants', icon: UserCheck, path: '/dashboard/enseignants' },
       { label: 'Élèves', icon: GraduationCap, path: '/dashboard/eleves' },
-      { label: 'Inscriptions en ligne', icon: UserPlus, path: '/dashboard/inscriptions' },
-      { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents' },
-      { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel' },
+      { label: 'Inscriptions en ligne', icon: UserPlus, path: '/dashboard/inscriptions', roles: ['directeur', 'super_admin'] },
+      { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents', roles: ['directeur', 'super_admin'] },
+      { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel', roles: ['directeur', 'super_admin'] },
     ],
   },
   {
@@ -51,6 +52,7 @@ const sidebarSections = [
   },
   {
     label: 'FINANCES & ABONNEMENTS',
+    roles: ['directeur', 'super_admin'],
     items: [
       { label: 'Souscriptions', icon: CreditCard, path: '/dashboard/souscriptions' },
       { label: 'Historique des paiements', icon: History, path: '/dashboard/paiements' },
@@ -59,6 +61,7 @@ const sidebarSections = [
   },
   {
     label: 'RAPPORTS & STATISTIQUES',
+    roles: ['directeur', 'super_admin'],
     items: [
       { label: 'Tableaux de bord', icon: BarChart2, path: '/dashboard/rapports' },
       { label: 'Rapports', icon: LineChart, path: '/dashboard/rapports/detail' },
@@ -84,10 +87,13 @@ export default function Sidebar({ mobileOpen, onClose }) {
   const schoolCycles = school?.cycles || []
   const isDirecteur = user?.role === 'directeur'
 
-  // For directors: filter items that are cycle-restricted
-  const filterByCycle = (items) => {
-    if (!isDirecteur || schoolCycles.length === 0) return items
-    return items.filter((item) => !item.cycles || item.cycles.some((c) => schoolCycles.includes(c)))
+  // Filter items by cycle and role
+  const filterItems = (items) => {
+    return items.filter((item) => {
+      if (item.roles && !item.roles.includes(user?.role)) return false
+      if (item.cycles && isDirecteur && schoolCycles.length > 0 && !item.cycles.some((c) => schoolCycles.includes(c))) return false
+      return true
+    })
   }
 
   const handleLogout = () => {
@@ -141,8 +147,12 @@ export default function Sidebar({ mobileOpen, onClose }) {
 
       {/* Scrollable nav sections */}
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3">
-        {sidebarSections.filter((s) => !s.adminOnly || user?.role === 'super_admin').map((section) => {
-          const visibleItems = filterByCycle(section.items)
+        {sidebarSections.filter((s) => {
+          if (s.adminOnly && user?.role !== 'super_admin') return false
+          if (s.roles && !s.roles.includes(user?.role)) return false
+          return true
+        }).map((section) => {
+          const visibleItems = filterItems(section.items)
           if (visibleItems.length === 0) return null
           return (
             <div key={section.label}>
