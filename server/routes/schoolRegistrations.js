@@ -252,4 +252,15 @@ router.put('/:id/reject', protect, authorize('super_admin'), async (req, res) =>
   }
 })
 
+// DELETE /api/school-registrations/:id — Super admin deletes
+router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const reg = await SchoolRegistration.findByIdAndDelete(req.params.id)
+    if (!reg) return res.status(404).json({ message: 'Demande non trouvée' })
+    res.json({ success: true, message: 'Demande supprimée' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

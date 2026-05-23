@@ -96,4 +96,45 @@ router.get('/stats', protect, async (req, res) => {
   }
 })
 
+// GET /api/dashboard/admin-stats — super_admin platform KPIs
+router.get('/admin-stats', protect, async (req, res) => {
+  if (req.user.role !== 'super_admin') return res.status(403).json({ message: 'Accès refusé' })
+  try {
+    const School = require('../models/School')
+    const User = require('../models/User')
+    const SchoolRegistration = require('../models/SchoolRegistration')
+
+    const [totalSchools, totalDirectors, totalTeachers, totalStudents, pendingRegistrations, totalClasses] = await Promise.all([
+      School.countDocuments({}),
+      User.countDocuments({ role: 'directeur' }),
+      Teacher.countDocuments({}),
+      Student.countDocuments({}),
+      SchoolRegistration.countDocuments({ status: 'pending' }),
+      Class.countDocuments({}),
+    ])
+
+    const recentSchools = await School.find({}).sort({ createdAt: -1 }).limit(5).select('name cycles address createdAt subscription')
+    const recentRegistrations = await SchoolRegistration.find({}).sort({ createdAt: -1 }).limit(5).select('schoolName directorName email cycle plan amount status createdAt')
+
+    // Revenue from approved registrations
+    const revenueAgg = await SchoolRegistration.aggregate([
+      { $match: { status: 'approved' } },
+      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    ])
+
+    res.json({
+      success: true,
+      data: {
+        totalSchools, totalDirectors, totalTeachers, totalStudents,
+        totalClasses, pendingRegistrations,
+        totalRevenue: revenueAgg[0]?.total || 0,
+        approvedCount: revenueAgg[0]?.count || 0,
+        recentSchools, recentRegistrations,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

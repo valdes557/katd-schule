@@ -8,32 +8,43 @@ import {
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
 
-// cycles: null = all cycles, ['Secondaire'] = only Secondaire, etc.
 // roles: array of allowed roles. undefined = all roles.
 const sidebarSections = [
   {
     label: 'GESTION DE L\'ÉCOLE',
+    roles: ['directeur'],
     items: [
-      { label: "Profil de l'école", icon: School, path: '/dashboard/profil', roles: ['directeur', 'super_admin'] },
-      { label: 'Informations générales', icon: Info, path: '/dashboard/infos', roles: ['directeur', 'super_admin'] },
+      { label: "Profil de l'école", icon: School, path: '/dashboard/profil' },
+      { label: 'Informations générales', icon: Info, path: '/dashboard/infos' },
       { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes' },
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
-      { label: 'Page de l\'école', icon: Globe, path: '/dashboard/page-ecole', roles: ['directeur', 'super_admin'] },
+      { label: 'Page de l\'école', icon: Globe, path: '/dashboard/page-ecole' },
     ],
   },
   {
     label: 'GESTION DES PERSONNES',
+    roles: ['directeur', 'enseignant', 'parent'],
     items: [
       { label: 'Enseignants', icon: UserCheck, path: '/dashboard/enseignants' },
       { label: 'Élèves', icon: GraduationCap, path: '/dashboard/eleves' },
-      { label: 'Inscriptions en ligne', icon: UserPlus, path: '/dashboard/inscriptions', roles: ['directeur', 'super_admin'] },
-      { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents', roles: ['directeur', 'super_admin'] },
-      { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel', roles: ['directeur', 'super_admin'] },
+      { label: 'Inscriptions en ligne', icon: UserPlus, path: '/dashboard/inscriptions', roles: ['directeur'] },
+      { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents', roles: ['directeur'] },
+      { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel', roles: ['directeur'] },
+    ],
+  },
+  {
+    label: 'VIE SCOLAIRE',
+    roles: ['directeur', 'enseignant', 'parent'],
+    items: [
+      { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes', roles: ['enseignant', 'parent'] },
+      { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres', roles: ['enseignant', 'parent'] },
+      { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps', roles: ['enseignant', 'parent'] },
     ],
   },
   {
     label: 'GESTION PÉDAGOGIQUE',
+    roles: ['directeur', 'enseignant'],
     items: [
       { label: 'Devoirs & Évaluations', icon: ClipboardList, path: '/dashboard/devoirs' },
       { label: 'Notes & Bulletins', icon: FileText, path: '/dashboard/notes' },
@@ -44,6 +55,7 @@ const sidebarSections = [
   },
   {
     label: 'COMMUNICATION',
+    roles: ['directeur', 'enseignant', 'parent'],
     items: [
       { label: 'Messagerie', icon: MessageSquare, path: '/dashboard/messagerie' },
       { label: 'Annonces', icon: Bell, path: '/dashboard/annonces' },
@@ -61,7 +73,7 @@ const sidebarSections = [
   },
   {
     label: 'RAPPORTS & STATISTIQUES',
-    roles: ['directeur', 'super_admin'],
+    roles: ['directeur'],
     items: [
       { label: 'Tableaux de bord', icon: BarChart2, path: '/dashboard/rapports' },
       { label: 'Rapports', icon: LineChart, path: '/dashboard/rapports/detail' },
@@ -70,10 +82,11 @@ const sidebarSections = [
   },
   {
     label: 'ADMINISTRATION',
-    adminOnly: true,
+    roles: ['super_admin'],
     items: [
+      { label: 'Écoles', icon: School, path: '/dashboard/ecoles-admin' },
+      { label: 'Demandes d\'écoles', icon: UserPlus, path: '/dashboard/demandes-ecoles' },
       { label: 'Localités (Pays/Villes)', icon: MapPin, path: '/dashboard/localites' },
-      { label: 'Demandes d\'écoles', icon: School, path: '/dashboard/demandes-ecoles' },
       { label: 'Gestion Plateforme', icon: LayoutGrid, path: '/dashboard/plateforme' },
     ],
   },
@@ -148,7 +161,6 @@ export default function Sidebar({ mobileOpen, onClose }) {
       {/* Scrollable nav sections */}
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3">
         {sidebarSections.filter((s) => {
-          if (s.adminOnly && user?.role !== 'super_admin') return false
           if (s.roles && !s.roles.includes(user?.role)) return false
           return true
         }).map((section) => {

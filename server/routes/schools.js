@@ -100,4 +100,17 @@ router.get('/:id/stats', protect, async (req, res) => {
   }
 })
 
+// @route  DELETE /api/schools/:id  (super_admin)
+router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const school = await School.findByIdAndDelete(req.params.id)
+    if (!school) return res.status(404).json({ message: 'École non trouvée' })
+    // Unlink the director
+    if (school.director) await User.findByIdAndUpdate(school.director, { $unset: { school: 1 } })
+    res.json({ success: true, message: 'École supprimée' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

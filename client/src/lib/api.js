@@ -33,6 +33,7 @@ export const authApi = {
 
 export const dashboardApi = {
   getStats: () => api.get('/dashboard/stats'),
+  getAdminStats: () => api.get('/dashboard/admin-stats'),
 }
 
 export const studentsApi = {
@@ -107,6 +108,7 @@ export const schoolsApi = {
     const res = await fetch(`${API_URL}/schools/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
+  remove: (id) => api.del(`/schools/${id}`),
 }
 
 export const locationsApi = {
@@ -132,7 +134,9 @@ export const schoolRegistrationApi = {
   get: (id) => api.get(`/school-registrations/${id}`),
   approve: (id) => api.put(`/school-registrations/${id}/approve`),
   reject: (id, reason) => api.put(`/school-registrations/${id}/reject`, { reason }),
+  remove: (id) => api.del(`/school-registrations/${id}`),
 }
+export const registrationsApi = schoolRegistrationApi
 
 export const plansApi = {
   list: () => api.get('/platform/plans'),

@@ -34,6 +34,7 @@ import DashboardSchoolProfilePage from './pages/DashboardSchoolProfilePage'
 import ClassesPage from './pages/ClassesPage'
 import MatieresPage from './pages/MatieresPage'
 import EmploiDuTempsPage from './pages/EmploiDuTempsPage'
+import AdminEcolesPage from './pages/AdminEcolesPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -110,6 +111,7 @@ export default function App() {
         <Route path="statistiques" element={<PlaceholderPage title="Statistiques" />} />
         <Route path="localites" element={<AdminLocationsPage />} />
         <Route path="demandes-ecoles" element={<AdminSchoolRegistrationsPage />} />
+        <Route path="ecoles-admin" element={<AdminEcolesPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
         <Route path="plateforme" element={<AdminPlatformPage />} />
       </Route>
