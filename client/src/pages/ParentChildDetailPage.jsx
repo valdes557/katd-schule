@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import {
   ArrowLeft, BookOpen, CalendarCheck, FileText, Clock, CheckCircle2,
-  XCircle, AlertTriangle, Loader2, RefreshCw, User,
+  XCircle, AlertTriangle, Loader2, RefreshCw, User, Download, Wifi, WifiOff,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
 
@@ -110,28 +110,62 @@ export default function ParentChildDetailPage() {
 
       {/* Tab Content */}
       {tab === 'overview' && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="card p-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{subjectAvg.length > 0 ? (subjectAvg.reduce((s, a) => s + a.moyenne, 0) / subjectAvg.length).toFixed(1) : '—'}</p>
-            <p className="text-xs text-gray-500">Moyenne générale /20</p>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-bold text-blue-600">{subjectAvg.length > 0 ? (subjectAvg.reduce((s, a) => s + a.moyenne, 0) / subjectAvg.length).toFixed(1) : '—'}</p>
+              <p className="text-xs text-gray-500">Moyenne générale /20</p>
+            </div>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-bold text-green-600">{attendance.length > 0 ? Math.round((attStats.present / attendance.length) * 100) : 0}%</p>
+              <p className="text-xs text-gray-500">Présence</p>
+            </div>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-bold text-purple-600">{hwSubmitted + hwLate}/{homeworks.length}</p>
+              <p className="text-xs text-gray-500">Devoirs rendus</p>
+            </div>
+            <div className="card p-4 text-center">
+              <p className={`text-2xl font-bold ${hwOverdue > 0 ? 'text-red-600' : 'text-gray-400'}`}>{hwOverdue}</p>
+              <p className="text-xs text-gray-500">En retard</p>
+            </div>
           </div>
-          <div className="card p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">{attendance.length > 0 ? Math.round((attStats.present / attendance.length) * 100) : 0}%</p>
-            <p className="text-xs text-gray-500">Présence</p>
-          </div>
-          <div className="card p-4 text-center">
-            <p className="text-2xl font-bold text-purple-600">{hwSubmitted + hwLate}/{homeworks.length}</p>
-            <p className="text-xs text-gray-500">Devoirs rendus</p>
-          </div>
-          <div className="card p-4 text-center">
-            <p className={`text-2xl font-bold ${hwOverdue > 0 ? 'text-red-600' : 'text-gray-400'}`}>{hwOverdue}</p>
-            <p className="text-xs text-gray-500">En retard</p>
+
+          {/* Connexion & Activité */}
+          <div className="card p-4">
+            <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2"><Wifi size={14} className="text-green-600" /> Activité & Connexion</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="flex items-center gap-2">
+                <div className={`w-2.5 h-2.5 rounded-full ${data.lastActivity && (new Date() - new Date(data.lastActivity)) < 15 * 60 * 1000 ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+                <span className="text-xs text-gray-700">
+                  {data.lastActivity && (new Date() - new Date(data.lastActivity)) < 15 * 60 * 1000
+                    ? 'En ligne maintenant'
+                    : data.lastActivity ? `Dernière connexion: ${new Date(data.lastActivity).toLocaleString('fr-FR')}` : 'Aucune activité'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock size={13} className="text-blue-500" />
+                <span className="text-xs text-gray-700">Temps connecté cette semaine: <strong>{data.weeklyScreenTime ? `${Math.floor(data.weeklyScreenTime / 60)}h${String(data.weeklyScreenTime % 60).padStart(2, '0')}` : '—'}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CalendarCheck size={13} className="text-purple-500" />
+                <span className="text-xs text-gray-700">Jours actifs: <strong>{data.activeDays ?? '—'}/7</strong></span>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {tab === 'notes' && (
         <div className="space-y-5">
+          {/* Download bulletin */}
+          <div className="flex justify-end">
+            <button
+              onClick={() => window.print()}
+              className="btn-ghost text-xs border border-gray-200 flex items-center gap-1.5"
+            >
+              <Download size={13} /> Télécharger le bulletin (PDF)
+            </button>
+          </div>
           {subjectAvg.length > 0 ? (
             <div className="card p-5">
               <h3 className="text-sm font-semibold text-gray-800 mb-4">Moyennes par matière</h3>

@@ -11,6 +11,7 @@ const ParentalControl = require('../models/ParentalControl')
 const Timetable = require('../models/Timetable')
 const Class = require('../models/Class')
 const Message = require('../models/Message')
+const Document = require('../models/Document')
 
 // Middleware: only parents
 const parentOnly = (req, res, next) => {
@@ -183,6 +184,11 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
       gradesBySubject[g.subject].push({ value: g.value, type: g.type, term: g.term, date: g.date, comment: g.comment, coefficient: g.coefficient })
     })
 
+    // Activity & connection time from parental controls
+    const ctrl = await ParentalControl.findOne({ student: student._id })
+    const oneWeekAgo = new Date(); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
+    const weeklyAttendanceCount = attendanceRecords.filter(a => new Date(a.date) >= oneWeekAgo && a.status === 'present').length
+
     res.json({
       success: true,
       data: {
@@ -204,6 +210,9 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
         attendance: attendanceRecords,
         homeworks,
         timetable: timetable?.slots || [],
+        lastActivity: ctrl?.lastActivity || null,
+        weeklyScreenTime: ctrl?.todayScreenMinutes || 0,
+        activeDays: weeklyAttendanceCount,
       },
     })
   } catch (err) {
@@ -356,6 +365,53 @@ router.get('/report/:studentId', protect, parentOnly, async (req, res) => {
         homeworkTotal: recentHomework.length,
       },
     })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// ─── DOCUMENTS ADMINISTRATIFS ───
+router.get('/documents/:studentId', protect, parentOnly, async (req, res) => {
+  try {
+    const student = await Student.findOne({ _id: req.params.studentId, parentUser: req.user._id })
+    if (!student) return res.status(404).json({ message: 'Enfant non trouvé' })
+
+    const docs = await Document.find({ student: student._id, parent: req.user._id }).sort({ createdAt: -1 })
+    res.json({ success: true, data: docs })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+router.post('/documents/:studentId/generate', protect, parentOnly, async (req, res) => {
+  try {
+    const student = await Student.findOne({ _id: req.params.studentId, parentUser: req.user._id })
+      .populate('class', 'name level cycle')
+      .populate('school', 'name')
+    if (!student) return res.status(404).json({ message: 'Enfant non trouvé' })
+
+    const { type } = req.body
+    if (!['certificat_scolarite', 'attestation_inscription', 'bulletin', 'attestation_reussite'].includes(type)) {
+      return res.status(400).json({ message: 'Type de document invalide' })
+    }
+
+    const doc = await Document.create({
+      student: student._id,
+      school: student.school?._id || student.school,
+      parent: req.user._id,
+      type,
+      status: 'ready',
+      metadata: {
+        studentName: `${student.lastName} ${student.firstName}`,
+        matricule: student.matricule,
+        className: student.class?.name,
+        cycle: student.cycle,
+        schoolName: student.school?.name,
+        generatedAt: new Date(),
+      },
+    })
+
+    res.status(201).json({ success: true, data: doc })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

@@ -28,6 +28,7 @@ const sidebarSections = [
     items: [
       { label: 'Mes enfants', icon: GraduationCap, path: '/dashboard' },
       { label: 'Finances & Paiements', icon: CreditCard, path: '/dashboard/parent/finances' },
+      { label: 'Documents administratifs', icon: FileText, path: '/dashboard/parent/documents' },
       { label: 'Rendez-vous', icon: CalendarCheck, path: '/dashboard/parent/rendez-vous' },
     ],
   },

@@ -283,6 +283,8 @@ export const parentApi = {
   getControls: (studentId) => api.get(`/parent/controls/${studentId}`),
   updateControls: (studentId, data) => api.put(`/parent/controls/${studentId}`, data),
   weeklyReport: (studentId) => api.get(`/parent/report/${studentId}`),
+  documents: (studentId) => api.get(`/parent/documents/${studentId}`),
+  generateDocument: (studentId, type) => api.post(`/parent/documents/${studentId}/generate`, { type }),
 }
 
 export default api

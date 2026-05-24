@@ -39,6 +39,7 @@ import ParentChildDetailPage from './pages/ParentChildDetailPage'
 import ParentFinancesPage from './pages/ParentFinancesPage'
 import ParentControlsPage from './pages/ParentControlsPage'
 import ParentAppointmentsPage from './pages/ParentAppointmentsPage'
+import ParentDocumentsPage from './pages/ParentDocumentsPage'
 import TeacherHomeworkPage from './pages/TeacherHomeworkPage'
 import TeacherAnalyticsPage from './pages/TeacherAnalyticsPage'
 import TeacherStudentsPage from './pages/TeacherStudentsPage'
@@ -131,6 +132,7 @@ export default function App() {
         <Route path="parent/finances" element={<ParentFinancesPage />} />
         <Route path="parent/controles" element={<ParentControlsPage />} />
         <Route path="parent/rendez-vous" element={<ParentAppointmentsPage />} />
+        <Route path="parent/documents" element={<ParentDocumentsPage />} />
       </Route>
 
       {/* 404 fallback */}
