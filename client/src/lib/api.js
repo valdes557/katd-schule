@@ -163,6 +163,7 @@ export const platformApi = {
     const res = await fetch(`${API_URL}/platform/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
+  updatePost: (id, data) => api.put(`/platform/posts/${id}`, data),
   deletePost: (id) => api.del(`/platform/posts/${id}`),
   likePost: (id) => api.put(`/platform/posts/${id}/like`),
   commentPost: (id, content) => api.post(`/platform/posts/${id}/comment`, { content }),
@@ -181,6 +182,20 @@ export const platformApi = {
   createPaymentMethod: (data) => api.post('/platform/payment-methods', data),
   updatePaymentMethod: (id, data) => api.put(`/platform/payment-methods/${id}`, data),
   deletePaymentMethod: (id) => api.del(`/platform/payment-methods/${id}`),
+  // Resources
+  getResources: (category = '') => api.get(`/platform/resources${category ? `?category=${category}` : ''}`),
+  getAllResources: () => api.get('/platform/resources/all'),
+  createResource: async (formData) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/platform/resources`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    return res.json()
+  },
+  updateResource: async (id, formData) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/platform/resources/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    return res.json()
+  },
+  deleteResource: (id) => api.del(`/platform/resources/${id}`),
 }
 
 export const subjectsApi = {

@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Globe2, Plus, Trash2, CheckCircle, XCircle,
   Image, Film, Save, Loader2, Star,
-  MessageCircle, CreditCard, Phone, Info,
+  MessageCircle, CreditCard, Phone, Info, Pencil, X, FileText, Link, Music,
 } from 'lucide-react'
 import { platformApi, plansApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 const TABS = [
-  { id: 'posts', label: 'Publications', icon: Globe2 },
+  { id: 'posts', label: 'Social', icon: Globe2 },
+  { id: 'resources', label: 'Ressources', icon: FileText },
   { id: 'about', label: 'À propos', icon: Info },
   { id: 'contacts', label: 'Contacts', icon: Phone },
   { id: 'support', label: 'Donations', icon: CreditCard },
@@ -72,10 +73,30 @@ function PostsPanel() {
     setSubmitting(false)
   }
 
+  const [editPost, setEditPost] = useState(null)
+  const [editForm, setEditForm] = useState({ title: '', content: '', category: '' })
+  const [updating, setUpdating] = useState(false)
+
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cette publication ?')) return
     await platformApi.deletePost(id)
     setPosts((p) => p.filter((x) => x._id !== id))
+  }
+
+  const openEdit = (p) => { setEditPost(p); setEditForm({ title: p.title || '', content: p.content || '', category: p.category || '' }) }
+
+  const handleUpdate = async (e) => {
+    e.preventDefault()
+    if (!editPost) return
+    setUpdating(true)
+    try {
+      const r = await platformApi.updatePost(editPost._id, editForm)
+      if (r.success) {
+        setPosts((p) => p.map((x) => x._id === editPost._id ? r.data : x))
+        setEditPost(null)
+      } else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+    setUpdating(false)
   }
 
   return (
@@ -192,13 +213,192 @@ function PostsPanel() {
                   </div>
                 </div>
               </div>
-              <button onClick={() => handleDelete(p._id)} className="text-red-400 hover:text-red-600 p-1 flex-shrink-0">
-                <Trash2 size={15} />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button onClick={() => openEdit(p)} className="text-blue-400 hover:text-blue-600 p-1"><Pencil size={14} /></button>
+                <button onClick={() => handleDelete(p._id)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={15} /></button>
+              </div>
             </div>
           ))
         )}
       </div>
+      {/* Edit modal */}
+      {editPost && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900">Modifier la publication</h3>
+              <button onClick={() => setEditPost(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <form onSubmit={handleUpdate} className="space-y-3">
+              <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="input text-sm w-full" placeholder="Titre" />
+              <textarea value={editForm.content} onChange={(e) => setEditForm({ ...editForm, content: e.target.value })} rows={4} className="input text-sm resize-none w-full" placeholder="Description *" required />
+              <select value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} className="input text-sm w-full">
+                <option value="">Catégorie</option>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setEditPost(null)} className="btn-ghost text-sm">Annuler</button>
+                <button type="submit" disabled={updating} className="btn-primary text-sm">
+                  {updating ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Resources Panel ──────────────────────────────────────────────────────────
+const RESOURCE_TYPES = [
+  { id: 'document', label: 'Document', icon: '📄' },
+  { id: 'pdf', label: 'PDF', icon: '📕' },
+  { id: 'video', label: 'Vidéo', icon: '🎬' },
+  { id: 'audio', label: 'Audio', icon: '🎵' },
+  { id: 'image', label: 'Image', icon: '🖼️' },
+  { id: 'link', label: 'Lien', icon: '🔗' },
+]
+const RESOURCE_CATEGORIES = ['Général', 'Éducation', 'Sciences', 'Mathématiques', 'Langues', 'Technologie', 'Arts', 'Sport']
+
+function ResourcesPanel() {
+  const [resources, setResources] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [form, setForm] = useState({ title: '', description: '', type: 'document', category: 'Général', url: '', isPublic: true })
+  const [file, setFile] = useState(null)
+  const fileRef = useRef()
+
+  const load = () => {
+    setLoading(true)
+    platformApi.getAllResources().then((r) => setResources(r.data || [])).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const resetForm = () => {
+    setForm({ title: '', description: '', type: 'document', category: 'Général', url: '', isPublic: true })
+    setFile(null); setEditId(null); setShowForm(false)
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const fd = new FormData()
+      Object.entries(form).forEach(([k, v]) => fd.append(k, v))
+      if (file) fd.append('file', file)
+      let r
+      if (editId) r = await platformApi.updateResource(editId, fd)
+      else r = await platformApi.createResource(fd)
+      if (r.success) { load(); resetForm() } else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  const handleEdit = (res) => {
+    setForm({ title: res.title, description: res.description || '', type: res.type, category: res.category || 'Général', url: res.url || '', isPublic: res.isPublic })
+    setEditId(res._id); setShowForm(true)
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('Supprimer cette ressource ?')) return
+    await platformApi.deleteResource(id)
+    setResources((p) => p.filter((x) => x._id !== id))
+  }
+
+  const TYPE_ICON = { document: '📄', pdf: '📕', video: '🎬', audio: '🎵', image: '🖼️', link: '🔗' }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">Ressources pédagogiques</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Documents, PDF, vidéos et liens partagés publiquement</p>
+        </div>
+        <button onClick={() => { resetForm(); setShowForm(true) }} className="btn-primary text-sm flex items-center gap-1.5">
+          <Plus size={14} /> Ajouter
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-3">
+          <h4 className="text-sm font-bold text-gray-900">{editId ? 'Modifier' : 'Nouvelle'} ressource</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-gray-600 block mb-1">Titre *</label>
+              <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="input text-sm w-full" placeholder="Ex: Guide de mathématiques CM2" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Type</label>
+              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input text-sm w-full">
+                {RESOURCE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Catégorie</label>
+              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input text-sm w-full">
+                {RESOURCE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-gray-600 block mb-1">Description</label>
+              <textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input text-sm resize-none w-full" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-gray-600 block mb-1">Lien URL (ou uploader un fichier ci-dessous)</label>
+              <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} className="input text-sm w-full" placeholder="https://..." />
+            </div>
+            <div className="sm:col-span-2 flex items-center gap-3">
+              <button type="button" onClick={() => fileRef.current?.click()} className="btn-ghost text-sm border border-dashed border-gray-300 flex-1 justify-center py-2">
+                <FileText size={14} /> {file ? file.name : 'Uploader un fichier'}
+              </button>
+              <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={form.isPublic} onChange={(e) => setForm({ ...form, isPublic: e.target.checked })} className="rounded" />
+                Visible publiquement
+              </label>
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={resetForm} className="btn-ghost text-sm">Annuler</button>
+            <button type="submit" disabled={saving} className="btn-primary text-sm flex items-center gap-1.5">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {editId ? 'Mettre à jour' : 'Créer'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+      ) : resources.length === 0 ? (
+        <p className="text-center text-sm text-gray-400 py-10">Aucune ressource ajoutée.</p>
+      ) : (
+        <div className="space-y-2">
+          {resources.map((res) => (
+            <div key={res._id} className={`bg-white border rounded-xl p-4 flex items-center gap-3 ${!res.isPublic ? 'opacity-60' : ''}`}>
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0 text-lg">
+                {TYPE_ICON[res.type] || '📄'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-900 truncate">{res.title}</span>
+                  {!res.isPublic && <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Privé</span>}
+                </div>
+                <p className="text-xs text-gray-500">{res.category} · {res.type} · {res.downloads || 0} téléchargements</p>
+                {res.description && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{res.description}</p>}
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {res.url && <a href={res.url} target="_blank" rel="noreferrer" className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg"><Link size={14} /></a>}
+                <button onClick={() => handleEdit(res)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil size={14} /></button>
+                <button onClick={() => handleDelete(res._id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -806,6 +1006,7 @@ export default function AdminPlatformPage() {
       ) : (
         <>
           {tab === 'posts' && <PostsPanel />}
+          {tab === 'resources' && <ResourcesPanel />}
           {tab === 'about' && <AboutPanel platformData={platformData} refresh={load} />}
           {tab === 'contacts' && <ContactsPanel platformData={platformData} refresh={load} />}
           {tab === 'support' && <DonationsPanel platformData={platformData} refresh={load} />}

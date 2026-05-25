@@ -5,6 +5,7 @@ const SchoolPost = require('../models/SchoolPost')
 const SchoolReview = require('../models/SchoolReview')
 const PlatformPaymentMethod = require('../models/PlatformPaymentMethod')
 const SubscriptionPlan = require('../models/SubscriptionPlan')
+const Resource = require('../models/Resource')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
 
@@ -88,6 +89,20 @@ router.post('/posts', protect, authorize('super_admin'), upload.fields([{ name: 
     })
     const populated = await post.populate('author', 'name avatar')
     res.status(201).json({ success: true, data: populated })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/platform/posts/:id — Super Admin: edit post
+router.put('/posts/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const { title, content, category, isPublic } = req.body
+    const post = await SchoolPost.findByIdAndUpdate(
+      req.params.id,
+      { ...(title !== undefined && { title }), ...(content !== undefined && { content }), ...(category !== undefined && { category }), ...(isPublic !== undefined && { isPublic }) },
+      { new: true }
+    ).populate('author', 'name avatar')
+    if (!post) return res.status(404).json({ message: 'Post non trouvé' })
+    res.json({ success: true, data: post })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -271,6 +286,79 @@ router.delete('/plans/:id', protect, authorize('super_admin'), async (req, res) 
   try {
     await SubscriptionPlan.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Plan supprimé' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ===================== RESOURCES =====================
+
+// GET /api/platform/resources — Public: list public resources
+router.get('/resources', async (req, res) => {
+  try {
+    const { category } = req.query
+    const query = { isPublic: true }
+    if (category) query.category = category
+    const resources = await Resource.find(query).sort({ createdAt: -1 })
+    res.json({ success: true, data: resources })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/platform/resources/all — Super Admin: all resources
+router.get('/resources/all', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const resources = await Resource.find().sort({ createdAt: -1 })
+    res.json({ success: true, data: resources })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/platform/resources — Super Admin: create resource
+router.post('/resources', protect, authorize('super_admin'), upload.single('file'), async (req, res) => {
+  try {
+    const fileUrl = req.file?.path || req.body.url || ''
+    const resource = await Resource.create({
+      title: req.body.title,
+      description: req.body.description || '',
+      type: req.body.type || 'document',
+      category: req.body.category || 'Général',
+      url: fileUrl,
+      fileSize: req.body.fileSize || '',
+      isPublic: req.body.isPublic !== 'false',
+      author: req.user._id,
+    })
+    res.status(201).json({ success: true, data: resource })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/platform/resources/:id — Super Admin: update resource
+router.put('/resources/:id', protect, authorize('super_admin'), upload.single('file'), async (req, res) => {
+  try {
+    const update = {
+      title: req.body.title,
+      description: req.body.description,
+      type: req.body.type,
+      category: req.body.category,
+      isPublic: req.body.isPublic !== 'false',
+    }
+    if (req.file?.path) update.url = req.file.path
+    else if (req.body.url) update.url = req.body.url
+    const resource = await Resource.findByIdAndUpdate(req.params.id, update, { new: true })
+    if (!resource) return res.status(404).json({ message: 'Ressource non trouvée' })
+    res.json({ success: true, data: resource })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// DELETE /api/platform/resources/:id — Super Admin
+router.delete('/resources/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    await Resource.findByIdAndDelete(req.params.id)
+    res.json({ success: true, message: 'Ressource supprimée' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/platform/resources/:id/download — Track download
+router.put('/resources/:id/download', async (req, res) => {
+  try {
+    await Resource.findByIdAndUpdate(req.params.id, { $inc: { downloads: 1 } })
+    res.json({ success: true })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

@@ -1,6 +1,5 @@
 const express = require('express')
 const router = express.Router()
-const bcrypt = require('bcryptjs')
 const SchoolRegistration = require('../models/SchoolRegistration')
 const School = require('../models/School')
 const User = require('../models/User')
@@ -135,14 +134,13 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
       },
     })
 
-    // Create director user account
+    // Create director user account (pre-save hook in User model handles hashing)
     const rawPassword = `katd${Math.floor(10000 + Math.random() * 90000)}`
-    const hashedPassword = await bcrypt.hash(rawPassword, 10)
 
     const user = await User.create({
       name: reg.directorName,
       email: reg.email,
-      password: hashedPassword,
+      password: rawPassword,
       role: 'directeur',
       school: school._id,
       phone: reg.whatsapp,
