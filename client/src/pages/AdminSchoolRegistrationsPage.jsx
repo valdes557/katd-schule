@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, KeyRound } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
+import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, KeyRound, AlertTriangle } from 'lucide-react'
 import { schoolRegistrationApi } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -17,33 +17,63 @@ export default function AdminSchoolRegistrationsPage() {
   const [rejectReason, setRejectReason] = useState('')
   const [processing, setProcessing] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
-  const [credentialsModal, setCredentialsModal] = useState(null) // { email, password }
+  const [credentialsModal, setCredentialsModal] = useState(null)
+  const [confirmModal, setConfirmModal] = useState(null)
+  const [toast, setToast] = useState(null)
+  const toastTimer = useRef(null)
 
-  const load = async () => {
+  const showToast = (type, message) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast({ type, message })
+    toastTimer.current = setTimeout(() => setToast(null), 5000)
+  }
+
+  const load = async (newFilter) => {
     setLoading(true)
     try {
-      const res = await schoolRegistrationApi.list(`status=${filter}`)
+      const f = newFilter !== undefined ? newFilter : filter
+      const res = await schoolRegistrationApi.list(`status=${f}`)
       setRegistrations(res.data || [])
-    } catch (e) { console.error(e) }
+    } catch (e) { showToast('error', 'Erreur de chargement : ' + e.message) }
     setLoading(false)
   }
 
   useEffect(() => { load() }, [filter])
 
-  const handleApprove = async (id) => {
-    if (!window.confirm('Approuver cette demande ? Un compte directeur sera créé et les identifiants envoyés par email.')) return
+  const handleApprove = (reg) => {
+    setConfirmModal({ id: reg._id, action: 'approve', schoolName: reg.schoolName, directorName: reg.directorName, email: reg.email })
+  }
+
+  const handleRevoke = (reg) => {
+    setConfirmModal({ id: reg._id, action: 'revoke', schoolName: reg.schoolName, directorName: reg.directorName })
+  }
+
+  const executeConfirm = async () => {
+    if (!confirmModal) return
+    const { id, action } = confirmModal
+    setConfirmModal(null)
     setProcessing(id)
     try {
-      const result = await schoolRegistrationApi.approve(id)
-      if (result.emailSent) {
-        alert('✅ Approuvé ! Le reçu et les identifiants ont été envoyés par email au directeur.')
-      } else {
-        const pwd = result.data?.user?.rawPassword
-        setCredentialsModal({ password: pwd || '(inconnu)', sent: false, error: 'Email non envoyé — SMTP non configuré ?' })
+      if (action === 'approve') {
+        const result = await schoolRegistrationApi.approve(id)
+        if (result.emailSent) {
+          showToast('success', `✅ Compte directeur créé ! Email avec identifiants envoyé à ${confirmModal.email}.`)
+        } else {
+          const pwd = result.data?.user?.rawPassword
+          setCredentialsModal({ password: pwd || '(voir logs serveur)', sent: false, error: result.message || 'SMTP non configuré' })
+          showToast('warning', 'Compte créé mais email non envoyé — identifiants affichés ci-dessous.')
+        }
+        setExpandedId(null)
+        setFilter('approved')
+        await load('approved')
+      } else if (action === 'revoke') {
+        await schoolRegistrationApi.revoke(id)
+        showToast('success', `✅ Compte de "${confirmModal.schoolName}" révoqué. Le dossier peut être resoumis.`)
+        await load('approved')
       }
-      load()
-      setExpandedId(null)
-    } catch (e) { alert('❌ Erreur : ' + e.message) }
+    } catch (e) {
+      showToast('error', '❌ Erreur : ' + e.message)
+    }
     setProcessing(null)
   }
 
@@ -51,23 +81,9 @@ export default function AdminSchoolRegistrationsPage() {
     setProcessing(id)
     try {
       const result = await schoolRegistrationApi.resendCredentials(id)
-      if (result.emailSent) {
-        setCredentialsModal({ email: result.data?.email || '', password: result.rawPassword, sent: true })
-      } else {
-        setCredentialsModal({ email: '', password: result.rawPassword, sent: false, error: result.message })
-      }
-    } catch (e) { alert('❌ Erreur : ' + e.message) }
-    setProcessing(null)
-  }
-
-  const handleRevoke = async (id, schoolName) => {
-    if (!window.confirm(`Révoquer le compte de "${schoolName}" ?\n\nCeci supprimera définitivement :\n• Le compte directeur\n• L'école\n• Cette demande\n\nL'administrateur pourra soumettre une nouvelle demande avec le même email.`)) return
-    setProcessing(id)
-    try {
-      await schoolRegistrationApi.revoke(id)
-      alert('✅ Compte révoqué. La demande a été supprimée.')
-      load()
-    } catch (e) { alert('❌ Erreur : ' + e.message) }
+      setCredentialsModal({ password: result.rawPassword || '(inconnu)', sent: result.emailSent, error: result.emailSent ? null : result.message })
+      if (result.emailSent) showToast('success', 'Nouveaux identifiants envoyés par email.')
+    } catch (e) { showToast('error', '❌ Erreur : ' + e.message) }
     setProcessing(null)
   }
 
@@ -78,14 +94,31 @@ export default function AdminSchoolRegistrationsPage() {
       await schoolRegistrationApi.reject(showRejectModal, rejectReason)
       setShowRejectModal(null)
       setRejectReason('')
-      load()
       setExpandedId(null)
-    } catch (e) { alert(e.message) }
+      showToast('success', 'Demande rejetée et email envoyé.')
+      await load()
+    } catch (e) { showToast('error', '❌ Erreur : ' + e.message) }
     setProcessing(null)
   }
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* Toast */}
+      {toast && (
+        <div className={cn(
+          'fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg border text-sm font-medium max-w-md w-full transition-all',
+          toast.type === 'success' && 'bg-green-50 border-green-300 text-green-800',
+          toast.type === 'error' && 'bg-red-50 border-red-300 text-red-800',
+          toast.type === 'warning' && 'bg-amber-50 border-amber-300 text-amber-800',
+        )}>
+          {toast.type === 'success' && <CheckCircle2 size={18} className="text-green-600 flex-shrink-0" />}
+          {toast.type === 'error' && <XCircle size={18} className="text-red-600 flex-shrink-0" />}
+          {toast.type === 'warning' && <AlertTriangle size={18} className="text-amber-600 flex-shrink-0" />}
+          <span className="flex-1">{toast.message}</span>
+          <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100"><X size={14} /></button>
+        </div>
+      )}
+
       <div>
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <School size={22} className="text-blue-600" /> Demandes de souscription
@@ -199,7 +232,7 @@ export default function AdminSchoolRegistrationsPage() {
                     {reg.status === 'pending' && (
                       <div className="flex items-center gap-3">
                         <button
-                          onClick={() => handleApprove(reg._id)}
+                          onClick={(e) => { e.stopPropagation(); handleApprove(reg) }}
                           disabled={!!processing}
                           className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-50"
                         >
@@ -207,7 +240,7 @@ export default function AdminSchoolRegistrationsPage() {
                           Approuver — Créer le compte directeur
                         </button>
                         <button
-                          onClick={() => setShowRejectModal(reg._id)}
+                          onClick={(e) => { e.stopPropagation(); setShowRejectModal(reg._id) }}
                           className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-red-100 transition-colors"
                         >
                           <X size={14} /> Rejeter
@@ -221,15 +254,15 @@ export default function AdminSchoolRegistrationsPage() {
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => handleResend(reg._id)}
+                            onClick={(e) => { e.stopPropagation(); handleResend(reg._id) }}
                             disabled={!!processing}
                             className="flex-1 flex items-center justify-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors disabled:opacity-50"
                           >
-                            {processing === reg._id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                            {isProcessing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                             Renvoyer identifiants
                           </button>
                           <button
-                            onClick={() => handleRevoke(reg._id, reg.schoolName)}
+                            onClick={(e) => { e.stopPropagation(); handleRevoke(reg) }}
                             disabled={!!processing}
                             className="flex items-center justify-center gap-1.5 bg-red-50 text-red-600 border border-red-200 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-red-100 transition-colors disabled:opacity-50"
                           >
@@ -246,30 +279,64 @@ export default function AdminSchoolRegistrationsPage() {
         </div>
       )}
 
-      {/* Credentials modal (after resend) */}
+      {/* Confirm modal (approve / revoke) */}
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-4 mb-5">
+              <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', confirmModal.action === 'approve' ? 'bg-green-100' : 'bg-red-100')}>
+                {confirmModal.action === 'approve'
+                  ? <Check size={20} className="text-green-600" />
+                  : <AlertTriangle size={20} className="text-red-600" />}
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  {confirmModal.action === 'approve' ? 'Approuver cette demande ?' : 'Révoquer ce compte ?'}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {confirmModal.action === 'approve'
+                    ? <>Un compte directeur sera créé pour <strong>{confirmModal.directorName}</strong> ({confirmModal.schoolName}) et les identifiants envoyés à <strong>{confirmModal.email}</strong>.</>
+                    : <>Le compte de <strong>{confirmModal.directorName}</strong>, l'école <strong>{confirmModal.schoolName}</strong> et cette demande seront supprimés définitivement. Un nouveau dossier pourra être soumis avec le même email.</>}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmModal(null)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                Annuler
+              </button>
+              <button
+                onClick={executeConfirm}
+                className={cn('flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors', confirmModal.action === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700')}
+              >
+                {confirmModal.action === 'approve' ? <><Check size={14} /> Oui, approuver</> : <><Trash2 size={14} /> Oui, révoquer</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Credentials modal */}
       {credentialsModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <KeyRound size={16} className="text-blue-600" /> Identifiants réinitialisés
+                <KeyRound size={16} className="text-blue-600" /> Identifiants du directeur
               </h3>
               <button onClick={() => setCredentialsModal(null)} className="p-1 hover:bg-gray-100 rounded"><X size={16} /></button>
             </div>
-            {credentialsModal.sent ? (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-700 mb-4 flex items-center gap-2">
-                <CheckCircle2 size={14} /> Email envoyé avec succès au directeur.
-              </div>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 mb-4">
-                ⚠️ Email non envoyé ({credentialsModal.error}). Transmettez manuellement ces identifiants :
-              </div>
-            )}
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2 text-sm font-mono">
-              <p><span className="text-gray-500 text-xs">Mot de passe :</span></p>
-              <p className="text-lg font-bold text-blue-700 tracking-widest select-all">{credentialsModal.password}</p>
+            {credentialsModal.sent
+              ? <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-700 mb-4 flex items-center gap-2"><CheckCircle2 size={13} /> Email envoyé avec succès au directeur.</div>
+              : <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 mb-4"><AlertTriangle size={13} className="inline mr-1" />Email non envoyé ({credentialsModal.error}). Transmettez manuellement :</div>
+            }
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+              <p className="text-xs text-gray-400 mb-1">Mot de passe temporaire</p>
+              <p className="text-2xl font-bold text-blue-700 tracking-[0.2em] select-all font-mono">{credentialsModal.password}</p>
+              <p className="text-[11px] text-gray-400 mt-2">Cliquez sur le mot de passe pour le sélectionner, puis copiez-le.</p>
             </div>
-            <button onClick={() => setCredentialsModal(null)} className="btn-primary w-full justify-center mt-4 text-sm">OK</button>
+            <button onClick={() => setCredentialsModal(null)} className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors">
+              OK, compris
+            </button>
           </div>
         </div>
       )}
