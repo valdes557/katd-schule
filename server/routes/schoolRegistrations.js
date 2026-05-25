@@ -270,7 +270,83 @@ router.put('/:id/reject', protect, authorize('super_admin'), async (req, res) =>
   }
 })
 
-// DELETE /api/school-registrations/:id — Super admin deletes
+// POST /api/school-registrations/:id/resend-credentials — Resend email with new password
+router.post('/:id/resend-credentials', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const reg = await SchoolRegistration.findById(req.params.id)
+    if (!reg) return res.status(404).json({ message: 'Demande non trouvée' })
+    if (reg.status !== 'approved') return res.status(400).json({ message: 'La demande n\'est pas approuvée' })
+
+    const user = await User.findById(reg.userCreated)
+    if (!user) return res.status(404).json({ message: 'Compte directeur introuvable' })
+
+    // Generate a new password
+    const rawPassword = `katd${Math.floor(10000 + Math.random() * 90000)}`
+    user.password = rawPassword
+    await user.save()
+
+    const planLabel = reg.plan === 'annual' ? 'Annuel' : 'Trimestriel'
+    const emailResult = await sendEmail({
+      to: reg.email,
+      subject: `🔑 Nouveaux identifiants de connexion — ${reg.schoolName} | KATD-SCHÜLE`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+          <div style="background:linear-gradient(135deg,#2563EB,#4F46E5);padding:28px;border-radius:12px 12px 0 0;text-align:center">
+            <h1 style="color:white;margin:0">KATD-SCHÜLE</h1>
+            <p style="color:#BFDBFE;margin-top:6px;font-size:14px">Réinitialisation des identifiants</p>
+          </div>
+          <div style="background:#F9FAFB;padding:28px;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 12px 12px">
+            <p style="color:#374151">Bonjour <strong>${reg.directorName}</strong>,</p>
+            <p style="color:#4B5563;font-size:14px">Vos identifiants de connexion pour <strong>${reg.schoolName}</strong> ont été réinitialisés :</p>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:20px;margin:16px 0">
+              <h3 style="color:#1E40AF;margin-top:0;font-size:14px">🔐 Nouveaux identifiants</h3>
+              <table style="width:100%;font-size:14px">
+                <tr><td style="padding:8px 0;color:#4B5563">Email</td><td style="padding:8px 0;color:#111827;font-weight:700">${reg.email}</td></tr>
+                <tr><td style="padding:8px 0;color:#4B5563">Nouveau mot de passe</td><td style="padding:8px 0;color:#111827;font-weight:700;letter-spacing:1px">${rawPassword}</td></tr>
+              </table>
+              <p style="color:#DC2626;font-size:12px;margin:12px 0 0;font-weight:600">⚠️ Changez ce mot de passe après connexion.</p>
+            </div>
+            <div style="text-align:center;margin-top:20px">
+              <a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="display:inline-block;background:linear-gradient(135deg,#2563EB,#4F46E5);color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600">🚀 Accéder à mon espace</a>
+            </div>
+          </div>
+        </div>
+      `,
+    })
+
+    res.json({
+      success: true,
+      emailSent: emailResult.success,
+      rawPassword,
+      message: emailResult.success
+        ? 'Nouveaux identifiants envoyés par email.'
+        : 'Mot de passe réinitialisé mais email non envoyé : ' + (emailResult.error || 'erreur'),
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// DELETE /api/school-registrations/:id/revoke — Revoke: delete User + School + Registration
+router.delete('/:id/revoke', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const reg = await SchoolRegistration.findById(req.params.id)
+    if (!reg) return res.status(404).json({ message: 'Demande non trouvée' })
+
+    if (reg.userCreated) await User.findByIdAndDelete(reg.userCreated)
+    if (reg.schoolCreated) {
+      const School = require('../models/School')
+      await School.findByIdAndDelete(reg.schoolCreated)
+    }
+    await SchoolRegistration.findByIdAndDelete(reg._id)
+
+    res.json({ success: true, message: 'Compte directeur et école supprimés. Un nouveau dossier peut être soumis avec cet email.' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// DELETE /api/school-registrations/:id — Super admin deletes pending/rejected record only
 router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
   try {
     const reg = await SchoolRegistration.findByIdAndDelete(req.params.id)

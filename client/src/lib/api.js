@@ -136,6 +136,8 @@ export const schoolRegistrationApi = {
   get: (id) => api.get(`/school-registrations/${id}`),
   approve: (id) => api.put(`/school-registrations/${id}/approve`),
   reject: (id, reason) => api.put(`/school-registrations/${id}/reject`, { reason }),
+  resendCredentials: (id) => api.post(`/school-registrations/${id}/resend-credentials`),
+  revoke: (id) => api.del(`/school-registrations/${id}/revoke`),
   remove: (id) => api.del(`/school-registrations/${id}`),
 }
 export const registrationsApi = schoolRegistrationApi

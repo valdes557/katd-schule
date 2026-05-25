@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, KeyRound } from 'lucide-react'
 import { schoolRegistrationApi } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -17,6 +17,7 @@ export default function AdminSchoolRegistrationsPage() {
   const [rejectReason, setRejectReason] = useState('')
   const [processing, setProcessing] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+  const [credentialsModal, setCredentialsModal] = useState(null) // { email, password }
 
   const load = async () => {
     setLoading(true)
@@ -37,10 +38,35 @@ export default function AdminSchoolRegistrationsPage() {
       if (result.emailSent) {
         alert('✅ Approuvé ! Le reçu et les identifiants ont été envoyés par email au directeur.')
       } else {
-        alert('⚠️ Compte créé avec succès mais l\'email n\'a pas pu être envoyé. Identifiants : ' + (result.data?.user?.rawPassword ? `Email: ${result.data.user.email}, Mot de passe: ${result.data.user.rawPassword}` : 'Consultez les logs.'))
+        const pwd = result.data?.user?.rawPassword
+        setCredentialsModal({ password: pwd || '(inconnu)', sent: false, error: 'Email non envoyé — SMTP non configuré ?' })
       }
       load()
       setExpandedId(null)
+    } catch (e) { alert('❌ Erreur : ' + e.message) }
+    setProcessing(null)
+  }
+
+  const handleResend = async (id) => {
+    setProcessing(id)
+    try {
+      const result = await schoolRegistrationApi.resendCredentials(id)
+      if (result.emailSent) {
+        setCredentialsModal({ email: result.data?.email || '', password: result.rawPassword, sent: true })
+      } else {
+        setCredentialsModal({ email: '', password: result.rawPassword, sent: false, error: result.message })
+      }
+    } catch (e) { alert('❌ Erreur : ' + e.message) }
+    setProcessing(null)
+  }
+
+  const handleRevoke = async (id, schoolName) => {
+    if (!window.confirm(`Révoquer le compte de "${schoolName}" ?\n\nCeci supprimera définitivement :\n• Le compte directeur\n• L'école\n• Cette demande\n\nL'administrateur pourra soumettre une nouvelle demande avec le même email.`)) return
+    setProcessing(id)
+    try {
+      await schoolRegistrationApi.revoke(id)
+      alert('✅ Compte révoqué. La demande a été supprimée.')
+      load()
     } catch (e) { alert('❌ Erreur : ' + e.message) }
     setProcessing(null)
   }
@@ -189,8 +215,27 @@ export default function AdminSchoolRegistrationsPage() {
                       </div>
                     )}
                     {reg.status === 'approved' && (
-                      <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 flex items-center gap-2">
-                        <CheckCircle2 size={15} /> Approuvée — Compte directeur créé et identifiants envoyés par email.
+                      <div className="space-y-2">
+                        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700 flex items-center gap-2">
+                          <CheckCircle2 size={14} /> Approuvée le {reg.approvedAt ? new Date(reg.approvedAt).toLocaleDateString('fr-FR') : '—'} — Compte directeur actif.
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleResend(reg._id)}
+                            disabled={!!processing}
+                            className="flex-1 flex items-center justify-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors disabled:opacity-50"
+                          >
+                            {processing === reg._id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                            Renvoyer identifiants
+                          </button>
+                          <button
+                            onClick={() => handleRevoke(reg._id, reg.schoolName)}
+                            disabled={!!processing}
+                            className="flex items-center justify-center gap-1.5 bg-red-50 text-red-600 border border-red-200 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-red-100 transition-colors disabled:opacity-50"
+                          >
+                            <Trash2 size={12} /> Révoquer compte
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -198,6 +243,34 @@ export default function AdminSchoolRegistrationsPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Credentials modal (after resend) */}
+      {credentialsModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <KeyRound size={16} className="text-blue-600" /> Identifiants réinitialisés
+              </h3>
+              <button onClick={() => setCredentialsModal(null)} className="p-1 hover:bg-gray-100 rounded"><X size={16} /></button>
+            </div>
+            {credentialsModal.sent ? (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-700 mb-4 flex items-center gap-2">
+                <CheckCircle2 size={14} /> Email envoyé avec succès au directeur.
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 mb-4">
+                ⚠️ Email non envoyé ({credentialsModal.error}). Transmettez manuellement ces identifiants :
+              </div>
+            )}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2 text-sm font-mono">
+              <p><span className="text-gray-500 text-xs">Mot de passe :</span></p>
+              <p className="text-lg font-bold text-blue-700 tracking-widest select-all">{credentialsModal.password}</p>
+            </div>
+            <button onClick={() => setCredentialsModal(null)} className="btn-primary w-full justify-center mt-4 text-sm">OK</button>
+          </div>
         </div>
       )}
 

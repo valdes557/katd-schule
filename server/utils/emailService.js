@@ -16,6 +16,18 @@ const transporter = nodemailer.createTransport({
   tls: { rejectUnauthorized: false },
 })
 
+// Verify SMTP connection at startup
+if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+  transporter.verify((err) => {
+    if (err) {
+      console.error('❌ SMTP connexion échouée:', err.message)
+      console.error('   → Vérifiez SMTP_USER, SMTP_PASS, et que Gmail autorise les apps tierces (2FA + App Password)')
+    } else {
+      console.log('✅ SMTP prêt — emails activés pour:', process.env.SMTP_USER)
+    }
+  })
+}
+
 const sendEmail = async ({ to, subject, html }) => {
   try {
     const info = await transporter.sendMail({
