@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   Plus, Loader2, ClipboardList, Trash2, Edit2, X, CheckCircle2, Clock,
-  Users, AlertTriangle, ChevronDown, ChevronUp, FileText, Save, Star,
+  Users, AlertTriangle, ChevronDown, ChevronUp, FileText, Save, Star, Bell,
+  ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { teacherApi } from '../lib/api'
 
@@ -16,6 +17,11 @@ export default function TeacherHomeworkPage() {
   const [expanded, setExpanded] = useState(null)
   const [gradeForm, setGradeForm] = useState({})
   const [filterClass, setFilterClass] = useState('')
+  const [completionView, setCompletionView] = useState({}) // hwId -> 'submissions' | 'completion'
+  const [completions, setCompletions] = useState({}) // hwId -> { studentId: bool }
+  const [completionStudents, setCompletionStudents] = useState({}) // hwId -> []
+  const [completionLoading, setCompletionLoading] = useState(null)
+  const [notifying, setNotifying] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -69,6 +75,41 @@ export default function TeacherHomeworkPage() {
     if (!confirm('Supprimer ce devoir ?')) return
     try {
       await teacherApi.deleteHomework(id)
+      load()
+    } catch (e) { alert(e.message) }
+  }
+
+  const loadCompletionStudents = async (hw) => {
+    if (completionStudents[hw._id]) return
+    setCompletionLoading(hw._id)
+    try {
+      const r = await teacherApi.students()
+      const classStudents = (r.data || []).filter((s) => {
+        const sid = s.class?._id || s.class
+        const hcid = hw.class?._id || hw.class
+        return sid === hcid
+      })
+      setCompletionStudents((p) => ({ ...p, [hw._id]: classStudents }))
+      const init = {}
+      classStudents.forEach((s) => {
+        const sub = hw.submissions?.find((sub) => sub.student === s._id || sub.student?._id === s._id)
+        init[s._id] = !!sub
+      })
+      setCompletions((p) => ({ ...p, [hw._id]: init }))
+    } catch (_) {}
+    setCompletionLoading(null)
+  }
+
+  const toggleCompletion = (hwId, studentId) => {
+    setCompletions((p) => ({ ...p, [hwId]: { ...p[hwId], [studentId]: !p[hwId]?.[studentId] } }))
+  }
+
+  const saveCompletion = async (hwId) => {
+    const entries = Object.entries(completions[hwId] || {})
+    const payload = entries.map(([studentId, done]) => ({ studentId, done }))
+    try {
+      await teacherApi.markHomeworkCompletion(hwId, payload)
+      alert('Complétion enregistrée')
       load()
     } catch (e) { alert(e.message) }
   }
@@ -153,55 +194,113 @@ export default function TeacherHomeworkPage() {
                   </div>
                 </div>
 
-                {/* Expanded: submissions */}
+                {/* Expanded: submissions / completion */}
                 {isExpanded && (
                   <div className="border-t border-gray-100 bg-gray-50 p-4">
-                    <h4 className="text-xs font-bold text-gray-700 mb-2">Soumissions ({hw.submissions?.length || 0})</h4>
-                    {(!hw.submissions || hw.submissions.length === 0) ? (
-                      <p className="text-xs text-gray-400">Aucune soumission encore</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {hw.submissions.map((sub) => (
-                          <div key={sub._id} className="bg-white rounded-lg p-3 flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-gray-800">
-                                Élève #{sub.student?.toString().slice(-6) || '—'}
-                              </p>
-                              <p className="text-[10px] text-gray-400">
-                                {new Date(sub.submittedAt).toLocaleDateString('fr-FR')} ·
-                                <span className={`ml-1 ${sub.status === 'graded' ? 'text-green-600' : sub.status === 'late' ? 'text-amber-600' : 'text-blue-600'}`}>
-                                  {sub.status === 'graded' ? 'Noté' : sub.status === 'late' ? 'En retard' : 'Soumis'}
-                                </span>
-                              </p>
-                              {sub.text && <p className="text-[10px] text-gray-500 mt-1 italic line-clamp-2">{sub.text}</p>}
-                              {sub.file && <a href={sub.file} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 hover:underline mt-1 inline-flex items-center gap-1"><FileText size={10} /> Fichier joint</a>}
-                            </div>
+                    {/* View switcher */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <button
+                        onClick={() => setCompletionView((v) => ({ ...v, [hw._id]: 'submissions' }))}
+                        className={`text-xs px-3 py-1 rounded-full font-medium transition-colors ${
+                          (completionView[hw._id] || 'submissions') === 'submissions'
+                            ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                        }`}
+                      >Soumissions</button>
+                      <button
+                        onClick={() => { setCompletionView((v) => ({ ...v, [hw._id]: 'completion' })); loadCompletionStudents(hw) }}
+                        className={`text-xs px-3 py-1 rounded-full font-medium transition-colors ${
+                          completionView[hw._id] === 'completion'
+                            ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                        }`}
+                      >Marquer complétion</button>
+                    </div>
 
-                            <div className="flex items-center gap-2">
-                              {sub.status === 'graded' ? (
-                                <span className="text-sm font-bold text-green-600 flex items-center gap-1"><Star size={12} /> {sub.grade}/20</span>
-                              ) : (
-                                <div className="flex items-center gap-1">
-                                  <input
-                                    type="number" min="0" max="20" step="0.5" placeholder="Note"
-                                    value={gradeForm[sub._id]?.grade ?? ''}
-                                    onChange={(e) => setGradeForm({ ...gradeForm, [sub._id]: { ...gradeForm[sub._id], grade: e.target.value } })}
-                                    className="input text-xs w-16 py-1"
-                                  />
-                                  <input
-                                    placeholder="Comm."
-                                    value={gradeForm[sub._id]?.comment ?? ''}
-                                    onChange={(e) => setGradeForm({ ...gradeForm, [sub._id]: { ...gradeForm[sub._id], comment: e.target.value } })}
-                                    className="input text-xs w-24 py-1"
-                                  />
-                                  <button onClick={() => handleGrade(hw._id, sub._id)} className="p-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200">
-                                    <Save size={12} />
+                    {completionView[hw._id] === 'completion' && (
+                      <div className="space-y-2">
+                        {completionLoading === hw._id && (
+                          <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin text-blue-600" /></div>
+                        )}
+                        {completionLoading !== hw._id && (completionStudents[hw._id] || []).length === 0 && (
+                          <p className="text-xs text-gray-400 text-center py-2">Aucun élève trouvé pour cette classe</p>
+                        )}
+                        {completionLoading !== hw._id && (completionStudents[hw._id] || []).length > 0 && (
+                          <div className="space-y-1">
+                            {(completionStudents[hw._id] || []).map((s) => {
+                              const done = completions[hw._id]?.[s._id] ?? false
+                              return (
+                                <div key={s._id} className={`flex items-center gap-3 p-2 rounded-lg ${done ? 'bg-green-50' : 'bg-red-50'}`}>
+                                  <button onClick={() => toggleCompletion(hw._id, s._id)} className={`flex-shrink-0 ${done ? 'text-green-600' : 'text-red-400'}`}>
+                                    {done ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
                                   </button>
+                                  <div className="flex-1">
+                                    <p className="text-xs font-medium text-gray-800">{s.lastName} {s.firstName}</p>
+                                    <p className="text-[10px] text-gray-400">{s.matricule}</p>
+                                  </div>
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${done ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                    {done ? '✅ Fait' : '❌ Non fait'}
+                                  </span>
                                 </div>
-                              )}
+                              )
+                            })}
+                            <div className="flex gap-2 pt-2">
+                              <button onClick={() => saveCompletion(hw._id)} className="btn-primary text-xs flex-1 justify-center">
+                                <Save size={12} /> Enregistrer &amp; notifier parents
+                              </button>
                             </div>
                           </div>
-                        ))}
+                        )}
+                      </div>
+                    )}
+
+                    {(completionView[hw._id] || 'submissions') === 'submissions' && (
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-700 mb-2">Soumissions ({hw.submissions?.length || 0})</h4>
+                        {(!hw.submissions || hw.submissions.length === 0) && (
+                          <p className="text-xs text-gray-400">Aucune soumission encore</p>
+                        )}
+                        {hw.submissions && hw.submissions.length > 0 && (
+                          <div className="space-y-2">
+                            {hw.submissions.map((sub) => (
+                              <div key={sub._id} className="bg-white rounded-lg p-3 flex items-start justify-between gap-3">
+                                <div className="flex-1">
+                                  <p className="text-xs font-medium text-gray-800">
+                                    Élève #{sub.student?.toString().slice(-6) || '—'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-400">
+                                    {new Date(sub.submittedAt).toLocaleDateString('fr-FR')} ·
+                                    <span className={`ml-1 ${sub.status === 'graded' ? 'text-green-600' : sub.status === 'late' ? 'text-amber-600' : 'text-blue-600'}`}>
+                                      {sub.status === 'graded' ? 'Noté' : sub.status === 'late' ? 'En retard' : 'Soumis'}
+                                    </span>
+                                  </p>
+                                  {sub.text && <p className="text-[10px] text-gray-500 mt-1 italic line-clamp-2">{sub.text}</p>}
+                                  {sub.file && <a href={sub.file} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 hover:underline mt-1 inline-flex items-center gap-1"><FileText size={10} /> Fichier joint</a>}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {sub.status === 'graded' && (
+                                    <span className="text-sm font-bold text-green-600 flex items-center gap-1"><Star size={12} /> {sub.grade}/20</span>
+                                  )}
+                                  {sub.status !== 'graded' && (
+                                    <div className="flex items-center gap-1">
+                                      <input type="number" min="0" max="20" step="0.5" placeholder="Note"
+                                        value={gradeForm[sub._id]?.grade ?? ''}
+                                        onChange={(e) => setGradeForm({ ...gradeForm, [sub._id]: { ...gradeForm[sub._id], grade: e.target.value } })}
+                                        className="input text-xs w-16 py-1"
+                                      />
+                                      <input placeholder="Comm."
+                                        value={gradeForm[sub._id]?.comment ?? ''}
+                                        onChange={(e) => setGradeForm({ ...gradeForm, [sub._id]: { ...gradeForm[sub._id], comment: e.target.value } })}
+                                        className="input text-xs w-24 py-1"
+                                      />
+                                      <button onClick={() => handleGrade(hw._id, sub._id)} className="p-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200">
+                                        <Save size={12} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

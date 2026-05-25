@@ -7,6 +7,7 @@ import {
 import {
   ArrowLeft, BookOpen, CalendarCheck, FileText, Clock, CheckCircle2,
   XCircle, AlertTriangle, Loader2, RefreshCw, User, Download, Wifi, WifiOff,
+  Users, GraduationCap, Phone, Mail,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
 
@@ -15,6 +16,8 @@ const TABS = [
   { id: 'overview', label: 'Vue d\'ensemble', icon: User },
   { id: 'notes', label: 'Notes', icon: BookOpen },
   { id: 'attendance', label: 'Présence', icon: CalendarCheck },
+  { id: 'classattendance', label: 'Classe', icon: Users },
+  { id: 'teachers', label: 'Enseignants', icon: GraduationCap },
   { id: 'homework', label: 'Devoirs', icon: FileText },
   { id: 'timetable', label: 'Emploi du temps', icon: Clock },
 ]
@@ -25,6 +28,10 @@ export default function ParentChildDetailPage() {
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('overview')
+  const [classAtt, setClassAtt] = useState(null)
+  const [classAttLoading, setClassAttLoading] = useState(false)
+  const [teachers, setTeachers] = useState(null)
+  const [teachersLoading, setTeachersLoading] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -38,7 +45,24 @@ export default function ParentChildDetailPage() {
     } catch (_) {}
     setLoading(false)
   }
+
+  const loadClassAttendance = async () => {
+    if (classAtt) return
+    setClassAttLoading(true)
+    try { const r = await parentApi.classAttendance(studentId); setClassAtt(r.data) } catch (_) {}
+    setClassAttLoading(false)
+  }
+
+  const loadTeachers = async () => {
+    if (teachers) return
+    setTeachersLoading(true)
+    try { const r = await parentApi.classTeachers(studentId); setTeachers(r.data || []) } catch (_) {}
+    setTeachersLoading(false)
+  }
+
   useEffect(() => { load() }, [studentId])
+  useEffect(() => { if (tab === 'classattendance') loadClassAttendance() }, [tab])
+  useEffect(() => { if (tab === 'teachers') loadTeachers() }, [tab])
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (!data) return <div className="text-center py-16 text-sm text-gray-500">Enfant non trouvé</div>
@@ -246,6 +270,77 @@ export default function ParentChildDetailPage() {
               {attendance.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Aucun enregistrement</p>}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── PRÉSENCE DE LA CLASSE ── */}
+      {tab === 'classattendance' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Users size={16} className="text-blue-600" />
+            <h3 className="text-sm font-bold text-gray-900">Présence de la classe — {classAtt?.class?.name}</h3>
+          </div>
+          {classAttLoading ? (
+            <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+          ) : !classAtt ? (
+            <p className="text-center text-sm text-gray-400 py-8">Aucune donnée de présence</p>
+          ) : (
+            <div className="card overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Élève</th>
+                    <th className="text-center text-xs font-semibold text-gray-500 px-3 py-3">✅</th>
+                    <th className="text-center text-xs font-semibold text-gray-500 px-3 py-3">❌</th>
+                    <th className="text-center text-xs font-semibold text-gray-500 px-3 py-3">⏰</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {(classAtt.students || []).map((s) => (
+                    <tr key={s._id} className={`${s.isMyChild ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                        {s.name}{s.isMyChild && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Mon enfant</span>}
+                      </td>
+                      <td className="px-3 py-2 text-center text-xs text-green-600 font-bold">{s.presentCount}</td>
+                      <td className="px-3 py-2 text-center text-xs text-red-500 font-bold">{s.absentCount}</td>
+                      <td className="px-3 py-2 text-center text-xs text-amber-500 font-bold">{s.lateCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ENSEIGNANTS DE LA CLASSE ── */}
+      {tab === 'teachers' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <GraduationCap size={16} className="text-blue-600" />
+            <h3 className="text-sm font-bold text-gray-900">Enseignants de la classe</h3>
+          </div>
+          {teachersLoading ? (
+            <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+          ) : !teachers || teachers.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-8">Aucun enseignant enregistré pour cette classe</p>
+          ) : (
+            teachers.map((t) => (
+              <div key={t._id} className="card p-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm flex-shrink-0">
+                  {t.firstName?.[0]}{t.lastName?.[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-900">{t.lastName} {t.firstName}</p>
+                  <p className="text-xs text-blue-600">{(t.subjects || []).join(', ') || t.speciality}</p>
+                </div>
+                <div className="text-right space-y-0.5">
+                  {t.phone && <p className="text-xs text-gray-500 flex items-center gap-1 justify-end"><Phone size={11} />{t.phone}</p>}
+                  {t.email && <p className="text-xs text-gray-400 flex items-center gap-1 justify-end"><Mail size={11} />{t.email}</p>}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
 

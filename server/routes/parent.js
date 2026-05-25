@@ -12,6 +12,7 @@ const Timetable = require('../models/Timetable')
 const Class = require('../models/Class')
 const Message = require('../models/Message')
 const Document = require('../models/Document')
+const Teacher = require('../models/Teacher')
 
 // Middleware: only parents
 const parentOnly = (req, res, next) => {
@@ -415,6 +416,94 @@ router.post('/documents/:studentId/generate', protect, parentOnly, async (req, r
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
+})
+
+// ─── PRÉSENCE DE LA CLASSE COMPLÈTE ───
+router.get('/children/:studentId/class-attendance', protect, parentOnly, async (req, res) => {
+  try {
+    const student = await Student.findOne({ _id: req.params.studentId, parentUser: req.user._id }).populate('class')
+    if (!student || !student.class) return res.status(404).json({ message: 'Enfant ou classe non trouvée' })
+
+    const { week } = req.query
+    const startDate = week ? new Date(week) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+
+    const classStudents = await Student.find({ class: student.class._id, status: 'active' }).sort({ lastName: 1 })
+    const attendances = await Attendance.find({
+      class: student.class._id,
+      date: { $gte: startDate, $lte: endDate },
+    }).sort({ date: -1 })
+
+    // Build per-student summary
+    const summary = classStudents.map((s) => {
+      const records = []
+      attendances.forEach((att) => {
+        const rec = att.records.find((r) => r.student.toString() === s._id.toString())
+        if (rec) records.push({ date: att.date, status: rec.status })
+      })
+      return {
+        _id: s._id,
+        name: `${s.lastName} ${s.firstName}`,
+        isMyChild: s._id.toString() === student._id.toString(),
+        records,
+        presentCount: records.filter((r) => r.status === 'present').length,
+        absentCount: records.filter((r) => r.status === 'absent').length,
+        lateCount: records.filter((r) => r.status === 'late').length,
+      }
+    })
+
+    res.json({
+      success: true,
+      data: {
+        class: student.class,
+        attendanceDates: attendances.map((a) => a.date),
+        students: summary,
+      },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── ENSEIGNANTS DE LA CLASSE DE L'ENFANT ───
+router.get('/children/:studentId/teachers', protect, parentOnly, async (req, res) => {
+  try {
+    const student = await Student.findOne({ _id: req.params.studentId, parentUser: req.user._id }).populate('class')
+    if (!student || !student.class) return res.status(404).json({ message: 'Enfant ou classe non trouvée' })
+
+    const teachers = await Teacher.find({ classes: student.class._id })
+      .populate('user', 'email lastLogin')
+      .select('firstName lastName email phone subjects speciality photo')
+
+    res.json({ success: true, data: teachers, className: student.class.name })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── GESTION DES TRANCHES DE PENSION (vue parent) ───
+router.get('/fees/installments', protect, parentOnly, async (req, res) => {
+  try {
+    const children = await getChildren(req.user._id)
+    const childIds = children.map((c) => c._id)
+    const fees = await Fee.find({ student: { $in: childIds }, paymentMode: 'tranches' })
+      .populate('student', 'firstName lastName class')
+      .sort({ createdAt: -1 })
+
+    const now = new Date()
+    const overdueInstallments = []
+    fees.forEach((fee) => {
+      fee.installments.forEach((inst) => {
+        if (!inst.paid && new Date(inst.dueDate) < now) {
+          overdueInstallments.push({
+            feeId: fee._id,
+            studentName: `${fee.student?.lastName} ${fee.student?.firstName}`,
+            label: inst.label,
+            amount: inst.amount,
+            dueDate: inst.dueDate,
+          })
+        }
+      })
+    })
+
+    res.json({ success: true, data: fees, overdueInstallments })
+  } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

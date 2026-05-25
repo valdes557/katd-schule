@@ -7,12 +7,13 @@ const { protect, authorize } = require('../middleware/auth')
 // GET /api/grades
 router.get('/', protect, async (req, res) => {
   try {
-    const { classId, student, subject, term, page = 1, limit = 200 } = req.query
+    const { classId, student, subject, term, sequence, page = 1, limit = 200 } = req.query
     const query = { school: req.user.school._id || req.user.school }
     if (classId) query.class = classId
     if (student) query.student = student
     if (subject) query.subject = subject
     if (term) query.term = term
+    if (sequence) query.sequence = sequence
     const total = await Grade.countDocuments(query)
     const grades = await Grade.find(query)
       .populate('student', 'firstName lastName matricule')

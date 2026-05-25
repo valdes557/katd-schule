@@ -4,11 +4,13 @@ const mongoose = require('mongoose')
 const { protect } = require('../middleware/auth')
 const Teacher = require('../models/Teacher')
 const Student = require('../models/Student')
+const User = require('../models/User')
 const Grade = require('../models/Grade')
 const Attendance = require('../models/Attendance')
 const Homework = require('../models/Homework')
 const Class = require('../models/Class')
 const Subject = require('../models/Subject')
+const { sendEmail } = require('../utils/emailService')
 
 const teacherOnly = (req, res, next) => {
   if (req.user.role !== 'enseignant') return res.status(403).json({ message: 'Accès réservé aux enseignants' })
@@ -399,6 +401,112 @@ router.get('/analytics', protect, teacherOnly, async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
+})
+
+// ─── LISTE DES PARENTS DE LA CLASSE ───
+router.get('/class/:classId/parents', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+
+    // Verify teacher has this class
+    const hasClass = teacher.classes.some((c) => c._id.toString() === req.params.classId)
+    if (!hasClass) return res.status(403).json({ message: 'Cette classe ne vous est pas assignée' })
+
+    const students = await Student.find({ class: req.params.classId, status: 'active' })
+      .populate('parentUser', 'email lastLogin phone')
+      .sort({ lastName: 1 })
+
+    const result = students.map((s) => ({
+      studentId: s._id,
+      studentName: `${s.lastName} ${s.firstName}`,
+      matricule: s.matricule,
+      parent: {
+        name: s.parent?.name,
+        phone: s.parent?.phone || s.parentUser?.phone,
+        email: s.parent?.email || s.parentUser?.email,
+        relation: s.parent?.relation,
+        hasAccount: !!s.parentUser,
+        lastLogin: s.parentUser?.lastLogin,
+      },
+    }))
+
+    res.json({ success: true, data: result })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── MARQUER LE STATUT DEVOIR PAR ÉLÈVE (fait / non fait) ───
+router.put('/homework/:hwId/completion', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+
+    const homework = await Homework.findOne({ _id: req.params.hwId, teacher: teacher._id })
+    if (!homework) return res.status(404).json({ message: 'Devoir non trouvé' })
+
+    const { completions } = req.body // [{ studentId, done: true/false }]
+    if (!Array.isArray(completions)) return res.status(400).json({ message: 'completions doit être un tableau' })
+
+    // Sync submissions: add done entries, remove not-done
+    completions.forEach(({ studentId, done }) => {
+      const idx = homework.submissions.findIndex((s) => s.student.toString() === studentId)
+      if (done && idx === -1) {
+        homework.submissions.push({ student: studentId, status: 'submitted', submittedAt: new Date() })
+      } else if (!done && idx !== -1) {
+        homework.submissions.splice(idx, 1)
+      }
+    })
+    await homework.save()
+
+    // Notify parents of absent students via email (async, non-blocking)
+    const notDoneStudentIds = completions.filter((c) => !c.done).map((c) => c.studentId)
+    if (notDoneStudentIds.length > 0) {
+      Student.find({ _id: { $in: notDoneStudentIds } })
+        .populate('parentUser', 'email name')
+        .then((students) => {
+          students.forEach((s) => {
+            if (s.parentUser?.email) {
+              sendEmail({
+                to: s.parentUser.email,
+                subject: `📚 Devoir non remis — ${homework.subject}`,
+                html: `<p>Bonjour,</p><p>Votre enfant <strong>${s.lastName} ${s.firstName}</strong> n'a pas remis le devoir de <strong>${homework.subject}</strong> : "${homework.title}" (date limite : ${new Date(homework.dueDate).toLocaleDateString('fr-FR')}).</p><p>Connectez-vous à votre espace parent pour plus de détails.</p>`,
+              }).catch(() => {})
+            }
+          })
+        }).catch(() => {})
+    }
+
+    res.json({ success: true, message: 'Statut des devoirs mis à jour', data: homework })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── SOUMETTRE LA PRÉSENCE + NOTIFIER LES PARENTS ───
+// Override the existing attendance submission to also notify parents (new route suffix)
+router.post('/attendance/:classId/notify', protect, teacherOnly, async (req, res) => {
+  try {
+    // Find absent/late students and email their parents
+    const { attendanceId } = req.body
+    const attendance = await Attendance.findById(attendanceId)
+    if (!attendance) return res.status(404).json({ message: 'Présence non trouvée' })
+
+    const absentIds = attendance.records.filter((r) => r.status === 'absent' || r.status === 'late').map((r) => r.student)
+    const students = await Student.find({ _id: { $in: absentIds } }).populate('parentUser', 'email name')
+
+    let sent = 0
+    for (const s of students) {
+      if (s.parentUser?.email) {
+        const status = attendance.records.find((r) => r.student.toString() === s._id.toString())?.status
+        await sendEmail({
+          to: s.parentUser.email,
+          subject: `📋 Présence — ${s.lastName} ${s.firstName}`,
+          html: `<p>Bonjour,</p><p>Votre enfant <strong>${s.lastName} ${s.firstName}</strong> a été marqué(e) <strong>${status === 'absent' ? 'absent(e)' : 'en retard'}</strong> le ${new Date(attendance.date).toLocaleDateString('fr-FR')}.</p><p>Connectez-vous à votre espace parent pour voir le détail.</p>`,
+        }).catch(() => {})
+        sent++
+      }
+    }
+
+    res.json({ success: true, message: `${sent} parent(s) notifié(s)` })
+  } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

@@ -42,6 +42,8 @@ export const studentsApi = {
   create: (data) => api.post('/students', data),
   update: (id, data) => api.put(`/students/${id}`, data),
   remove: (id) => api.del(`/students/${id}`),
+  withParents: () => api.get('/students/with-parents'),
+  createParentAccount: (studentId, data) => api.post(`/students/${studentId}/parent-account`, data),
 }
 
 export const teachersApi = {
@@ -285,6 +287,9 @@ export const teacherApi = {
   updateHomework: (id, data) => api.put(`/teacher/homeworks/${id}`, data),
   deleteHomework: (id) => api.del(`/teacher/homeworks/${id}`),
   gradeSubmission: (hwId, subId, data) => api.put(`/teacher/homeworks/${hwId}/submissions/${subId}/grade`, data),
+  markHomeworkCompletion: (hwId, completions) => api.put(`/teacher/homework/${hwId}/completion`, { completions }),
+  notifyAttendance: (classId, attendanceId) => api.post(`/teacher/attendance/${classId}/notify`, { attendanceId }),
+  classParents: (classId) => api.get(`/teacher/class/${classId}/parents`),
   analytics: () => api.get('/teacher/analytics'),
 }
 
@@ -300,6 +305,19 @@ export const parentApi = {
   weeklyReport: (studentId) => api.get(`/parent/report/${studentId}`),
   documents: (studentId) => api.get(`/parent/documents/${studentId}`),
   generateDocument: (studentId, type) => api.post(`/parent/documents/${studentId}/generate`, { type }),
+  classAttendance: (studentId, week = '') => api.get(`/parent/children/${studentId}/class-attendance${week ? `?week=${week}` : ''}`),
+  classTeachers: (studentId) => api.get(`/parent/children/${studentId}/teachers`),
+  feeInstallments: () => api.get('/parent/fees/installments'),
+}
+
+export const feesApi = {
+  list: (params = '') => api.get(`/fees?${params}`),
+  paymentStatus: (classId) => api.get(`/fees/payment-status?classId=${classId}`),
+  create: (data) => api.post('/fees', data),
+  update: (id, data) => api.put(`/fees/${id}`, data),
+  remove: (id) => api.del(`/fees/${id}`),
+  recordPayment: (id, data) => api.post(`/fees/${id}/record-payment`, data),
+  notifyInstallment: (id, installmentIndex) => api.post(`/fees/${id}/notify-installment`, { installmentIndex }),
 }
 
 export default api

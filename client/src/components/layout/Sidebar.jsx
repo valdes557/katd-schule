@@ -85,6 +85,7 @@ const sidebarSections = [
     label: 'FINANCES & ABONNEMENTS',
     roles: ['directeur', 'super_admin'],
     items: [
+      { label: 'Pensions & Frais', icon: CreditCard, path: '/dashboard/director/pensions', roles: ['directeur'] },
       { label: 'Souscriptions', icon: CreditCard, path: '/dashboard/souscriptions' },
       { label: 'Historique des paiements', icon: History, path: '/dashboard/paiements' },
       { label: 'Factures', icon: Receipt, path: '/dashboard/factures' },

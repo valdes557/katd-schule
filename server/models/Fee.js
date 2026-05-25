@@ -21,6 +21,20 @@ const feeSchema = new mongoose.Schema(
         note: { type: String },
       },
     ],
+    paymentMode: { type: String, enum: ['complet', 'tranches'], default: 'complet' },
+    installments: [
+      {
+        label: { type: String, required: true },
+        amount: { type: Number, required: true },
+        dueDate: { type: Date, required: true },
+        paid: { type: Boolean, default: false },
+        paidAt: { type: Date },
+        paidAmount: { type: Number, default: 0 },
+        method: { type: String, enum: ['cash', 'mobile_money', 'bank', 'online'], default: 'cash' },
+        reference: { type: String },
+        notified: { type: Boolean, default: false },
+      },
+    ],
   },
   { timestamps: true }
 )

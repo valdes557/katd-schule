@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Users, Loader2, Search, TrendingUp, CalendarCheck, BookOpen,
-  ChevronDown, ChevronUp, ArrowUpDown,
+  ChevronDown, ChevronUp, ArrowUpDown, Phone, Mail, UserCheck,
 } from 'lucide-react'
 import { teacherApi } from '../lib/api'
 
@@ -13,6 +13,10 @@ export default function TeacherStudentsPage() {
   const [sortDir, setSortDir] = useState('asc')
   const [filterClass, setFilterClass] = useState('')
   const [classes, setClasses] = useState([])
+  const [activeView, setActiveView] = useState('students') // 'students' | 'parents'
+  const [parents, setParents] = useState({})
+  const [parentsLoading, setParentsLoading] = useState(false)
+  const [parentsClass, setParentsClass] = useState('')
 
   useEffect(() => {
     (async () => {
@@ -22,11 +26,27 @@ export default function TeacherStudentsPage() {
           teacherApi.dashboard(),
         ])
         setStudents(studRes.data || [])
-        setClasses(dashRes.data?.teacher?.classes || [])
+        const cls = dashRes.data?.teacher?.classes || []
+        setClasses(cls)
+        if (cls.length > 0) setParentsClass(cls[0]._id)
       } catch (_) {}
       setLoading(false)
     })()
   }, [])
+
+  const loadParents = async (classId) => {
+    if (!classId) return
+    setParentsLoading(true)
+    try {
+      const r = await teacherApi.classParents(classId)
+      setParents((p) => ({ ...p, [classId]: r.data || [] }))
+    } catch (_) {}
+    setParentsLoading(false)
+  }
+
+  useEffect(() => {
+    if (activeView === 'parents' && parentsClass && !parents[parentsClass]) loadParents(parentsClass)
+  }, [activeView, parentsClass])
 
   const toggleSort = (field) => {
     if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
@@ -53,11 +73,68 @@ export default function TeacherStudentsPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Users size={22} className="text-blue-600" /> Mes élèves</h1>
-        <p className="text-sm text-gray-500">{students.length} élève(s) dans vos classes · Progression, notes et présence</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Users size={22} className="text-blue-600" /> Mes élèves</h1>
+          <p className="text-sm text-gray-500">{students.length} élève(s) dans vos classes</p>
+        </div>
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <button onClick={() => setActiveView('students')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeView === 'students' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Élèves</button>
+          <button onClick={() => setActiveView('parents')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeView === 'parents' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Parents</button>
+        </div>
       </div>
 
+      {activeView === 'parents' ? (
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            <select value={parentsClass} onChange={(e) => { setParentsClass(e.target.value); if (!parents[e.target.value]) loadParents(e.target.value) }} className="input text-sm w-auto">
+              {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            </select>
+          </div>
+          {parentsLoading ? (
+            <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+          ) : !parents[parentsClass] || parents[parentsClass].length === 0 ? (
+            <div className="text-center py-12 text-gray-400"><UserCheck size={36} className="mx-auto mb-3 opacity-30" /><p className="text-sm">Aucun parent enregistré pour cette classe</p></div>
+          ) : (
+            <div className="card overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Élève</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Parent</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Contact</th>
+                    <th className="text-center px-4 py-3 font-semibold text-gray-600">Compte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parents[parentsClass]?.map((p) => (
+                    <tr key={p.studentId} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-gray-900">{p.studentName}</p>
+                        <p className="text-[10px] text-gray-400">{p.matricule}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-gray-800">{p.parent.name || '—'}</p>
+                        <p className="text-[10px] text-gray-400">{p.parent.relation === 'pere' ? 'Père' : p.parent.relation === 'mere' ? 'Mère' : 'Tuteur'}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        {p.parent.phone && <p className="flex items-center gap-1 text-gray-600"><Phone size={10} />{p.parent.phone}</p>}
+                        {p.parent.email && <p className="flex items-center gap-1 text-gray-400"><Mail size={10} />{p.parent.email}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${p.parent.hasAccount ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {p.parent.hasAccount ? '✅ Compte actif' : 'Pas de compte'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
@@ -155,6 +232,8 @@ export default function TeacherStudentsPage() {
             </table>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )

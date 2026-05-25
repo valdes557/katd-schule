@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const Student = require('../models/Student')
+const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 
 // @route  GET /api/students
@@ -78,6 +79,67 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
+})
+
+// POST /api/students/:id/parent-account — Director creates parent login account
+router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id).populate('class', 'name')
+    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+
+    // Use provided email or fall back to parent.email on student record
+    const email = req.body.email || student.parent?.email
+    if (!email) return res.status(400).json({ message: 'Email du parent requis' })
+
+    // Check if account already exists
+    if (student.parentUser) {
+      const existing = await User.findById(student.parentUser)
+      if (existing) return res.status(400).json({ message: 'Un compte parent existe déjà pour cet élève', data: { email: existing.email } })
+    }
+
+    const already = await User.findOne({ email })
+    if (already) {
+      // Just link the existing parent user to this student
+      student.parentUser = already._id
+      await student.save()
+      return res.json({ success: true, message: 'Compte existant lié à cet élève', data: { email, linked: true } })
+    }
+
+    const rawPassword = req.body.password || `parent${Math.floor(10000 + Math.random() * 90000)}`
+    const user = await User.create({
+      name: req.body.name || student.parent?.name || `Parent de ${student.firstName}`,
+      email,
+      password: rawPassword,
+      role: 'parent',
+      school: student.school,
+      phone: req.body.phone || student.parent?.phone,
+    })
+
+    student.parentUser = user._id
+    if (req.body.email) student.parent = { ...student.parent, email: req.body.email }
+    await student.save()
+
+    res.status(201).json({
+      success: true,
+      message: 'Compte parent créé avec succès',
+      data: { email, rawPassword, userId: user._id, studentName: `${student.lastName} ${student.firstName}`, className: student.class?.name },
+    })
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ message: 'Cet email est déjà utilisé' })
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/students/with-parents — list students with parent account status (for director)
+router.get('/with-parents', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = req.user.school?._id || req.user.school
+    const students = await Student.find({ school: schoolId, status: 'active' })
+      .populate('class', 'name level')
+      .populate('parentUser', 'email lastLogin')
+      .sort({ lastName: 1 })
+    res.json({ success: true, data: students })
+  } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

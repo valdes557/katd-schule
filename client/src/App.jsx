@@ -43,6 +43,7 @@ import ParentDocumentsPage from './pages/ParentDocumentsPage'
 import TeacherHomeworkPage from './pages/TeacherHomeworkPage'
 import TeacherAnalyticsPage from './pages/TeacherAnalyticsPage'
 import TeacherStudentsPage from './pages/TeacherStudentsPage'
+import DirectorFeesPage from './pages/DirectorFeesPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -122,6 +123,9 @@ export default function App() {
         <Route path="ecoles-admin" element={<AdminEcolesPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
         <Route path="plateforme" element={<AdminPlatformPage />} />
+
+        {/* Director routes */}
+        <Route path="director/pensions" element={<DirectorFeesPage />} />
 
         {/* Teacher routes */}
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />

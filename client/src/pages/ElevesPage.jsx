@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X } from 'lucide-react'
+import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus } from 'lucide-react'
 import { studentsApi, classesApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -56,6 +56,28 @@ export default function ElevesPage() {
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cet élève ?')) return
     try { await studentsApi.remove(id); fetchStudents() } catch (e) { alert(e.message) }
+  }
+
+  const [parentModal, setParentModal] = useState(null) // { student }
+  const [parentForm, setParentForm] = useState({ name: '', email: '', phone: '', password: '' })
+  const [parentResult, setParentResult] = useState(null)
+  const [parentSaving, setParentSaving] = useState(false)
+
+  const openParentModal = (s) => {
+    setParentModal(s)
+    setParentForm({ name: s.parent?.name || '', email: s.parent?.email || '', phone: s.parent?.phone || '', password: '' })
+    setParentResult(null)
+  }
+
+  const handleCreateParentAccount = async (e) => {
+    e.preventDefault()
+    setParentSaving(true)
+    try {
+      const r = await studentsApi.createParentAccount(parentModal._id, parentForm)
+      if (r.success) { setParentResult(r); fetchStudents() }
+      else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+    setParentSaving(false)
   }
 
   const openEdit = (s) => {
@@ -136,15 +158,78 @@ export default function ElevesPage() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{s.parent?.name || '—'}<br/>{s.parent?.phone && <span className="text-gray-400">{s.parent.phone}</span>}</td>
                   {isDirecteur && (
-                    <td className="px-4 py-3 flex gap-1">
-                      <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={14} /></button>
-                      <button onClick={() => handleDelete(s._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1">
+                        <button title="Créer compte parent" onClick={() => openParentModal(s)} className="p-1.5 rounded hover:bg-green-50 text-green-600"><UserPlus size={14} /></button>
+                        <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={14} /></button>
+                        <button onClick={() => handleDelete(s._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
+                      </div>
                     </td>
                   )}
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Parent Account Modal */}
+      {parentModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <KeyRound size={18} className="text-green-600" /> Compte parent — {parentModal.lastName} {parentModal.firstName}
+              </h3>
+              <button onClick={() => setParentModal(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+
+            {parentResult ? (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                  <CheckCircle2 size={32} className="text-green-500 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-green-800">{parentResult.message}</p>
+                </div>
+                {!parentResult.data?.linked && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+                    <p className="text-xs font-bold text-gray-700">📋 Identifiants à communiquer au parent :</p>
+                    <div className="font-mono text-sm space-y-1">
+                      <p>📧 Email : <strong>{parentResult.data?.email}</strong></p>
+                      <p>🔑 Mot de passe : <strong>{parentResult.data?.rawPassword}</strong></p>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">Notez ces identifiants. Le mot de passe ne sera plus affiché.</p>
+                  </div>
+                )}
+                <button onClick={() => setParentModal(null)} className="btn-primary w-full justify-center">Fermer</button>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateParentAccount} className="space-y-3">
+                <p className="text-xs text-gray-500">Créer un compte de connexion pour le parent de cet élève.</p>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Nom du parent</label>
+                  <input value={parentForm.name} onChange={(e) => setParentForm({ ...parentForm, name: e.target.value })} className="input text-sm mt-1 w-full" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Email * <span className="text-gray-400">(sera l'identifiant)</span></label>
+                  <input required type="email" value={parentForm.email} onChange={(e) => setParentForm({ ...parentForm, email: e.target.value })} className="input text-sm mt-1 w-full" placeholder="email@exemple.com" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Téléphone</label>
+                  <input value={parentForm.phone} onChange={(e) => setParentForm({ ...parentForm, phone: e.target.value })} className="input text-sm mt-1 w-full" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Mot de passe <span className="text-gray-400">(auto-généré si vide)</span></label>
+                  <input value={parentForm.password} onChange={(e) => setParentForm({ ...parentForm, password: e.target.value })} className="input text-sm mt-1 w-full" placeholder="Laisser vide = auto" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setParentModal(null)} className="btn-ghost flex-1 justify-center">Annuler</button>
+                  <button type="submit" disabled={parentSaving} className="btn-primary flex-1 justify-center">
+                    {parentSaving ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Créer le compte
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
 

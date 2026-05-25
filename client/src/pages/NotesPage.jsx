@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { gradesApi, classesApi, studentsApi } from '../lib/api'
 
 const TERMS = ['Trimestre 1', 'Trimestre 2', 'Trimestre 3']
+const SEQUENCES = ['Séquence 1', 'Séquence 2', 'Séquence 3', 'Séquence 4', 'Séquence 5', 'Séquence 6']
 
 export default function NotesPage() {
   const [tab, setTab] = useState('notes')
@@ -14,9 +15,10 @@ export default function NotesPage() {
   const [loading, setLoading] = useState(true)
   const [selectedClass, setSelectedClass] = useState('')
   const [selectedTerm, setSelectedTerm] = useState('Trimestre 1')
+  const [selectedSeq, setSelectedSeq] = useState('')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', coefficient: 1 })
+  const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1 })
 
   const fetchData = async () => {
     setLoading(true)
@@ -24,6 +26,7 @@ export default function NotesPage() {
       const params = new URLSearchParams()
       if (selectedClass) params.set('classId', selectedClass)
       if (selectedTerm) params.set('term', selectedTerm)
+      if (selectedSeq) params.set('sequence', selectedSeq)
 
       const [gradesRes, statsRes] = await Promise.all([
         gradesApi.list(params.toString()),
@@ -50,7 +53,7 @@ export default function NotesPage() {
   }
 
   useEffect(() => { fetchClasses(); fetchStudents() }, [])
-  useEffect(() => { fetchData() }, [selectedClass, selectedTerm])
+  useEffect(() => { fetchData() }, [selectedClass, selectedTerm, selectedSeq])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -60,10 +63,10 @@ export default function NotesPage() {
         ...form,
         value: Number(form.value),
         coefficient: Number(form.coefficient),
-        class: student?.class || selectedClass,
+        class: student?.class?._id || student?.class || selectedClass,
       })
       setShowModal(false)
-      setForm({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', coefficient: 1 })
+      setForm({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1 })
       fetchData()
     } catch (e) { alert(e.message) }
   }
@@ -116,6 +119,10 @@ export default function NotesPage() {
         <select value={selectedTerm} onChange={(e) => setSelectedTerm(e.target.value)} className="input text-sm w-auto">
           {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
+        <select value={selectedSeq} onChange={(e) => setSelectedSeq(e.target.value)} className="input text-sm w-auto">
+          <option value="">Toutes les séquences</option>
+          {SEQUENCES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
         {tab === 'notes' && (
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -135,7 +142,7 @@ export default function NotesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  {['Élève', 'Matière', 'Type', 'Note', 'Coeff', 'Trimestre', ''].map((h) => (
+                  {['Élève', 'Matière', 'Type', 'Note', 'Coeff', 'Trimestre', 'Séquence', ''].map((h) => (
                     <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
                   ))}
                 </tr>
@@ -149,6 +156,7 @@ export default function NotesPage() {
                     <td className="px-4 py-3 text-sm font-bold" style={{ color: g.value >= 10 ? '#10B981' : '#EF4444' }}>{g.value}/20</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{g.coefficient}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{g.term}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">{g.sequence || '—'}</td>
                     <td className="px-4 py-3">
                       <button onClick={() => handleDelete(g._id)} className="p-1 rounded hover:bg-red-50 text-red-500 text-xs">Suppr.</button>
                     </td>
@@ -239,7 +247,7 @@ export default function NotesPage() {
                 <div><label className="text-xs font-medium text-gray-600">Matière</label><input required value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="Mathématiques" className="input text-sm mt-1" /></div>
                 <div><label className="text-xs font-medium text-gray-600">Note (/20)</label><input required type="number" min="0" max="20" step="0.5" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} className="input text-sm mt-1" /></div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Type</label>
                   <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input text-sm mt-1">
                     <option value="devoir">Devoir</option><option value="examen">Examen</option><option value="composition">Composition</option><option value="oral">Oral</option><option value="tp">TP</option>
@@ -248,6 +256,14 @@ export default function NotesPage() {
                 <div><label className="text-xs font-medium text-gray-600">Trimestre</label>
                   <select value={form.term} onChange={(e) => setForm({ ...form, term: e.target.value })} className="input text-sm mt-1">
                     {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium text-gray-600">Séquence <span className="text-gray-400">(optionnel)</span></label>
+                  <select value={form.sequence} onChange={(e) => setForm({ ...form, sequence: e.target.value })} className="input text-sm mt-1">
+                    <option value="">Aucune</option>
+                    {SEQUENCES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div><label className="text-xs font-medium text-gray-600">Coeff</label><input type="number" min="1" max="10" value={form.coefficient} onChange={(e) => setForm({ ...form, coefficient: e.target.value })} className="input text-sm mt-1" /></div>

@@ -10,6 +10,7 @@ const gradeSchema = new mongoose.Schema(
     type: { type: String, enum: ['devoir', 'examen', 'composition', 'oral', 'tp'], default: 'devoir' },
     value: { type: Number, required: true, min: 0, max: 20 },
     coefficient: { type: Number, default: 1 },
+    sequence: { type: String, enum: ['Séquence 1', 'Séquence 2', 'Séquence 3', 'Séquence 4', 'Séquence 5', 'Séquence 6'] },
     term: { type: String, enum: ['Trimestre 1', 'Trimestre 2', 'Trimestre 3'], required: true },
     academicYear: { type: String },
     date: { type: Date, default: Date.now },
