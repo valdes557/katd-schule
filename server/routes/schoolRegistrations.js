@@ -134,6 +134,9 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
       },
     })
 
+    // Clean up any leftover User with this email (e.g. from a failed previous revoke)
+    await User.findOneAndDelete({ email: reg.email })
+
     // Create director user account (pre-save hook in User model handles hashing)
     const rawPassword = `katd${Math.floor(10000 + Math.random() * 90000)}`
 
@@ -333,14 +336,21 @@ router.delete('/:id/revoke', protect, authorize('super_admin'), async (req, res)
     const reg = await SchoolRegistration.findById(req.params.id)
     if (!reg) return res.status(404).json({ message: 'Demande non trouvée' })
 
+    // Delete user by email (primary — guarantees removal even if userCreated ref is missing)
+    await User.findOneAndDelete({ email: reg.email })
+    // Also delete by ID just in case email changed
     if (reg.userCreated) await User.findByIdAndDelete(reg.userCreated)
+
+    // Delete school
     if (reg.schoolCreated) {
       const School = require('../models/School')
       await School.findByIdAndDelete(reg.schoolCreated)
     }
-    await SchoolRegistration.findByIdAndDelete(reg._id)
 
-    res.json({ success: true, message: 'Compte directeur et école supprimés. Un nouveau dossier peut être soumis avec cet email.' })
+    // Delete ALL registrations with this email (approved or otherwise) to allow clean resubmission
+    await SchoolRegistration.deleteMany({ email: reg.email })
+
+    res.json({ success: true, message: 'Compte directeur, école et tous les dossiers liés à cet email ont été supprimés. Une nouvelle souscription peut être soumise.' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
