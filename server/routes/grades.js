@@ -2,6 +2,10 @@ const express = require('express')
 const router = express.Router()
 const Grade = require('../models/Grade')
 const Student = require('../models/Student')
+const Attendance = require('../models/Attendance')
+const School = require('../models/School')
+const Class = require('../models/Class')
+const Subject = require('../models/Subject')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
 
@@ -62,30 +66,194 @@ router.get('/stats', protect, async (req, res) => {
   }
 })
 
-// GET /api/grades/bulletin/:studentId
+// Helper to compute mean average given a list of {value, coefficient}
+function weightedAverage(items) {
+  const totalCoef = items.reduce((s, i) => s + (i.coefficient || 1), 0)
+  if (totalCoef === 0) return 0
+  return items.reduce((s, i) => s + i.value * (i.coefficient || 1), 0) / totalCoef
+}
+
+function appreciationFor(avg) {
+  if (avg >= 18) return 'Excellent travail ! Continue ainsi.'
+  if (avg >= 16) return 'Très bonne maîtrise. Félicitations.'
+  if (avg >= 14) return 'Bon travail. Continue sur cette voie !'
+  if (avg >= 12) return 'Résultats encourageants. Persévère.'
+  if (avg >= 10) return 'Travail moyen. Peux mieux faire.'
+  if (avg >= 8) return 'Résultats insuffisants. Plus d\'efforts requis.'
+  return 'Niveau préoccupant. Travail à reprendre.'
+}
+
+function behaviorFor(attendanceRate) {
+  if (attendanceRate >= 95) return 'Très bien'
+  if (attendanceRate >= 85) return 'Bien'
+  if (attendanceRate >= 70) return 'Assez bien'
+  return 'À améliorer'
+}
+
+// GET /api/grades/bulletin/:studentId — comprehensive report card data
 router.get('/bulletin/:studentId', protect, async (req, res) => {
   try {
-    const { term } = req.query
-    const query = { student: req.params.studentId }
-    if (term) query.term = term
-    const grades = await Grade.find(query).populate('student', 'firstName lastName matricule class').sort({ subject: 1 })
+    const { term, academicYear } = req.query
+    const studentId = req.params.studentId
 
+    // 1. Student + class + school
+    const student = await Student.findById(studentId)
+      .populate('class', 'name level cycle')
+      .populate('school', 'name logo city country')
+      .lean()
+    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+
+    // Permission: parent can only see own children; teacher/director must share school
+    if (req.user.role === 'parent') {
+      if (!student.parentUser || student.parentUser.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: 'Accès refusé' })
+      }
+    } else if (['directeur', 'enseignant'].includes(req.user.role)) {
+      const userSchool = (req.user.school?._id || req.user.school || '').toString()
+      if (userSchool && student.school?._id?.toString() !== userSchool) {
+        return res.status(403).json({ message: 'Accès refusé' })
+      }
+    }
+
+    const classId = student.class?._id
+    const year = academicYear || student.academicYear || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
+
+    // 2. All grades for this student (filtered by term)
+    const gradeQuery = { student: studentId }
+    if (term) gradeQuery.term = term
+    if (academicYear) gradeQuery.academicYear = academicYear
+    const grades = await Grade.find(gradeQuery).lean()
+
+    // 3. All subjects + their coefficient (from Subject model when available)
+    const subjectDocs = classId ? await Subject.find({ classes: classId }).lean() : []
+    const coefMap = {}
+    subjectDocs.forEach((s) => { coefMap[s.name] = s.coefficient || 1 })
+
+    // 4. Group grades by subject -> compute devoirs avg, controles avg, exam, final avg
     const grouped = {}
     grades.forEach((g) => {
-      if (!grouped[g.subject]) grouped[g.subject] = []
-      grouped[g.subject].push(g)
+      if (!grouped[g.subject]) grouped[g.subject] = { devoirs: [], controles: [], exams: [], all: [], comments: [] }
+      grouped[g.subject].all.push(g)
+      if (g.comment) grouped[g.subject].comments.push(g.comment)
+      const typeLower = (g.type || '').toLowerCase()
+      if (typeLower === 'devoir' || typeLower === 'tp' || typeLower === 'oral') grouped[g.subject].devoirs.push(g.value)
+      else if (typeLower === 'examen' || typeLower === 'controle') grouped[g.subject].controles.push(g.value)
+      else if (typeLower === 'composition') grouped[g.subject].exams.push(g.value)
+      else grouped[g.subject].devoirs.push(g.value)
     })
 
-    const bulletin = Object.entries(grouped).map(([subject, list]) => {
-      const avg = list.reduce((s, g) => s + g.value * g.coefficient, 0) / list.reduce((s, g) => s + g.coefficient, 0)
-      return { subject, grades: list, average: Math.round(avg * 100) / 100, coefficient: list[0].coefficient }
+    const avg = (arr) => arr.length === 0 ? null : Math.round((arr.reduce((s, v) => s + v, 0) / arr.length) * 100) / 100
+
+    const subjects = Object.entries(grouped).map(([name, g]) => {
+      const devoirsAvg = avg(g.devoirs)
+      const controlesAvg = avg(g.controles)
+      const examAvg = avg(g.exams)
+      // Final subject average: weighted (devoirs 40% + controles 40% + exam 20%) if all exist, otherwise simple
+      const components = []
+      if (devoirsAvg != null) components.push({ value: devoirsAvg, w: 1 })
+      if (controlesAvg != null) components.push({ value: controlesAvg, w: 1 })
+      if (examAvg != null) components.push({ value: examAvg, w: 1 })
+      const final = components.length === 0
+        ? 0
+        : components.reduce((s, c) => s + c.value * c.w, 0) / components.reduce((s, c) => s + c.w, 0)
+      const coefficient = coefMap[name] || g.all[0]?.coefficient || 1
+      return {
+        name,
+        coefficient,
+        devoirsAvg,
+        controlesAvg,
+        examAvg,
+        average: Math.round(final * 100) / 100,
+        teacherComment: g.comments.find(Boolean) || appreciationFor(final),
+      }
     })
 
-    const generalAvg = bulletin.length > 0
-      ? bulletin.reduce((s, b) => s + b.average * b.coefficient, 0) / bulletin.reduce((s, b) => s + b.coefficient, 0)
-      : 0
+    // 5. General average (weighted by coefficient)
+    const generalAverage = subjects.length === 0
+      ? 0
+      : Math.round(
+          (subjects.reduce((s, sub) => s + sub.average * sub.coefficient, 0) /
+            subjects.reduce((s, sub) => s + sub.coefficient, 0)) * 100
+        ) / 100
 
-    res.json({ success: true, data: { bulletin, generalAverage: Math.round(generalAvg * 100) / 100 } })
+    // 6. Class stats: rank, class avg, top, bottom, class size
+    let rank = null, classAverage = null, topAverage = null, bottomAverage = null, classSize = 0
+    if (classId) {
+      const classmates = await Student.find({ class: classId, status: 'active' }).select('_id').lean()
+      classSize = classmates.length
+      const ids = classmates.map((c) => c._id)
+      const allClassGrades = await Grade.find({
+        student: { $in: ids },
+        ...(term ? { term } : {}),
+        ...(academicYear ? { academicYear } : {}),
+      }).lean()
+      const byStudent = {}
+      allClassGrades.forEach((g) => {
+        const sid = g.student.toString()
+        if (!byStudent[sid]) byStudent[sid] = {}
+        if (!byStudent[sid][g.subject]) byStudent[sid][g.subject] = []
+        byStudent[sid][g.subject].push(g)
+      })
+      const averages = Object.entries(byStudent).map(([sid, subjMap]) => {
+        const subjAvgs = Object.entries(subjMap).map(([subj, list]) => {
+          const a = list.reduce((s, g) => s + g.value, 0) / list.length
+          const coef = coefMap[subj] || list[0].coefficient || 1
+          return { value: a, coef }
+        })
+        const totalCoef = subjAvgs.reduce((s, x) => s + x.coef, 0)
+        const sum = subjAvgs.reduce((s, x) => s + x.value * x.coef, 0)
+        return { sid, avg: totalCoef > 0 ? sum / totalCoef : 0 }
+      }).filter((x) => x.avg > 0)
+
+      if (averages.length > 0) {
+        const sorted = [...averages].sort((a, b) => b.avg - a.avg)
+        const idx = sorted.findIndex((x) => x.sid === studentId.toString())
+        rank = idx >= 0 ? idx + 1 : null
+        classAverage = Math.round((sorted.reduce((s, x) => s + x.avg, 0) / sorted.length) * 100) / 100
+        topAverage = Math.round(sorted[0].avg * 100) / 100
+        bottomAverage = Math.round(sorted[sorted.length - 1].avg * 100) / 100
+      }
+    }
+
+    // 7. Attendance summary (for the term/year if available, else all-time on student)
+    const attRecords = await Attendance.find({ class: classId }).lean()
+    let totalDays = 0, presentDays = 0, absentCount = 0, lateCount = 0
+    attRecords.forEach((a) => {
+      const rec = a.records?.find((r) => r.student?.toString() === studentId.toString())
+      if (rec) {
+        totalDays++
+        if (rec.status === 'present') presentDays++
+        else if (rec.status === 'absent') absentCount++
+        else if (rec.status === 'late') lateCount++
+      }
+    })
+    const attendanceRate = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0
+
+    res.json({
+      success: true,
+      data: {
+        school: student.school ? { name: student.school.name, logo: student.school.logo, city: student.school.city, country: student.school.country } : null,
+        student: {
+          _id: student._id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          matricule: student.matricule,
+          dateOfBirth: student.dateOfBirth,
+          gender: student.gender,
+          photo: student.photo,
+        },
+        class: student.class ? { name: student.class.name, level: student.class.level, cycle: student.class.cycle } : null,
+        academicYear: year,
+        term: term || null,
+        subjects,
+        generalAverage,
+        appreciation: appreciationFor(generalAverage),
+        behavior: behaviorFor(attendanceRate),
+        attendance: { totalDays, presentDays, absentCount, lateCount, rate: attendanceRate },
+        classStats: { rank, classSize, classAverage, topAverage, bottomAverage },
+        issuedAt: new Date(),
+      },
+    })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

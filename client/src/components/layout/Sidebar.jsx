@@ -28,6 +28,7 @@ const sidebarSections = [
     items: [
       { label: 'Mes enfants', icon: GraduationCap, path: '/dashboard' },
       { label: 'Notes & Bulletins', icon: FileText, path: '/dashboard/parent/notes' },
+      { label: 'Bulletin trimestriel', icon: Receipt, path: '/dashboard/bulletin' },
       { label: 'Présence (mon enfant)', icon: CalendarCheck, path: '/dashboard/parent/presence' },
       { label: 'Présence de la classe', icon: Users, path: '/dashboard/parent/presence-classe' },
       { label: 'Devoirs assignés', icon: BookOpen, path: '/dashboard/parent/devoirs' },
@@ -81,6 +82,7 @@ const sidebarSections = [
     items: [
       { label: 'Devoirs & Évaluations', icon: ClipboardList, path: '/dashboard/devoirs' },
       { label: 'Notes & Bulletins', icon: FileText, path: '/dashboard/notes' },
+      { label: 'Bulletins (PDF)', icon: Receipt, path: '/dashboard/bulletin' },
       { label: 'Présence', icon: CalendarCheck, path: '/dashboard/presence' },
       { label: 'Activités scolaires', icon: Activity, path: '/dashboard/activites' },
       { label: 'Ressources pédagogiques', icon: Library, path: '/dashboard/ressources' },

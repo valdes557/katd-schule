@@ -1,51 +1,70 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 import { useAuth } from './context/AuthContext'
 
+// Eager: public landing + login + layout (small, needed immediately)
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
-import ExplorerPage from './pages/ExplorerPage'
-import EcolesPage from './pages/EcolesPage'
 import DashboardLayout from './components/layout/DashboardLayout'
 import DashboardPage from './pages/DashboardPage'
-import ElevesPage from './pages/ElevesPage'
-import EnseignantsPage from './pages/EnseignantsPage'
-import NotesPage from './pages/NotesPage'
-import PresencePage from './pages/PresencePage'
-import MessagingPage from './pages/MessagingPage'
-import SouscriptionsPage from './pages/SouscriptionsPage'
 import PlaceholderPage from './pages/PlaceholderPage'
-import EnrollmentPage from './pages/EnrollmentPage'
-import InscriptionsPage from './pages/InscriptionsPage'
-import TarifsPage from './pages/TarifsPage'
-import SchoolRegistrationPage from './pages/SchoolRegistrationPage'
-import AdminLocationsPage from './pages/AdminLocationsPage'
-import AdminSchoolRegistrationsPage from './pages/AdminSchoolRegistrationsPage'
-import SchoolDetailPage from './pages/SchoolDetailPage'
-import ManageSchoolPage from './pages/ManageSchoolPage'
-import AdminPlatformPage from './pages/AdminPlatformPage'
-import SocialPage from './pages/SocialPage'
-import AboutPage from './pages/AboutPage'
-import ContactsPage from './pages/ContactsPage'
-import AidePage from './pages/AidePage'
-import ResourcesPage from './pages/ResourcesPage'
-import ExperiencesPage from './pages/ExperiencesPage'
-import SupportPage from './pages/SupportPage'
-import DashboardSchoolProfilePage from './pages/DashboardSchoolProfilePage'
-import ClassesPage from './pages/ClassesPage'
-import MatieresPage from './pages/MatieresPage'
-import EmploiDuTempsPage from './pages/EmploiDuTempsPage'
-import AdminEcolesPage from './pages/AdminEcolesPage'
-import ParentChildDetailPage from './pages/ParentChildDetailPage'
-import ParentFinancesPage from './pages/ParentFinancesPage'
-import ParentControlsPage from './pages/ParentControlsPage'
-import ParentAppointmentsPage from './pages/ParentAppointmentsPage'
-import ParentDocumentsPage from './pages/ParentDocumentsPage'
-import TeacherHomeworkPage from './pages/TeacherHomeworkPage'
-import TeacherAnalyticsPage from './pages/TeacherAnalyticsPage'
-import TeacherStudentsPage from './pages/TeacherStudentsPage'
-import DirectorFeesPage from './pages/DirectorFeesPage'
-import AdminSchoolSubjectsPage from './pages/AdminSchoolSubjectsPage'
-import ParentSectionPage from './pages/ParentSectionPage'
+
+// Lazy: every secondary page is loaded on demand to shrink the initial bundle
+const ExplorerPage = lazy(() => import('./pages/ExplorerPage'))
+const EcolesPage = lazy(() => import('./pages/EcolesPage'))
+const ElevesPage = lazy(() => import('./pages/ElevesPage'))
+const EnseignantsPage = lazy(() => import('./pages/EnseignantsPage'))
+const NotesPage = lazy(() => import('./pages/NotesPage'))
+const PresencePage = lazy(() => import('./pages/PresencePage'))
+const MessagingPage = lazy(() => import('./pages/MessagingPage'))
+const SouscriptionsPage = lazy(() => import('./pages/SouscriptionsPage'))
+const EnrollmentPage = lazy(() => import('./pages/EnrollmentPage'))
+const InscriptionsPage = lazy(() => import('./pages/InscriptionsPage'))
+const TarifsPage = lazy(() => import('./pages/TarifsPage'))
+const SchoolRegistrationPage = lazy(() => import('./pages/SchoolRegistrationPage'))
+const AdminLocationsPage = lazy(() => import('./pages/AdminLocationsPage'))
+const AdminSchoolRegistrationsPage = lazy(() => import('./pages/AdminSchoolRegistrationsPage'))
+const SchoolDetailPage = lazy(() => import('./pages/SchoolDetailPage'))
+const ManageSchoolPage = lazy(() => import('./pages/ManageSchoolPage'))
+const AdminPlatformPage = lazy(() => import('./pages/AdminPlatformPage'))
+const SocialPage = lazy(() => import('./pages/SocialPage'))
+const AboutPage = lazy(() => import('./pages/AboutPage'))
+const ContactsPage = lazy(() => import('./pages/ContactsPage'))
+const AidePage = lazy(() => import('./pages/AidePage'))
+const ResourcesPage = lazy(() => import('./pages/ResourcesPage'))
+const ExperiencesPage = lazy(() => import('./pages/ExperiencesPage'))
+const SupportPage = lazy(() => import('./pages/SupportPage'))
+const DashboardSchoolProfilePage = lazy(() => import('./pages/DashboardSchoolProfilePage'))
+const ClassesPage = lazy(() => import('./pages/ClassesPage'))
+const MatieresPage = lazy(() => import('./pages/MatieresPage'))
+const EmploiDuTempsPage = lazy(() => import('./pages/EmploiDuTempsPage'))
+const AdminEcolesPage = lazy(() => import('./pages/AdminEcolesPage'))
+const ParentChildDetailPage = lazy(() => import('./pages/ParentChildDetailPage'))
+const ParentFinancesPage = lazy(() => import('./pages/ParentFinancesPage'))
+const ParentControlsPage = lazy(() => import('./pages/ParentControlsPage'))
+const ParentAppointmentsPage = lazy(() => import('./pages/ParentAppointmentsPage'))
+const ParentDocumentsPage = lazy(() => import('./pages/ParentDocumentsPage'))
+const TeacherHomeworkPage = lazy(() => import('./pages/TeacherHomeworkPage'))
+const TeacherAnalyticsPage = lazy(() => import('./pages/TeacherAnalyticsPage'))
+const TeacherStudentsPage = lazy(() => import('./pages/TeacherStudentsPage'))
+const DirectorFeesPage = lazy(() => import('./pages/DirectorFeesPage'))
+const AdminSchoolSubjectsPage = lazy(() => import('./pages/AdminSchoolSubjectsPage'))
+const ParentSectionPage = lazy(() => import('./pages/ParentSectionPage'))
+const BulletinPage = lazy(() => import('./pages/BulletinPage'))
+
+function PageFallback() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <svg className="animate-spin h-7 w-7 text-blue-600" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        <span className="text-xs text-gray-400">Chargement…</span>
+      </div>
+    </div>
+  )
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -67,6 +86,7 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   return (
+    <Suspense fallback={<PageFallback />}>
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<LandingPage />} />
@@ -145,6 +165,8 @@ export default function App() {
         <Route path="parent/emploi-du-temps" element={<ParentSectionPage section="timetable" />} />
         <Route path="parent/matieres" element={<ParentSectionPage section="subjects" />} />
         <Route path="parent/frais" element={<ParentSectionPage section="fees" />} />
+        <Route path="bulletin" element={<BulletinPage />} />
+        <Route path="bulletin/:studentId" element={<BulletinPage />} />
         <Route path="parent/finances" element={<ParentFinancesPage />} />
         <Route path="parent/controles" element={<ParentControlsPage />} />
         <Route path="parent/rendez-vous" element={<ParentAppointmentsPage />} />
@@ -154,5 +176,6 @@ export default function App() {
       {/* 404 fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   )
 }

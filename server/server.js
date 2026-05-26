@@ -2,11 +2,15 @@ require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
 const path = require('path')
+const compression = require('compression')
 const connectDB = require('./config/db')
 
 const app = express()
 
 connectDB()
+
+// Gzip/Brotli responses for faster transfers
+app.use(compression())
 
 app.use(cors({
   origin: (origin, cb) => {
