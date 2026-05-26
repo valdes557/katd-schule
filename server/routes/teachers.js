@@ -7,7 +7,8 @@ const { protect, authorize } = require('../middleware/auth')
 // GET /api/teachers
 router.get('/', protect, async (req, res) => {
   try {
-    const schoolId = req.user.school?._id || req.user.school
+    const userSchool = req.user.school?._id || req.user.school
+    const schoolId = req.user.role === 'super_admin' ? (req.query.schoolId || userSchool) : userSchool
     if (!schoolId) return res.json({ success: true, total: 0, data: [] })
     const { search, status, page = 1, limit = 50 } = req.query
     const query = { school: schoolId }

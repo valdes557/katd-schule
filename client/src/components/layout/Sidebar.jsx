@@ -106,6 +106,7 @@ const sidebarSections = [
     items: [
       { label: 'Écoles', icon: School, path: '/dashboard/ecoles-admin' },
       { label: 'Demandes d\'écoles', icon: UserPlus, path: '/dashboard/demandes-ecoles' },
+      { label: 'Matières par école', icon: ClipboardList, path: '/dashboard/matieres-ecoles' },
       { label: 'Localités (Pays/Villes)', icon: MapPin, path: '/dashboard/localites' },
       { label: 'Gestion Plateforme', icon: LayoutGrid, path: '/dashboard/plateforme' },
     ],

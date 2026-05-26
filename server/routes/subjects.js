@@ -5,12 +5,19 @@ const { protect, authorize } = require('../middleware/auth')
 
 router.get('/', protect, async (req, res) => {
   try {
-    const query = { school: req.user.school?._id || req.user.school }
-    if (!query.school) return res.json({ success: true, data: [] })
+    const userSchool = req.user.school?._id || req.user.school
+    // Super admin can target any school via ?schoolId=...
+    const targetSchool = req.user.role === 'super_admin'
+      ? (req.query.schoolId || userSchool)
+      : userSchool
+    const query = {}
+    if (targetSchool) query.school = targetSchool
+    else if (req.user.role !== 'super_admin') return res.json({ success: true, data: [] })
     if (req.query.cycle) query.cycle = req.query.cycle
     const subjects = await Subject.find(query)
       .populate('teacher', 'firstName lastName')
       .populate('classes', 'name level')
+      .populate('school', 'name')
       .sort({ cycle: 1, name: 1 })
     res.json({ success: true, data: subjects })
   } catch (err) {
@@ -30,7 +37,11 @@ router.get('/:id', protect, async (req, res) => {
 
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const subject = await Subject.create({ ...req.body, school: req.user.school?._id || req.user.school })
+    const userSchool = req.user.school?._id || req.user.school
+    // super_admin must provide school in body; directeur uses their own school
+    const school = req.user.role === 'super_admin' ? (req.body.school || userSchool) : userSchool
+    if (!school) return res.status(400).json({ message: 'École requise' })
+    const subject = await Subject.create({ ...req.body, school })
     res.status(201).json({ success: true, data: subject })
   } catch (err) {
     res.status(500).json({ message: err.message })
