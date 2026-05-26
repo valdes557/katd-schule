@@ -1,4 +1,4 @@
-import { Calendar, BarChart3, GraduationCap, Trophy, Users as UsersIcon, Star, User as UserIcon, IdCard, CalendarDays, Smile } from 'lucide-react'
+import { Calendar, BarChart3, GraduationCap, Trophy, Users as UsersIcon, Star, User as UserIcon, Hash, CalendarDays, Smile } from 'lucide-react'
 
 /**
  * Formal report card (bulletin) view — matches KATD-SCHÜLE design.
@@ -67,7 +67,7 @@ export default function BulletinView({ data, schoolBranding = true }) {
           </div>
           <div className="bulletin-student-info">
             <InfoRow icon={<UserIcon size={13} />} label="Nom et prénom" value={`${student?.firstName || ''} ${student?.lastName || ''}`} />
-            <InfoRow icon={<IdCard size={13} />} label="Matricule" value={student?.matricule || '—'} />
+            <InfoRow icon={<Hash size={13} />} label="Matricule" value={student?.matricule || '—'} />
             <InfoRow icon={<Calendar size={13} />} label="Date de naissance" value={formatDate(student?.dateOfBirth) || '—'} />
             <InfoRow icon={<GraduationCap size={13} />} label="Classe" value={klass?.name || '—'} />
             <InfoRow icon={<BarChart3 size={13} />} label="Niveau" value={klass?.level || klass?.cycle || '—'} />
