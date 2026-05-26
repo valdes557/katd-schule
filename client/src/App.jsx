@@ -45,6 +45,7 @@ import TeacherAnalyticsPage from './pages/TeacherAnalyticsPage'
 import TeacherStudentsPage from './pages/TeacherStudentsPage'
 import DirectorFeesPage from './pages/DirectorFeesPage'
 import AdminSchoolSubjectsPage from './pages/AdminSchoolSubjectsPage'
+import ParentSectionPage from './pages/ParentSectionPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -135,6 +136,15 @@ export default function App() {
 
         {/* Parent routes */}
         <Route path="parent/enfant/:studentId" element={<ParentChildDetailPage />} />
+        <Route path="parent/notes" element={<ParentSectionPage section="notes" />} />
+        <Route path="parent/presence" element={<ParentSectionPage section="attendance" />} />
+        <Route path="parent/presence-classe" element={<ParentSectionPage section="classattendance" />} />
+        <Route path="parent/devoirs" element={<ParentSectionPage section="homework" />} />
+        <Route path="parent/completion" element={<ParentSectionPage section="completion" />} />
+        <Route path="parent/enseignants" element={<ParentSectionPage section="teachers" />} />
+        <Route path="parent/emploi-du-temps" element={<ParentSectionPage section="timetable" />} />
+        <Route path="parent/matieres" element={<ParentSectionPage section="subjects" />} />
+        <Route path="parent/frais" element={<ParentSectionPage section="fees" />} />
         <Route path="parent/finances" element={<ParentFinancesPage />} />
         <Route path="parent/controles" element={<ParentControlsPage />} />
         <Route path="parent/rendez-vous" element={<ParentAppointmentsPage />} />

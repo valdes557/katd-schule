@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -32,10 +32,13 @@ const SEQUENCES = ['Séquence 1', 'Séquence 2', 'Séquence 3', 'Séquence 4', '
 
 export default function ParentChildDetailPage() {
   const { studentId } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') || 'overview'
   const [data, setData] = useState(null)
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('overview')
+  const [tab, _setTab] = useState(initialTab)
+  const setTab = (t) => { _setTab(t); setSearchParams({ tab: t }, { replace: true }) }
   const [classAtt, setClassAtt] = useState(null)
   const [classAttLoading, setClassAttLoading] = useState(false)
   const [teachers, setTeachers] = useState(null)
