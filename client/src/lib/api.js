@@ -9,10 +9,21 @@ async function request(path, options = {}) {
     ...(options.headers || {}),
   }
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers })
+  let res
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...options, headers })
+  } catch (e) {
+    // Network-level failure (offline, CORS, DNS, server down)
+    const url = `${API_URL}${path}`
+    throw new Error(`Impossible de joindre le serveur (${url}). Vérifiez votre connexion Internet ou que le backend est en ligne.`)
+  }
   const data = await res.json().catch(() => ({}))
 
   if (!res.ok) {
+    if (res.status === 401) {
+      // Token expired or invalid → force re-login
+      try { localStorage.removeItem('token') } catch (_) {}
+    }
     throw new Error(data.message || `Erreur HTTP ${res.status}`)
   }
   return data

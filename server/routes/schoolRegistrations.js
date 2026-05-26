@@ -224,10 +224,48 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
       `,
     })
 
+    // ─── Send admin confirmation email (async, non-blocking) ───
+    try {
+      const adminEmail = req.user.email
+      const dashboardUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/dashboard/demandes-ecoles`
+      sendEmail({
+        to: adminEmail,
+        subject: `✅ Souscription approuvée — ${reg.schoolName} | KATD-SCHÜLE`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+            <div style="background:linear-gradient(135deg,#059669,#10B981);padding:24px;border-radius:12px 12px 0 0;text-align:center">
+              <h1 style="color:white;margin:0;font-size:22px">✅ Approbation effectuée</h1>
+              <p style="color:#D1FAE5;margin-top:6px;font-size:13px">KATD-SCHÜLE — Confirmation administrateur</p>
+            </div>
+            <div style="background:#F9FAFB;padding:24px;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 12px 12px">
+              <p style="color:#374151;font-size:15px">Bonjour <strong>${req.user.name || 'Administrateur'}</strong>,</p>
+              <p style="color:#4B5563;font-size:14px">La demande de souscription envoyée par <strong>${reg.directorName}</strong> pour l'école <strong>${reg.schoolName}</strong> a été approuvée avec succès.</p>
+              <div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:14px;margin:16px 0;font-size:13px">
+                <strong style="color:#065F46">📧 Email envoyé au directeur :</strong> ${emailResult.success ? '<span style="color:#059669">✓ Identifiants et reçu transmis</span>' : '<span style="color:#DC2626">✗ Échec — voir détails ci-dessous</span>'}
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:13px;margin:12px 0">
+                <tr><td style="padding:6px 0;color:#6B7280">N° Reçu</td><td style="padding:6px 0;color:#111827;text-align:right;font-family:monospace">${receiptNumber}</td></tr>
+                <tr><td style="padding:6px 0;color:#6B7280">École</td><td style="padding:6px 0;color:#111827;font-weight:600;text-align:right">${reg.schoolName}</td></tr>
+                <tr><td style="padding:6px 0;color:#6B7280">Directeur</td><td style="padding:6px 0;color:#111827;text-align:right">${reg.directorName}</td></tr>
+                <tr><td style="padding:6px 0;color:#6B7280">Email directeur</td><td style="padding:6px 0;color:#2563EB;text-align:right">${reg.email}</td></tr>
+                <tr><td style="padding:6px 0;color:#6B7280">Cycle</td><td style="padding:6px 0;color:#111827;text-align:right">${reg.cycle}</td></tr>
+                <tr><td style="padding:6px 0;color:#6B7280">Plan</td><td style="padding:6px 0;color:#7C3AED;font-weight:600;text-align:right">${planLabel}</td></tr>
+                <tr><td style="padding:6px 0;color:#6B7280">Validité</td><td style="padding:6px 0;color:#111827;text-align:right">Jusqu'au ${endDate}</td></tr>
+                <tr style="border-top:2px solid #E5E7EB"><td style="padding:10px 0;color:#6B7280;font-weight:600">MONTANT</td><td style="padding:10px 0;color:#059669;font-weight:700;font-size:16px;text-align:right">${reg.amount.toLocaleString()} F CFA</td></tr>
+              </table>
+              <div style="text-align:center;margin-top:18px">
+                <a href="${dashboardUrl}" style="display:inline-block;background:#2563EB;color:white;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:600">📂 Voir dans le dashboard</a>
+              </div>
+            </div>
+          </div>
+        `,
+      }).catch(() => {})
+    } catch (_) {}
+
     res.json({
       success: true,
       message: emailResult.success
-        ? 'Souscription approuvée. Email avec reçu et identifiants envoyé au directeur.'
+        ? '✅ Souscription approuvée. Email avec reçu et identifiants envoyé au directeur. Notification de confirmation envoyée à votre adresse.'
         : 'Souscription approuvée. Compte créé mais l\'email n\'a pas pu être envoyé : ' + (emailResult.error || 'erreur inconnue'),
       emailSent: emailResult.success,
       data: { registration: reg, school, user: { ...user.toObject(), rawPassword } },

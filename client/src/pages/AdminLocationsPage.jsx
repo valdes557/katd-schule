@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MapPin, Plus, Trash2, Loader2, Globe, Building2, Home } from 'lucide-react'
+import { MapPin, Plus, Trash2, Loader2, Globe, Building2, Home, Search, AlertCircle } from 'lucide-react'
 import { locationsApi } from '../lib/api'
 
 const TYPE_LABELS = { country: 'Pays', city: 'Ville', neighborhood: 'Quartier' }
@@ -13,6 +13,8 @@ export default function AdminLocationsPage() {
   const [tab, setTab] = useState('country')
   const [form, setForm] = useState({ type: 'country', name: '', parent: '', code: '' })
   const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState('')
+  const [error, setError] = useState(null)
 
   const fetchAll = async () => {
     setLoading(true)
@@ -34,11 +36,14 @@ export default function AdminLocationsPage() {
   const handleAdd = async (e) => {
     e.preventDefault()
     setAdding(true)
+    setError(null)
     try {
-      await locationsApi.create({ type: form.type, name: form.name, parent: form.parent || undefined, code: form.code || undefined })
+      await locationsApi.create({ type: form.type, name: form.name.trim(), parent: form.parent || undefined, code: form.code?.trim() || undefined })
       setForm({ type: tab, name: '', parent: '', code: '' })
       fetchAll()
-    } catch (err) { alert(err.message) }
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la création')
+    }
     setAdding(false)
   }
 
@@ -99,17 +104,51 @@ export default function AdminLocationsPage() {
         </button>
       </form>
 
-      {/* List */}
-      {loading ? (
-        <div className="text-center py-12"><Loader2 size={24} className="animate-spin mx-auto text-blue-600" /></div>
-      ) : locations.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <MapPin size={36} className="mx-auto mb-2 opacity-20" />
-          <p>Aucun {TYPE_LABELS[tab].toLowerCase()} créé</p>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm flex items-start gap-2">
+          <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Erreur</p>
+            <p className="text-xs mt-0.5">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="ml-auto text-xs text-red-500 hover:underline">Fermer</button>
         </div>
-      ) : (
+      )}
+
+      {/* Search bar */}
+      <div className="relative max-w-md">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={`Rechercher un ${TYPE_LABELS[tab].toLowerCase()}...`}
+          className="input pl-9 text-sm"
+        />
+      </div>
+
+      {/* List */}
+      {(() => {
+        const q = search.trim().toLowerCase()
+        const filtered = q
+          ? locations.filter((l) =>
+              l.name?.toLowerCase().includes(q) ||
+              l.code?.toLowerCase().includes(q) ||
+              l.parent?.name?.toLowerCase().includes(q)
+            )
+          : locations
+        return loading ? (
+          <div className="text-center py-12"><Loader2 size={24} className="animate-spin mx-auto text-blue-600" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">
+            <MapPin size={36} className="mx-auto mb-2 opacity-20" />
+            <p>{q ? `Aucun résultat pour « ${search} »` : `Aucun ${TYPE_LABELS[tab].toLowerCase()} créé`}</p>
+          </div>
+        ) : (
+        <>
+        <p className="text-xs text-gray-400">{filtered.length} résultat{filtered.length > 1 ? 's' : ''}{q ? ` pour « ${search} »` : ''}</p>
         <div className="grid gap-2">
-          {locations.map((loc) => (
+          {filtered.map((loc) => (
             <div key={loc._id} className="card p-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600">
@@ -127,7 +166,9 @@ export default function AdminLocationsPage() {
             </div>
           ))}
         </div>
-      )}
+        </>
+        )
+      })()}
     </div>
   )
 }
