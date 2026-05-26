@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { platformApi, plansApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import RichTextEditor from '../components/ui/RichTextEditor'
 
 const TABS = [
   { id: 'posts', label: 'Social', icon: Globe2 },
@@ -403,54 +404,87 @@ function ResourcesPanel() {
   )
 }
 
-// ─── About Panel ─────────────────────────────────────────────────────────────
+// ─── About Panel ────────────────────────────────────────────────────────────
 function AboutPanel({ platformData, refresh }) {
   const [content, setContent] = useState(platformData?.about?.content || '')
   const [saving, setSaving] = useState(false)
-  const [files, setFiles] = useState([])
-  const fileRef = useRef()
+  const [galleryFiles, setGalleryFiles] = useState([])
+  const galleryRef = useRef()
+
+  // Sync editor when platformData reloads
+  useEffect(() => { setContent(platformData?.about?.content || '') }, [platformData?.about?.content])
+
+  // Upload a single image and return URL (used by RichTextEditor)
+  const uploadInlineImage = async (file) => {
+    const r = await platformApi.uploadImages([file])
+    return Array.isArray(r.data) ? r.data[0] : null
+  }
 
   const handleSave = async () => {
     setSaving(true)
     try {
       let images = platformData?.about?.images || []
-      if (files.length > 0) {
-        const r = await platformApi.uploadImages(files)
-        images = r.data || images
+      if (galleryFiles.length > 0) {
+        const r = await platformApi.uploadImages(galleryFiles)
+        if (Array.isArray(r.data)) images = [...images, ...r.data]
       }
       await platformApi.update({ about: { content, images } })
+      setGalleryFiles([])
       refresh()
+      alert('Contenu « À propos » enregistré ✅')
     } catch (err) { alert(err.message) }
     setSaving(false)
   }
 
+  const removeGalleryImage = async (idx) => {
+    if (!confirm('Retirer cette image de la galerie ?')) return
+    const images = (platformData?.about?.images || []).filter((_, i) => i !== idx)
+    await platformApi.update({ about: { content, images } })
+    refresh()
+  }
+
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-4">
-      <h3 className="text-sm font-bold text-gray-900">Contenu "À propos"</h3>
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        rows={8}
-        className="input text-sm resize-none w-full"
-        placeholder="Description de la plateforme..."
-      />
-      <div className="flex items-center gap-3 flex-wrap">
-        <button type="button" onClick={() => fileRef.current?.click()} className="btn-ghost text-sm border border-gray-200">
-          <Image size={14} /> Photos (À propos)
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
-          onChange={(e) => setFiles(Array.from(e.target.files))} />
-        {files.length > 0 && <span className="text-xs text-gray-500">{files.length} fichier(s)</span>}
+      <div>
+        <h3 className="text-sm font-bold text-gray-900">Contenu « À propos »</h3>
+        <p className="text-xs text-gray-500 mt-0.5">Utilisez la barre d'outils pour mettre en forme le texte et insérer des images directement dans le contenu.</p>
       </div>
-      {platformData?.about?.images?.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {platformData.about.images.map((img, i) => (
-            <img key={i} src={img} className="w-20 h-16 rounded-lg object-cover" alt="" />
-          ))}
+
+      <RichTextEditor
+        value={content}
+        onChange={setContent}
+        onUploadImage={uploadInlineImage}
+        placeholder="Rédigez la présentation de la plateforme… utilisez la barre pour le formatage et l'insertion d'images."
+        minHeight={320}
+      />
+
+      {/* Optional gallery (kept for backward compatibility) */}
+      <div className="border-t border-gray-100 pt-4">
+        <p className="text-xs font-semibold text-gray-700 mb-2">Galerie d'images (optionnelle)</p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button type="button" onClick={() => galleryRef.current?.click()} className="btn-ghost text-sm border border-gray-200">
+            <Image size={14} /> Ajouter à la galerie
+          </button>
+          <input ref={galleryRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => setGalleryFiles(Array.from(e.target.files))} />
+          {galleryFiles.length > 0 && <span className="text-xs text-gray-500">{galleryFiles.length} fichier(s) en attente d'enregistrement</span>}
         </div>
-      )}
+        {platformData?.about?.images?.length > 0 && (
+          <div className="flex gap-2 flex-wrap mt-3">
+            {platformData.about.images.map((img, i) => (
+              <div key={i} className="relative group">
+                <img src={img} className="w-24 h-20 rounded-lg object-cover border border-gray-200" alt="" />
+                <button onClick={() => removeGalleryImage(i)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Retirer">
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <button onClick={handleSave} disabled={saving} className="btn-primary text-sm">
-        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Sauvegarder
+        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer
       </button>
     </div>
   )

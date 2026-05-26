@@ -311,6 +311,7 @@ export const parentApi = {
   classTeachers: (studentId) => api.get(`/parent/children/${studentId}/teachers`),
   feeInstallments: () => api.get('/parent/fees/installments'),
   homeworkClassCompletion: (hwId) => api.get(`/parent/homework/${hwId}/completion`),
+  childSubjects: (studentId) => api.get(`/parent/children/${studentId}/subjects`),
 }
 
 export const feesApi = {

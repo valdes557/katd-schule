@@ -13,6 +13,7 @@ const Class = require('../models/Class')
 const Message = require('../models/Message')
 const Document = require('../models/Document')
 const Teacher = require('../models/Teacher')
+const Subject = require('../models/Subject')
 
 // Middleware: only parents
 const parentOnly = (req, res, next) => {
@@ -547,6 +548,44 @@ router.get('/children/:studentId/class-attendance', protect, parentOnly, async (
         students: summary,
       },
     })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── MATIÈRES DE L'ÉCOLE / CLASSE DE L'ENFANT ───
+router.get('/children/:studentId/subjects', protect, parentOnly, async (req, res) => {
+  try {
+    const student = await Student.findOne({ _id: req.params.studentId, parentUser: req.user._id }).populate('class')
+    if (!student) return res.status(404).json({ message: 'Enfant non trouvé' })
+
+    const schoolId = student.school?._id || student.school
+    const classId = student.class?._id || student.class
+
+    // Get subjects: those assigned to this class OR all subjects of the school matching the child's cycle
+    const query = { school: schoolId }
+    if (student.cycle) query.cycle = student.cycle
+
+    const subjects = await Subject.find(query)
+      .populate('teacher', 'firstName lastName email phone subjects speciality photo')
+      .populate('classes', 'name level')
+      .sort({ name: 1 })
+
+    // Mark which subjects are assigned to the child's class specifically
+    const result = subjects.map((s) => ({
+      _id: s._id,
+      name: s.name,
+      code: s.code,
+      cycle: s.cycle,
+      level: s.level,
+      coefficient: s.coefficient,
+      hoursPerWeek: s.hoursPerWeek,
+      description: s.description,
+      program: s.program,
+      teacher: s.teacher,
+      classes: s.classes,
+      isInChildClass: classId ? s.classes.some((c) => c._id.toString() === classId.toString()) : false,
+    }))
+
+    res.json({ success: true, data: result, className: student.class?.name, cycle: student.cycle })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

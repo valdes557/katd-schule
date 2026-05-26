@@ -27,18 +27,41 @@ function uploadBuffer(buffer, mimetype) {
 }
 
 async function processFiles(req, res, multerNext) {
-  const files = req.files ? req.files : req.file ? [req.file] : []
-  if (files.length === 0) return multerNext()
+  // Detect mode: upload.fields() produces req.files as object {fieldName: [files]},
+  // upload.array() produces req.files as a flat array, upload.single() produces req.file
+  const isFieldsMode = req.files && !Array.isArray(req.files) && typeof req.files === 'object'
+  let allFiles = []
+  if (isFieldsMode) {
+    Object.values(req.files).forEach((arr) => { if (Array.isArray(arr)) allFiles.push(...arr) })
+  } else if (Array.isArray(req.files)) {
+    allFiles = req.files
+  } else if (req.file) {
+    allFiles = [req.file]
+  }
+  if (allFiles.length === 0) return multerNext()
+
   try {
-    const results = await Promise.all(files.map((f) => uploadBuffer(f.buffer, f.mimetype)))
-    const mapped = files.map((f, i) => ({
+    const results = await Promise.all(allFiles.map((f) => uploadBuffer(f.buffer, f.mimetype)))
+    const mapWithUrl = (f, i) => ({
       ...f,
       path: results[i].secure_url,
       filename: results[i].public_id,
       size: results[i].bytes,
-    }))
-    if (req.files) req.files = mapped
-    else req.file = mapped[0]
+    })
+
+    if (isFieldsMode) {
+      // Re-build the object structure with mapped files
+      let idx = 0
+      const out = {}
+      Object.entries(req.files).forEach(([field, arr]) => {
+        out[field] = arr.map((f) => mapWithUrl(f, idx++))
+      })
+      req.files = out
+    } else if (Array.isArray(req.files)) {
+      req.files = allFiles.map(mapWithUrl)
+    } else if (req.file) {
+      req.file = mapWithUrl(req.file, 0)
+    }
     multerNext()
   } catch (e) { multerNext(e) }
 }

@@ -8,6 +8,7 @@ import {
   ArrowLeft, BookOpen, CalendarCheck, FileText, Clock, CheckCircle2,
   XCircle, AlertTriangle, Loader2, RefreshCw, User, Download, Wifi,
   Users, GraduationCap, Phone, Mail, Banknote, ListChecks, ChevronDown, ChevronRight,
+  ClipboardList,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
 import { cn } from '../lib/utils'
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'teachers', label: 'Enseignants', icon: GraduationCap },
   { id: 'homework', label: 'Devoirs', icon: FileText },
   { id: 'completion', label: 'Complétion', icon: ListChecks },
+  { id: 'subjects', label: 'Matières', icon: ClipboardList },
   { id: 'fees', label: 'Frais', icon: Banknote },
   { id: 'timetable', label: 'Emploi du temps', icon: Clock },
 ]
@@ -43,6 +45,8 @@ export default function ParentChildDetailPage() {
   const [completionData, setCompletionData] = useState({})
   const [completionLoading, setCompletionLoading] = useState(null)
   const [expandedHw, setExpandedHw] = useState(null)
+  const [subjects, setSubjects] = useState(null)
+  const [subjectsLoading, setSubjectsLoading] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -78,9 +82,17 @@ export default function ParentChildDetailPage() {
     setCompletionLoading(null)
   }
 
+  const loadSubjects = async () => {
+    if (subjects) return
+    setSubjectsLoading(true)
+    try { const r = await parentApi.childSubjects(studentId); setSubjects(r.data || []) } catch (_) {}
+    setSubjectsLoading(false)
+  }
+
   useEffect(() => { load() }, [studentId])
   useEffect(() => { if (tab === 'classattendance') loadClassAttendance() }, [tab])
   useEffect(() => { if (tab === 'teachers') loadTeachers() }, [tab])
+  useEffect(() => { if (tab === 'subjects') loadSubjects() }, [tab])
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (!data) return <div className="text-center py-16 text-sm text-gray-500">Enfant non trouvé</div>
@@ -487,6 +499,47 @@ export default function ParentChildDetailPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* ── MATIÈRES DE L'ÉCOLE ── */}
+      {tab === 'subjects' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <ClipboardList size={16} className="text-purple-600" />
+            <h3 className="text-sm font-bold text-gray-900">Matières enseignées à {student.class?.name || 'la classe'}</h3>
+          </div>
+          {subjectsLoading ? (
+            <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-purple-600" /></div>
+          ) : !subjects || subjects.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-8">Aucune matière enregistrée pour cette école</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {subjects.map((s) => (
+                <div key={s._id} className={cn('card p-4 border', s.isInChildClass ? 'border-purple-200 bg-purple-50/30' : 'border-gray-100')}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-gray-900">{s.name}</p>
+                      {s.code && <p className="text-[10px] text-gray-400">Code: {s.code}</p>}
+                    </div>
+                    {s.isInChildClass && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">Dans sa classe</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[10px] mb-2">
+                    {s.coefficient != null && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Coef. {s.coefficient}</span>}
+                    {s.hoursPerWeek != null && <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded">{s.hoursPerWeek}h/semaine</span>}
+                    {s.cycle && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{s.cycle}</span>}
+                  </div>
+                  {s.teacher && (
+                    <div className="text-xs text-gray-600 border-t border-gray-100 pt-2 mt-2">
+                      <p className="flex items-center gap-1"><GraduationCap size={11} className="text-blue-500" /> <span className="font-semibold">{s.teacher.lastName} {s.teacher.firstName}</span></p>
+                      {s.teacher.phone && <p className="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5"><Phone size={10} />{s.teacher.phone}</p>}
+                    </div>
+                  )}
+                  {s.description && <p className="text-[10px] text-gray-500 mt-2 italic line-clamp-2">{s.description}</p>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
