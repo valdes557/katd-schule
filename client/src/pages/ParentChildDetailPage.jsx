@@ -6,10 +6,11 @@ import {
 } from 'recharts'
 import {
   ArrowLeft, BookOpen, CalendarCheck, FileText, Clock, CheckCircle2,
-  XCircle, AlertTriangle, Loader2, RefreshCw, User, Download, Wifi, WifiOff,
-  Users, GraduationCap, Phone, Mail,
+  XCircle, AlertTriangle, Loader2, RefreshCw, User, Download, Wifi,
+  Users, GraduationCap, Phone, Mail, Banknote, ListChecks, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
+import { cn } from '../lib/utils'
 
 const PIE_COLORS = ['#10B981', '#EF4444', '#F59E0B', '#6366F1']
 const TABS = [
@@ -19,8 +20,13 @@ const TABS = [
   { id: 'classattendance', label: 'Classe', icon: Users },
   { id: 'teachers', label: 'Enseignants', icon: GraduationCap },
   { id: 'homework', label: 'Devoirs', icon: FileText },
+  { id: 'completion', label: 'Complétion', icon: ListChecks },
+  { id: 'fees', label: 'Frais', icon: Banknote },
   { id: 'timetable', label: 'Emploi du temps', icon: Clock },
 ]
+
+const TERMS = ['Trimestre 1', 'Trimestre 2', 'Trimestre 3']
+const SEQUENCES = ['Séquence 1', 'Séquence 2', 'Séquence 3', 'Séquence 4', 'Séquence 5', 'Séquence 6']
 
 export default function ParentChildDetailPage() {
   const { studentId } = useParams()
@@ -32,6 +38,11 @@ export default function ParentChildDetailPage() {
   const [classAttLoading, setClassAttLoading] = useState(false)
   const [teachers, setTeachers] = useState(null)
   const [teachersLoading, setTeachersLoading] = useState(false)
+  const [selectedTerm, setSelectedTerm] = useState('')
+  const [selectedSeq, setSelectedSeq] = useState('')
+  const [completionData, setCompletionData] = useState({})
+  const [completionLoading, setCompletionLoading] = useState(null)
+  const [expandedHw, setExpandedHw] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -60,6 +71,13 @@ export default function ParentChildDetailPage() {
     setTeachersLoading(false)
   }
 
+  const loadCompletion = async (hwId) => {
+    if (completionData[hwId]) return
+    setCompletionLoading(hwId)
+    try { const r = await parentApi.homeworkClassCompletion(hwId); setCompletionData((p) => ({ ...p, [hwId]: r.data })) } catch (_) {}
+    setCompletionLoading(null)
+  }
+
   useEffect(() => { load() }, [studentId])
   useEffect(() => { if (tab === 'classattendance') loadClassAttendance() }, [tab])
   useEffect(() => { if (tab === 'teachers') loadTeachers() }, [tab])
@@ -67,7 +85,7 @@ export default function ParentChildDetailPage() {
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (!data) return <div className="text-center py-16 text-sm text-gray-500">Enfant non trouvé</div>
 
-  const { student, gradesBySubject, grades, attendance, homeworks, timetable } = data
+  const { student, gradesBySubject, grades, attendance, homeworks, timetable, todayAttendance, fees } = data
 
   // Compute per-subject averages for chart
   const subjectAvg = Object.entries(gradesBySubject).map(([subj, gs]) => ({
@@ -135,6 +153,19 @@ export default function ParentChildDetailPage() {
       {/* Tab Content */}
       {tab === 'overview' && (
         <div className="space-y-4">
+          {/* Today's attendance banner */}
+          {(() => {
+            const STATUS = { present: { label: 'Présent aujourd\'hui', bg: 'bg-green-50 border-green-200', color: 'text-green-700', dot: 'bg-green-500', icon: CheckCircle2 }, absent: { label: 'Absent aujourd\'hui', bg: 'bg-red-50 border-red-200', color: 'text-red-700', dot: 'bg-red-500', icon: XCircle }, late: { label: 'En retard aujourd\'hui', bg: 'bg-amber-50 border-amber-200', color: 'text-amber-700', dot: 'bg-amber-500', icon: AlertTriangle }, excused: { label: 'Excusé aujourd\'hui', bg: 'bg-indigo-50 border-indigo-200', color: 'text-indigo-700', dot: 'bg-indigo-400', icon: CheckCircle2 }, unknown: { label: 'Présence pas encore enregistrée', bg: 'bg-gray-50 border-gray-200', color: 'text-gray-500', dot: 'bg-gray-300', icon: Clock } }
+            const ts = STATUS[todayAttendance || 'unknown']
+            const Icon = ts.icon
+            return (
+              <div className={cn('border rounded-xl p-4 flex items-center gap-3', ts.bg)}>
+                <span className={cn('w-3 h-3 rounded-full flex-shrink-0', ts.dot)} />
+                <Icon size={16} className={cn('flex-shrink-0', ts.color)} />
+                <p className={cn('text-sm font-bold', ts.color)}>{ts.label}</p>
+              </div>
+            )
+          })()}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="card p-4 text-center">
               <p className="text-2xl font-bold text-blue-600">{subjectAvg.length > 0 ? (subjectAvg.reduce((s, a) => s + a.moyenne, 0) / subjectAvg.length).toFixed(1) : '—'}</p>
@@ -181,18 +212,22 @@ export default function ParentChildDetailPage() {
 
       {tab === 'notes' && (
         <div className="space-y-5">
-          {/* Download bulletin */}
-          <div className="flex justify-end">
-            <button
-              onClick={() => window.print()}
-              className="btn-ghost text-xs border border-gray-200 flex items-center gap-1.5"
-            >
-              <Download size={13} /> Télécharger le bulletin (PDF)
-            </button>
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={selectedTerm} onChange={(e) => { setSelectedTerm(e.target.value); setSelectedSeq('') }} className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+              <option value="">Tous les trimestres</option>
+              {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select value={selectedSeq} onChange={(e) => { setSelectedSeq(e.target.value); setSelectedTerm('') }} className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+              <option value="">Toutes les séquences</option>
+              {SEQUENCES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {(selectedTerm || selectedSeq) && <button onClick={() => { setSelectedTerm(''); setSelectedSeq('') }} className="text-xs text-blue-600 hover:underline">Réinitialiser</button>}
+            <button onClick={() => window.print()} className="ml-auto btn-ghost text-xs border border-gray-200 flex items-center gap-1.5"><Download size={13} /> PDF</button>
           </div>
           {subjectAvg.length > 0 ? (
             <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-800 mb-4">Moyennes par matière</h3>
+              <h3 className="text-sm font-semibold text-gray-800 mb-4">Moyennes par matière{selectedTerm ? ` — ${selectedTerm}` : selectedSeq ? ` — ${selectedSeq}` : ''}</h3>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={subjectAvg}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -205,26 +240,36 @@ export default function ParentChildDetailPage() {
             </div>
           ) : <p className="text-sm text-gray-400 text-center py-8">Aucune note enregistrée</p>}
 
-          {Object.entries(gradesBySubject).map(([subj, gs]) => (
-            <div key={subj} className="card p-4">
-              <h4 className="text-sm font-bold text-gray-800 mb-2">{subj} <span className="text-xs text-gray-400 font-normal">— Moy: {(gs.reduce((s, g) => s + g.value, 0) / gs.length).toFixed(1)}/20</span></h4>
-              <div className="space-y-1">
-                {gs.map((g, i) => (
-                  <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-1.5 h-1.5 rounded-full ${g.value >= 10 ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span className="text-gray-600 capitalize">{g.type}</span>
-                      <span className="text-gray-400">{g.term}</span>
+          {Object.entries(gradesBySubject).map(([subj, gs]) => {
+            const filtered = gs.filter((g) => {
+              if (selectedSeq) return g.sequence === selectedSeq
+              if (selectedTerm) return g.term === selectedTerm
+              return true
+            })
+            if (filtered.length === 0) return null
+            const avg = (filtered.reduce((s, g) => s + g.value, 0) / filtered.length).toFixed(1)
+            return (
+              <div key={subj} className="card p-4">
+                <h4 className="text-sm font-bold text-gray-800 mb-2">{subj} <span className="text-xs text-gray-400 font-normal">— Moy: {avg}/20</span></h4>
+                <div className="space-y-1">
+                  {filtered.map((g, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${g.value >= 10 ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span className="text-gray-600 capitalize">{g.type}</span>
+                        {g.sequence && <span className="bg-purple-100 text-purple-700 px-1.5 rounded text-[10px]">{g.sequence}</span>}
+                        {!g.sequence && g.term && <span className="bg-blue-100 text-blue-700 px-1.5 rounded text-[10px]">{g.term}</span>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {g.comment && <span className="text-gray-400 truncate max-w-[120px]">{g.comment}</span>}
+                        <span className={`font-bold ${g.value >= 10 ? 'text-green-600' : 'text-red-600'}`}>{g.value}/20</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {g.comment && <span className="text-gray-400 truncate max-w-[120px]">{g.comment}</span>}
-                      <span className={`font-bold ${g.value >= 10 ? 'text-green-600' : 'text-red-600'}`}>{g.value}/20</span>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -356,27 +401,149 @@ export default function ParentChildDetailPage() {
           {homeworks.map((h) => (
             <div key={h._id} className="card p-4">
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900">{h.title}</p>
                   <p className="text-xs text-gray-500">{h.subject} · {h.type}</p>
                   <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400">
                     <span>Assigné: {new Date(h.assignedDate).toLocaleDateString('fr-FR')}</span>
                     <span>Échéance: {new Date(h.dueDate).toLocaleDateString('fr-FR')}</span>
                   </div>
+                  {/* Teacher completion status */}
+                  <div className="flex items-center gap-2 mt-2">
+                    {h.teacherMarkedDone
+                      ? <span className="inline-flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold"><CheckCircle2 size={10} /> Fait (confirmé par l'enseignant)</span>
+                      : <span className="inline-flex items-center gap-1 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"><XCircle size={10} /> Pas encore marqué fait</span>
+                    }
+                  </div>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${
+                <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap flex-shrink-0',
                   h.status === 'submitted' ? 'bg-green-100 text-green-700' :
                   h.status === 'late' ? 'bg-amber-100 text-amber-700' :
                   h.status === 'overdue' ? 'bg-red-100 text-red-700' :
                   'bg-gray-100 text-gray-500'
-                }`}>
+                )}>
                   {h.status === 'submitted' ? 'Rendu' : h.status === 'late' ? 'Rendu en retard' : h.status === 'overdue' ? 'Non rendu' : 'En attente'}
                 </span>
               </div>
               {h.grade != null && <p className="text-xs text-blue-600 mt-1 font-medium">Note: {h.grade}/20</p>}
+              {h.description && <p className="text-xs text-gray-400 mt-1 italic">{h.description}</p>}
             </div>
           ))}
           {homeworks.length === 0 && <p className="text-sm text-gray-400 text-center py-8">Aucun devoir enregistré</p>}
+        </div>
+      )}
+
+      {/* ── COMPLÉTION DE LA CLASSE PAR DEVOIR ── */}
+      {tab === 'completion' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <ListChecks size={16} className="text-blue-600" />
+            <h3 className="text-sm font-bold text-gray-900">Qui a fait ses devoirs dans la classe ?</h3>
+          </div>
+          <p className="text-xs text-gray-500 -mt-2">Cliquez sur un devoir pour voir la liste complète de la classe.</p>
+          {homeworks.length === 0 && <p className="text-center text-sm text-gray-400 py-8">Aucun devoir</p>}
+          {homeworks.map((h) => {
+            const isExpanded = expandedHw === h._id
+            const cd = completionData[h._id]
+            return (
+              <div key={h._id} className="card overflow-hidden">
+                <button className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors" onClick={() => { setExpandedHw(isExpanded ? null : h._id); if (!isExpanded) loadCompletion(h._id) }}>
+                  <div className="flex items-center gap-3">
+                    {h.teacherMarkedDone
+                      ? <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
+                      : <XCircle size={16} className="text-gray-300 flex-shrink-0" />}
+                    <div className="text-left">
+                      <p className="text-sm font-bold text-gray-900">{h.title}</p>
+                      <p className="text-xs text-gray-500">{h.subject} · Échéance: {new Date(h.dueDate).toLocaleDateString('fr-FR')}</p>
+                    </div>
+                  </div>
+                  {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+                </button>
+                {isExpanded && (
+                  <div className="border-t border-gray-100 px-4 pb-4 pt-3">
+                    {completionLoading === h._id ? (
+                      <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin text-blue-500" /></div>
+                    ) : cd ? (
+                      <div>
+                        <div className="flex items-center gap-4 mb-3 text-xs">
+                          <span className="text-green-600 font-bold">✅ {cd.stats?.done} fait(s)</span>
+                          <span className="text-red-500 font-bold">❌ {cd.stats?.notDone} pas fait(s)</span>
+                          <span className="text-gray-400">/ {cd.stats?.total} élèves</span>
+                        </div>
+                        <div className="space-y-1">
+                          {(cd.completion || []).map((s) => (
+                            <div key={s._id} className={cn('flex items-center justify-between py-1.5 px-2 rounded-lg text-xs', s.isMyChild ? 'bg-blue-50' : '')}>
+                              <span className="text-gray-800">{s.name}{s.isMyChild && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Mon enfant</span>}</span>
+                              {s.done
+                                ? <span className="flex items-center gap-1 text-green-600 font-semibold"><CheckCircle2 size={12} /> Fait</span>
+                                : <span className="flex items-center gap-1 text-red-400"><XCircle size={12} /> Pas fait</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : <p className="text-xs text-gray-400 text-center py-2">Impossible de charger les données</p>}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── FRAIS & TRANCHES ── */}
+      {tab === 'fees' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Banknote size={16} className="text-blue-600" />
+            <h3 className="text-sm font-bold text-gray-900">Frais de scolarité</h3>
+          </div>
+          {(!fees || fees.length === 0) && <p className="text-center text-sm text-gray-400 py-8">Aucun frais enregistré</p>}
+          {(fees || []).map((f) => (
+            <div key={f._id} className="card p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <p className="text-sm font-bold text-gray-900">{f.label}</p>
+                  <p className="text-xs text-gray-500">{f.paymentMode === 'tranches' ? `Paiement par tranches` : 'Paiement complet'}</p>
+                </div>
+                <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-semibold', f.status === 'paid' ? 'bg-green-100 text-green-700' : f.status === 'partial' ? 'bg-amber-100 text-amber-700' : f.status === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500')}>
+                  {f.status === 'paid' ? 'Payé' : f.status === 'partial' ? 'Partiel' : f.status === 'overdue' ? 'En retard' : 'En attente'}
+                </span>
+              </div>
+              {/* Progress bar */}
+              <div className="mb-3">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Payé: <strong className="text-green-600">{f.paid.toLocaleString()} F CFA</strong></span>
+                  <span>Total: <strong>{f.amount.toLocaleString()} F CFA</strong></span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${Math.min(100, Math.round((f.paid / f.amount) * 100))}%` }} />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">Restant: <strong className={f.remaining > 0 ? 'text-red-600' : 'text-green-600'}>{f.remaining.toLocaleString()} F CFA</strong></p>
+              </div>
+              {/* Installments */}
+              {f.paymentMode === 'tranches' && f.installments.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1"><Clock size={12} /> Tranches ({f.pendingInstallments} restante{f.pendingInstallments > 1 ? 's' : ''})</p>
+                  <div className="space-y-1">
+                    {f.installments.map((inst, i) => (
+                      <div key={i} className={cn('flex items-center justify-between py-1.5 px-3 rounded-lg text-xs', inst.paid ? 'bg-green-50' : new Date(inst.dueDate) < new Date() ? 'bg-red-50' : 'bg-gray-50')}>
+                        <div>
+                          <p className="font-medium text-gray-800">{inst.label}</p>
+                          <p className="text-[10px] text-gray-400">Échéance: {new Date(inst.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-gray-900">{inst.amount.toLocaleString()} F</p>
+                          {inst.paid
+                            ? <span className="text-green-600 flex items-center gap-0.5 justify-end"><CheckCircle2 size={10} /> Payé</span>
+                            : <span className={cn('font-semibold', new Date(inst.dueDate) < new Date() ? 'text-red-600' : 'text-amber-600')}>En attente</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

@@ -310,6 +310,7 @@ export const parentApi = {
   classAttendance: (studentId, week = '') => api.get(`/parent/children/${studentId}/class-attendance${week ? `?week=${week}` : ''}`),
   classTeachers: (studentId) => api.get(`/parent/children/${studentId}/teachers`),
   feeInstallments: () => api.get('/parent/fees/installments'),
+  homeworkClassCompletion: (hwId) => api.get(`/parent/homework/${hwId}/completion`),
 }
 
 export const feesApi = {

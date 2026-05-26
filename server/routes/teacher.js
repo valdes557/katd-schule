@@ -255,6 +255,17 @@ router.post('/homeworks', protect, teacherOnly, async (req, res) => {
     })
     const populated = await Homework.findById(hw._id).populate('class', 'name level')
     res.status(201).json({ success: true, data: populated })
+
+    // Notify parents of all students in this class (async, non-blocking)
+    Student.find({ class: hw.class, status: 'active' }).populate('parentUser', 'email name').then((students) => {
+      students.filter((s) => s.parentUser?.email).forEach((s) => {
+        sendEmail({
+          to: s.parentUser.email,
+          subject: `📚 Nouveau devoir — ${hw.subject} | ${populated.class?.name || ''}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:#2563EB;padding:20px;border-radius:8px 8px 0 0"><h2 style="color:white;margin:0">Nouveau devoir assigné</h2></div><div style="background:#F9FAFB;padding:20px;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 8px 8px"><p>Bonjour <strong>${s.parentUser.name}</strong>,</p><p>Un nouveau devoir a été assigné à votre enfant <strong>${s.lastName} ${s.firstName}</strong> :</p><table style="width:100%;border-collapse:collapse;font-size:14px"><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Matière</td><td style="padding:8px;border-bottom:1px solid #E5E7EB;font-weight:700">${hw.subject}</td></tr><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Titre</td><td style="padding:8px;border-bottom:1px solid #E5E7EB">${hw.title}</td></tr><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Type</td><td style="padding:8px;border-bottom:1px solid #E5E7EB">${hw.type}</td></tr><tr><td style="padding:8px;color:#6B7280">À remettre le</td><td style="padding:8px;font-weight:700;color:#DC2626">${new Date(hw.dueDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</td></tr></table>${hw.description ? `<p style="margin-top:12px;font-size:13px;color:#4B5563"><em>${hw.description}</em></p>` : ''}<div style="text-align:center;margin-top:20px"><a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="background:#2563EB;color:white;padding:10px 24px;border-radius:6px;text-decoration:none;font-size:14px">Voir sur mon espace</a></div></div></div>`,
+        }).catch(() => {})
+      })
+    }).catch(() => {})
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

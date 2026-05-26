@@ -99,21 +99,38 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
     const hw = homeworkStats[0] || { total: 0, submitted: 0, overdue: 0 }
     const fees = feeStats[0] || { totalDue: 0, totalPaid: 0, pending: 0 }
 
+    // Today's attendance per child
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
+    const [todayAttendances, installmentFees] = await Promise.all([
+      Attendance.find({ 'records.student': { $in: childIds }, date: { $gte: todayStart, $lte: todayEnd } }),
+      Fee.find({ student: { $in: childIds }, paymentMode: 'tranches' }),
+    ])
+
+    const childrenWithStatus = children.map((c) => {
+      let todayStatus = 'unknown'
+      for (const att of todayAttendances) {
+        const rec = att.records.find((r) => r.student.toString() === c._id.toString())
+        if (rec) { todayStatus = rec.status; break }
+      }
+      return { _id: c._id, firstName: c.firstName, lastName: c.lastName, fullName: `${c.lastName} ${c.firstName}`, photo: c.photo, matricule: c.matricule, class: c.class, school: c.school, cycle: c.cycle, gender: c.gender, todayStatus }
+    })
+
+    let pendingInstallments = 0; let nearestDeadline = null
+    const now = new Date()
+    installmentFees.forEach((fee) => {
+      fee.installments.forEach((inst) => {
+        if (!inst.paid) {
+          pendingInstallments++
+          if (!nearestDeadline || new Date(inst.dueDate) < nearestDeadline) nearestDeadline = inst.dueDate
+        }
+      })
+    })
+
     res.json({
       success: true,
       data: {
-        children: children.map((c) => ({
-          _id: c._id,
-          firstName: c.firstName,
-          lastName: c.lastName,
-          fullName: `${c.lastName} ${c.firstName}`,
-          photo: c.photo,
-          matricule: c.matricule,
-          class: c.class,
-          school: c.school,
-          cycle: c.cycle,
-          gender: c.gender,
-        })),
+        children: childrenWithStatus,
         stats: {
           averageGrade: totalGrades[0]?.avg ? Math.round(totalGrades[0].avg * 10) / 10 : 0,
           totalGrades: totalGrades[0]?.count || 0,
@@ -127,6 +144,8 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
           feesTotalPaid: fees.totalPaid,
           feesPending: fees.pending,
           unreadMessages,
+          pendingInstallments,
+          nearestInstallmentDeadline: nearestDeadline,
         },
       },
     })
@@ -143,9 +162,12 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
       .populate('school', 'name')
     if (!student) return res.status(404).json({ message: 'Enfant non trouvé' })
 
-    const [grades, attendanceRecords, homeworks, timetable] = await Promise.all([
-      Grade.find({ student: student._id }).sort({ date: -1 }).limit(50),
-      Attendance.find({ 'records.student': student._id }).sort({ date: -1 }).limit(30)
+    const todayS = new Date(); todayS.setHours(0, 0, 0, 0)
+    const todayE = new Date(); todayE.setHours(23, 59, 59, 999)
+
+    const [grades, attendanceRecords, homeworks, timetable, todayAtt, childFees] = await Promise.all([
+      Grade.find({ student: student._id }).sort({ date: -1 }).limit(100),
+      Attendance.find({ 'records.student': student._id }).sort({ date: -1 }).limit(60)
         .then((docs) =>
           docs.map((d) => {
             const rec = d.records.find((r) => r.student.toString() === student._id.toString())
@@ -153,10 +175,11 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
           })
         ),
       student.class
-        ? Homework.find({ class: student.class._id || student.class }).sort({ dueDate: -1 }).limit(20)
+        ? Homework.find({ class: student.class._id || student.class }).sort({ dueDate: -1 }).limit(30)
             .then((hws) =>
               hws.map((h) => {
                 const sub = h.submissions.find((s) => s.student.toString() === student._id.toString())
+                const teacherMarkedDone = h.submissions.some((s) => s.student.toString() === student._id.toString())
                 return {
                   _id: h._id,
                   title: h.title,
@@ -164,6 +187,8 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
                   type: h.type,
                   assignedDate: h.assignedDate,
                   dueDate: h.dueDate,
+                  description: h.description,
+                  teacherMarkedDone,
                   submitted: !!sub,
                   submittedAt: sub?.submittedAt,
                   grade: sub?.grade,
@@ -176,13 +201,43 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
       student.class
         ? Timetable.findOne({ class: student.class._id || student.class })
         : null,
+      Attendance.findOne({ 'records.student': student._id, date: { $gte: todayS, $lte: todayE } }),
+      Fee.find({ student: student._id }).sort({ createdAt: -1 }),
     ])
 
-    // Grades by subject
+    // Today's attendance status
+    let todayAttendance = 'unknown'
+    if (todayAtt) {
+      const rec = todayAtt.records.find((r) => r.student.toString() === student._id.toString())
+      if (rec) todayAttendance = rec.status
+    }
+
+    // Fee installments summary
+    const feeSummary = childFees.map((f) => ({
+      _id: f._id,
+      label: f.label,
+      amount: f.amount,
+      paid: f.paid,
+      remaining: f.amount - f.paid,
+      status: f.status,
+      dueDate: f.dueDate,
+      paymentMode: f.paymentMode,
+      installments: f.installments.map((i) => ({
+        label: i.label,
+        amount: i.amount,
+        dueDate: i.dueDate,
+        paid: i.paid,
+        paidAt: i.paidAt,
+      })),
+      pendingInstallments: f.installments.filter((i) => !i.paid).length,
+      totalInstallments: f.installments.length,
+    }))
+
+    // Grades by subject (include sequence)
     const gradesBySubject = {}
     grades.forEach((g) => {
       if (!gradesBySubject[g.subject]) gradesBySubject[g.subject] = []
-      gradesBySubject[g.subject].push({ value: g.value, type: g.type, term: g.term, date: g.date, comment: g.comment, coefficient: g.coefficient })
+      gradesBySubject[g.subject].push({ value: g.value, type: g.type, term: g.term, sequence: g.sequence, date: g.date, comment: g.comment, coefficient: g.coefficient })
     })
 
     // Activity & connection time from parental controls
@@ -211,6 +266,8 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
         attendance: attendanceRecords,
         homeworks,
         timetable: timetable?.slots || [],
+        todayAttendance,
+        fees: feeSummary,
         lastActivity: ctrl?.lastActivity || null,
         weeklyScreenTime: ctrl?.todayScreenMinutes || 0,
         activeDays: weeklyAttendanceCount,
@@ -219,6 +276,36 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
+})
+
+// ─── HOMEWORK CLASS COMPLETION LIST ───
+router.get('/homework/:hwId/completion', protect, parentOnly, async (req, res) => {
+  try {
+    const hw = await Homework.findById(req.params.hwId).populate('class', 'name')
+    if (!hw) return res.status(404).json({ message: 'Devoir non trouvé' })
+
+    const children = await getChildren(req.user._id)
+    const childInClass = children.find((c) => c.class && c.class._id.toString() === hw.class._id.toString())
+    if (!childInClass) return res.status(403).json({ message: 'Accès refusé — votre enfant n\'est pas dans cette classe' })
+
+    const classStudents = await Student.find({ class: hw.class._id, status: 'active' }).sort({ lastName: 1 })
+    const completion = classStudents.map((s) => ({
+      _id: s._id,
+      name: `${s.lastName} ${s.firstName}`,
+      isMyChild: s._id.toString() === childInClass._id.toString(),
+      done: hw.submissions.some((sub) => sub.student.toString() === s._id.toString()),
+    }))
+
+    const doneCount = completion.filter((c) => c.done).length
+    res.json({
+      success: true,
+      data: {
+        homework: { _id: hw._id, title: hw.title, subject: hw.subject, dueDate: hw.dueDate },
+        completion,
+        stats: { done: doneCount, notDone: completion.length - doneCount, total: completion.length },
+      },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
 // ─── FEES ───

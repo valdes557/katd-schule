@@ -1,12 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Users, BookOpen, CalendarCheck, CreditCard, MessageSquare, AlertCircle,
-  TrendingUp, Clock, FileText, Loader2, RefreshCw, ArrowRight, Bell, Shield,
-  GraduationCap, CheckCircle2, XCircle, AlertTriangle,
+  Users, BookOpen, CalendarCheck, CreditCard, MessageSquare,
+  TrendingUp, Clock, FileText, Loader2, RefreshCw, ArrowRight, Shield,
+  GraduationCap, CheckCircle2, XCircle, AlertTriangle, Banknote, Calendar,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { parentApi } from '../lib/api'
+import { cn } from '../lib/utils'
+
+const TODAY_STATUS = {
+  present:  { label: 'Présent aujourd\'hui', color: 'text-green-600', bg: 'bg-green-100', dot: 'bg-green-500' },
+  absent:   { label: 'Absent aujourd\'hui',  color: 'text-red-600',   bg: 'bg-red-100',   dot: 'bg-red-500' },
+  late:     { label: 'En retard',            color: 'text-amber-600', bg: 'bg-amber-100', dot: 'bg-amber-500' },
+  excused:  { label: 'Excusé',              color: 'text-indigo-600', bg: 'bg-indigo-100', dot: 'bg-indigo-500' },
+  unknown:  { label: 'Pas encore marqué',   color: 'text-gray-500',  bg: 'bg-gray-100',  dot: 'bg-gray-300' },
+}
 
 export default function ParentDashboardPage() {
   const { user } = useAuth()
@@ -116,25 +125,49 @@ export default function ParentDashboardPage() {
         ))}
       </div>
 
+      {/* Installments alert */}
+      {s.pendingInstallments > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-amber-800">{s.pendingInstallments} tranche{s.pendingInstallments > 1 ? 's' : ''} de scolarité en attente</p>
+            {s.nearestInstallmentDeadline && (
+              <p className="text-xs text-amber-700 mt-0.5 flex items-center gap-1">
+                <Calendar size={11} /> Prochaine échéance : <strong>{new Date(s.nearestInstallmentDeadline).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
+              </p>
+            )}
+          </div>
+          <Link to="/dashboard/parent/finances" className="text-xs text-amber-700 font-semibold hover:underline whitespace-nowrap">Voir →</Link>
+        </div>
+      )}
+
       {/* Children Cards */}
       <div>
-        <h2 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><GraduationCap size={16} /> Mes enfants</h2>
+        <h2 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><GraduationCap size={16} /> Mes enfants — présence aujourd'hui</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {children.map((child) => (
-            <Link key={child._id} to={`/dashboard/parent/enfant/${child._id}`} className="card p-4 hover:shadow-card-lg transition-shadow group">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
-                  {child.photo ? <img src={child.photo} alt="" className="w-full h-full object-cover" /> : child.firstName?.charAt(0)}
+          {children.map((child) => {
+            const ts = TODAY_STATUS[child.todayStatus || 'unknown']
+            return (
+              <Link key={child._id} to={`/dashboard/parent/enfant/${child._id}`} className="card p-4 hover:shadow-card-lg transition-shadow group">
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-shrink-0">
+                    <div className="w-12 h-12 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center text-white text-lg font-bold">
+                      {child.photo ? <img src={child.photo} alt="" className="w-full h-full object-cover" /> : child.firstName?.charAt(0)}
+                    </div>
+                    <span className={cn('absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white', ts.dot)} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900 truncate">{child.fullName}</p>
+                    <p className="text-xs text-gray-500">{child.class?.name || 'Classe non assignée'} · {child.cycle}</p>
+                    <span className={cn('inline-flex items-center gap-1 text-[10px] font-semibold mt-1 px-2 py-0.5 rounded-full', ts.bg, ts.color)}>
+                      {ts.label}
+                    </span>
+                  </div>
+                  <ArrowRight size={14} className="text-gray-300 group-hover:text-blue-500 flex-shrink-0" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-900 truncate">{child.fullName}</p>
-                  <p className="text-xs text-gray-500">{child.class?.name || 'Classe non assignée'} · {child.cycle}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{child.matricule}</p>
-                </div>
-                <ArrowRight size={14} className="text-gray-300 group-hover:text-blue-500" />
-              </div>
-            </Link>
-          ))}
+              </Link>
+            )
+          })}
         </div>
       </div>
 

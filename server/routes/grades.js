@@ -3,6 +3,7 @@ const router = express.Router()
 const Grade = require('../models/Grade')
 const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
+const { sendEmail } = require('../utils/emailService')
 
 // GET /api/grades
 router.get('/', protect, async (req, res) => {
@@ -100,6 +101,18 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
     }
     const grade = await Grade.create({ ...req.body, school: schoolId })
     res.status(201).json({ success: true, data: grade })
+
+    // Notify parent (async, non-blocking)
+    Student.findById(grade.student).populate('parentUser', 'email name').then((student) => {
+      if (student?.parentUser?.email) {
+        const periodLabel = grade.sequence || grade.term || ''
+        sendEmail({
+          to: student.parentUser.email,
+          subject: `📊 Nouvelle note — ${grade.subject} (${grade.value}/20)`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:#7C3AED;padding:20px;border-radius:8px 8px 0 0"><h2 style="color:white;margin:0">Nouvelle note enregistrée</h2></div><div style="background:#F9FAFB;padding:20px;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 8px 8px"><p>Bonjour <strong>${student.parentUser.name}</strong>,</p><p>Votre enfant <strong>${student.lastName} ${student.firstName}</strong> a reçu une nouvelle note :</p><table style="width:100%;border-collapse:collapse;font-size:14px"><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Matière</td><td style="padding:8px;border-bottom:1px solid #E5E7EB;font-weight:700">${grade.subject}</td></tr><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Note</td><td style="padding:8px;border-bottom:1px solid #E5E7EB;font-size:20px;font-weight:900;color:${grade.value >= 10 ? '#16A34A' : '#DC2626'}">${grade.value}/20</td></tr><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Type</td><td style="padding:8px;border-bottom:1px solid #E5E7EB">${grade.type}</td></tr>${periodLabel ? `<tr><td style="padding:8px;color:#6B7280">Période</td><td style="padding:8px">${periodLabel}</td></tr>` : ''}${grade.comment ? `<tr><td style="padding:8px;color:#6B7280">Commentaire</td><td style="padding:8px;font-style:italic">${grade.comment}</td></tr>` : ''}</table><div style="text-align:center;margin-top:20px"><a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="background:#7C3AED;color:white;padding:10px 24px;border-radius:6px;text-decoration:none;font-size:14px">Voir le bulletin</a></div></div></div>`,
+        }).catch(() => {})
+      }
+    }).catch(() => {})
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
