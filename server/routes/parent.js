@@ -24,7 +24,7 @@ const parentOnly = (req, res, next) => {
 // Helper: get all children of parent
 async function getChildren(parentId) {
   return Student.find({ parentUser: parentId, status: 'active' })
-    .populate('class', 'name level cycle')
+    .populate('class', 'name level cycle room')
     .populate('school', 'name')
 }
 
@@ -159,7 +159,7 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
 router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
   try {
     const student = await Student.findOne({ _id: req.params.studentId, parentUser: req.user._id })
-      .populate('class', 'name level cycle')
+      .populate('class', 'name level cycle room')
       .populate('school', 'name')
     if (!student) return res.status(404).json({ message: 'Enfant non trouvé' })
 
@@ -475,7 +475,7 @@ router.get('/documents/:studentId', protect, parentOnly, async (req, res) => {
 router.post('/documents/:studentId/generate', protect, parentOnly, async (req, res) => {
   try {
     const student = await Student.findOne({ _id: req.params.studentId, parentUser: req.user._id })
-      .populate('class', 'name level cycle')
+      .populate('class', 'name level cycle room')
       .populate('school', 'name')
     if (!student) return res.status(404).json({ message: 'Enfant non trouvé' })
 

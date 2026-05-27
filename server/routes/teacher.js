@@ -19,7 +19,7 @@ const teacherOnly = (req, res, next) => {
 
 // Helper: get teacher profile from User
 async function getTeacherProfile(userId) {
-  return Teacher.findOne({ user: userId }).populate('classes', 'name level cycle stats')
+  return Teacher.findOne({ user: userId }).populate('classes', 'name level cycle room stats')
 }
 
 // ─── DASHBOARD ───
@@ -130,6 +130,8 @@ router.get('/dashboard', protect, teacherOnly, async (req, res) => {
           lastName: teacher.lastName,
           subjects: teacher.subjects,
           classes: teacher.classes,
+          cycle: teacher.cycle,
+          speciality: teacher.speciality,
         },
         stats: {
           totalStudents: studentCount,

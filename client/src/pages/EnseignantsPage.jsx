@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { getInitials } from '../lib/utils'
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4']
-const EMPTY = { firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '', password: '', classes: [] }
+const EMPTY = { firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '', password: '', classes: [], cycle: '' }
 
 export default function EnseignantsPage() {
   const { user } = useAuth()
@@ -42,6 +42,8 @@ export default function EnseignantsPage() {
     try {
       const data = { ...form, subjects: typeof form.subjects === 'string' ? form.subjects.split(',').map((s) => s.trim()).filter(Boolean) : form.subjects }
       if (!editing && !form.password) { alert('Le mot de passe est requis pour créer le compte de connexion'); return }
+      if (!form.cycle) { alert('Veuillez attribuer un cycle (Maternelle / Primaire / Secondaire) à l\'enseignant'); return }
+      if (!form.classes || form.classes.length === 0) { alert('Veuillez attribuer au moins une salle de classe à l\'enseignant'); return }
       if (editing) {
         const { password, ...rest } = data
         await teachersApi.update(editing._id, password ? data : rest)
@@ -62,7 +64,7 @@ export default function EnseignantsPage() {
 
   const openEdit = (t) => {
     setEditing(t)
-    setForm({ firstName: t.firstName, lastName: t.lastName, email: t.email || '', phone: t.phone || '', gender: t.gender || 'M', subjects: (t.subjects || []).join(', '), speciality: t.speciality || '', password: '', classes: (t.classes || []).map((c) => c._id || c) })
+    setForm({ firstName: t.firstName, lastName: t.lastName, email: t.email || '', phone: t.phone || '', gender: t.gender || 'M', subjects: (t.subjects || []).join(', '), speciality: t.speciality || '', password: '', classes: (t.classes || []).map((c) => c._id || c), cycle: t.cycle || '' })
     setShowModal(true)
   }
 
@@ -115,9 +117,16 @@ export default function EnseignantsPage() {
                   {t.subjects.map((s) => <span key={s} className="badge badge-blue text-[10px]">{s}</span>)}
                 </div>
               )}
+              {t.cycle && (
+                <div className="mb-2"><span className="badge bg-amber-50 text-amber-700 text-[10px]">Cycle : {t.cycle}</span></div>
+              )}
               {t.classes?.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2">
-                  {t.classes.map((c) => <span key={c._id || c} className="badge bg-purple-50 text-purple-600 text-[10px]">{c.name || c}</span>)}
+                  {t.classes.map((c) => (
+                    <span key={c._id || c} className="badge bg-purple-50 text-purple-600 text-[10px]">
+                      {c.name || c}{c.room ? ` (Salle ${c.room})` : ''}
+                    </span>
+                  ))}
                 </div>
               )}
               <div className="space-y-1 text-xs text-gray-500">
@@ -179,19 +188,38 @@ export default function EnseignantsPage() {
                 </div>
               </div>
               <div><label className="text-xs font-medium text-gray-600">Matières (virgules)</label><input value={form.subjects} onChange={(e) => setForm({ ...form, subjects: e.target.value })} placeholder="Mathématiques, Français" className="input text-sm mt-1" /></div>
-              <div><label className="text-xs font-medium text-gray-600">Spécialité</label><input value={form.speciality} onChange={(e) => setForm({ ...form, speciality: e.target.value })} className="input text-sm mt-1" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Cycle attribué *</label>
+                  <select required value={form.cycle} onChange={(e) => setForm({ ...form, cycle: e.target.value })} className="input text-sm mt-1">
+                    <option value="">Sélectionner...</option>
+                    <option value="Maternelle">Maternelle</option>
+                    <option value="Primaire">Primaire</option>
+                    <option value="Secondaire">Secondaire</option>
+                  </select>
+                </div>
+                <div><label className="text-xs font-medium text-gray-600">Spécialité</label><input value={form.speciality} onChange={(e) => setForm({ ...form, speciality: e.target.value })} className="input text-sm mt-1" placeholder="Ex: Mathématiques" /></div>
+              </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Classes assignées</label>
-                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto bg-gray-50 p-2 rounded-lg">
-                  {allClasses.map((c) => (
-                    <button key={c._id} type="button" onClick={() => toggleClass(c._id)}
-                      className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${form.classes.includes(c._id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>
-                      {c.name}
-                    </button>
-                  ))}
-                  {allClasses.length === 0 && <span className="text-xs text-gray-400">Aucune classe créée</span>}
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Salles de classe attribuées * <span className="text-gray-400 font-normal">(au moins une)</span></label>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-lg">
+                  {allClasses
+                    .filter((c) => !form.cycle || c.cycle === form.cycle)
+                    .map((c) => (
+                      <button key={c._id} type="button" onClick={() => toggleClass(c._id)}
+                        className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${form.classes.includes(c._id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>
+                        {c.name}{c.room ? ` · Salle ${c.room}` : ''}
+                      </button>
+                    ))}
+                  {allClasses.length === 0 && <span className="text-xs text-gray-400">Aucune classe créée dans l'école</span>}
+                  {allClasses.length > 0 && form.cycle && allClasses.filter((c) => c.cycle === form.cycle).length === 0 && (
+                    <span className="text-xs text-amber-600">Aucune classe pour le cycle « {form.cycle} ». Créez d'abord les classes correspondantes.</span>
+                  )}
                 </div>
+                {form.classes.length > 0 && (
+                  <p className="text-[10px] text-gray-500 mt-1">{form.classes.length} salle{form.classes.length > 1 ? 's' : ''} sélectionnée{form.classes.length > 1 ? 's' : ''}</p>
+                )}
               </div>
 
               <div className="flex gap-3 pt-2">

@@ -44,8 +44,23 @@ export default function TeacherDashboardPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Bonjour, {teacher.firstName} {teacher.lastName} 👋</h1>
           <p className="text-sm text-gray-500">
-            {teacher.subjects?.join(', ') || 'Enseignant'} · {stats.totalClasses} classe(s)
+            {teacher.subjects?.join(', ') || teacher.speciality || 'Enseignant'} · {stats.totalClasses} classe(s)
           </p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {teacher.cycle && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                <GraduationCap size={11} /> Cycle : {teacher.cycle}
+              </span>
+            )}
+            {(teacher.classes || []).slice(0, 3).map((c) => (
+              <span key={c._id} className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                <BookOpen size={11} /> {c.name}{c.room ? ` · Salle ${c.room}` : ''}
+              </span>
+            ))}
+            {(teacher.classes || []).length > 3 && (
+              <span className="text-[11px] text-gray-400 self-center">+{teacher.classes.length - 3} autres</span>
+            )}
+          </div>
         </div>
         <button onClick={load} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
       </div>

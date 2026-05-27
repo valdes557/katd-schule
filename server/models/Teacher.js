@@ -10,6 +10,7 @@ const teacherSchema = new mongoose.Schema(
     gender: { type: String, enum: ['M', 'F'] },
     photo: { type: String },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
+    cycle: { type: String, enum: ['Maternelle', 'Primaire', 'Secondaire'] },
     subjects: [{ type: String }],
     classes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Class' }],
     speciality: { type: String },

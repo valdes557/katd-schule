@@ -200,11 +200,49 @@ export default function ElevesPage() {
                     <p className="text-xs text-gray-400 mt-2">Notez ces identifiants. Le mot de passe ne sera plus affiché.</p>
                   </div>
                 )}
+
+                {parentResult.data?.class && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
+                    <p className="text-xs font-bold text-blue-800">🎒 Ce que le parent verra :</p>
+                    <div className="text-xs text-blue-900 space-y-1">
+                      <p>📚 Classe : <strong>{parentResult.data.class.name}</strong>
+                        {parentResult.data.class.room ? ` · Salle ${parentResult.data.class.room}` : ''}
+                        {parentResult.data.class.cycle ? ` · ${parentResult.data.class.cycle}` : ''}
+                      </p>
+                      {parentResult.data.teachers?.length > 0 ? (
+                        <div>
+                          <p className="font-semibold mt-1">👨‍🏫 Enseignants ({parentResult.data.teachers.length}) :</p>
+                          <ul className="ml-3 mt-0.5 space-y-0.5">
+                            {parentResult.data.teachers.map((t, i) => (
+                              <li key={i}>• {t.fullName}{t.subjects?.length ? ` — ${t.subjects.join(', ')}` : (t.speciality ? ` — ${t.speciality}` : '')}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : (
+                        <p className="text-amber-700 mt-1">⚠️ Aucun enseignant attribué à cette classe pour l'instant.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <button onClick={() => setParentModal(null)} className="btn-primary w-full justify-center">Fermer</button>
               </div>
             ) : (
               <form onSubmit={handleCreateParentAccount} className="space-y-3">
                 <p className="text-xs text-gray-500">Créer un compte de connexion pour le parent de cet élève.</p>
+                {!parentModal.class && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-xs">
+                    ⚠️ Cet élève n'est affecté à <strong>aucune classe</strong>. Veuillez d'abord lui attribuer une classe pour que le parent puisse voir la salle, le programme et les enseignants.
+                  </div>
+                )}
+                {parentModal.class && (
+                  <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg p-3 text-xs">
+                    📚 Classe attribuée : <strong>{parentModal.class.name}</strong>
+                    {parentModal.class.room ? ` · Salle ${parentModal.class.room}` : ''}
+                    {' · '}{parentModal.class.cycle || parentModal.cycle}
+                    <p className="text-[11px] text-blue-700 mt-1">Le parent pourra voir cette classe, ses enseignants et son programme.</p>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-medium text-gray-600">Nom du parent</label>
                   <input value={parentForm.name} onChange={(e) => setParentForm({ ...parentForm, name: e.target.value })} className="input text-sm mt-1 w-full" />

@@ -158,7 +158,11 @@ export default function ParentDashboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-900 truncate">{child.fullName}</p>
-                    <p className="text-xs text-gray-500">{child.class?.name || 'Classe non assignée'} · {child.cycle}</p>
+                    <p className="text-xs text-gray-500">
+                      {child.class?.name || 'Classe non assignée'}
+                      {child.class?.room ? ` · Salle ${child.class.room}` : ''}
+                      {' · '}{child.cycle}
+                    </p>
                     <span className={cn('inline-flex items-center gap-1 text-[10px] font-semibold mt-1 px-2 py-0.5 rounded-full', ts.bg, ts.color)}>
                       {ts.label}
                     </span>

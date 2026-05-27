@@ -22,7 +22,7 @@ router.get('/', protect, async (req, res) => {
     if (status) query.status = status
     const total = await Teacher.countDocuments(query)
     const teachers = await Teacher.find(query)
-      .populate('classes', 'name level')
+      .populate('classes', 'name level cycle room')
       .populate('user', 'email')
       .skip((page - 1) * limit)
       .limit(Number(limit))
@@ -48,7 +48,7 @@ router.get('/:id', protect, async (req, res) => {
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
-    const { firstName, lastName, email, phone, gender, subjects, speciality, password, classes } = req.body
+    const { firstName, lastName, email, phone, gender, subjects, speciality, password, classes, cycle } = req.body
 
     let userId = null
     if (email && password) {
@@ -67,12 +67,13 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
       firstName, lastName, email, phone, gender,
       subjects: Array.isArray(subjects) ? subjects : (subjects || '').split(',').map((s) => s.trim()).filter(Boolean),
       speciality,
+      cycle,
       classes: classes || [],
       school: schoolId,
       user: userId,
     })
 
-    const populated = await Teacher.findById(teacher._id).populate('classes', 'name level').populate('user', 'email')
+    const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email')
     res.status(201).json({ success: true, data: populated })
   } catch (err) {
     res.status(500).json({ message: err.message })
@@ -102,7 +103,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
     Object.assign(teacher, rest)
     if (email) teacher.email = email
     await teacher.save()
-    const populated = await Teacher.findById(teacher._id).populate('classes', 'name level').populate('user', 'email')
+    const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email')
     res.json({ success: true, data: populated })
   } catch (err) {
     res.status(500).json({ message: err.message })

@@ -25,7 +25,7 @@ router.get('/', protect, async (req, res) => {
 
     const total = await Student.countDocuments(query)
     const students = await Student.find(query)
-      .populate('class', 'name level')
+      .populate('class', 'name level cycle room')
       .skip((page - 1) * limit)
       .limit(Number(limit))
       .sort({ lastName: 1 })
@@ -84,8 +84,15 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
 // POST /api/students/:id/parent-account — Director creates parent login account
 router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const student = await Student.findById(req.params.id).populate('class', 'name')
+    const student = await Student.findById(req.params.id).populate('class', 'name level cycle room')
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+
+    // Block if no class assigned — parent must see class & teachers
+    if (!student.class) {
+      return res.status(400).json({
+        message: 'Cet élève doit être affecté à une classe avant de créer le compte parent. Le parent doit pouvoir voir la classe, les enseignants et le programme.',
+      })
+    }
 
     // Use provided email or fall back to parent.email on student record
     const email = req.body.email || student.parent?.email
@@ -119,10 +126,32 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
     if (req.body.email) student.parent = { ...student.parent, email: req.body.email }
     await student.save()
 
+    // Fetch teachers of the child's class so the director sees what is attributed
+    const Teacher = require('../models/Teacher')
+    const classTeachers = await Teacher.find({ classes: student.class._id })
+      .select('firstName lastName email subjects speciality')
+
     res.status(201).json({
       success: true,
       message: 'Compte parent créé avec succès',
-      data: { email, rawPassword, userId: user._id, studentName: `${student.lastName} ${student.firstName}`, className: student.class?.name },
+      data: {
+        email,
+        rawPassword,
+        userId: user._id,
+        studentName: `${student.lastName} ${student.firstName}`,
+        class: {
+          name: student.class.name,
+          level: student.class.level,
+          cycle: student.class.cycle,
+          room: student.class.room,
+        },
+        teachers: classTeachers.map((t) => ({
+          fullName: `${t.lastName} ${t.firstName}`,
+          email: t.email,
+          subjects: t.subjects,
+          speciality: t.speciality,
+        })),
+      },
     })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Cet email est déjà utilisé' })
