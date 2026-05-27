@@ -56,11 +56,18 @@ export default function AdminSchoolRegistrationsPage() {
     try {
       if (action === 'approve') {
         const result = await schoolRegistrationApi.approve(id)
+        const pwd = result.data?.user?.rawPassword
+        const email = result.data?.user?.email || confirmModal.email
+        // Always display credentials so the admin can transmit them manually if email is delayed/filtered
+        setCredentialsModal({
+          email,
+          password: pwd || '(voir logs serveur)',
+          sent: !!result.emailSent,
+          error: result.emailSent ? null : (result.message || 'SMTP non configuré'),
+        })
         if (result.emailSent) {
-          showToast('success', `✅ Compte directeur créé ! Email avec identifiants envoyé à ${confirmModal.email}.`)
+          showToast('success', `✅ Compte créé. Email envoyé à ${email}. Conservez aussi le mot de passe affiché en cas de filtrage.`)
         } else {
-          const pwd = result.data?.user?.rawPassword
-          setCredentialsModal({ password: pwd || '(voir logs serveur)', sent: false, error: result.message || 'SMTP non configuré' })
           showToast('warning', 'Compte créé mais email non envoyé — identifiants affichés ci-dessous.')
         }
         setExpandedId(null)
@@ -80,8 +87,14 @@ export default function AdminSchoolRegistrationsPage() {
   const handleResend = async (id) => {
     setProcessing(id)
     try {
+      const reg = registrations.find((r) => r._id === id)
       const result = await schoolRegistrationApi.resendCredentials(id)
-      setCredentialsModal({ password: result.rawPassword || '(inconnu)', sent: result.emailSent, error: result.emailSent ? null : result.message })
+      setCredentialsModal({
+        email: reg?.email,
+        password: result.rawPassword || '(inconnu)',
+        sent: result.emailSent,
+        error: result.emailSent ? null : result.message,
+      })
       if (result.emailSent) showToast('success', 'Nouveaux identifiants envoyés par email.')
     } catch (e) { showToast('error', '❌ Erreur : ' + e.message) }
     setProcessing(null)
@@ -329,10 +342,24 @@ export default function AdminSchoolRegistrationsPage() {
               ? <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-700 mb-4 flex items-center gap-2"><CheckCircle2 size={13} /> Email envoyé avec succès au directeur.</div>
               : <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 mb-4"><AlertTriangle size={13} className="inline mr-1" />Email non envoyé ({credentialsModal.error}). Transmettez manuellement :</div>
             }
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-              <p className="text-xs text-gray-400 mb-1">Mot de passe temporaire</p>
-              <p className="text-2xl font-bold text-blue-700 tracking-[0.2em] select-all font-mono">{credentialsModal.password}</p>
-              <p className="text-[11px] text-gray-400 mt-2">Cliquez sur le mot de passe pour le sélectionner, puis copiez-le.</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+              {credentialsModal.email && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Email du directeur</p>
+                  <p className="text-sm font-semibold text-gray-900 select-all">{credentialsModal.email}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Mot de passe temporaire</p>
+                <p className="text-2xl font-bold text-blue-700 tracking-[0.2em] select-all font-mono">{credentialsModal.password}</p>
+                <p className="text-[11px] text-gray-400 mt-2">Cliquez sur le mot de passe pour le sélectionner, puis copiez-le.</p>
+              </div>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(`Email: ${credentialsModal.email || ''}\nMot de passe: ${credentialsModal.password}`); showToast('success', 'Identifiants copiés dans le presse-papier') }}
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 py-2 rounded-lg text-xs font-semibold"
+              >
+                📋 Copier email + mot de passe
+              </button>
             </div>
             <button onClick={() => setCredentialsModal(null)} className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors">
               OK, compris
