@@ -4,6 +4,7 @@ import {
   Users, BookOpen, CalendarCheck, CreditCard, MessageSquare,
   TrendingUp, Clock, FileText, Loader2, RefreshCw, ArrowRight, Shield,
   GraduationCap, CheckCircle2, XCircle, AlertTriangle, Banknote, Calendar,
+  Receipt,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { parentApi } from '../lib/api'
@@ -148,8 +149,8 @@ export default function ParentDashboardPage() {
           {children.map((child) => {
             const ts = TODAY_STATUS[child.todayStatus || 'unknown']
             return (
-              <Link key={child._id} to={`/dashboard/parent/enfant/${child._id}`} className="card p-4 hover:shadow-card-lg transition-shadow group">
-                <div className="flex items-center gap-3">
+              <div key={child._id} className="card p-4 hover:shadow-card-lg transition-shadow">
+                <Link to={`/dashboard/parent/enfant/${child._id}`} className="flex items-center gap-3 group">
                   <div className="relative flex-shrink-0">
                     <div className="w-12 h-12 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center text-white text-lg font-bold">
                       {child.photo ? <img src={child.photo} alt="" className="w-full h-full object-cover" /> : child.firstName?.charAt(0)}
@@ -168,8 +169,23 @@ export default function ParentDashboardPage() {
                     </span>
                   </div>
                   <ArrowRight size={14} className="text-gray-300 group-hover:text-blue-500 flex-shrink-0" />
+                </Link>
+                {/* Quick links per child */}
+                <div className="grid grid-cols-3 gap-1.5 mt-3 pt-3 border-t border-gray-100">
+                  <Link to={`/dashboard/parent/enfant/${child._id}?tab=notes`} className="flex flex-col items-center gap-0.5 py-2 rounded-lg hover:bg-blue-50 text-gray-600 hover:text-blue-600 transition-colors">
+                    <BookOpen size={14}/>
+                    <span className="text-[10px] font-medium">Notes</span>
+                  </Link>
+                  <Link to={`/dashboard/bulletin/${child._id}`} className="flex flex-col items-center gap-0.5 py-2 rounded-lg hover:bg-purple-50 text-gray-600 hover:text-purple-600 transition-colors">
+                    <Receipt size={14}/>
+                    <span className="text-[10px] font-medium">Bulletin</span>
+                  </Link>
+                  <Link to={`/dashboard/parent/enfant/${child._id}?tab=timetable`} className="flex flex-col items-center gap-0.5 py-2 rounded-lg hover:bg-emerald-50 text-gray-600 hover:text-emerald-600 transition-colors">
+                    <Clock size={14}/>
+                    <span className="text-[10px] font-medium">Emploi</span>
+                  </Link>
                 </div>
-              </Link>
+              </div>
             )
           })}
         </div>
