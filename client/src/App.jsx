@@ -47,10 +47,13 @@ const ParentDocumentsPage = lazy(() => import('./pages/ParentDocumentsPage'))
 const TeacherHomeworkPage = lazy(() => import('./pages/TeacherHomeworkPage'))
 const TeacherAnalyticsPage = lazy(() => import('./pages/TeacherAnalyticsPage'))
 const TeacherStudentsPage = lazy(() => import('./pages/TeacherStudentsPage'))
+const TeacherActivitiesPage = lazy(() => import('./pages/TeacherActivitiesPage'))
+const TeacherResourcesPage = lazy(() => import('./pages/TeacherResourcesPage'))
 const DirectorFeesPage = lazy(() => import('./pages/DirectorFeesPage'))
 const AdminSchoolSubjectsPage = lazy(() => import('./pages/AdminSchoolSubjectsPage'))
 const ParentSectionPage = lazy(() => import('./pages/ParentSectionPage'))
 const BulletinPage = lazy(() => import('./pages/BulletinPage'))
+const ParentActivitiesPage = lazy(() => import('./pages/ParentActivitiesPage'))
 
 function PageFallback() {
   return (
@@ -131,8 +134,8 @@ export default function App() {
         <Route path="parents" element={<PlaceholderPage title="Parents / Responsables" />} />
         <Route path="personnel" element={<PlaceholderPage title="Personnel" />} />
         <Route path="devoirs" element={<TeacherHomeworkPage />} />
-        <Route path="activites" element={<PlaceholderPage title="Activités scolaires" />} />
-        <Route path="ressources" element={<PlaceholderPage title="Ressources pédagogiques" />} />
+        <Route path="activites" element={<TeacherActivitiesPage />} />
+        <Route path="ressources" element={<TeacherResourcesPage />} />
         <Route path="annonces" element={<PlaceholderPage title="Annonces" />} />
         <Route path="documents" element={<PlaceholderPage title="Documents partagés" />} />
         <Route path="paiements" element={<PlaceholderPage title="Historique des paiements" />} />
@@ -171,6 +174,8 @@ export default function App() {
         <Route path="parent/controles" element={<ParentControlsPage />} />
         <Route path="parent/rendez-vous" element={<ParentAppointmentsPage />} />
         <Route path="parent/documents" element={<ParentDocumentsPage />} />
+        <Route path="parent/activites" element={<ParentActivitiesPage section="activities" />} />
+        <Route path="parent/ressources" element={<ParentActivitiesPage section="resources" />} />
       </Route>
 
       {/* 404 fallback */}

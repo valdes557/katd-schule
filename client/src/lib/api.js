@@ -304,6 +304,16 @@ export const teacherApi = {
   notifyAttendance: (classId, attendanceId) => api.post(`/teacher/attendance/${classId}/notify`, { attendanceId }),
   classParents: (classId) => api.get(`/teacher/class/${classId}/parents`),
   analytics: () => api.get('/teacher/analytics'),
+  // Activities
+  activities: () => api.get('/teacher/activities'),
+  createActivity: (data) => api.post('/teacher/activities', data),
+  updateActivity: (id, data) => api.put(`/teacher/activities/${id}`, data),
+  deleteActivity: (id) => api.del(`/teacher/activities/${id}`),
+  // Resources
+  resources: () => api.get('/teacher/resources'),
+  createResource: (data) => api.post('/teacher/resources', data),
+  updateResource: (id, data) => api.put(`/teacher/resources/${id}`, data),
+  deleteResource: (id) => api.del(`/teacher/resources/${id}`),
 }
 
 export const parentApi = {
@@ -323,6 +333,8 @@ export const parentApi = {
   feeInstallments: () => api.get('/parent/fees/installments'),
   homeworkClassCompletion: (hwId) => api.get(`/parent/homework/${hwId}/completion`),
   childSubjects: (studentId) => api.get(`/parent/children/${studentId}/subjects`),
+  activities: () => api.get('/parent/activities'),
+  resources: () => api.get('/parent/resources'),
 }
 
 export const feesApi = {

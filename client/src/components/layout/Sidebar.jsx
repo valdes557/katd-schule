@@ -36,6 +36,8 @@ const sidebarSections = [
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/parent/emploi-du-temps' },
       { label: 'Enseignants', icon: UserCheck, path: '/dashboard/parent/enseignants' },
       { label: 'Matières', icon: Library, path: '/dashboard/parent/matieres' },
+      { label: 'Activités scolaires', icon: Activity, path: '/dashboard/parent/activites' },
+      { label: 'Ressources pédagogiques', icon: Library, path: '/dashboard/parent/ressources' },
     ],
   },
   {

@@ -10,6 +10,8 @@ const Attendance = require('../models/Attendance')
 const Homework = require('../models/Homework')
 const Class = require('../models/Class')
 const Subject = require('../models/Subject')
+const Activity = require('../models/Activity')
+const Resource = require('../models/Resource')
 const { sendEmail } = require('../utils/emailService')
 
 const teacherOnly = (req, res, next) => {
@@ -519,6 +521,136 @@ router.post('/attendance/:classId/notify', protect, teacherOnly, async (req, res
     }
 
     res.json({ success: true, message: `${sent} parent(s) notifié(s)` })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── ACTIVITIES ───
+router.get('/activities', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.json({ success: true, data: [] })
+    const items = await Activity.find({ teacher: teacher._id })
+      .populate('class', 'name level')
+      .sort({ date: -1 })
+    res.json({ success: true, data: items })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.post('/activities', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+    const teacherClassIds = (teacher.classes || []).map((c) => c._id.toString())
+    if (!req.body.class || !teacherClassIds.includes(req.body.class.toString())) {
+      return res.status(403).json({ message: "Activité possible uniquement pour vos classes" })
+    }
+    const act = await Activity.create({
+      ...req.body,
+      teacher: teacher._id,
+      school: teacher.school,
+    })
+    const populated = await Activity.findById(act._id).populate('class', 'name level')
+    res.status(201).json({ success: true, data: populated })
+
+    // Notify parents of class
+    Student.find({ class: act.class, status: 'active' }).populate('parentUser', 'email name').then((students) => {
+      students.filter((s) => s.parentUser?.email).forEach((s) => {
+        sendEmail({
+          to: s.parentUser.email,
+          subject: `🎯 Nouvelle activité — ${act.title}`,
+          html: `<p>Bonjour <strong>${s.parentUser.name}</strong>,</p>
+            <p>Une activité a été planifiée pour la classe de <strong>${s.lastName} ${s.firstName}</strong> :</p>
+            <ul>
+              <li><strong>${act.title}</strong> (${act.type})</li>
+              <li>Date : <strong>${new Date(act.date).toLocaleDateString('fr-FR')}</strong></li>
+              ${act.location ? `<li>Lieu : ${act.location}</li>` : ''}
+              ${act.cost ? `<li>Coût : ${act.cost} FCFA</li>` : ''}
+            </ul>
+            ${act.description ? `<p><em>${act.description}</em></p>` : ''}
+            <p style="color:#6B7280;font-size:12px">— KATD-SCHÜLE</p>`,
+        }).catch(() => {})
+      })
+    }).catch(() => {})
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.put('/activities/:id', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+    const act = await Activity.findOneAndUpdate(
+      { _id: req.params.id, teacher: teacher._id },
+      req.body,
+      { new: true, runValidators: true }
+    ).populate('class', 'name level')
+    if (!act) return res.status(404).json({ message: 'Activité non trouvée' })
+    res.json({ success: true, data: act })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.delete('/activities/:id', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+    const r = await Activity.findOneAndDelete({ _id: req.params.id, teacher: teacher._id })
+    if (!r) return res.status(404).json({ message: 'Activité non trouvée' })
+    res.json({ success: true, message: 'Activité supprimée' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── RESOURCES ───
+router.get('/resources', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.json({ success: true, data: [] })
+    const items = await Resource.find({ teacher: teacher._id })
+      .populate('classes', 'name level')
+      .sort({ createdAt: -1 })
+    res.json({ success: true, data: items })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.post('/resources', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+    const teacherClassIds = (teacher.classes || []).map((c) => c._id.toString())
+    const targetClasses = (req.body.classes || []).filter((c) => teacherClassIds.includes(c.toString()))
+    if (targetClasses.length === 0) {
+      return res.status(403).json({ message: "Sélectionnez au moins une de vos classes" })
+    }
+    const r = await Resource.create({
+      ...req.body,
+      classes: targetClasses,
+      teacher: teacher._id,
+      school: teacher.school,
+      author: req.user._id,
+    })
+    res.status(201).json({ success: true, data: r })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.put('/resources/:id', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+    const r = await Resource.findOneAndUpdate(
+      { _id: req.params.id, teacher: teacher._id },
+      req.body,
+      { new: true, runValidators: true }
+    )
+    if (!r) return res.status(404).json({ message: 'Ressource non trouvée' })
+    res.json({ success: true, data: r })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.delete('/resources/:id', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+    const r = await Resource.findOneAndDelete({ _id: req.params.id, teacher: teacher._id })
+    if (!r) return res.status(404).json({ message: 'Ressource non trouvée' })
+    res.json({ success: true, message: 'Ressource supprimée' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

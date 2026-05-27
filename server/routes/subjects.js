@@ -1,6 +1,8 @@
 const express = require('express')
 const router = express.Router()
 const Subject = require('../models/Subject')
+const Teacher = require('../models/Teacher')
+const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
 
 router.get('/', protect, async (req, res) => {
@@ -14,6 +16,25 @@ router.get('/', protect, async (req, res) => {
     if (targetSchool) query.school = targetSchool
     else if (req.user.role !== 'super_admin') return res.json({ success: true, data: [] })
     if (req.query.cycle) query.cycle = req.query.cycle
+
+    // Scope: teacher only sees subjects taught in his classes (or by him directly)
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher) return res.json({ success: true, data: [] })
+      const classIds = (teacher.classes || []).map((c) => c.toString())
+      query.$or = [
+        { teacher: teacher._id },
+        { classes: { $in: classIds } },
+        ...(teacher.cycle ? [{ cycle: teacher.cycle, classes: { $in: classIds } }] : []),
+      ]
+    }
+    // Scope: parent only sees subjects of their children's classes
+    if (req.user.role === 'parent') {
+      const children = await Student.find({ parentUser: req.user._id }).select('class')
+      const childClassIds = children.map((s) => s.class).filter(Boolean)
+      if (childClassIds.length === 0) return res.json({ success: true, data: [] })
+      query.classes = { $in: childClassIds }
+    }
     const subjects = await Subject.find(query)
       .populate('teacher', 'firstName lastName')
       .populate('classes', 'name level')

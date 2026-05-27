@@ -10,6 +10,10 @@ const resourceSchema = new mongoose.Schema({
   isPublic: { type: Boolean, default: true },
   downloads: { type: Number, default: 0 },
   author: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  school: { type: mongoose.Schema.Types.ObjectId, ref: 'School' },
+  classes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Class' }],
+  teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
+  subject: { type: String, default: '' },
 }, { timestamps: true })
 
 module.exports = mongoose.model('Resource', resourceSchema)

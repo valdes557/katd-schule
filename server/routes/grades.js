@@ -6,6 +6,7 @@ const Attendance = require('../models/Attendance')
 const School = require('../models/School')
 const Class = require('../models/Class')
 const Subject = require('../models/Subject')
+const Teacher = require('../models/Teacher')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
 
@@ -19,6 +20,28 @@ router.get('/', protect, async (req, res) => {
     if (subject) query.subject = subject
     if (term) query.term = term
     if (sequence) query.sequence = sequence
+
+    // Scope by role
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher) return res.json({ success: true, total: 0, data: [] })
+      const teacherClassIds = (teacher.classes || []).map((c) => c.toString())
+      if (classId && !teacherClassIds.includes(classId.toString())) {
+        return res.json({ success: true, total: 0, data: [] })
+      }
+      if (!classId) query.class = { $in: teacherClassIds }
+    } else if (req.user.role === 'parent') {
+      const children = await Student.find({ parentUser: req.user._id }).select('_id')
+      const childIds = children.map((s) => s._id)
+      if (childIds.length === 0) return res.json({ success: true, total: 0, data: [] })
+      if (student) {
+        if (!childIds.some((id) => id.toString() === student.toString())) {
+          return res.json({ success: true, total: 0, data: [] })
+        }
+      } else {
+        query.student = { $in: childIds }
+      }
+    }
     const total = await Grade.countDocuments(query)
     const grades = await Grade.find(query)
       .populate('student', 'firstName lastName matricule')
@@ -263,11 +286,24 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
 router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
   try {
     const schoolId = req.user.school._id || req.user.school
+
+    // For teachers, validate that the target class belongs to them
+    let teacherId = null
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher) return res.status(403).json({ message: 'Profil enseignant non trouvé' })
+      const teacherClassIds = (teacher.classes || []).map((c) => c.toString())
+      const body = Array.isArray(req.body) ? req.body : [req.body]
+      const bad = body.some((g) => !g.class || !teacherClassIds.includes(g.class.toString()))
+      if (bad) return res.status(403).json({ message: "Vous ne pouvez créer des notes que pour vos classes assignées" })
+      teacherId = teacher._id
+    }
+
     if (Array.isArray(req.body)) {
-      const grades = await Grade.insertMany(req.body.map((g) => ({ ...g, school: schoolId })))
+      const grades = await Grade.insertMany(req.body.map((g) => ({ ...g, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}) })))
       return res.status(201).json({ success: true, data: grades })
     }
-    const grade = await Grade.create({ ...req.body, school: schoolId })
+    const grade = await Grade.create({ ...req.body, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}) })
     res.status(201).json({ success: true, data: grade })
 
     // Notify parent (async, non-blocking)

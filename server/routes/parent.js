@@ -14,6 +14,8 @@ const Message = require('../models/Message')
 const Document = require('../models/Document')
 const Teacher = require('../models/Teacher')
 const Subject = require('../models/Subject')
+const Activity = require('../models/Activity')
+const Resource = require('../models/Resource')
 
 // Middleware: only parents
 const parentOnly = (req, res, next) => {
@@ -629,6 +631,34 @@ router.get('/fees/installments', protect, parentOnly, async (req, res) => {
     })
 
     res.json({ success: true, data: fees, overdueInstallments })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── ACTIVITÉS DES ENFANTS ───
+router.get('/activities', protect, parentOnly, async (req, res) => {
+  try {
+    const children = await getChildren(req.user._id)
+    const classIds = children.map((c) => c.class).filter(Boolean)
+    if (classIds.length === 0) return res.json({ success: true, data: [] })
+    const activities = await Activity.find({ class: { $in: classIds } })
+      .populate('class', 'name level')
+      .populate('teacher', 'firstName lastName')
+      .sort({ date: -1 })
+    res.json({ success: true, data: activities })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── RESSOURCES PÉDAGOGIQUES DES ENFANTS ───
+router.get('/resources', protect, parentOnly, async (req, res) => {
+  try {
+    const children = await getChildren(req.user._id)
+    const classIds = children.map((c) => c.class).filter(Boolean)
+    if (classIds.length === 0) return res.json({ success: true, data: [] })
+    const resources = await Resource.find({ classes: { $in: classIds } })
+      .populate('classes', 'name level')
+      .populate('teacher', 'firstName lastName')
+      .sort({ createdAt: -1 })
+    res.json({ success: true, data: resources })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

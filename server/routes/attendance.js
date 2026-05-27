@@ -3,6 +3,7 @@ const router = express.Router()
 const Attendance = require('../models/Attendance')
 const Student = require('../models/Student')
 const Class = require('../models/Class')
+const Teacher = require('../models/Teacher')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
 
@@ -12,6 +13,22 @@ router.get('/', protect, async (req, res) => {
     const { classId, from, to, page = 1, limit = 30 } = req.query
     const query = { school: req.user.school._id || req.user.school }
     if (classId) query.class = classId
+
+    // Scope by role
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher) return res.json({ success: true, total: 0, data: [] })
+      const teacherClassIds = (teacher.classes || []).map((c) => c.toString())
+      if (classId && !teacherClassIds.includes(classId.toString())) {
+        return res.json({ success: true, total: 0, data: [] })
+      }
+      if (!classId) query.class = { $in: teacherClassIds }
+    } else if (req.user.role === 'parent') {
+      const children = await Student.find({ parentUser: req.user._id }).select('class')
+      const ids = children.map((s) => s.class).filter(Boolean)
+      if (ids.length === 0) return res.json({ success: true, total: 0, data: [] })
+      if (!classId) query.class = { $in: ids }
+    }
     if (from || to) {
       query.date = {}
       if (from) query.date.$gte = new Date(from)
@@ -67,6 +84,16 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
   try {
     const schoolId = req.user.school._id || req.user.school
     const { classId, date, records } = req.body
+
+    // Teacher can only submit attendance for his own classes
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher) return res.status(403).json({ message: 'Profil enseignant non trouvé' })
+      const teacherClassIds = (teacher.classes || []).map((c) => c.toString())
+      if (!classId || !teacherClassIds.includes(classId.toString())) {
+        return res.status(403).json({ message: "Vous ne pouvez marquer la présence que pour vos classes assignées" })
+      }
+    }
 
     const summary = {
       total: records.length,
