@@ -65,6 +65,9 @@ router.post(
       if (!user || !(await user.matchPassword(password))) {
         return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
       }
+      if (user.isActive === false) {
+        return res.status(403).json({ message: 'Votre compte a été désactivé. Contactez l\'administrateur.' })
+      }
 
       user.lastLogin = new Date()
       await user.save({ validateBeforeSave: false })

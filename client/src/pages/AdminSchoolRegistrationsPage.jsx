@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, KeyRound, AlertTriangle } from 'lucide-react'
+import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, KeyRound, AlertTriangle, MessageCircle } from 'lucide-react'
 import { schoolRegistrationApi } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -58,10 +58,16 @@ export default function AdminSchoolRegistrationsPage() {
         const result = await schoolRegistrationApi.approve(id)
         const pwd = result.data?.user?.rawPassword
         const email = result.data?.user?.email || confirmModal.email
+        const waLink = result.whatsappLink || result.data?.whatsappLink || null
+        // Auto-open WhatsApp tab so the admin can send credentials in one click
+        if (waLink) {
+          try { window.open(waLink, '_blank', 'noopener,noreferrer') } catch (_) {}
+        }
         // Always display credentials so the admin can transmit them manually if email is delayed/filtered
         setCredentialsModal({
           email,
           password: pwd || '(voir logs serveur)',
+          whatsappLink: waLink,
           sent: !!result.emailSent,
           error: result.emailSent ? null : (result.message || 'SMTP non configuré'),
         })
@@ -89,9 +95,14 @@ export default function AdminSchoolRegistrationsPage() {
     try {
       const reg = registrations.find((r) => r._id === id)
       const result = await schoolRegistrationApi.resendCredentials(id)
+      const waLink = result.whatsappLink || null
+      if (waLink) {
+        try { window.open(waLink, '_blank', 'noopener,noreferrer') } catch (_) {}
+      }
       setCredentialsModal({
         email: reg?.email,
         password: result.rawPassword || '(inconnu)',
+        whatsappLink: waLink,
         sent: result.emailSent,
         error: result.emailSent ? null : result.message,
       })
@@ -361,7 +372,17 @@ export default function AdminSchoolRegistrationsPage() {
                 📋 Copier email + mot de passe
               </button>
             </div>
-            <button onClick={() => setCredentialsModal(null)} className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors">
+            {credentialsModal.whatsappLink && (
+              <a
+                href={credentialsModal.whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <MessageCircle size={14} /> Envoyer par WhatsApp
+              </a>
+            )}
+            <button onClick={() => setCredentialsModal(null)} className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors">
               OK, compris
             </button>
           </div>

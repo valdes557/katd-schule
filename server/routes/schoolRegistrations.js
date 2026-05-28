@@ -262,13 +262,38 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
       }).catch(() => {})
     } catch (_) {}
 
+    // Build WhatsApp link with receipt + credentials
+    const phoneDigits = (reg.whatsapp || '').replace(/\D/g, '')
+    const waText = [
+      `*KATD-SCHÜLE — Souscription approuvée ✅*`,
+      ``,
+      `Bonjour *${reg.directorName}*,`,
+      `Votre école *${reg.schoolName}* a été enregistrée avec succès.`,
+      ``,
+      `📋 *Reçu N° ${receiptNumber}*`,
+      `• Cycle : ${reg.cycle}`,
+      `• Plan : ${planLabel}`,
+      `• Validité : jusqu'au ${endDate}`,
+      `• Montant payé : ${reg.amount.toLocaleString()} F CFA`,
+      ``,
+      `🔐 *Identifiants de connexion*`,
+      `• Email : ${reg.email}`,
+      `• Mot de passe : ${rawPassword}`,
+      ``,
+      `🚀 Connectez-vous : ${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login`,
+      ``,
+      `⚠️ Changez votre mot de passe après votre première connexion.`,
+    ].join('\n')
+    const whatsappLink = phoneDigits ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(waText)}` : null
+
     res.json({
       success: true,
       message: emailResult.success
-        ? '✅ Souscription approuvée. Email avec reçu et identifiants envoyé au directeur. Notification de confirmation envoyée à votre adresse.'
+        ? '✅ Souscription approuvée. Email avec reçu et identifiants envoyé au directeur.'
         : 'Souscription approuvée. Compte créé mais l\'email n\'a pas pu être envoyé : ' + (emailResult.error || 'erreur inconnue'),
       emailSent: emailResult.success,
-      data: { registration: reg, school, user: { ...user.toObject(), rawPassword } },
+      whatsappLink,
+      data: { registration: reg, school, user: { ...user.toObject(), rawPassword }, whatsappLink },
     })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Un compte avec cet email existe déjà' })
@@ -355,10 +380,29 @@ router.post('/:id/resend-credentials', protect, authorize('super_admin'), async 
       `,
     })
 
+    // Build WhatsApp link with new credentials
+    const phoneDigits = (reg.whatsapp || '').replace(/\D/g, '')
+    const waText = [
+      `*KATD-SCHÜLE — Réinitialisation des identifiants 🔑*`,
+      ``,
+      `Bonjour *${reg.directorName}*,`,
+      `Vos identifiants pour *${reg.schoolName}* ont été réinitialisés :`,
+      ``,
+      `🔐 *Nouveaux identifiants*`,
+      `• Email : ${reg.email}`,
+      `• Mot de passe : ${rawPassword}`,
+      ``,
+      `🚀 Connectez-vous : ${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login`,
+      ``,
+      `⚠️ Changez ce mot de passe après connexion.`,
+    ].join('\n')
+    const whatsappLink = phoneDigits ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(waText)}` : null
+
     res.json({
       success: true,
       emailSent: emailResult.success,
       rawPassword,
+      whatsappLink,
       message: emailResult.success
         ? 'Nouveaux identifiants envoyés par email.'
         : 'Mot de passe réinitialisé mais email non envoyé : ' + (emailResult.error || 'erreur'),
