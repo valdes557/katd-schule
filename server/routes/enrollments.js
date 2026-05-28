@@ -70,7 +70,7 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       school: schoolId,
       class: classId,
       className: `${cls.name} (${cls.level})`,
-      amount: cls.enrollmentFee || 0,
+      amount: cls.enrollmentFee || school.enrollmentFee || 0,
       paymentProof: `/uploads/${req.file.filename}`,
     })
 
@@ -172,10 +172,36 @@ router.put('/:id/approve', protect, authorize('directeur', 'super_admin'), async
       credentials: { email: enrollment.email, password: rawPassword },
     })
 
+    // Build WhatsApp receipt link if phone is provided
+    let whatsappLink = null
+    if (enrollment.phone) {
+      const phoneDigits = enrollment.phone.replace(/\D/g, '')
+      const receipt = [
+        `*KATD-SCHÜLE — Inscription approuvée ✅*`,
+        ``,
+        `Bonjour ${enrollment.firstName} ${enrollment.lastName},`,
+        `Votre inscription à *${enrollment.school.name}* a été approuvée.`,
+        ``,
+        `📋 *Reçu d'inscription*`,
+        `• Nom : ${enrollment.lastName} ${enrollment.firstName}`,
+        `• Né(e) le : ${new Date(enrollment.dateOfBirth).toLocaleDateString('fr-FR')} à ${enrollment.placeOfBirth}`,
+        `• Classe : ${enrollment.className}`,
+        `• Montant payé : ${enrollment.amount.toLocaleString()} F CFA`,
+        `• Matricule : ${student.matricule}`,
+        ``,
+        `🔐 *Identifiants de connexion*`,
+        `• Email : ${enrollment.email}`,
+        `• Mot de passe : ${rawPassword}`,
+        ``,
+        `Connectez-vous : ${process.env.CLIENT_URL || 'http://localhost:5173'}/login`,
+      ].join('\n')
+      whatsappLink = `https://wa.me/${phoneDigits}?text=${encodeURIComponent(receipt)}`
+    }
+
     res.json({
       success: true,
       message: 'Inscription approuvée. L\'élève a été notifié par email.',
-      data: { enrollment, student, user: userAccount },
+      data: { enrollment, student, user: userAccount, whatsappLink },
     })
   } catch (err) {
     if (err.code === 11000) {

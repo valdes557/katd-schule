@@ -3,7 +3,8 @@ import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft, MessageCircle, Share2, Send, Star, Phone, Mail,
   Globe, Users, FileText, Shield, HelpCircle, Gift, CreditCard, Loader2,
-  ThumbsUp, ChevronDown, ChevronUp, Play, Eye,
+  ThumbsUp, ChevronDown, ChevronUp, Play, Eye, GraduationCap,
+  Facebook, Instagram, Twitter, Youtube, Linkedin,
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
@@ -83,24 +84,59 @@ export default function SchoolDetailPage() {
           <Link to="/ecoles" className="inline-flex items-center gap-1 text-blue-200 hover:text-white text-sm mb-4">
             <ArrowLeft size={14} /> Retour aux écoles
           </Link>
-          <div className="flex items-center gap-5">
-            <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center text-2xl font-bold backdrop-blur-sm flex-shrink-0">
-              {initials}
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold">{school.name}</h1>
-              <p className="text-blue-200 text-sm mt-1">
-                {school.address?.neighborhood && `${school.address.neighborhood}, `}{school.address?.city}, {school.address?.country}
-              </p>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {school.cycles?.map((c) => (
-                  <span key={c} className="bg-white/15 backdrop-blur-sm text-xs px-2.5 py-0.5 rounded-full">{c}</span>
-                ))}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-5 sm:justify-between">
+            <div className="flex items-center gap-5">
+              <div className="w-20 h-20 bg-white/20 rounded-2xl overflow-hidden flex items-center justify-center text-2xl font-bold backdrop-blur-sm flex-shrink-0">
+                {school.logo ? <img src={school.logo} alt="" className="w-full h-full object-cover" /> : initials}
+              </div>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold">{school.name}</h1>
+                <p className="text-blue-200 text-sm mt-1">
+                  {school.address?.neighborhood && `${school.address.neighborhood}, `}{school.address?.city}, {school.address?.country}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-2 items-center">
+                  {school.cycles?.map((c) => (
+                    <span key={c} className="bg-white/15 backdrop-blur-sm text-xs px-2.5 py-0.5 rounded-full">{c}</span>
+                  ))}
+                  {/* Socials */}
+                  {school.socials && Object.entries(school.socials).some(([, v]) => v) && (
+                    <span className="flex items-center gap-1 ml-1">
+                      {[
+                        { key: 'facebook', icon: Facebook, build: (v) => v },
+                        { key: 'instagram', icon: Instagram, build: (v) => v },
+                        { key: 'twitter', icon: Twitter, build: (v) => v },
+                        { key: 'youtube', icon: Youtube, build: (v) => v },
+                        { key: 'linkedin', icon: Linkedin, build: (v) => v },
+                        { key: 'tiktok', icon: Globe, build: (v) => v },
+                        { key: 'whatsapp', icon: MessageCircle, build: (v) => `https://wa.me/${v.replace(/\D/g, '')}` },
+                      ].filter((s) => school.socials?.[s.key]).map((s) => (
+                        <a key={s.key} href={s.build(school.socials[s.key])} target="_blank" rel="noopener noreferrer" className="w-7 h-7 bg-white/15 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title={s.key}>
+                          <s.icon size={12} />
+                        </a>
+                      ))}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
+            {/* Inscription CTA */}
+            <Link
+              to={`/inscription/${school._id}`}
+              className="bg-white text-blue-700 hover:bg-blue-50 font-bold text-sm px-5 py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg whitespace-nowrap"
+            >
+              <GraduationCap size={16} /> S'inscrire à cette école
+            </Link>
           </div>
         </div>
       </div>
+
+      {/* Mobile sticky Inscription button */}
+      <Link
+        to={`/inscription/${school._id}`}
+        className="sm:hidden fixed bottom-4 right-4 z-40 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-3 rounded-full shadow-xl flex items-center gap-1.5"
+      >
+        <GraduationCap size={14} /> S'inscrire
+      </Link>
 
       {/* Tab Navigation */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">

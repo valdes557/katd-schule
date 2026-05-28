@@ -32,7 +32,11 @@ export default function InscriptionsPage() {
   const handleApprove = async (id) => {
     setProcessing(true)
     try {
-      await enrollmentApi.approve(id)
+      const r = await enrollmentApi.approve(id)
+      // Auto-open WhatsApp with pre-filled receipt if phone was provided
+      if (r?.data?.whatsappLink) {
+        window.open(r.data.whatsappLink, '_blank', 'noopener,noreferrer')
+      }
       fetchEnrollments()
       setSelected(null)
     } catch (e) { alert(e.message) }

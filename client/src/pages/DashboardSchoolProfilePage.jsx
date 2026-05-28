@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Camera, Save, Loader2, School, MapPin, Phone, Mail, Globe,
-  CheckCircle, AlertCircle, Info, Eye,
+  CheckCircle, AlertCircle, Info, Eye, Facebook, Instagram, Twitter, Youtube,
+  Linkedin, MessageCircle, Plus, Trash2, CreditCard, Banknote, GraduationCap,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { schoolsApi, locationsApi } from '../lib/api'
@@ -127,6 +128,9 @@ export default function DashboardSchoolProfilePage() {
     website: '',
     city: '', neighborhood: '', country: 'Cameroun',
     cycles: [],
+    enrollmentFee: 0,
+    socials: { facebook: '', instagram: '', twitter: '', tiktok: '', youtube: '', linkedin: '', whatsapp: '' },
+    mobileMoneyAccounts: [],
   })
 
   const [countries, setCountries] = useState([])
@@ -167,6 +171,9 @@ export default function DashboardSchoolProfilePage() {
             neighborhood: s.address?.neighborhood || '',
             country: s.address?.country || 'Cameroun',
             cycles: s.cycles || [],
+            enrollmentFee: s.enrollmentFee || 0,
+            socials: { facebook: '', instagram: '', twitter: '', tiktok: '', youtube: '', linkedin: '', whatsapp: '', ...(s.socials || {}) },
+            mobileMoneyAccounts: s.mobileMoneyAccounts || [],
           })
         }
       } catch (_) {}
@@ -207,6 +214,9 @@ export default function DashboardSchoolProfilePage() {
       }))
       fd.append('contact', JSON.stringify({ email: form.email, phone: form.phone, website: form.website }))
       fd.append('cycles', JSON.stringify(form.cycles))
+      fd.append('enrollmentFee', String(form.enrollmentFee || 0))
+      fd.append('socials', JSON.stringify(form.socials))
+      fd.append('mobileMoneyAccounts', JSON.stringify(form.mobileMoneyAccounts.filter((a) => a.operator && a.accountNumber)))
       if (logoFile) fd.append('logo', logoFile)
 
       const r = await schoolsApi.setup(school._id, fd)
@@ -428,6 +438,123 @@ export default function DashboardSchoolProfilePage() {
               <label className="text-xs font-medium text-gray-600 mb-1 block flex items-center gap-1"><Globe size={10} /> Site web</label>
               <input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} className="input text-sm w-full" placeholder="https://..." />
             </div>
+          </div>
+        </div>
+
+        {/* ── Inscription fee ── */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-3">
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+            <GraduationCap size={15} className="text-purple-600" /> Frais d'inscription (école)
+          </h3>
+          <p className="text-xs text-gray-400">Ce montant est utilisé par défaut si une classe n'a pas son propre prix d'inscription. Il s'affiche dans le formulaire d'inscription public.</p>
+          <div className="max-w-xs">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Montant en F CFA</label>
+            <div className="relative">
+              <input
+                type="number" min="0" step="500"
+                value={form.enrollmentFee}
+                onChange={(e) => setForm({ ...form, enrollmentFee: Number(e.target.value) || 0 })}
+                className="input text-sm w-full pr-14" placeholder="Ex: 15000"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold">FCFA</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Mobile Money Accounts ── */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                <Banknote size={15} className="text-green-600" /> Comptes de paiement (Mobile Money)
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">Ces comptes sont affichés sur le formulaire d'inscription pour permettre aux parents d'envoyer le paiement.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, mobileMoneyAccounts: [...form.mobileMoneyAccounts, { operator: '', accountName: '', accountNumber: '', instructions: '' }] })}
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1 whitespace-nowrap"
+            >
+              <Plus size={12} /> Ajouter un compte
+            </button>
+          </div>
+          {form.mobileMoneyAccounts.length === 0 ? (
+            <div className="text-center py-6 bg-gray-50 rounded-lg">
+              <CreditCard size={24} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-xs text-gray-500">Aucun compte renseigné. Ajoutez-en au moins un pour permettre les paiements.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {form.mobileMoneyAccounts.map((acc, i) => (
+                <div key={i} className="border border-gray-200 rounded-lg p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 relative">
+                  <input
+                    value={acc.operator}
+                    onChange={(e) => {
+                      const arr = [...form.mobileMoneyAccounts]; arr[i] = { ...arr[i], operator: e.target.value }; setForm({ ...form, mobileMoneyAccounts: arr })
+                    }}
+                    className="input text-xs" placeholder="Opérateur (MTN MoMo, Orange Money...)"
+                  />
+                  <input
+                    value={acc.accountName}
+                    onChange={(e) => {
+                      const arr = [...form.mobileMoneyAccounts]; arr[i] = { ...arr[i], accountName: e.target.value }; setForm({ ...form, mobileMoneyAccounts: arr })
+                    }}
+                    className="input text-xs" placeholder="Nom du titulaire"
+                  />
+                  <input
+                    value={acc.accountNumber}
+                    onChange={(e) => {
+                      const arr = [...form.mobileMoneyAccounts]; arr[i] = { ...arr[i], accountNumber: e.target.value }; setForm({ ...form, mobileMoneyAccounts: arr })
+                    }}
+                    className="input text-xs font-mono" placeholder="Numéro du compte"
+                  />
+                  <input
+                    value={acc.instructions}
+                    onChange={(e) => {
+                      const arr = [...form.mobileMoneyAccounts]; arr[i] = { ...arr[i], instructions: e.target.value }; setForm({ ...form, mobileMoneyAccounts: arr })
+                    }}
+                    className="input text-xs" placeholder="Instructions (optionnel)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, mobileMoneyAccounts: form.mobileMoneyAccounts.filter((_, j) => j !== i) })}
+                    className="absolute -top-2 -right-2 bg-white border border-gray-200 hover:border-red-300 hover:bg-red-50 text-red-500 rounded-full w-6 h-6 flex items-center justify-center shadow-sm"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Social Media ── */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-3">
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+            <Globe size={15} className="text-pink-600" /> Réseaux sociaux
+          </h3>
+          <p className="text-xs text-gray-400">Ces liens apparaîtront sur la page publique de votre école.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { key: 'facebook', label: 'Facebook', icon: Facebook, color: 'text-blue-600', placeholder: 'https://facebook.com/votre-ecole' },
+              { key: 'instagram', label: 'Instagram', icon: Instagram, color: 'text-pink-600', placeholder: 'https://instagram.com/votre-ecole' },
+              { key: 'twitter', label: 'X / Twitter', icon: Twitter, color: 'text-sky-500', placeholder: 'https://x.com/votre-ecole' },
+              { key: 'youtube', label: 'YouTube', icon: Youtube, color: 'text-red-600', placeholder: 'https://youtube.com/@votre-ecole' },
+              { key: 'tiktok', label: 'TikTok', icon: Globe, color: 'text-black', placeholder: 'https://tiktok.com/@votre-ecole' },
+              { key: 'linkedin', label: 'LinkedIn', icon: Linkedin, color: 'text-blue-700', placeholder: 'https://linkedin.com/company/votre-ecole' },
+              { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, color: 'text-green-600', placeholder: '+237 6XX XXX XXX' },
+            ].map((s) => (
+              <div key={s.key}>
+                <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                  <s.icon size={11} className={s.color} /> {s.label}
+                </label>
+                <input
+                  value={form.socials[s.key] || ''}
+                  onChange={(e) => setForm({ ...form, socials: { ...form.socials, [s.key]: e.target.value } })}
+                  className="input text-xs w-full" placeholder={s.placeholder}
+                />
+              </div>
+            ))}
           </div>
         </div>
 

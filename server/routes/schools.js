@@ -80,6 +80,9 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), upload.single
     if (typeof updates.address === 'string') { try { updates.address = JSON.parse(updates.address) } catch (_) {} }
     if (typeof updates.contact === 'string') { try { updates.contact = JSON.parse(updates.contact) } catch (_) {} }
     if (typeof updates.cycles === 'string') { try { updates.cycles = JSON.parse(updates.cycles) } catch (_) { updates.cycles = [updates.cycles] } }
+    if (typeof updates.socials === 'string') { try { updates.socials = JSON.parse(updates.socials) } catch (_) {} }
+    if (typeof updates.mobileMoneyAccounts === 'string') { try { updates.mobileMoneyAccounts = JSON.parse(updates.mobileMoneyAccounts) } catch (_) {} }
+    if (updates.enrollmentFee !== undefined) updates.enrollmentFee = Number(updates.enrollmentFee) || 0
 
     const school = await School.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
     if (!school) return res.status(404).json({ message: 'École non trouvée' })

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { GraduationCap, Upload, CheckCircle2, Loader2, ArrowLeft, AlertCircle, MapPin } from 'lucide-react'
+import { GraduationCap, Upload, CheckCircle2, Loader2, ArrowLeft, AlertCircle, MapPin, Banknote, Copy, Phone } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { enrollmentApi, schoolsApi } from '../lib/api'
@@ -207,16 +207,52 @@ export default function EnrollmentPage() {
               </select>
             </div>
 
-            {/* Price display */}
-            {selectedClass && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-green-700 font-medium">Frais d'inscription pour {selectedClass.name}</p>
-                  <p className="text-xs text-green-600 mt-0.5">Cycle {selectedClass.cycle} — Niveau {selectedClass.level}</p>
+            {/* Price display — use class fee, fallback to school-level fee */}
+            {(selectedClass || school?.enrollmentFee > 0) && (() => {
+              const fee = selectedClass?.enrollmentFee || school?.enrollmentFee || 0
+              return (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-green-700 font-medium">Frais d'inscription{selectedClass ? ` pour ${selectedClass.name}` : ''}</p>
+                    {selectedClass && <p className="text-xs text-green-600 mt-0.5">Cycle {selectedClass.cycle} — Niveau {selectedClass.level}</p>}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-bold text-green-700">{fee.toLocaleString()}</p>
+                    <p className="text-xs text-green-600">F CFA</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xl font-bold text-green-700">{selectedClass.enrollmentFee?.toLocaleString() || 0}</p>
-                  <p className="text-xs text-green-600">F CFA</p>
+              )
+            })()}
+
+            {/* Mobile Money accounts — where to send the payment */}
+            {school?.mobileMoneyAccounts?.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Banknote size={16} className="text-blue-600" />
+                  <h3 className="text-sm font-bold text-blue-900">Où envoyer le paiement</h3>
+                </div>
+                <p className="text-xs text-blue-700">Effectuez le paiement sur l'un des comptes ci-dessous, puis uploadez la capture du reçu.</p>
+                <div className="space-y-2">
+                  {school.mobileMoneyAccounts.map((acc, i) => (
+                    <div key={i} className="bg-white rounded-lg border border-blue-100 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-gray-900 truncate">{acc.operator}</p>
+                          {acc.accountName && <p className="text-xs text-gray-500 truncate">{acc.accountName}</p>}
+                          <p className="text-sm font-mono font-semibold text-blue-700 mt-1 select-all">{acc.accountNumber}</p>
+                          {acc.instructions && <p className="text-[11px] text-gray-500 italic mt-1">{acc.instructions}</p>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { navigator.clipboard?.writeText(acc.accountNumber); }}
+                          className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
+                          title="Copier le numéro"
+                        >
+                          <Copy size={11} /> Copier
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

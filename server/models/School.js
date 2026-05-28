@@ -24,6 +24,27 @@ const schoolSchema = new mongoose.Schema(
       phone: { type: String },
       website: { type: String },
     },
+    // Social media handles (visible on public school detail page)
+    socials: {
+      facebook: { type: String, default: '' },
+      instagram: { type: String, default: '' },
+      twitter: { type: String, default: '' },
+      tiktok: { type: String, default: '' },
+      youtube: { type: String, default: '' },
+      linkedin: { type: String, default: '' },
+      whatsapp: { type: String, default: '' },
+    },
+    // School-level default inscription fee (used if class.enrollmentFee = 0)
+    enrollmentFee: { type: Number, default: 0 },
+    // Mobile money accounts for enrollment payments (displayed on enrollment form)
+    mobileMoneyAccounts: [
+      {
+        operator: { type: String, trim: true }, // MTN MoMo, Orange Money, Wave, etc.
+        accountName: { type: String, trim: true },
+        accountNumber: { type: String, trim: true },
+        instructions: { type: String, trim: true },
+      },
+    ],
     isValidated: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     subscription: {
