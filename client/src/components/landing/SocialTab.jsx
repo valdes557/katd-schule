@@ -44,9 +44,15 @@ export default function SocialTab({ feed, setFeed, user }) {
 
   const handleShare = async (postId) => {
     const url = `${window.location.origin}/social#${postId}`
-    try { await navigator.clipboard.writeText(url) } catch (_) {}
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'KATD-SCHÜLE', text: 'Découvrez cette publication', url })
+      } else {
+        try { await navigator.clipboard.writeText(url) } catch (_) {}
+      }
+    } catch (_) {}
     platformApi.sharePost(postId)
-    setFeed((prev) => prev.map((p) => p._id === postId ? { ...p, shares: (p.shares || 0) + 1 } : p))
+    setFeed((prev) => prev.map((p) => (p._id === postId ? { ...p, shares: (p.shares || 0) + 1 } : p)))
   }
 
   const loadMore = async () => {
@@ -126,8 +132,18 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
     try {
       await platformApi.downloadPost(post._id)
       onDownload(post._id)
+      let href = url
+      const isCloudinary = /https?:\/\/res\.cloudinary\.com\//.test(url) && url.includes('/upload/')
+      if (isCloudinary) {
+        const i = url.indexOf('/upload/') + 8
+        const base = (post.title || 'media').toString().toLowerCase().replace(/[^a-z0-9-_]+/g, '-') || 'media'
+        const transform = `fl_attachment:${base}`
+        href = url.slice(0, i) + transform + '/' + url.slice(i)
+      }
       const a = document.createElement('a')
-      a.href = url; a.download = post.title || 'media'; a.target = '_blank'
+      a.href = href
+      a.download = (post.title || 'media').toString().replace(/\s+/g, '-')
+      a.target = '_blank'
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
     } catch (e) {}
   }
@@ -213,9 +229,13 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
       {/* ── Content ── */}
       <div className="p-3">
         <div className="flex items-start gap-2 mb-2">
-          <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-            {(post.author?.name || 'K')[0].toUpperCase()}
-          </div>
+          {post.author?.avatar ? (
+            <img src={post.author.avatar} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+              {(post.author?.name || 'K')[0].toUpperCase()}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             {post.title && <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">{post.title}</h3>}
             <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{post.content}</p>

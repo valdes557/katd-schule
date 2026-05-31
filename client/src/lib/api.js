@@ -40,6 +40,16 @@ export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (payload) => api.post('/auth/register', payload),
   me: () => api.get('/auth/me'),
+  updateProfile: (data) => api.put('/auth/profile', data),
+  uploadAvatar: async (file) => {
+    const fd = new FormData()
+    fd.append('avatar', file)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/auth/avatar`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    return data
+  },
 }
 
 export const dashboardApi = {
@@ -352,6 +362,20 @@ export const feesApi = {
   remove: (id) => api.del(`/fees/${id}`),
   recordPayment: (id, data) => api.post(`/fees/${id}/record-payment`, data),
   notifyInstallment: (id, installmentIndex) => api.post(`/fees/${id}/notify-installment`, { installmentIndex }),
+  downloadReceipt: async (id, paymentIndex) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/fees/${id}/receipt/${paymentIndex}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    const contentType = res.headers.get('content-type') || ''
+    if (!res.ok || !contentType.includes('application/pdf')) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    }
+    const blob = await res.blob()
+    const cd = res.headers.get('content-disposition') || ''
+    const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+    const filename = decodeURIComponent(match?.[1] || match?.[2] || `recu-${id}-${paymentIndex + 1}.pdf`)
+    return { blob, filename }
+  },
 }
 
 export default api

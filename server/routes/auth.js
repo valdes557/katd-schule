@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken')
 const { body, validationResult } = require('express-validator')
 const User = require('../models/User')
 const { protect } = require('../middleware/auth')
+const { upload } = require('../config/cloudinary')
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -77,7 +78,7 @@ router.post(
       res.json({
         success: true,
         token,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role },
+        user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone },
         school: user.school,
       })
     } catch (err) {
@@ -91,7 +92,7 @@ router.get('/me', protect, async (req, res) => {
   const u = req.user
   res.json({
     success: true,
-    user: { id: u._id, name: u.name, email: u.email, role: u.role },
+    user: { id: u._id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, phone: u.phone },
     school: u.school || null,
   })
 })
@@ -111,6 +112,30 @@ router.put('/password', protect, async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
+})
+
+// @route  PUT /api/auth/profile — update basic profile fields
+router.put('/profile', protect, async (req, res) => {
+  try {
+    const { name, phone } = req.body
+    const user = await User.findById(req.user._id)
+    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' })
+    if (name !== undefined) user.name = name
+    if (phone !== undefined) user.phone = phone
+    await user.save()
+    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone } })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// @route  POST /api/auth/avatar — upload avatar image
+router.post('/avatar', protect, upload.single('avatar'), async (req, res) => {
+  try {
+    if (!req.file?.path) return res.status(400).json({ message: 'Aucun fichier reçu' })
+    const user = await User.findByIdAndUpdate(req.user._id, { avatar: req.file.path }, { new: true })
+    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone } })
+  } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

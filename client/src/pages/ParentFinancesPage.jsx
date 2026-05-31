@@ -3,7 +3,7 @@ import {
   CreditCard, CheckCircle2, Clock, AlertCircle, Loader2, DollarSign,
   FileText, Download, X,
 } from 'lucide-react'
-import { parentApi } from '../lib/api'
+import { parentApi, feesApi } from '../lib/api'
 
 const STATUS_LABELS = {
   paid: { label: 'Payé', cls: 'bg-green-100 text-green-700' },
@@ -19,6 +19,7 @@ export default function ParentFinancesPage() {
   const [payModal, setPayModal] = useState(null)
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', reference: '' })
   const [paying, setPaying] = useState(false)
+  const [downloading, setDownloading] = useState(null) // feeId:paymentIndex
 
   const load = async () => {
     setLoading(true)
@@ -30,6 +31,19 @@ export default function ParentFinancesPage() {
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+
+  const downloadReceipt = async (feeId, paymentIndex) => {
+    const key = `${feeId}:${paymentIndex}`
+    setDownloading(key)
+    try {
+      const { blob, filename } = await feesApi.downloadReceipt(feeId, paymentIndex)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (e) { alert(e.message) }
+    setDownloading(null)
+  }
 
   const handlePay = async () => {
     if (!payForm.amount || Number(payForm.amount) <= 0) return
@@ -106,7 +120,12 @@ export default function ParentFinancesPage() {
                           <div key={i} className="flex items-center justify-between text-[11px] py-1 border-b border-gray-50 last:border-0">
                             <span className="text-gray-500">{new Date(p.date).toLocaleDateString('fr-FR')}</span>
                             <span className="text-gray-500 capitalize">{p.method?.replace('_', ' ')}</span>
-                            <span className="font-bold text-green-600">+{p.amount?.toLocaleString()} F</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-green-600">+{p.amount?.toLocaleString()} F</span>
+                              <button title="Télécharger le reçu" onClick={() => downloadReceipt(f._id, i)} className="p-1 rounded hover:bg-gray-100 text-gray-500">
+                                <Download size={14} className={downloading === `${f._id}:${i}` ? 'animate-pulse' : ''} />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>

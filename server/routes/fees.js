@@ -4,6 +4,7 @@ const Fee = require('../models/Fee')
 const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
+const PDFDocument = require('pdfkit')
 
 // Helper: ensure school match
 function schoolId(req) { return req.user.school?._id || req.user.school }
@@ -179,6 +180,72 @@ router.post('/:id/notify-installment', protect, authorize('directeur', 'super_ad
     inst.notified = true
     await fee.save()
     res.json({ success: true, message: 'Rappel envoyé' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.get('/:id/receipt/:paymentIndex', protect, async (req, res) => {
+  try {
+    const fee = await Fee.findById(req.params.id)
+      .populate('student', 'firstName lastName matricule class school')
+      .populate({ path: 'student', populate: [{ path: 'class', select: 'name level' }, { path: 'school', select: 'name address' }] })
+    if (!fee) return res.status(404).json({ message: 'Frais non trouvé' })
+
+    const userRole = req.user.role
+    if (userRole === 'parent') {
+      const child = await Student.findOne({ _id: fee.student?._id || fee.student, parentUser: req.user._id })
+      if (!child) return res.status(403).json({ message: 'Accès refusé' })
+    } else if (userRole === 'directeur' || userRole === 'super_admin') {
+      const reqSchool = (req.user.school?._id || req.user.school || '').toString()
+      const feeSchool = (fee.school?._id || fee.school || '').toString()
+      if (!reqSchool || !feeSchool || reqSchool !== feeSchool) return res.status(403).json({ message: 'Accès refusé' })
+    } else {
+      return res.status(403).json({ message: 'Accès refusé' })
+    }
+
+    const idx = Number(req.params.paymentIndex)
+    if (Number.isNaN(idx) || idx < 0 || idx >= (fee.payments || []).length) {
+      return res.status(400).json({ message: 'Paiement introuvable' })
+    }
+    const p = fee.payments[idx]
+
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="recu-${fee._id}-${idx + 1}.pdf"`)
+
+    const doc = new PDFDocument({ size: 'A4', margin: 50 })
+    doc.pipe(res)
+
+    const schoolName = fee.student?.school?.name || req.user.school?.name || 'Établissement scolaire'
+    const addr = fee.student?.school?.address || {}
+    const addrStr = [addr.address, addr.neighborhood, addr.city, addr.country].filter(Boolean).join(', ')
+
+    doc.fontSize(18).fillColor('#111827').text(schoolName)
+    if (addrStr) doc.moveDown(0.2).fontSize(10).fillColor('#6b7280').text(addrStr)
+    doc.moveDown()
+
+    doc.fillColor('#111827').fontSize(16).text('Reçu de Paiement', { align: 'right' })
+    doc.fontSize(10).fillColor('#6b7280').text(`Date: ${new Date(p.date || Date.now()).toLocaleDateString('fr-FR')}`, { align: 'right' })
+    doc.moveDown()
+
+    const fullName = `${fee.student?.lastName || ''} ${fee.student?.firstName || ''}`.trim()
+    doc.fillColor('#111827').fontSize(12).text(`Élève: ${fullName || '—'}`)
+    if (fee.student?.matricule) doc.fontSize(12).text(`Matricule: ${fee.student.matricule}`)
+    if (fee.student?.class?.name) doc.fontSize(12).text(`Classe: ${fee.student.class.name}`)
+    doc.moveDown()
+
+    doc.fontSize(12).fillColor('#111827').text(`Libellé: ${fee.label}`)
+    doc.text(`Montant payé: ${Number(p.amount || 0).toLocaleString('fr-FR')} F CFA`)
+    doc.text(`Méthode: ${p.method || 'cash'}`)
+    if (p.reference) doc.text(`Référence: ${p.reference}`)
+    if (p.note) doc.text(`Note: ${p.note}`)
+    const remaining = Math.max(0, (fee.amount || 0) - (fee.paid || 0))
+    doc.moveDown(0.5)
+    doc.text(`Total dû: ${Number(fee.amount || 0).toLocaleString('fr-FR')} F CFA`)
+    doc.text(`Total déjà payé: ${Number(fee.paid || 0).toLocaleString('fr-FR')} F CFA`)
+    doc.text(`Reste à payer: ${Number(remaining).toLocaleString('fr-FR')} F CFA`)
+
+    doc.moveDown()
+    doc.fontSize(10).fillColor('#6b7280').text('Merci pour votre paiement.', { align: 'center' })
+    doc.end()
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
