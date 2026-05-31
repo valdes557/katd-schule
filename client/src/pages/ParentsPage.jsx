@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { studentsApi, classesApi } from '../lib/api'
 import { Users, Search, UserPlus, KeyRound, X, Loader2, CheckCircle2 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export default function ParentsPage() {
+  const { user, school } = useAuth()
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
   const [rows, setRows] = useState([])
   const [classes, setClasses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -79,7 +82,9 @@ export default function ParentsPage() {
         </div>
         <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="input text-sm w-auto">
           <option value="">Toutes les classes</option>
-          {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+          {classes
+            .filter((c) => (subscribedCycle ? c.cycle === subscribedCycle : true))
+            .map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
         </select>
         <label className="text-xs text-gray-600 flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={onlyWithout} onChange={(e) => setOnlyWithout(e.target.checked)} className="accent-blue-600" />

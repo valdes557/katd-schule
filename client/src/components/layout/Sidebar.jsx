@@ -138,7 +138,8 @@ export default function Sidebar({ mobileOpen, onClose }) {
   const navigate = useNavigate()
 
   // School cycles of the logged-in director
-  const schoolCycles = school?.cycles || []
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
+  const schoolCycles = subscribedCycle ? [subscribedCycle] : (school?.cycles || [])
   const isDirecteur = user?.role === 'directeur'
 
   // Filter items by cycle and role

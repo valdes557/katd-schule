@@ -15,7 +15,10 @@ export default function DashboardHeader({ onMenuClick }) {
   const [userOpen, setUserOpen] = useState(false)
   const [notifications] = useState(3)
 
-  const currentCycle = CYCLES.find((c) => c.label.includes(cycle)) || CYCLES[1]
+  const isDirecteur = user?.role === 'directeur'
+  const subscribedCycle = isDirecteur && school?.subscription?.cycle ? school.subscription.cycle : null
+  const effectiveCycle = subscribedCycle || cycle
+  const currentCycle = CYCLES.find((c) => c.label.includes(effectiveCycle)) || CYCLES[1]
 
   return (
     <header className="fixed top-0 right-0 left-0 lg:left-[260px] h-14 bg-white border-b border-gray-100 flex items-center justify-between px-3 sm:px-5 z-30">
@@ -33,27 +36,36 @@ export default function DashboardHeader({ onMenuClick }) {
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Cycle Selector */}
         <div className="relative">
-          <button
-            onClick={() => { setCycleOpen(!cycleOpen); setUserOpen(false) }}
-            className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 sm:px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <currentCycle.icon size={15} className={currentCycle.color} />
-            <span className="hidden md:inline">{currentCycle.label}</span>
-            <ChevronDown size={14} className="text-gray-400" />
-          </button>
-          {cycleOpen && (
-            <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-xl shadow-card-lg w-52 py-1 z-50">
-              {CYCLES.map((c) => (
-                <button
-                  key={c.label}
-                  onClick={() => { changeCycle(c.label.replace('Cycle ', '')); setCycleOpen(false) }}
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <c.icon size={15} className={c.color} />
-                  {c.label}
-                </button>
-              ))}
+          {isDirecteur && subscribedCycle ? (
+            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 sm:px-3 py-1.5 text-sm font-medium text-gray-700 bg-white">
+              <currentCycle.icon size={15} className={currentCycle.color} />
+              <span className="hidden md:inline">{currentCycle.label}</span>
             </div>
+          ) : (
+            <>
+              <button
+                onClick={() => { setCycleOpen(!cycleOpen); setUserOpen(false) }}
+                className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 sm:px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <currentCycle.icon size={15} className={currentCycle.color} />
+                <span className="hidden md:inline">{currentCycle.label}</span>
+                <ChevronDown size={14} className="text-gray-400" />
+              </button>
+              {cycleOpen && (
+                <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-xl shadow-card-lg w-52 py-1 z-50">
+                  {CYCLES.map((c) => (
+                    <button
+                      key={c.label}
+                      onClick={() => { changeCycle(c.label.replace('Cycle ', '')); setCycleOpen(false) }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <c.icon size={15} className={c.color} />
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
