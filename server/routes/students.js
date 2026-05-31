@@ -131,6 +131,25 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
     const classTeachers = await Teacher.find({ classes: student.class._id })
       .select('firstName lastName email subjects speciality')
 
+    // Build WhatsApp link to send credentials to the parent's phone if available
+    const phoneDigits = (req.body.phone || student.parent?.phone || '').replace(/\D/g, '')
+    const waText = [
+      `*KATD-SCHÜLE — Accès parent*`,
+      ``,
+      `Bonjour ${req.body.name || student.parent?.name || 'cher parent'},`,
+      `Un compte parent a été créé pour suivre ${student.lastName} ${student.firstName}.`,
+      ``,
+      `🔐 Identifiants de connexion`,
+      `• Email : ${email}`,
+      `• Mot de passe : ${rawPassword}`,
+      ``,
+      `📚 Classe : ${student.class?.name || ''}${student.class?.level ? ` (${student.class.level})` : ''}`,
+      `🚀 Connectez-vous : ${(process.env.CLIENT_URL || 'http://localhost:5173')}/login`,
+      ``,
+      `Merci.`,
+    ].join('\n')
+    const whatsappLink = phoneDigits ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(waText)}` : null
+
     res.status(201).json({
       success: true,
       message: 'Compte parent créé avec succès',
@@ -151,6 +170,7 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
           subjects: t.subjects,
           speciality: t.speciality,
         })),
+        whatsappLink,
       },
     })
   } catch (err) {

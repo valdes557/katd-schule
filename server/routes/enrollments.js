@@ -36,7 +36,7 @@ router.get('/school/:schoolId/classes', async (req, res) => {
 // POST /api/enrollments — Public: submit enrollment request
 router.post('/', upload.single('paymentProof'), async (req, res) => {
   try {
-    const { firstName, lastName, dateOfBirth, placeOfBirth, gender, email, phone, schoolId, classId } = req.body
+    const { firstName, lastName, dateOfBirth, placeOfBirth, gender, email, phone, schoolId, classId, fatherName, motherName, fatherPhone } = req.body
 
     if (!firstName || !lastName || !dateOfBirth || !placeOfBirth || !gender || !email || !schoolId || !classId) {
       return res.status(400).json({ message: 'Tous les champs obligatoires doivent être remplis' })
@@ -67,6 +67,9 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       gender,
       email,
       phone,
+      fatherName,
+      motherName,
+      fatherPhone,
       school: schoolId,
       class: classId,
       className: `${cls.name} (${cls.level})`,
@@ -149,7 +152,11 @@ router.put('/:id/approve', protect, authorize('directeur', 'super_admin'), async
       school: enrollment.school._id,
       class: enrollment.class._id,
       cycle: enrollment.class.cycle,
-      parent: { name: enrollment.lastName, phone: enrollment.phone || '' },
+      parent: {
+        name: enrollment.fatherName || enrollment.motherName || enrollment.lastName,
+        phone: enrollment.fatherPhone || enrollment.phone || '',
+        relation: enrollment.fatherName ? 'pere' : (enrollment.motherName ? 'mere' : 'tuteur'),
+      },
       status: 'active',
       user: userAccount._id,
     })

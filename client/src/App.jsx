@@ -49,6 +49,9 @@ const TeacherAnalyticsPage = lazy(() => import('./pages/TeacherAnalyticsPage'))
 const TeacherStudentsPage = lazy(() => import('./pages/TeacherStudentsPage'))
 const TeacherActivitiesPage = lazy(() => import('./pages/TeacherActivitiesPage'))
 const TeacherResourcesPage = lazy(() => import('./pages/TeacherResourcesPage'))
+const TeacherReportsPage = lazy(() => import('./pages/TeacherReportsPage'))
+const DirectorReportsPage = lazy(() => import('./pages/DirectorReportsPage'))
+const ParentsPage = lazy(() => import('./pages/ParentsPage'))
 const DirectorFeesPage = lazy(() => import('./pages/DirectorFeesPage'))
 const AdminSchoolSubjectsPage = lazy(() => import('./pages/AdminSchoolSubjectsPage'))
 const ParentSectionPage = lazy(() => import('./pages/ParentSectionPage'))
@@ -131,7 +134,7 @@ export default function App() {
         <Route path="classes" element={<ClassesPage />} />
         <Route path="matieres" element={<MatieresPage />} />
         <Route path="emploi-du-temps" element={<EmploiDuTempsPage />} />
-        <Route path="parents" element={<PlaceholderPage title="Parents / Responsables" />} />
+        <Route path="parents" element={<ParentsPage />} />
         <Route path="personnel" element={<PlaceholderPage title="Personnel" />} />
         <Route path="devoirs" element={<TeacherHomeworkPage />} />
         <Route path="activites" element={<TeacherActivitiesPage />} />
@@ -140,7 +143,7 @@ export default function App() {
         <Route path="documents" element={<PlaceholderPage title="Documents partagés" />} />
         <Route path="paiements" element={<PlaceholderPage title="Historique des paiements" />} />
         <Route path="factures" element={<PlaceholderPage title="Factures" />} />
-        <Route path="rapports" element={<PlaceholderPage title="Tableaux de bord" />} />
+        <Route path="rapports" element={<DirectorReportsPage />} />
         <Route path="rapports/detail" element={<PlaceholderPage title="Rapports détaillés" />} />
         <Route path="statistiques" element={<PlaceholderPage title="Statistiques" />} />
         <Route path="localites" element={<AdminLocationsPage />} />
@@ -156,6 +159,7 @@ export default function App() {
         {/* Teacher routes */}
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />
         <Route path="teacher/analytics" element={<TeacherAnalyticsPage />} />
+        <Route path="teacher/rapports" element={<TeacherReportsPage />} />
 
         {/* Parent routes */}
         <Route path="parent/enfant/:studentId" element={<ParentChildDetailPage />} />

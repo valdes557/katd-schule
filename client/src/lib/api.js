@@ -45,6 +45,7 @@ export const authApi = {
 export const dashboardApi = {
   getStats: () => api.get('/dashboard/stats'),
   getAdminStats: () => api.get('/dashboard/admin-stats'),
+  getReports: (params = '') => api.get(`/dashboard/reports?${params}`),
 }
 
 export const studentsApi = {
@@ -314,6 +315,9 @@ export const teacherApi = {
   createResource: (data) => api.post('/teacher/resources', data),
   updateResource: (id, data) => api.put(`/teacher/resources/${id}`, data),
   deleteResource: (id) => api.del(`/teacher/resources/${id}`),
+  // Daily reports
+  reports: () => api.get('/teacher/reports'),
+  createReport: (data) => api.post('/teacher/reports', data),
 }
 
 export const parentApi = {

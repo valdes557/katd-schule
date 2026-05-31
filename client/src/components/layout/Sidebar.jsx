@@ -76,6 +76,7 @@ const sidebarSections = [
       { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes' },
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
+      { label: 'Rapports quotidiens', icon: FileText, path: '/dashboard/teacher/rapports' },
     ],
   },
   {

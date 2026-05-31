@@ -12,6 +12,7 @@ const Class = require('../models/Class')
 const Subject = require('../models/Subject')
 const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
+const DailyReport = require('../models/DailyReport')
 const { sendEmail } = require('../utils/emailService')
 
 const teacherOnly = (req, res, next) => {
@@ -651,6 +652,45 @@ router.delete('/resources/:id', protect, teacherOnly, async (req, res) => {
     const r = await Resource.findOneAndDelete({ _id: req.params.id, teacher: teacher._id })
     if (!r) return res.status(404).json({ message: 'Ressource non trouvée' })
     res.json({ success: true, message: 'Ressource supprimée' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── DAILY REPORTS ───
+router.get('/reports', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+    const items = await DailyReport.find({ teacher: teacher._id })
+      .populate('classes', 'name level')
+      .sort({ date: -1, createdAt: -1 })
+      .limit(100)
+    res.json({ success: true, data: items })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.post('/reports', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+    const teacherClassIds = (teacher.classes || []).map((c) => c._id.toString())
+    const targetClasses = (req.body.classes || []).filter((c) => teacherClassIds.includes(c.toString()))
+    if (targetClasses.length === 0) {
+      return res.status(403).json({ message: 'Sélectionnez au moins une de vos classes' })
+    }
+    const payload = {
+      title: req.body.title || `Rapport du ${new Date().toLocaleDateString('fr-FR')}`,
+      content: req.body.content,
+      classes: targetClasses,
+      teacher: teacher._id,
+      school: teacher.school,
+      date: req.body.date || new Date(),
+    }
+    if (!payload.content || String(payload.content).trim().length === 0) {
+      return res.status(400).json({ message: 'Le contenu du rapport est requis' })
+    }
+    const r = await DailyReport.create(payload)
+    const populated = await DailyReport.findById(r._id).populate('classes', 'name level')
+    res.status(201).json({ success: true, data: populated })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

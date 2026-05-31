@@ -198,6 +198,11 @@ export default function ElevesPage() {
                       <p>🔑 Mot de passe : <strong>{parentResult.data?.rawPassword}</strong></p>
                     </div>
                     <p className="text-xs text-gray-400 mt-2">Notez ces identifiants. Le mot de passe ne sera plus affiché.</p>
+                    {parentResult.data?.whatsappLink && (
+                      <a href={parentResult.data.whatsappLink} target="_blank" rel="noopener" className="inline-flex items-center gap-2 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg mt-2">
+                        Envoyer via WhatsApp
+                      </a>
+                    )}
                   </div>
                 )}
 

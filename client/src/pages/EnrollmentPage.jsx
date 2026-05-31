@@ -22,6 +22,9 @@ export default function EnrollmentPage() {
     gender: '',
     email: '',
     phone: '',
+    fatherName: '',
+    motherName: '',
+    fatherPhone: '',
     classId: '',
   })
   const [paymentFile, setPaymentFile] = useState(null)
@@ -192,6 +195,21 @@ export default function EnrollmentPage() {
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Téléphone</label>
                 <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input text-sm" placeholder="+237 6XX XXX XXX" />
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Nom du père</label>
+                <input value={form.fatherName} onChange={(e) => setForm({ ...form, fatherName: e.target.value })} className="input text-sm" placeholder="Ex: MBARGA Paul" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Nom de la mère</label>
+                <input value={form.motherName} onChange={(e) => setForm({ ...form, motherName: e.target.value })} className="input text-sm" placeholder="Ex: NGO MIMI" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro du père (WhatsApp de préférence)</label>
+              <input value={form.fatherPhone} onChange={(e) => setForm({ ...form, fatherPhone: e.target.value })} className="input text-sm" placeholder="Ex: +237 6XX XXX XXX" />
             </div>
 
             {/* Class selection */}

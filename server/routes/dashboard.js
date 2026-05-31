@@ -7,7 +7,8 @@ const Grade = require('../models/Grade')
 const Attendance = require('../models/Attendance')
 const Media = require('../models/Media')
 const Message = require('../models/Message')
-const { protect } = require('../middleware/auth')
+const { protect, authorize } = require('../middleware/auth')
+const DailyReport = require('../models/DailyReport')
 
 // GET /api/dashboard/stats — all KPIs for the school
 router.get('/stats', protect, async (req, res) => {
@@ -138,3 +139,21 @@ router.get('/admin-stats', protect, async (req, res) => {
 })
 
 module.exports = router
+
+// ─── DIRECTOR: DAILY REPORTS LIST ───
+router.get('/reports', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) return res.json({ success: true, data: [] })
+    const { classId, teacherId, limit = 100 } = req.query
+    const q = { school: schoolId }
+    if (classId) q.classes = classId
+    if (teacherId) q.teacher = teacherId
+    const items = await DailyReport.find(q)
+      .populate('teacher', 'firstName lastName')
+      .populate('classes', 'name level')
+      .sort({ date: -1, createdAt: -1 })
+      .limit(Number(limit))
+    res.json({ success: true, data: items })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
