@@ -3,6 +3,7 @@ const router = express.Router()
 const Student = require('../models/Student')
 const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
+const School = require('../models/School')
 
 // @route  GET /api/students
 router.get('/', protect, async (req, res) => {
@@ -21,7 +22,13 @@ router.get('/', protect, async (req, res) => {
     }
     if (classId) query.class = classId
     else if (className) query.class = className
-    if (cycle) query.cycle = cycle
+    // Directors and other roles are scoped to the school's subscribed cycle by default
+    if (req.user.role !== 'super_admin') {
+      const school = await School.findById(schoolId).select('subscription.cycle')
+      if (school?.subscription?.cycle) query.cycle = school.subscription.cycle
+    } else if (cycle) {
+      query.cycle = cycle
+    }
 
     const total = await Student.countDocuments(query)
     const students = await Student.find(query)
@@ -50,7 +57,14 @@ router.get('/:id', protect, async (req, res) => {
 // @route  POST /api/students
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const student = await Student.create({ ...req.body, school: req.user.school?._id || req.user.school })
+    const schoolId = req.user.school?._id || req.user.school
+    if (req.user.role === 'directeur') {
+      const school = await School.findById(schoolId).select('subscription.cycle')
+      if (school?.subscription?.cycle && req.body.cycle && req.body.cycle !== school.subscription.cycle) {
+        return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ». ` })
+      }
+    }
+    const student = await Student.create({ ...req.body, school: schoolId })
     res.status(201).json({ success: true, data: student })
   } catch (err) {
     res.status(500).json({ message: err.message })

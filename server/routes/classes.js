@@ -3,6 +3,7 @@ const router = express.Router()
 const Class = require('../models/Class')
 const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
+const School = require('../models/School')
 
 // GET /api/classes
 router.get('/', protect, async (req, res) => {
@@ -11,7 +12,12 @@ router.get('/', protect, async (req, res) => {
     const schoolId = req.user.role === 'super_admin' ? (req.query.schoolId || userSchool) : userSchool
     if (!schoolId) return res.json({ success: true, data: [] })
     const query = { school: schoolId }
-    if (req.query.cycle) query.cycle = req.query.cycle
+    // Directors and other roles should be scoped to the school's subscribed cycle by default
+    if (req.user.role !== 'super_admin') {
+      const school = await School.findById(schoolId).select('subscription.cycle')
+      if (school?.subscription?.cycle) query.cycle = school.subscription.cycle
+    }
+    if (req.query.cycle && req.user.role === 'super_admin') query.cycle = req.query.cycle
     const classes = await Class.find(query).populate('mainTeacher', 'firstName lastName').sort({ cycle: 1, name: 1 })
     res.json({ success: true, data: classes })
   } catch (err) {
@@ -34,7 +40,15 @@ router.get('/:id', protect, async (req, res) => {
 // POST /api/classes
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const cls = await Class.create({ ...req.body, school: req.user.school?._id || req.user.school })
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) return res.status(400).json({ message: 'École requise' })
+    if (req.user.role === 'directeur') {
+      const school = await School.findById(schoolId).select('subscription.cycle')
+      if (school?.subscription?.cycle && req.body.cycle && req.body.cycle !== school.subscription.cycle) {
+        return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ». ` })
+      }
+    }
+    const cls = await Class.create({ ...req.body, school: schoolId })
     res.status(201).json({ success: true, data: cls })
   } catch (err) {
     res.status(500).json({ message: err.message })

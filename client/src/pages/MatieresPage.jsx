@@ -46,8 +46,10 @@ export default function MatieresPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      if (editing) await subjectsApi.update(editing._id, form)
-      else await subjectsApi.create(form)
+      const payload = { ...form }
+      if (['Maternelle', 'Primaire'].includes(payload.cycle)) { payload.teacher = '' }
+      if (editing) await subjectsApi.update(editing._id, payload)
+      else await subjectsApi.create(payload)
       setShowModal(false)
       setEditing(null)
       setForm(EMPTY)
@@ -181,17 +183,19 @@ export default function MatieresPage() {
                   <input type="number" min="1" value={form.hoursPerWeek} onChange={(e) => setForm({ ...form, hoursPerWeek: Number(e.target.value) })} className="input text-sm mt-1" />
                 </div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600">Enseignant</label>
-                <select value={form.teacher} onChange={(e) => setForm({ ...form, teacher: e.target.value })} className="input text-sm mt-1">
-                  <option value="">Aucun</option>
-                  {teachers.map((t) => <option key={t._id} value={t._id}>{t.lastName} {t.firstName}</option>)}
-                </select>
-              </div>
+              {form.cycle === 'Secondaire' && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Enseignant</label>
+                  <select value={form.teacher} onChange={(e) => setForm({ ...form, teacher: e.target.value })} className="input text-sm mt-1">
+                    <option value="">Aucun</option>
+                    {teachers.map((t) => <option key={t._id} value={t._id}>{t.lastName} {t.firstName}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Classes associées</label>
                 <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto bg-gray-50 p-2 rounded-lg">
-                  {classes.map((c) => (
+                  {classes.filter((c) => !form.cycle || c.cycle === form.cycle).map((c) => (
                     <button key={c._id} type="button" onClick={() => toggleClass(c._id)}
                       className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${form.classes.includes(c._id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>
                       {c.name}

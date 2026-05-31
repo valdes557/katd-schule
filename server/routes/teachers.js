@@ -3,6 +3,7 @@ const router = express.Router()
 const Teacher = require('../models/Teacher')
 const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
+const School = require('../models/School')
 
 // GET /api/teachers
 router.get('/', protect, async (req, res) => {
@@ -12,6 +13,11 @@ router.get('/', protect, async (req, res) => {
     if (!schoolId) return res.json({ success: true, total: 0, data: [] })
     const { search, status, page = 1, limit = 50 } = req.query
     const query = { school: schoolId }
+    // Directors and other roles are scoped to the school's subscribed cycle by default
+    if (req.user.role !== 'super_admin') {
+      const school = await School.findById(schoolId).select('subscription.cycle')
+      if (school?.subscription?.cycle) query.cycle = school.subscription.cycle
+    }
     if (search) {
       query.$or = [
         { firstName: { $regex: search, $options: 'i' } },
@@ -49,6 +55,13 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
   try {
     const schoolId = req.user.school?._id || req.user.school
     const { firstName, lastName, email, phone, gender, subjects, speciality, password, classes, cycle } = req.body
+
+    if (req.user.role === 'directeur') {
+      const school = await School.findById(schoolId).select('subscription.cycle')
+      if (school?.subscription?.cycle && cycle && cycle !== school.subscription.cycle) {
+        return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ». ` })
+      }
+    }
 
     let userId = null
     if (email && password) {

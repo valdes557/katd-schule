@@ -43,7 +43,6 @@ export default function EnseignantsPage() {
       const data = { ...form, subjects: typeof form.subjects === 'string' ? form.subjects.split(',').map((s) => s.trim()).filter(Boolean) : form.subjects }
       if (!editing && !form.password) { alert('Le mot de passe est requis pour créer le compte de connexion'); return }
       if (!form.cycle) { alert('Veuillez attribuer un cycle (Maternelle / Primaire / Secondaire) à l\'enseignant'); return }
-      if (!form.classes || form.classes.length === 0) { alert('Veuillez attribuer au moins une salle de classe à l\'enseignant'); return }
       if (editing) {
         const { password, ...rest } = data
         await teachersApi.update(editing._id, password ? data : rest)
@@ -202,7 +201,7 @@ export default function EnseignantsPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Salles de classe attribuées * <span className="text-gray-400 font-normal">(au moins une)</span></label>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Salles de classe attribuées</label>
                 <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-lg">
                   {allClasses
                     .filter((c) => !form.cycle || c.cycle === form.cycle)
