@@ -8,8 +8,9 @@ const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4'
 const EMPTY = { firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '', password: '', classes: [], cycle: '' }
 
 export default function EnseignantsPage() {
-  const { user } = useAuth()
+  const { user, school } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
 
   const [teachers, setTeachers] = useState([])
   const [allClasses, setAllClasses] = useState([])
@@ -75,7 +76,7 @@ export default function EnseignantsPage() {
           <p className="text-sm text-gray-500">{total} enseignant(s)</p>
         </div>
         {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm(EMPTY); setShowModal(true) }} className="btn-primary text-sm self-start">
+          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || '' }); setShowModal(true) }} className="btn-primary text-sm self-start">
             <Plus size={15} /> Ajouter
           </button>
         )}
@@ -191,10 +192,10 @@ export default function EnseignantsPage() {
                 <div>
                   <label className="text-xs font-medium text-gray-600">Cycle attribué *</label>
                   <select required value={form.cycle} onChange={(e) => setForm({ ...form, cycle: e.target.value })} className="input text-sm mt-1">
-                    <option value="">Sélectionner...</option>
-                    <option value="Maternelle">Maternelle</option>
-                    <option value="Primaire">Primaire</option>
-                    <option value="Secondaire">Secondaire</option>
+                    {!subscribedCycle && <option value="">Sélectionner...</option>}
+                    {(subscribedCycle ? [subscribedCycle] : ['Maternelle', 'Primaire', 'Secondaire']).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
                   </select>
                 </div>
                 <div><label className="text-xs font-medium text-gray-600">Spécialité</label><input value={form.speciality} onChange={(e) => setForm({ ...form, speciality: e.target.value })} className="input text-sm mt-1" placeholder="Ex: Mathématiques" /></div>
@@ -204,7 +205,7 @@ export default function EnseignantsPage() {
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Salles de classe attribuées</label>
                 <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-lg">
                   {allClasses
-                    .filter((c) => !form.cycle || c.cycle === form.cycle)
+                    .filter((c) => (!form.cycle ? (subscribedCycle ? c.cycle === subscribedCycle : true) : c.cycle === form.cycle))
                     .map((c) => (
                       <button key={c._id} type="button" onClick={() => toggleClass(c._id)}
                         className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${form.classes.includes(c._id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>

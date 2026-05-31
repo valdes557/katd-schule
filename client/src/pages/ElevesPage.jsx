@@ -6,8 +6,9 @@ import { useAuth } from '../context/AuthContext'
 const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', dateOfBirth: '', placeOfBirth: '', parent: { name: '', phone: '', email: '', relation: 'pere' } }
 
 export default function ElevesPage() {
-  const { user } = useAuth()
+  const { user, school } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
 
   const [students, setStudents] = useState([])
   const [classes, setClasses] = useState([])
@@ -39,6 +40,7 @@ export default function ElevesPage() {
   }
 
   useEffect(() => { fetchStudents(); fetchClasses() }, [])
+  useEffect(() => { if (subscribedCycle && cycleFilter !== subscribedCycle) setCycleFilter(subscribedCycle) }, [subscribedCycle])
   useEffect(() => { const t = setTimeout(fetchStudents, 400); return () => clearTimeout(t) }, [search, cycleFilter, classFilter])
 
   const handleSubmit = async (e) => {
@@ -103,7 +105,7 @@ export default function ElevesPage() {
           <p className="text-sm text-gray-500">{total} élève(s) inscrit(s)</p>
         </div>
         {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm(EMPTY); setShowModal(true) }} className="btn-primary text-sm self-start">
+          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
             <Plus size={15} /> Ajouter un élève
           </button>
         )}
@@ -115,14 +117,14 @@ export default function ElevesPage() {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher..." className="input pl-9 text-sm" />
         </div>
         <select value={cycleFilter} onChange={(e) => { setCycleFilter(e.target.value); setClassFilter('') }} className="input text-sm w-auto">
-          <option value="">Tous les cycles</option>
-          <option value="Maternelle">Maternelle</option>
-          <option value="Primaire">Primaire</option>
-          <option value="Secondaire">Secondaire</option>
+          {!subscribedCycle && <option value="">Tous les cycles</option>}
+          {(subscribedCycle ? [subscribedCycle] : ['Maternelle', 'Primaire', 'Secondaire']).map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
         </select>
         <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="input text-sm w-auto">
           <option value="">Toutes les classes</option>
-          {classes.filter((c) => !cycleFilter || c.cycle === cycleFilter).map((c) => (
+          {classes.filter((c) => !cycleFilter ? (subscribedCycle ? c.cycle === subscribedCycle : true) : c.cycle === cycleFilter).map((c) => (
             <option key={c._id} value={c._id}>{c.name}</option>
           ))}
         </select>
@@ -305,9 +307,9 @@ export default function ElevesPage() {
                 <div>
                   <label className="text-xs font-medium text-gray-600">Cycle *</label>
                   <select value={form.cycle} onChange={(e) => setForm({ ...form, cycle: e.target.value, class: '' })} className="input text-sm mt-1">
-                    <option>Maternelle</option>
-                    <option>Primaire</option>
-                    <option>Secondaire</option>
+                    {(subscribedCycle ? [subscribedCycle] : ['Maternelle', 'Primaire', 'Secondaire']).map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
                   </select>
                 </div>
                 <div>

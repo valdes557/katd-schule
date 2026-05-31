@@ -9,8 +9,9 @@ const CYCLE_COLORS = { Maternelle: 'bg-orange-100 text-orange-700', Primaire: 'b
 const EMPTY = { name: '', code: '', cycle: 'Primaire', level: '', coefficient: 1, hoursPerWeek: 2, teacher: '', classes: [], description: '', program: '' }
 
 export default function MatieresPage() {
-  const { user } = useAuth()
+  const { user, school } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
 
   const [subjects, setSubjects] = useState([])
   const [classes, setClasses] = useState([])
@@ -38,6 +39,7 @@ export default function MatieresPage() {
   }
 
   useEffect(() => { load() }, [cycleFilter])
+  useEffect(() => { if (subscribedCycle && cycleFilter !== subscribedCycle) setCycleFilter(subscribedCycle) }, [subscribedCycle])
 
   const filtered = subjects.filter((s) =>
     !search || s.name.toLowerCase().includes(search.toLowerCase()) || (s.code || '').toLowerCase().includes(search.toLowerCase())
@@ -90,7 +92,7 @@ export default function MatieresPage() {
           <p className="text-sm text-gray-500">{subjects.length} matière(s)</p>
         </div>
         {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm(EMPTY); setShowModal(true) }} className="btn-primary text-sm self-start">
+          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
             <Plus size={15} /> Ajouter une matière
           </button>
         )}
@@ -102,8 +104,8 @@ export default function MatieresPage() {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher..." className="input pl-9 text-sm" />
         </div>
         <select value={cycleFilter} onChange={(e) => setCycleFilter(e.target.value)} className="input text-sm w-auto">
-          <option value="">Tous les cycles</option>
-          {CYCLES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {!subscribedCycle && <option value="">Tous les cycles</option>}
+          {(subscribedCycle ? [subscribedCycle] : CYCLES).map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 
@@ -171,7 +173,7 @@ export default function MatieresPage() {
                 <div>
                   <label className="text-xs font-medium text-gray-600">Cycle *</label>
                   <select value={form.cycle} onChange={(e) => setForm({ ...form, cycle: e.target.value })} className="input text-sm mt-1">
-                    {CYCLES.map((c) => <option key={c}>{c}</option>)}
+                    {(subscribedCycle ? [subscribedCycle] : CYCLES).map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>

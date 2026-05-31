@@ -9,8 +9,10 @@ const CYCLE_COLORS = { Maternelle: 'bg-orange-100 text-orange-700', Primaire: 'b
 const EMPTY = { name: '', level: '', cycle: 'Primaire', room: '', capacity: 40, enrollmentFee: 0, mainTeacher: '', academicYear: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1) }
 
 export default function ClassesPage() {
-  const { user } = useAuth()
+  const { user, school } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
+  const cycles = subscribedCycle ? [subscribedCycle] : CYCLES
 
   const [classes, setClasses] = useState([])
   const [teachers, setTeachers] = useState([])
@@ -32,6 +34,9 @@ export default function ClassesPage() {
   }
 
   useEffect(() => { fetch() }, [cycleFilter])
+  useEffect(() => {
+    if (subscribedCycle && cycleFilter !== subscribedCycle) setCycleFilter(subscribedCycle)
+  }, [subscribedCycle])
 
   const filtered = classes.filter((c) =>
     !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.room || '').toLowerCase().includes(search.toLowerCase())
@@ -74,7 +79,7 @@ export default function ClassesPage() {
           <p className="text-sm text-gray-500">{classes.length} classe(s)</p>
         </div>
         {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm(EMPTY); setShowModal(true) }} className="btn-primary text-sm self-start">
+          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
             <Plus size={15} /> Créer une classe
           </button>
         )}
@@ -86,8 +91,8 @@ export default function ClassesPage() {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher..." className="input pl-9 text-sm" />
         </div>
         <select value={cycleFilter} onChange={(e) => setCycleFilter(e.target.value)} className="input text-sm w-auto">
-          <option value="">Tous les cycles</option>
-          {CYCLES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {!subscribedCycle && <option value="">Tous les cycles</option>}
+          {cycles.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 
@@ -151,7 +156,7 @@ export default function ClassesPage() {
                 <div>
                   <label className="text-xs font-medium text-gray-600">Cycle *</label>
                   <select value={form.cycle} onChange={(e) => setForm({ ...form, cycle: e.target.value })} className="input text-sm mt-1">
-                    {CYCLES.map((c) => <option key={c}>{c}</option>)}
+                    {cycles.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
