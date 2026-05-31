@@ -131,6 +131,12 @@ export default function InscriptionsPage() {
                   <span>Soumis le {new Date(enr.createdAt).toLocaleDateString('fr-FR')}</span>
                 </div>
 
+                <div className="flex flex-wrap gap-4 mt-2 text-xs text-gray-600">
+                  <span>Père: {enr.fatherName || '—'}</span>
+                  <span>Mère: {enr.motherName || '—'}</span>
+                  <span>Contact père: {enr.fatherPhone || '—'}</span>
+                </div>
+
                 {/* Actions */}
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
                   {enr.paymentProof && (

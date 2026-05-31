@@ -46,6 +46,8 @@ export const dashboardApi = {
   getStats: () => api.get('/dashboard/stats'),
   getAdminStats: () => api.get('/dashboard/admin-stats'),
   getReports: (params = '') => api.get(`/dashboard/reports?${params}`),
+  reviewReport: (id) => api.put(`/dashboard/reports/${id}/review`),
+  unreviewReport: (id) => api.put(`/dashboard/reports/${id}/unreview`),
 }
 
 export const studentsApi = {
@@ -56,6 +58,7 @@ export const studentsApi = {
   remove: (id) => api.del(`/students/${id}`),
   withParents: () => api.get('/students/with-parents'),
   createParentAccount: (studentId, data) => api.post(`/students/${studentId}/parent-account`, data),
+  linkParent: (email, studentIds) => api.post('/students/link-parent', { email, studentIds }),
 }
 
 export const teachersApi = {

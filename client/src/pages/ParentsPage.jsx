@@ -9,6 +9,8 @@ export default function ParentsPage() {
   const [search, setSearch] = useState('')
   const [classFilter, setClassFilter] = useState('')
   const [onlyWithout, setOnlyWithout] = useState(false)
+  const [selected, setSelected] = useState([])
+  const [linkEmail, setLinkEmail] = useState('')
 
   const [modal, setModal] = useState(null) // student
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' })
@@ -85,6 +87,19 @@ export default function ParentsPage() {
         </label>
       </div>
 
+      {selected.length > 0 && (
+        <div className="card p-3 flex flex-wrap gap-2 items-center border-blue-200">
+          <div className="text-xs text-gray-600">{selected.length} élève(s) sélectionné(s)</div>
+          <input value={linkEmail} onChange={(e) => setLinkEmail(e.target.value)} type="email" placeholder="Email du compte parent existant" className="input text-sm w-72" />
+          <button
+            onClick={async () => { try { await studentsApi.linkParent(linkEmail, selected); setSelected([]); setLinkEmail(''); fetch() } catch (e) { alert(e.message) } }}
+            disabled={!linkEmail || selected.length === 0}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
+          >Associer à cet email</button>
+          <button onClick={() => setSelected([])} className="text-xs text-gray-600 hover:underline">Effacer la sélection</button>
+        </div>
+      )}
+
       <div className="card overflow-x-auto">
         {loading ? (
           <div className="text-center py-12"><Loader2 size={22} className="animate-spin text-blue-600" /></div>
@@ -94,6 +109,7 @@ export default function ParentsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-3 py-3"><input type="checkbox" checked={filtered.length > 0 && selected.length === filtered.length} onChange={(e) => setSelected(e.target.checked ? filtered.map((s) => s._id) : [])} /></th>
                 {['Matricule', 'Nom', 'Classe', 'Compte parent', 'Actions'].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
                 ))}
@@ -102,6 +118,7 @@ export default function ParentsPage() {
             <tbody className="divide-y divide-gray-50">
               {filtered.map((s) => (
                 <tr key={s._id} className="hover:bg-gray-50">
+                  <td className="px-3 py-3 text-center"><input type="checkbox" checked={selected.includes(s._id)} onChange={(e) => setSelected((prev) => e.target.checked ? [...prev, s._id] : prev.filter((id) => id !== s._id))} /></td>
                   <td className="px-4 py-3 text-xs font-mono text-gray-600">{s.matricule}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{s.lastName} {s.firstName}</td>
                   <td className="px-4 py-3 text-xs text-gray-600">{s.class?.name || '—'}</td>

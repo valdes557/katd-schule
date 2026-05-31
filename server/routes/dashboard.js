@@ -138,17 +138,15 @@ router.get('/admin-stats', protect, async (req, res) => {
   }
 })
 
-module.exports = router
-
-// ─── DIRECTOR: DAILY REPORTS LIST ───
 router.get('/reports', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
     if (!schoolId) return res.json({ success: true, data: [] })
-    const { classId, teacherId, limit = 100 } = req.query
+    const { classId, teacherId, status, limit = 100 } = req.query
     const q = { school: schoolId }
     if (classId) q.classes = classId
     if (teacherId) q.teacher = teacherId
+    if (status && ['submitted', 'reviewed'].includes(status)) q.status = status
     const items = await DailyReport.find(q)
       .populate('teacher', 'firstName lastName')
       .populate('classes', 'name level')
@@ -157,3 +155,29 @@ router.get('/reports', protect, authorize('directeur', 'super_admin'), async (re
     res.json({ success: true, data: items })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
+
+router.put('/reports/:id/review', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const r = await DailyReport.findOneAndUpdate(
+      { _id: req.params.id, school: req.user.school?._id || req.user.school },
+      { status: 'reviewed', reviewedAt: new Date(), reviewedBy: req.user._id },
+      { new: true }
+    ).populate('teacher', 'firstName lastName').populate('classes', 'name level')
+    if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
+    res.json({ success: true, data: r })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+router.put('/reports/:id/unreview', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const r = await DailyReport.findOneAndUpdate(
+      { _id: req.params.id, school: req.user.school?._id || req.user.school },
+      { status: 'submitted', reviewedAt: null, reviewedBy: null },
+      { new: true }
+    ).populate('teacher', 'firstName lastName').populate('classes', 'name level')
+    if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
+    res.json({ success: true, data: r })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+module.exports = router

@@ -191,4 +191,24 @@ router.get('/with-parents', protect, authorize('directeur', 'super_admin'), asyn
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// POST /api/students/link-parent — link an existing parent user to multiple students by email
+router.post('/link-parent', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const { email, studentIds } = req.body
+    if (!email || !Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ message: 'Email et liste des élèves requis' })
+    }
+    const user = await User.findOne({ email, role: 'parent' })
+    if (!user) return res.status(404).json({ message: 'Compte parent introuvable pour cet email' })
+    const schoolId = req.user.school?._id || req.user.school
+    const updated = await Student.updateMany(
+      { _id: { $in: studentIds }, school: schoolId },
+      { $set: { parentUser: user._id } }
+    )
+    res.json({ success: true, message: 'Parent associé aux élèves sélectionnés', data: { matched: updated.matchedCount || updated.n, modified: updated.modifiedCount || updated.nModified } })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

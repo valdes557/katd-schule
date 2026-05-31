@@ -9,10 +9,13 @@ const dailyReportSchema = new mongoose.Schema(
     title: { type: String, trim: true },
     content: { type: String, required: true, trim: true },
     status: { type: String, enum: ['submitted', 'reviewed'], default: 'submitted' },
+    reviewedAt: { type: Date },
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 )
 
 dailyReportSchema.index({ school: 1, date: -1 })
+dailyReportSchema.index({ school: 1, status: 1, date: -1 })
 
 module.exports = mongoose.model('DailyReport', dailyReportSchema)
