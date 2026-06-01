@@ -199,6 +199,7 @@ export const platformApi = {
   viewPost: (id) => api.put(`/platform/posts/${id}/view`),
   sharePost: (id) => { try { api.put(`/platform/posts/${id}/share`) } catch (_) {} },
   downloadPost: (id) => api.put(`/platform/posts/${id}/download`),
+  getProxyDownloadUrl: (src, filename = 'media') => `${API_URL}/platform/proxy-download?url=${encodeURIComponent(src)}&filename=${encodeURIComponent(filename)}`,
   // Experiences
   getExperiences: () => api.get('/platform/experiences'),
   getAllExperiences: () => api.get('/platform/experiences/all'),

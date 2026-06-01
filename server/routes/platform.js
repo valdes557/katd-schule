@@ -8,6 +8,8 @@ const SubscriptionPlan = require('../models/SubscriptionPlan')
 const Resource = require('../models/Resource')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
+const http = require('http')
+const https = require('https')
 
 // ===================== PLATFORM PAGE CONTENT =====================
 
@@ -153,6 +155,56 @@ router.put('/posts/:id/download', protect, async (req, res) => {
     const post = await SchoolPost.findByIdAndUpdate(req.params.id, { $inc: { downloads: 1 } }, { new: true })
     res.json({ success: true, data: post })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/platform/proxy-download?url=...&filename=... — Authenticated: stream remote media with attachment
+router.get('/proxy-download', protect, async (req, res) => {
+  try {
+    const src = req.query.url
+    let filename = (req.query.filename || 'media').toString()
+    if (!src) return res.status(400).json({ message: 'Paramètre url requis' })
+    let u
+    try { u = new URL(src) } catch (_) { return res.status(400).json({ message: 'URL invalide' }) }
+    if (!/^https?:$/.test(u.protocol)) return res.status(400).json({ message: 'Protocole non supporté' })
+    const host = u.hostname
+    if (host === 'localhost' || host === '127.0.0.1' || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) {
+      return res.status(400).json({ message: 'Hôte non autorisé' })
+    }
+
+    filename = filename.toLowerCase().replace(/[^a-z0-9-_.]+/g, '-').replace(/^-+|-+$/g, '') || 'media'
+
+    const headers = {}
+    const range = req.headers['range']
+    if (range) headers['range'] = range
+
+    const client = u.protocol === 'https:' ? https : http
+    const remote = client.get({ hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: u.pathname + (u.search || ''), headers }, (r) => {
+      if ((r.statusCode || 0) >= 400) {
+        res.status(r.statusCode || 502).end()
+        return
+      }
+      const ct = r.headers['content-type'] || 'application/octet-stream'
+      const cl = r.headers['content-length']
+      const ar = r.headers['accept-ranges']
+      const cr = r.headers['content-range']
+
+      const outHeaders = {
+        'Content-Type': ct,
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      }
+      if (cl) outHeaders['Content-Length'] = cl
+      if (ar) outHeaders['Accept-Ranges'] = ar
+      if (cr) outHeaders['Content-Range'] = cr
+
+      const status = r.statusCode === 206 ? 206 : 200
+      res.writeHead(status, outHeaders)
+      r.pipe(res)
+    })
+    remote.on('error', () => res.status(502).json({ message: 'Erreur de téléchargement' }))
+    remote.setTimeout(15000, () => { try { remote.destroy(new Error('timeout')) } catch (_) {} })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 // PUT /api/platform/posts/:id/view — Increment view count
