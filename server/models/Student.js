@@ -1,4 +1,5 @@
 const mongoose = require('mongoose')
+const { generateMatricule } = require('../utils/matricule')
 
 const studentSchema = new mongoose.Schema(
   {
@@ -32,12 +33,14 @@ const studentSchema = new mongoose.Schema(
 )
 
 studentSchema.pre('save', async function (next) {
-  if (!this.matricule) {
-    const count = await mongoose.model('Student').countDocuments({ school: this.school })
-    const year = new Date().getFullYear()
-    this.matricule = `STU-${year}-${String(count + 1).padStart(4, '0')}`
+  try {
+    if (!this.matricule) {
+      this.matricule = await generateMatricule(this.school)
+    }
+    next()
+  } catch (e) {
+    next(e)
   }
-  next()
 })
 
 studentSchema.virtual('fullName').get(function () {

@@ -67,6 +67,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
     const student = await Student.create({ ...req.body, school: schoolId })
     res.status(201).json({ success: true, data: student })
   } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ message: 'Conflit d\'unité unique (matricule ou email déjà utilisé). Veuillez réessayer.' })
     res.status(500).json({ message: err.message })
   }
 })
@@ -102,11 +103,7 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
 
     // Block if no class assigned — parent must see class & teachers
-    if (!student.class) {
-      return res.status(400).json({
-        message: 'Cet élève doit être affecté à une classe avant de créer le compte parent. Le parent doit pouvoir voir la classe, les enseignants et le programme.',
-      })
-    }
+    const hasClassAssigned = !!student.class
 
     // Use provided email or fall back to parent.email on student record
     const email = req.body.email || student.parent?.email
@@ -142,8 +139,9 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
 
     // Fetch teachers of the child's class so the director sees what is attributed
     const Teacher = require('../models/Teacher')
-    const classTeachers = await Teacher.find({ classes: student.class._id })
-      .select('firstName lastName email subjects speciality')
+    const classTeachers = student.class
+      ? await Teacher.find({ classes: student.class._id }).select('firstName lastName email subjects speciality')
+      : []
 
     // Build WhatsApp link to send credentials to the parent's phone if available
     const phoneDigits = (req.body.phone || student.parent?.phone || '').replace(/\D/g, '')
@@ -172,12 +170,12 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
         rawPassword,
         userId: user._id,
         studentName: `${student.lastName} ${student.firstName}`,
-        class: {
+        class: student.class ? {
           name: student.class.name,
           level: student.class.level,
           cycle: student.class.cycle,
           room: student.class.room,
-        },
+        } : null,
         teachers: classTeachers.map((t) => ({
           fullName: `${t.lastName} ${t.firstName}`,
           email: t.email,

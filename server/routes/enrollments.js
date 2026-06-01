@@ -10,6 +10,7 @@ const Student = require('../models/Student')
 const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEnrollmentApprovalEmail, sendEnrollmentRejectionEmail } = require('../utils/emailService')
+const { generateMatricule } = require('../utils/matricule')
 
 // Multer config for payment proof
 const storage = multer.diskStorage({
@@ -118,15 +119,8 @@ router.put('/:id/approve', protect, authorize('directeur', 'super_admin'), async
       return res.status(400).json({ message: 'Cette demande a déjà été traitée' })
     }
 
-    // Generate matricule with school initials
-    const schoolInitials = enrollment.school.name
-      .split(' ')
-      .map((w) => w[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 4)
-    const count = await Student.countDocuments({ school: enrollment.school._id })
-    const matricule = `${schoolInitials}${String(count + 1).padStart(4, '0')}`
+    // Generate matricule using atomic per-school-year counter
+    const matricule = await generateMatricule(enrollment.school._id)
 
     // Generate password
     const rawPassword = `${enrollment.firstName.toLowerCase()}${Math.floor(1000 + Math.random() * 9000)}`
