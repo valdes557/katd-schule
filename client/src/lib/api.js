@@ -1,7 +1,7 @@
 const rawUrl = import.meta.env.VITE_API_URL || '/api'
 const API_URL = rawUrl.endsWith('/api') ? rawUrl : rawUrl === '/api' ? '/api' : rawUrl + '/api'
 
-async function request(path, options = {}) {
+async function request(path, options = {}, retries = 2) {
   const token = localStorage.getItem('token')
   const headers = {
     'Content-Type': 'application/json',
@@ -9,24 +9,35 @@ async function request(path, options = {}) {
     ...(options.headers || {}),
   }
 
-  let res
-  try {
-    res = await fetch(`${API_URL}${path}`, { ...options, headers })
-  } catch (e) {
-    // Network-level failure (offline, CORS, DNS, server down)
-    const url = `${API_URL}${path}`
-    throw new Error(`Impossible de joindre le serveur (${url}). Vérifiez votre connexion Internet ou que le backend est en ligne.`)
-  }
-  const data = await res.json().catch(() => ({}))
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      // Token expired or invalid → force re-login
-      try { localStorage.removeItem('token') } catch (_) {}
+  const url = `${API_URL}${path}`
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    let res
+    try {
+      res = await fetch(url, { ...options, headers })
+    } catch (e) {
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)))
+        continue
+      }
+      throw new Error(`Impossible de joindre le serveur (${url}). Vérifiez votre connexion Internet ou que le backend est en ligne.`)
     }
-    throw new Error(data.message || `Erreur HTTP ${res.status}`)
+
+    const data = await res.json().catch(() => ({}))
+
+    if (!res.ok) {
+      // Retry transient gateway errors (Render cold start, etc.)
+      if ([502, 503, 504].includes(res.status) && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)))
+        continue
+      }
+      if (res.status === 401) {
+        // Token expired or invalid → force re-login
+        try { localStorage.removeItem('token') } catch (_) {}
+      }
+      throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    }
+    return data
   }
-  return data
 }
 
 export const api = {
