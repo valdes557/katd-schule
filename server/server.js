@@ -25,7 +25,11 @@ app.use(cors({
     return cb(null, true) // Allow all in dev; restrict in production if needed
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }))
+// Handle CORS preflight globally
+app.options('*', cors())
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
