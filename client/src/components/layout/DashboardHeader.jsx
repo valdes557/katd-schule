@@ -26,6 +26,7 @@ export default function DashboardHeader({ onMenuClick }) {
   const currentCycle = CYCLES.find((c) => c.label.includes(effectiveCycle)) || CYCLES[1]
 
   return (
+    <>
     <header className="fixed top-0 right-0 left-0 lg:left-[260px] h-14 bg-white border-b border-gray-100 flex items-center justify-between px-3 sm:px-5 z-30">
       {/* Left: hamburger (mobile only) */}
       <button
@@ -165,5 +166,6 @@ export default function DashboardHeader({ onMenuClick }) {
         </div>
       </div>
     )}
+    </>
   )
 }
