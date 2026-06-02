@@ -122,15 +122,19 @@ router.put('/:id/approve', protect, authorize('directeur', 'super_admin'), async
     // Generate matricule using atomic per-school-year counter
     const matricule = await generateMatricule(enrollment.school._id)
 
-    // Generate password
-    const rawPassword = `${enrollment.firstName.toLowerCase()}${Math.floor(1000 + Math.random() * 9000)}`
-    const hashedPassword = await bcrypt.hash(rawPassword, 10)
+    // Generate password (hashed by User model pre-save)
+    const baseName = (enrollment.firstName || 'eleve')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // remove accents
+      .replace(/[^a-z]/g, '') || 'eleve'
+    const rawPassword = `${baseName}${Math.floor(1000 + Math.random() * 9000)}`
 
     // Create User account for the student
     const userAccount = await User.create({
       name: `${enrollment.lastName} ${enrollment.firstName}`,
       email: enrollment.email,
-      password: hashedPassword,
+      password: rawPassword,
       role: 'eleve',
       school: enrollment.school._id,
       isActive: true,

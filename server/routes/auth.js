@@ -5,6 +5,7 @@ const { body, validationResult } = require('express-validator')
 const User = require('../models/User')
 const { protect } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
+const { sendEmail } = require('../utils/emailService')
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -139,3 +140,66 @@ router.post('/avatar', protect, upload.single('avatar'), async (req, res) => {
 })
 
 module.exports = router
+
+// Admin/director password reset for a user account (e.g., students created before hashing fix)
+// @route  POST /api/auth/admin-reset-password
+router.post('/admin-reset-password', protect, async (req, res) => {
+  try {
+    const actor = req.user
+    if (!['super_admin', 'directeur'].includes(actor.role)) {
+      return res.status(403).json({ message: 'Accès refusé' })
+    }
+    const { email } = req.body
+    if (!email) return res.status(400).json({ message: 'Email requis' })
+
+    const user = await User.findOne({ email }).populate('school')
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
+
+    // Directors can only reset passwords for users in their school
+    if (actor.role === 'directeur') {
+      const actorSchoolId = actor.school?._id?.toString() || actor.school?.toString()
+      const targetSchoolId = user.school?._id?.toString() || user.school?.toString()
+      if (!actorSchoolId || !targetSchoolId || actorSchoolId !== targetSchoolId) {
+        return res.status(403).json({ message: 'Vous ne pouvez réinitialiser que les comptes de votre école' })
+      }
+    }
+
+    // Generate a clean password (remove accents/specials) to avoid confusion
+    const baseName = (user.name || user.role || 'user')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z]/g, '') || 'user'
+    const rawPassword = `${baseName}${Math.floor(10000 + Math.random() * 90000)}`
+
+    user.password = rawPassword
+    await user.save()
+
+    // Best-effort email notification
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: '🔐 Nouveau mot de passe — KATD-SCHÜLE',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:20px">
+            <h2 style="margin-bottom:8px;color:#111827">Vos identifiants ont été réinitialisés</h2>
+            <p style="color:#374151">Bonjour ${user.name || ''},</p>
+            <p style="color:#374151">Voici vos nouveaux identifiants :</p>
+            <table style="width:100%;font-size:14px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;margin:12px 0">
+              <tr><td style="padding:10px 12px;color:#6B7280">Email</td><td style="padding:10px 12px;color:#111827;font-weight:700;text-align:right">${user.email}</td></tr>
+              <tr><td style="padding:10px 12px;color:#6B7280">Mot de passe</td><td style="padding:10px 12px;color:#111827;font-weight:700;letter-spacing:1px;text-align:right">${rawPassword}</td></tr>
+            </table>
+            <p style="color:#6B7280;font-size:12px">Veuillez changer ce mot de passe après votre connexion.</p>
+            <div style="margin-top:16px">
+              <a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="display:inline-block;background:#2563EB;color:white;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Se connecter</a>
+            </div>
+          </div>
+        `,
+      })
+    } catch (_) {}
+
+    res.json({ success: true, email: user.email, rawPassword })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
