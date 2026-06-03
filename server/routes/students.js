@@ -4,6 +4,7 @@ const Student = require('../models/Student')
 const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
+const Teacher = require('../models/Teacher')
 
 // @route  GET /api/students
 router.get('/', protect, async (req, res) => {
@@ -28,6 +29,23 @@ router.get('/', protect, async (req, res) => {
       if (school?.subscription?.cycle) query.cycle = school.subscription.cycle
     } else if (cycle) {
       query.cycle = cycle
+    }
+
+    // Teachers can only view students from their assigned classes
+    if (req.user.role === 'enseignant') {
+      const t = await Teacher.findOne({ user: req.user._id }).select('classes')
+      const teacherClassIds = (t?.classes || []).map((c) => c.toString())
+      if (!teacherClassIds || teacherClassIds.length === 0) {
+        return res.json({ success: true, total: 0, data: [] })
+      }
+      if (classId) {
+        if (!teacherClassIds.includes(classId.toString())) {
+          return res.json({ success: true, total: 0, data: [] })
+        }
+        query.class = classId
+      } else {
+        query.class = { $in: teacherClassIds }
+      }
     }
 
     const total = await Student.countDocuments(query)
