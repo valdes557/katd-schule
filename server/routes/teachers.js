@@ -126,9 +126,16 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
 // DELETE /api/teachers/:id
 router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const teacher = await Teacher.findByIdAndDelete(req.params.id)
+    const teacher = await Teacher.findById(req.params.id)
     if (!teacher) return res.status(404).json({ message: 'Enseignant non trouvé' })
-    if (teacher.user) await User.findByIdAndDelete(teacher.user)
+
+    await Teacher.findByIdAndDelete(teacher._id)
+
+    const tasks = []
+    if (teacher.user) tasks.push(User.findByIdAndDelete(teacher.user))
+    if (teacher.email) tasks.push(User.findOneAndDelete({ email: teacher.email }))
+    if (tasks.length) await Promise.all(tasks)
+
     res.json({ success: true, message: 'Enseignant supprimé' })
   } catch (err) {
     res.status(500).json({ message: err.message })
