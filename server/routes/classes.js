@@ -4,6 +4,7 @@ const Class = require('../models/Class')
 const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
+const Teacher = require('../models/Teacher')
 
 // GET /api/classes
 router.get('/', protect, async (req, res) => {
@@ -18,6 +19,13 @@ router.get('/', protect, async (req, res) => {
       if (school?.subscription?.cycle) query.cycle = school.subscription.cycle
     }
     if (req.query.cycle && req.user.role === 'super_admin') query.cycle = req.query.cycle
+
+    // Teachers only see their assigned classes
+    if (req.user.role === 'enseignant') {
+      const t = await Teacher.findOne({ user: req.user._id }).select('classes')
+      if (!t || !t.classes || t.classes.length === 0) return res.json({ success: true, data: [] })
+      query._id = { $in: t.classes.map((c) => c.toString()) }
+    }
     const classes = await Class.find(query).populate('mainTeacher', 'firstName lastName').sort({ cycle: 1, name: 1 })
     res.json({ success: true, data: classes })
   } catch (err) {
