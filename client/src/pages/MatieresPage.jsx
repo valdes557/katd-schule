@@ -103,10 +103,12 @@ export default function MatieresPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher..." className="input pl-9 text-sm" />
         </div>
-        <select value={cycleFilter} onChange={(e) => setCycleFilter(e.target.value)} className="input text-sm w-auto">
-          {!subscribedCycle && <option value="">Tous les cycles</option>}
-          {(subscribedCycle ? [subscribedCycle] : CYCLES).map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        {isDirecteur && (
+          <select value={cycleFilter} onChange={(e) => setCycleFilter(e.target.value)} className="input text-sm w-auto">
+            {!subscribedCycle && <option value="">Tous les cycles</option>}
+            {(subscribedCycle ? [subscribedCycle] : CYCLES).map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
       </div>
 
       {loading ? (

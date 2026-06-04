@@ -83,6 +83,11 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
       }
     }
     const student = await Student.create({ ...req.body, school: schoolId })
+
+    if (req.body.teacher && student.class) {
+      await Teacher.findByIdAndUpdate(req.body.teacher, { $addToSet: { classes: student.class } })
+    }
+
     res.status(201).json({ success: true, data: student })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Conflit d\'unité unique (matricule ou email déjà utilisé). Veuillez réessayer.' })

@@ -11,6 +11,7 @@ const EMPTY = { name: '', level: '', cycle: 'Primaire', room: '', capacity: 40, 
 export default function ClassesPage() {
   const { user, school } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+  const isEnseignant = user?.role === 'enseignant'
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
   const cycles = subscribedCycle ? [subscribedCycle] : CYCLES
 
@@ -90,10 +91,12 @@ export default function ClassesPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher..." className="input pl-9 text-sm" />
         </div>
-        <select value={cycleFilter} onChange={(e) => setCycleFilter(e.target.value)} className="input text-sm w-auto">
-          {!subscribedCycle && <option value="">Tous les cycles</option>}
-          {cycles.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        {!isEnseignant && (
+          <select value={cycleFilter} onChange={(e) => setCycleFilter(e.target.value)} className="input text-sm w-auto">
+            {!subscribedCycle && <option value="">Tous les cycles</option>}
+            {cycles.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
       </div>
 
       {loading ? (

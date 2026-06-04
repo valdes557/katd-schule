@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus } from 'lucide-react'
-import { studentsApi, classesApi } from '../lib/api'
+import { studentsApi, classesApi, teachersApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
-const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', dateOfBirth: '', placeOfBirth: '', parent: { name: '', phone: '', email: '', relation: 'pere' } }
+const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', parent: { name: '', phone: '', email: '', relation: 'pere' } }
 
 export default function ElevesPage() {
   const { user, school } = useAuth()
@@ -12,6 +12,7 @@ export default function ElevesPage() {
 
   const [students, setStudents] = useState([])
   const [classes, setClasses] = useState([])
+  const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
@@ -36,7 +37,14 @@ export default function ElevesPage() {
   }
 
   const fetchClasses = async () => {
-    try { const res = await classesApi.list(); setClasses(res.data || []) } catch (e) {}
+    try {
+      const [classRes, teacherRes] = await Promise.all([
+        classesApi.list(),
+        teachersApi.list(),
+      ])
+      setClasses(classRes.data || [])
+      setTeachers(teacherRes.data || [])
+    } catch (e) {}
   }
 
   useEffect(() => { fetchStudents(); fetchClasses() }, [])
@@ -88,12 +96,14 @@ export default function ElevesPage() {
       firstName: s.firstName, lastName: s.lastName, gender: s.gender, cycle: s.cycle || 'Primaire',
       class: s.class?._id || s.class || '', dateOfBirth: s.dateOfBirth?.slice(0, 10) || '',
       placeOfBirth: s.placeOfBirth || '',
+      teacher: s.teacher?._id || s.teacher || '',
       parent: s.parent || { name: '', phone: '', email: '', relation: 'pere' },
     })
     setShowModal(true)
   }
 
   const filteredClasses = classes.filter((c) => !form.cycle || c.cycle === form.cycle)
+  const filteredTeachers = teachers.filter((t) => !form.cycle || t.cycle === form.cycle)
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -319,6 +329,15 @@ export default function ElevesPage() {
                     {filteredClasses.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Enseignant</label>
+                <select value={form.teacher} onChange={(e) => setForm({ ...form, teacher: e.target.value })} className="input text-sm mt-1">
+                  <option value="">— Aucun —</option>
+                  {filteredTeachers.map((t) => (
+                    <option key={t._id} value={t._id}>{t.lastName} {t.firstName}</option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
