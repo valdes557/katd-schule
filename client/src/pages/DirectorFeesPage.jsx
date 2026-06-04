@@ -29,13 +29,13 @@ export default function DirectorFeesPage() {
   const [paying, setPaying] = useState(false)
 
   const loadClasses = async () => {
-    try { const r = await classesApi.list(); setClasses(r.data || []) } catch (_) {}
+    try { const r = await classesApi.list(); setClasses(r.data || []) } catch (err) { console.error(err) }
   }
 
   const loadPaymentStatus = async (classId) => {
     if (!classId) return
     setLoading(true)
-    try { const r = await feesApi.paymentStatus(classId); setPaymentStatus(r.data || []) } catch (_) {}
+    try { const r = await feesApi.paymentStatus(classId); setPaymentStatus(r.data || []) } catch (err) { console.error(err) }
     setLoading(false)
   }
 

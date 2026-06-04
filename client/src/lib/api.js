@@ -32,7 +32,7 @@ async function request(path, options = {}, retries = 2) {
       }
       if (res.status === 401) {
         // Token expired or invalid → force re-login
-        try { localStorage.removeItem('token') } catch (_) {}
+        try { localStorage.removeItem('token') } catch (err) { console.error(err) }
       }
       throw new Error(data.message || `Erreur HTTP ${res.status}`)
     }
@@ -211,7 +211,7 @@ export const platformApi = {
   likePost: (id) => api.put(`/platform/posts/${id}/like`),
   commentPost: (id, content) => api.post(`/platform/posts/${id}/comment`, { content }),
   viewPost: (id) => api.put(`/platform/posts/${id}/view`),
-  sharePost: (id) => { try { api.put(`/platform/posts/${id}/share`) } catch (_) {} },
+  sharePost: (id) => api.put(`/platform/posts/${id}/share`).catch((err) => console.error(err)),
   downloadPost: (id) => api.put(`/platform/posts/${id}/download`),
   getProxyDownloadUrl: (src, filename = 'media') => `${API_URL}/platform/proxy-download?url=${encodeURIComponent(src)}&filename=${encodeURIComponent(filename)}`,
   // Experiences

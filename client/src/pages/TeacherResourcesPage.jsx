@@ -29,7 +29,7 @@ export default function TeacherResourcesPage() {
       const [r, d] = await Promise.all([teacherApi.resources(), teacherApi.dashboard()])
       setItems(r.data || [])
       setClasses(d.data?.teacher?.classes || [])
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { load() }, [])

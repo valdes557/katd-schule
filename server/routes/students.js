@@ -65,6 +65,7 @@ router.get('/', protect, async (req, res) => {
 
     res.json({ success: true, total, data: students })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -76,6 +77,7 @@ router.get('/:id', protect, async (req, res) => {
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
     res.json({ success: true, data: student })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -99,6 +101,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
     res.status(201).json({ success: true, data: student })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Conflit d\'unité unique (matricule ou email déjà utilisé). Veuillez réessayer.' })
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -112,6 +115,7 @@ router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'),
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
     res.json({ success: true, data: student })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -123,6 +127,7 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
     res.json({ success: true, message: 'Élève supprimé' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -218,6 +223,7 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
     })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Cet email est déjà utilisé' })
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -231,7 +237,7 @@ router.get('/with-parents', protect, authorize('directeur', 'super_admin'), asyn
       .populate('parentUser', 'email lastLogin')
       .sort({ lastName: 1 })
     res.json({ success: true, data: students })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/students/link-parent — link an existing parent user to multiple students by email
@@ -250,6 +256,7 @@ router.post('/link-parent', protect, authorize('directeur', 'super_admin'), asyn
     )
     res.json({ success: true, message: 'Parent associé aux élèves sélectionnés', data: { matched: updated.matchedCount || updated.n, modified: updated.modifiedCount || updated.nModified } })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

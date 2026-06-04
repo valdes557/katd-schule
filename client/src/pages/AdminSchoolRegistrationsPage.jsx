@@ -61,7 +61,7 @@ export default function AdminSchoolRegistrationsPage() {
         const waLink = result.whatsappLink || result.data?.whatsappLink || null
         // Auto-open WhatsApp tab so the admin can send credentials in one click
         if (waLink) {
-          try { window.open(waLink, '_blank', 'noopener,noreferrer') } catch (_) {}
+          try { window.open(waLink, '_blank', 'noopener,noreferrer') } catch (err) { console.error(err) }
         }
         // Always display credentials so the admin can transmit them manually if email is delayed/filtered
         setCredentialsModal({
@@ -97,7 +97,7 @@ export default function AdminSchoolRegistrationsPage() {
       const result = await schoolRegistrationApi.resendCredentials(id)
       const waLink = result.whatsappLink || null
       if (waLink) {
-        try { window.open(waLink, '_blank', 'noopener,noreferrer') } catch (_) {}
+        try { window.open(waLink, '_blank', 'noopener,noreferrer') } catch (err) { console.error(err) }
       }
       setCredentialsModal({
         email: reg?.email,

@@ -25,7 +25,8 @@ export function AuthProvider({ children }) {
           localStorage.setItem('katd_user', JSON.stringify(u))
           if (s) localStorage.setItem('katd_school', JSON.stringify(s))
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error('Failed to rehydrate user from /me:', err)
           // Fallback to stored data if /me fails
           const storedUser = localStorage.getItem('katd_user')
           const storedSchool = localStorage.getItem('katd_school')

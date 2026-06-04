@@ -29,7 +29,7 @@ export default function EnseignantsPage() {
       setTeachers(res.data || [])
       setTotal(res.total || 0)
       setAllClasses(cr.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 

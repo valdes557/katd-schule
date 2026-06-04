@@ -11,7 +11,7 @@ export default function ParentActivitiesPage({ section = 'activities' }) {
       try {
         const r = section === 'resources' ? await parentApi.resources() : await parentApi.activities()
         setItems(r.data || [])
-      } catch (_) {}
+      } catch (err) { console.error(err) }
       setLoading(false)
     })()
   }, [section])

@@ -29,7 +29,7 @@ export default function AdminSchoolSubjectsPage() {
         const list = r.data || []
         setSchools(list)
         if (list.length > 0) setSchoolId(list[0]._id)
-      } catch (_) {}
+      } catch (err) { console.error(err) }
       setLoadingSchools(false)
     })()
   }, [])
@@ -47,7 +47,7 @@ export default function AdminSchoolSubjectsPage() {
       setSubjects(sr.data || [])
       setClasses(cr.data || [])
       setTeachers(tr.data || [])
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 

@@ -43,7 +43,7 @@ export default function ParentSectionPage({ section = 'notes' }) {
       try {
         const r = await parentApi.dashboard()
         setChildren(r.data?.children || r.data?.students || [])
-      } catch (_) {}
+      } catch (err) { console.error(err) }
       setLoading(false)
     })()
   }, [])

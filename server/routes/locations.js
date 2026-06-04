@@ -9,6 +9,7 @@ router.get('/countries', async (req, res) => {
     const countries = await Location.find({ type: 'country' }).sort({ name: 1 })
     res.json({ success: true, data: countries })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -19,6 +20,7 @@ router.get('/cities/:countryId', async (req, res) => {
     const cities = await Location.find({ type: 'city', parent: req.params.countryId }).sort({ name: 1 })
     res.json({ success: true, data: cities })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -29,6 +31,7 @@ router.get('/neighborhoods/:cityId', async (req, res) => {
     const neighborhoods = await Location.find({ type: 'neighborhood', parent: req.params.cityId }).sort({ name: 1 })
     res.json({ success: true, data: neighborhoods })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -41,6 +44,7 @@ router.get('/', protect, authorize('super_admin'), async (req, res) => {
     const locations = await Location.find(query).populate('parent', 'name type').sort({ type: 1, name: 1 })
     res.json({ success: true, data: locations })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -57,6 +61,7 @@ router.post('/', protect, authorize('super_admin'), async (req, res) => {
     res.status(201).json({ success: true, data: location })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Cette localité existe déjà' })
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -68,6 +73,7 @@ router.put('/:id', protect, authorize('super_admin'), async (req, res) => {
     if (!location) return res.status(404).json({ message: 'Localité non trouvée' })
     res.json({ success: true, data: location })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -91,6 +97,7 @@ router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
     await Location.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Localité supprimée' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

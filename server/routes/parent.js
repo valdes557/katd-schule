@@ -161,6 +161,7 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
       },
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -285,6 +286,7 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
       },
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -316,7 +318,7 @@ router.get('/homework/:hwId/completion', protect, parentOnly, async (req, res) =
         stats: { done: doneCount, notDone: completion.length - doneCount, total: completion.length },
       },
     })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── FEES ───
@@ -329,6 +331,7 @@ router.get('/fees', protect, parentOnly, async (req, res) => {
     const totalPaid = fees.reduce((s, f) => s + f.paid, 0)
     res.json({ success: true, data: fees, summary: { totalDue, totalPaid, remaining: totalDue - totalPaid } })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -352,6 +355,7 @@ router.post('/fees/:feeId/pay', protect, parentOnly, async (req, res) => {
 
     res.json({ success: true, data: fee })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -364,6 +368,7 @@ router.get('/appointments', protect, parentOnly, async (req, res) => {
       .sort({ date: -1 })
     res.json({ success: true, data: appointments })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -386,6 +391,7 @@ router.post('/appointments', protect, parentOnly, async (req, res) => {
     })
     res.status(201).json({ success: true, data: appt })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -401,6 +407,7 @@ router.get('/controls/:studentId', protect, parentOnly, async (req, res) => {
     }
     res.json({ success: true, data: ctrl })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -414,6 +421,7 @@ router.put('/controls/:studentId', protect, parentOnly, async (req, res) => {
     )
     res.json({ success: true, data: ctrl })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -465,6 +473,7 @@ router.get('/report/:studentId', protect, parentOnly, async (req, res) => {
       },
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -478,6 +487,7 @@ router.get('/documents/:studentId', protect, parentOnly, async (req, res) => {
     const docs = await Document.find({ student: student._id, parent: req.user._id }).sort({ createdAt: -1 })
     res.json({ success: true, data: docs })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -512,6 +522,7 @@ router.post('/documents/:studentId/generate', protect, parentOnly, async (req, r
 
     res.status(201).json({ success: true, data: doc })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -558,7 +569,7 @@ router.get('/children/:studentId/class-attendance', protect, parentOnly, async (
         students: summary,
       },
     })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── MATIÈRES DE L'ÉCOLE / CLASSE DE L'ENFANT ───
@@ -596,7 +607,7 @@ router.get('/children/:studentId/subjects', protect, parentOnly, async (req, res
     }))
 
     res.json({ success: true, data: result, className: student.class?.name, cycle: student.cycle })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── ENSEIGNANTS DE LA CLASSE DE L'ENFANT ───
@@ -610,7 +621,7 @@ router.get('/children/:studentId/teachers', protect, parentOnly, async (req, res
       .select('firstName lastName email phone subjects speciality photo')
 
     res.json({ success: true, data: teachers, className: student.class.name })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── GESTION DES TRANCHES DE PENSION (vue parent) ───
@@ -639,7 +650,7 @@ router.get('/fees/installments', protect, parentOnly, async (req, res) => {
     })
 
     res.json({ success: true, data: fees, overdueInstallments })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── ACTIVITÉS DES ENFANTS ───
@@ -653,7 +664,7 @@ router.get('/activities', protect, parentOnly, async (req, res) => {
       .populate('teacher', 'firstName lastName')
       .sort({ date: -1 })
     res.json({ success: true, data: activities })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── RESSOURCES PÉDAGOGIQUES DES ENFANTS ───
@@ -667,7 +678,7 @@ router.get('/resources', protect, parentOnly, async (req, res) => {
       .populate('teacher', 'firstName lastName')
       .sort({ createdAt: -1 })
     res.json({ success: true, data: resources })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

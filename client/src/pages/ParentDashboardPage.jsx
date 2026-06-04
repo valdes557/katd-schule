@@ -28,7 +28,7 @@ export default function ParentDashboardPage() {
     try {
       const r = await parentApi.dashboard()
       setData(r.data)
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { load() }, [])

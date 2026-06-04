@@ -25,6 +25,7 @@ router.get('/', protect, async (req, res) => {
     const timetables = await Timetable.find(query).populate('class', 'name level cycle room')
     res.json({ success: true, data: timetables })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -40,6 +41,7 @@ router.get('/class/:classId', protect, async (req, res) => {
     }
     res.json({ success: true, data: tt })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -51,6 +53,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin', 'enseignant'),
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
     res.json({ success: true, data: tt })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -64,6 +67,7 @@ router.post('/:id/slots', protect, authorize('directeur', 'super_admin', 'enseig
     await tt.save()
     res.json({ success: true, data: tt })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -77,6 +81,7 @@ router.delete('/:id/slots/:slotId', protect, authorize('directeur', 'super_admin
     await tt.save()
     res.json({ success: true, data: tt })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

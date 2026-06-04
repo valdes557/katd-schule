@@ -25,6 +25,7 @@ router.get('/', async (req, res) => {
       .sort({ createdAt: -1 })
     res.json({ success: true, total, page: Number(page), data: schools })
   } catch (err) {
+    console.error('GET /api/schools error:', err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -36,6 +37,7 @@ router.get('/mine', protect, async (req, res) => {
     if (!school) return res.status(404).json({ message: 'Aucune école associée' })
     res.json({ success: true, data: school })
   } catch (err) {
+    console.error('GET /api/schools/mine error:', err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -47,6 +49,7 @@ router.get('/:id', async (req, res) => {
     if (!school) return res.status(404).json({ message: 'École non trouvée' })
     res.json({ success: true, data: school })
   } catch (err) {
+    console.error('GET /api/schools/:id error:', err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -67,6 +70,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), upload.single('
     await User.findByIdAndUpdate(req.user._id, { school: school._id })
     res.status(201).json({ success: true, data: school })
   } catch (err) {
+    console.error('POST /api/schools error:', err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -77,17 +81,18 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), upload.single
     const updates = { ...req.body }
     if (req.file?.path) updates.logo = req.file.path
     // Parse nested fields sent as JSON strings from FormData
-    if (typeof updates.address === 'string') { try { updates.address = JSON.parse(updates.address) } catch (_) {} }
-    if (typeof updates.contact === 'string') { try { updates.contact = JSON.parse(updates.contact) } catch (_) {} }
-    if (typeof updates.cycles === 'string') { try { updates.cycles = JSON.parse(updates.cycles) } catch (_) { updates.cycles = [updates.cycles] } }
-    if (typeof updates.socials === 'string') { try { updates.socials = JSON.parse(updates.socials) } catch (_) {} }
-    if (typeof updates.mobileMoneyAccounts === 'string') { try { updates.mobileMoneyAccounts = JSON.parse(updates.mobileMoneyAccounts) } catch (_) {} }
+    if (typeof updates.address === 'string') { try { updates.address = JSON.parse(updates.address) } catch (e) { console.warn('Invalid JSON for address:', e.message) } }
+    if (typeof updates.contact === 'string') { try { updates.contact = JSON.parse(updates.contact) } catch (e) { console.warn('Invalid JSON for contact:', e.message) } }
+    if (typeof updates.cycles === 'string') { try { updates.cycles = JSON.parse(updates.cycles) } catch (e) { console.warn('Invalid JSON for cycles, treating as single value:', e.message); updates.cycles = [updates.cycles] } }
+    if (typeof updates.socials === 'string') { try { updates.socials = JSON.parse(updates.socials) } catch (e) { console.warn('Invalid JSON for socials:', e.message) } }
+    if (typeof updates.mobileMoneyAccounts === 'string') { try { updates.mobileMoneyAccounts = JSON.parse(updates.mobileMoneyAccounts) } catch (e) { console.warn('Invalid JSON for mobileMoneyAccounts:', e.message) } }
     if (updates.enrollmentFee !== undefined) updates.enrollmentFee = Number(updates.enrollmentFee) || 0
 
     const school = await School.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
     if (!school) return res.status(404).json({ message: 'École non trouvée' })
     res.json({ success: true, data: school })
   } catch (err) {
+    console.error('PUT /api/schools/:id error:', err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -99,6 +104,7 @@ router.get('/:id/stats', protect, async (req, res) => {
     if (!school) return res.status(404).json({ message: 'École non trouvée' })
     res.json({ success: true, data: school })
   } catch (err) {
+    console.error('GET /api/schools/:id/stats error:', err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -112,6 +118,7 @@ router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
     if (school.director) await User.findByIdAndUpdate(school.director, { $unset: { school: 1 } })
     res.json({ success: true, message: 'École supprimée' })
   } catch (err) {
+    console.error('DELETE /api/schools/:id error:', err)
     res.status(500).json({ message: err.message })
   }
 })

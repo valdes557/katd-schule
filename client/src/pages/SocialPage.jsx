@@ -10,7 +10,7 @@ export default function SocialPage() {
   const { user } = useAuth()
 
   useEffect(() => {
-    platformApi.getFeed().then((r) => setFeed(r.data || [])).catch(() => {})
+    platformApi.getFeed().then((r) => setFeed(r.data || [])).catch((err) => console.error(err))
   }, [])
 
   return (

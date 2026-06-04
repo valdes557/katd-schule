@@ -51,6 +51,7 @@ router.get('/', protect, async (req, res) => {
       .sort({ date: -1 })
     res.json({ success: true, total, data: grades })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -85,6 +86,7 @@ router.get('/stats', protect, async (req, res) => {
 
     res.json({ success: true, data: { bySubject: stats, overall: overall[0] || { average: 0, count: 0 } } })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -278,6 +280,7 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
       },
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -318,6 +321,7 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
       }
     }).catch(() => {})
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -329,6 +333,7 @@ router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'),
     if (!grade) return res.status(404).json({ message: 'Note non trouvée' })
     res.json({ success: true, data: grade })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -339,6 +344,7 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
     await Grade.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Note supprimée' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

@@ -30,7 +30,7 @@ export default function ClassesPage() {
       const [cr, tr] = await Promise.all([classesApi.list(cycleFilter ? `cycle=${cycleFilter}` : ''), teachersApi.list()])
       setClasses(cr.data || [])
       setTeachers(tr.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 

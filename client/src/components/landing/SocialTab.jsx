@@ -73,7 +73,7 @@ export default function SocialTab({ feed, setFeed, user }) {
     try {
       const r = await platformApi.likePost(postId)
       setFeed((prev) => prev.map((p) => (p._id === postId ? r.data : p)))
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   const handleComment = async (postId) => {
@@ -83,7 +83,7 @@ export default function SocialTab({ feed, setFeed, user }) {
       const r = await platformApi.commentPost(postId, txt)
       setFeed((prev) => prev.map((p) => (p._id === postId ? r.data : p)))
       setCommentText((prev) => ({ ...prev, [postId]: '' }))
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   const handleShare = async (postId) => {
@@ -92,9 +92,9 @@ export default function SocialTab({ feed, setFeed, user }) {
       if (navigator.share) {
         await navigator.share({ title: 'KATD-SCHÜLE', text: 'Découvrez cette publication', url })
       } else {
-        try { await navigator.clipboard.writeText(url) } catch (_) {}
+        try { await navigator.clipboard.writeText(url) } catch (err) { console.error(err) }
       }
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     platformApi.sharePost(postId)
     setFeed((prev) => prev.map((p) => (p._id === postId ? { ...p, shares: (p.shares || 0) + 1 } : p)))
   }
@@ -105,7 +105,7 @@ export default function SocialTab({ feed, setFeed, user }) {
       const r = await platformApi.getFeed(next, feedCategory)
       setFeed((prev) => [...prev, ...(r.data || [])])
       setFeedPage(next)
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   const filterFeed = async (cat) => {
@@ -115,7 +115,7 @@ export default function SocialTab({ feed, setFeed, user }) {
     try {
       const r = await platformApi.getFeed(1, c)
       setFeed(r.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   const currentIndex = viewer?.index ?? -1
@@ -305,7 +305,7 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
       a.download = (post.title || 'media').toString().replace(/\s+/g, '-')
       a.target = '_blank'
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   const handleShare = async () => {

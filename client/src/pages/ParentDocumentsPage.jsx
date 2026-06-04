@@ -25,7 +25,7 @@ export default function ParentDocumentsPage() {
         const kids = r.data?.children || []
         setChildren(kids)
         if (kids.length > 0) setSelectedChild(kids[0]._id)
-      } catch (_) {}
+      } catch (err) { console.error(err) }
     })()
   }, [])
 
@@ -36,7 +36,7 @@ export default function ParentDocumentsPage() {
       try {
         const r = await parentApi.documents(selectedChild)
         setDocuments(r.data || [])
-      } catch (_) { setDocuments([]) }
+      } catch (err) { console.error(err); setDocuments([]) }
       setLoading(false)
     })()
   }, [selectedChild])

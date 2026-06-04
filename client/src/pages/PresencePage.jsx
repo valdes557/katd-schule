@@ -29,7 +29,7 @@ export default function PresencePage() {
         const res = await classesApi.list()
         setClasses(res.data || [])
         if (res.data?.length > 0) setSelectedClass(res.data[0]._id)
-      } catch (e) {}
+      } catch (err) { console.error(err) }
       setLoading(false)
     }
     load()

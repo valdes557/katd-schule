@@ -53,11 +53,11 @@ export default function SchoolRegistrationPage() {
         data.forEach((p) => { initBilling[p._id] = 'annual' })
         setBillingMap(initBilling)
       })
-      .catch(() => {})
+      .catch((err) => console.error(err))
       .finally(() => setPlansLoading(false))
 
-    platformApi.getPaymentMethods().then((r) => setPaymentMethods(r.data || [])).catch(() => {})
-    locationsApi.countries().then((r) => setCountries(r.data || [])).catch(() => {})
+    platformApi.getPaymentMethods().then((r) => setPaymentMethods(r.data || [])).catch((err) => console.error(err))
+    locationsApi.countries().then((r) => setCountries(r.data || [])).catch((err) => console.error(err))
 
     // Pre-select from URL params if coming from landing page
     const cycleParam = params.get('cycle')
@@ -71,7 +71,7 @@ export default function SchoolRegistrationPage() {
 
   useEffect(() => {
     if (form.country) {
-      locationsApi.cities(form.country).then((r) => setCities(r.data || [])).catch(() => {})
+      locationsApi.cities(form.country).then((r) => setCities(r.data || [])).catch((err) => console.error(err))
       setForm((f) => ({ ...f, city: '', neighborhood: '' }))
       setNeighborhoods([])
     }
@@ -79,7 +79,7 @@ export default function SchoolRegistrationPage() {
 
   useEffect(() => {
     if (form.city) {
-      locationsApi.neighborhoods(form.city).then((r) => setNeighborhoods(r.data || [])).catch(() => {})
+      locationsApi.neighborhoods(form.city).then((r) => setNeighborhoods(r.data || [])).catch((err) => console.error(err))
       setForm((f) => ({ ...f, neighborhood: '' }))
     }
   }, [form.city])

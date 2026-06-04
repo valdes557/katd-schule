@@ -31,13 +31,13 @@ export default function BulletinPage() {
           const list = r.data?.children || r.data?.students || []
           setChildren(list)
           if (!studentId && list.length > 0) setStudentId(list[0]._id)
-        } catch (_) {}
+        } catch (err) { console.error(err) }
       } else if (user?.role === 'directeur' || user?.role === 'enseignant' || user?.role === 'super_admin') {
         try {
           const r = await studentsApi.list()
           setStudents(r.data || [])
           if (!studentId && r.data?.length > 0) setStudentId(r.data[0]._id)
-        } catch (_) {}
+        } catch (err) { console.error(err) }
       }
     })()
   }, [user?.role])

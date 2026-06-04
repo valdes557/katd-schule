@@ -32,7 +32,7 @@ export default function TeacherHomeworkPage() {
       ])
       setHomeworks(hwRes.data || [])
       setClasses(dashRes.data?.teacher?.classes || [])
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { load() }, [filterClass])
@@ -96,7 +96,7 @@ export default function TeacherHomeworkPage() {
         init[s._id] = !!sub
       })
       setCompletions((p) => ({ ...p, [hw._id]: init }))
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setCompletionLoading(null)
   }
 

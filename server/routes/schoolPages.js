@@ -16,7 +16,7 @@ router.get('/:schoolId', async (req, res) => {
     let page = await SchoolPage.findOne({ school: req.params.schoolId })
     if (!page) page = { about: { content: '', images: [] }, terms: '', privacy: '', help: '', donationAccounts: [], contacts: [] }
     res.json({ success: true, data: page })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // PUT /api/school-pages/:schoolId — Director: update school page
@@ -28,7 +28,7 @@ router.put('/:schoolId', protect, authorize('directeur', 'super_admin'), async (
       { new: true, upsert: true, runValidators: true }
     )
     res.json({ success: true, data: page })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/school-pages/:schoolId/upload — Upload images for about section
@@ -36,7 +36,7 @@ router.post('/:schoolId/upload', protect, authorize('directeur', 'super_admin'),
   try {
     const urls = req.files?.map((f) => f.path) || []
     res.json({ success: true, data: urls })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ===================== TEAM MEMBERS =====================
@@ -46,7 +46,7 @@ router.get('/:schoolId/team', async (req, res) => {
   try {
     const members = await TeamMember.find({ school: req.params.schoolId, isPublic: true }).sort({ order: 1 })
     res.json({ success: true, data: members })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/school-pages/:schoolId/team — Director
@@ -56,7 +56,7 @@ router.post('/:schoolId/team', protect, authorize('directeur', 'super_admin'), u
     if (req.file) data.photo = req.file.path
     const member = await TeamMember.create(data)
     res.status(201).json({ success: true, data: member })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // PUT /api/school-pages/team/:id — Director
@@ -67,7 +67,7 @@ router.put('/team/:id', protect, authorize('directeur', 'super_admin'), upload.s
     const member = await TeamMember.findByIdAndUpdate(req.params.id, data, { new: true })
     if (!member) return res.status(404).json({ message: 'Membre non trouvé' })
     res.json({ success: true, data: member })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // DELETE /api/school-pages/team/:id — Director
@@ -75,7 +75,7 @@ router.delete('/team/:id', protect, authorize('directeur', 'super_admin'), async
   try {
     await TeamMember.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Membre supprimé' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ===================== SOCIAL POSTS =====================
@@ -91,7 +91,7 @@ router.get('/:schoolId/posts', async (req, res) => {
       .skip((page - 1) * limit)
       .limit(Number(limit))
     res.json({ success: true, total, data: posts })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/school-pages/:schoolId/posts — Director
@@ -112,7 +112,7 @@ router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), 
     })
     const populated = await post.populate('author', 'name avatar')
     res.status(201).json({ success: true, data: populated })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // PUT /api/school-pages/posts/:id/like — Toggle like
@@ -125,7 +125,7 @@ router.put('/posts/:id/like', protect, async (req, res) => {
     else post.likes.push(req.user._id)
     await post.save()
     res.json({ success: true, data: post })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/school-pages/posts/:id/comment — Add comment
@@ -136,7 +136,7 @@ router.post('/posts/:id/comment', protect, async (req, res) => {
     post.comments.push({ author: req.user.name, authorId: req.user._id, content: req.body.content })
     await post.save()
     res.json({ success: true, data: post })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // DELETE /api/school-pages/posts/:id — Director
@@ -144,7 +144,7 @@ router.delete('/posts/:id', protect, authorize('directeur', 'super_admin'), asyn
   try {
     await SchoolPost.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Post supprimé' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ===================== REVIEWS =====================
@@ -154,7 +154,7 @@ router.get('/:schoolId/reviews', async (req, res) => {
   try {
     const reviews = await SchoolReview.find({ school: req.params.schoolId, isApproved: true }).sort({ createdAt: -1 })
     res.json({ success: true, data: reviews })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // GET /api/school-pages/:schoolId/reviews/all — Director (all reviews)
@@ -162,7 +162,7 @@ router.get('/:schoolId/reviews/all', protect, authorize('directeur', 'super_admi
   try {
     const reviews = await SchoolReview.find({ school: req.params.schoolId }).sort({ createdAt: -1 })
     res.json({ success: true, data: reviews })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/school-pages/:schoolId/reviews — Public: submit review
@@ -170,7 +170,7 @@ router.post('/:schoolId/reviews', async (req, res) => {
   try {
     const review = await SchoolReview.create({ school: req.params.schoolId, ...req.body })
     res.status(201).json({ success: true, message: 'Avis soumis, en attente de validation.', data: review })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // PUT /api/school-pages/reviews/:id/approve — Director approves review
@@ -178,7 +178,7 @@ router.put('/reviews/:id/approve', protect, authorize('directeur', 'super_admin'
   try {
     const review = await SchoolReview.findByIdAndUpdate(req.params.id, { isApproved: true }, { new: true })
     res.json({ success: true, data: review })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // DELETE /api/school-pages/reviews/:id — Director
@@ -186,7 +186,7 @@ router.delete('/reviews/:id', protect, authorize('directeur', 'super_admin'), as
   try {
     await SchoolReview.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Avis supprimé' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ===================== PAYMENT MODALITIES =====================
@@ -196,7 +196,7 @@ router.get('/:schoolId/payments', async (req, res) => {
   try {
     const modalities = await PaymentModality.find({ school: req.params.schoolId }).sort({ order: 1 })
     res.json({ success: true, data: modalities })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/school-pages/:schoolId/payments — Director
@@ -204,7 +204,7 @@ router.post('/:schoolId/payments', protect, authorize('directeur', 'super_admin'
   try {
     const modality = await PaymentModality.create({ school: req.params.schoolId, ...req.body })
     res.status(201).json({ success: true, data: modality })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // PUT /api/school-pages/payments/:id — Director
@@ -213,7 +213,7 @@ router.put('/payments/:id', protect, authorize('directeur', 'super_admin'), asyn
     const modality = await PaymentModality.findByIdAndUpdate(req.params.id, req.body, { new: true })
     if (!modality) return res.status(404).json({ message: 'Modalité non trouvée' })
     res.json({ success: true, data: modality })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // DELETE /api/school-pages/payments/:id — Director
@@ -221,7 +221,7 @@ router.delete('/payments/:id', protect, authorize('directeur', 'super_admin'), a
   try {
     await PaymentModality.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Modalité supprimée' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

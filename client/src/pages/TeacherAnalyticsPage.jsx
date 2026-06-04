@@ -19,7 +19,7 @@ export default function TeacherAnalyticsPage() {
     try {
       const r = await teacherApi.analytics()
       setData(r.data)
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { load() }, [])

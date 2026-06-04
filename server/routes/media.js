@@ -63,6 +63,7 @@ router.get('/', async (req, res) => {
 
     res.json({ success: true, total, page: Number(page), data: media })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -85,6 +86,7 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
 
     res.status(201).json({ success: true, data: media })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -101,6 +103,7 @@ router.get('/:id', async (req, res) => {
     const comments = await Comment.find({ media: media._id }).populate('user', 'name role').sort({ createdAt: -1 }).limit(50)
     res.json({ success: true, data: { ...media.toObject(), comments } })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -127,6 +130,7 @@ router.put('/:id/like', optionalAuth, async (req, res) => {
 
     res.json({ success: true, likes: media.stats.likes })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -142,6 +146,7 @@ router.post('/:id/comments', protect, async (req, res) => {
     const populated = await comment.populate('user', 'name role')
     res.status(201).json({ success: true, data: populated })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -152,6 +157,7 @@ router.get('/:id/comments', async (req, res) => {
     const comments = await Comment.find({ media: req.params.id }).populate('user', 'name role').sort({ createdAt: -1 })
     res.json({ success: true, data: comments })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -165,6 +171,7 @@ router.put('/:id/share', protect, async (req, res) => {
     await media.save({ validateBeforeSave: false })
     res.json({ success: true, shares: media.stats.shares })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -178,6 +185,7 @@ router.put('/:id/download', protect, async (req, res) => {
     await media.save({ validateBeforeSave: false })
     res.json({ success: true, downloads: media.stats.downloads })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -193,6 +201,7 @@ router.delete('/:id', protect, async (req, res) => {
     await media.deleteOne()
     res.json({ success: true, message: 'Contenu supprimé' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

@@ -29,7 +29,7 @@ export default function TeacherStudentsPage() {
         const cls = dashRes.data?.teacher?.classes || []
         setClasses(cls)
         if (cls.length > 0) setParentsClass(cls[0]._id)
-      } catch (_) {}
+      } catch (err) { console.error(err) }
       setLoading(false)
     })()
   }, [])
@@ -40,7 +40,7 @@ export default function TeacherStudentsPage() {
     try {
       const r = await teacherApi.classParents(classId)
       setParents((p) => ({ ...p, [classId]: r.data || [] }))
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setParentsLoading(false)
   }
 

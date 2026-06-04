@@ -26,7 +26,7 @@ export default function ParentsPage() {
       const [sRes, cRes] = await Promise.all([studentsApi.withParents(), classesApi.list()])
       setRows(sRes.data || [])
       setClasses(cRes.data || [])
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 

@@ -20,7 +20,7 @@ export default function DirectorReportsPage() {
       if (filters.status) qs.set('status', filters.status)
       const res = await dashboardApi.getReports(qs.toString())
       setReports(res.data || [])
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 
@@ -29,7 +29,7 @@ export default function DirectorReportsPage() {
       const [cRes, tRes] = await Promise.all([classesApi.list(), teachersApi.list()])
       setClasses(cRes.data || [])
       setTeachers(tRes.data || [])
-    } catch (_) {}
+    } catch (err) { console.error(err) }
   }
 
   useEffect(() => { loadFilters() }, [])
@@ -45,7 +45,7 @@ export default function DirectorReportsPage() {
         const res = await dashboardApi.reviewReport(rep._id)
         setReports((prev) => prev.map((r) => r._id === rep._id ? res.data : r))
       }
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setProcessing(null)
   }
 

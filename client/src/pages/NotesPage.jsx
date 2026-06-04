@@ -42,14 +42,14 @@ export default function NotesPage() {
     try {
       const res = await classesApi.list()
       setClasses(res.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   const fetchStudents = async () => {
     try {
       const res = await studentsApi.list()
       setStudents(res.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   useEffect(() => { fetchClasses(); fetchStudents() }, [])
