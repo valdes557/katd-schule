@@ -5,6 +5,7 @@ const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
 const Teacher = require('../models/Teacher')
+const { escapeRegex } = require('../utils/sanitize')
 
 // @route  GET /api/students
 router.get('/', protect, async (req, res) => {
@@ -23,10 +24,11 @@ router.get('/', protect, async (req, res) => {
     }
 
     if (search) {
+      const safe = escapeRegex(search)
       query.$or = [
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
-        { matricule: { $regex: search, $options: 'i' } },
+        { firstName: { $regex: safe, $options: 'i' } },
+        { lastName: { $regex: safe, $options: 'i' } },
+        { matricule: { $regex: safe, $options: 'i' } },
       ]
     }
     if (classId) query.class = classId

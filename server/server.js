@@ -1,6 +1,8 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
+const helmet = require('helmet')
+const rateLimit = require('express-rate-limit')
 const path = require('path')
 const compression = require('compression')
 const connectDB = require('./config/db')
@@ -9,20 +11,50 @@ const app = express()
 
 connectDB()
 
+// Security headers
+app.use(helmet())
+
 // Gzip/Brotli responses for faster transfers
 app.use(compression())
+
+// Rate limiting — general API
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Trop de requêtes, réessayez dans 15 minutes.' },
+})
+app.use('/api/', apiLimiter)
+
+// Stricter rate limit for auth endpoints (login, register)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Trop de tentatives, réessayez dans 15 minutes.' },
+})
+app.use('/api/auth/login', authLimiter)
+app.use('/api/auth/register', authLimiter)
 
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true)
     // Allow all localhost / 127.0.0.1 origins in development
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true)
+    if (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return cb(null, true)
+    }
     // Allow Vercel preview deployments
     if (/\.vercel\.app$/.test(origin)) return cb(null, true)
     // Allow configured CLIENT_URL
     const allowed = (process.env.CLIENT_URL || '').split(',').map((o) => o.trim()).filter(Boolean)
     if (allowed.includes(origin)) return cb(null, true)
-    return cb(null, true) // Allow all in dev; restrict in production if needed
+    // In production, reject unknown origins
+    if (process.env.NODE_ENV === 'production') {
+      return cb(new Error('Origin not allowed by CORS'))
+    }
+    return cb(null, true)
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -30,8 +62,8 @@ app.use(cors({
 }))
 // Handle CORS preflight globally
 app.options('*', cors())
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+app.use(express.json({ limit: '1mb' }))
+app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
@@ -66,7 +98,10 @@ app.get('/api/health', (req, res) => {
 
 app.use((err, req, res, next) => {
   console.error(err.stack)
-  res.status(500).json({ message: err.message || 'Erreur serveur interne' })
+  const message = process.env.NODE_ENV === 'production'
+    ? 'Erreur serveur interne'
+    : (err.message || 'Erreur serveur interne')
+  res.status(500).json({ message })
 })
 
 app.use((req, res) => {
