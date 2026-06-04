@@ -11,8 +11,16 @@ router.get('/', protect, async (req, res) => {
   try {
     const { search, class: className, classId, cycle, page = 1, limit = 50 } = req.query
     const schoolId = req.user.school?._id || req.user.school
-    if (!schoolId) return res.json({ success: true, total: 0, data: [] })
-    const query = { school: schoolId }
+
+    // For non-teachers, always scope students to the current school
+    if (req.user.role !== 'enseignant' && !schoolId) {
+      return res.json({ success: true, total: 0, data: [] })
+    }
+
+    const query = {}
+    if (schoolId && req.user.role !== 'enseignant') {
+      query.school = schoolId
+    }
 
     if (search) {
       query.$or = [
