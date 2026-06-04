@@ -21,6 +21,7 @@ export default function PresencePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('')
 
   useEffect(() => {
     const load = async () => {
@@ -93,6 +94,10 @@ export default function PresencePage() {
     excused: Object.values(records).filter((v) => v === 'excused').length,
   }
 
+  const filteredStudents = filterStatus
+    ? students.filter((s) => records[s._id] === filterStatus)
+    : []
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -116,12 +121,41 @@ export default function PresencePage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {statusOptions.map((opt) => (
-          <div key={opt.key} className={cn('card p-3 border', opt.border)}>
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => setFilterStatus((prev) => (prev === opt.key ? '' : opt.key))}
+            className={cn(
+              'card p-3 border text-left transition-colors',
+              opt.border,
+              filterStatus === opt.key ? 'ring-2 ring-offset-1 ring-blue-400' : ''
+            )}
+          >
             <div className={cn('text-2xl font-bold', opt.color)}>{summary[opt.key]}</div>
-            <div className="text-xs text-gray-500">{opt.label}s</div>
-          </div>
+            <div className="text-xs text-gray-500 flex items-center gap-1">
+              {opt.label}s
+              {filterStatus === opt.key && <span className="text-[10px] text-blue-600 font-semibold">(cliqué)</span>}
+            </div>
+          </button>
         ))}
       </div>
+
+      {filterStatus && (
+        <div className="card p-4">
+          <h3 className="text-sm font-semibold text-gray-800 mb-2">
+            Élèves {statusOptions.find((o) => o.key === filterStatus)?.label.toLowerCase()}s ({filteredStudents.length})
+          </h3>
+          {filteredStudents.length === 0 ? (
+            <p className="text-xs text-gray-400">Aucun élève dans ce statut pour cette date.</p>
+          ) : (
+            <ul className="text-xs text-gray-700 grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-4">
+              {filteredStudents.map((s) => (
+                <li key={s._id}>{s.lastName} {s.firstName}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Stats */}
       {stats && stats.totalSessions > 0 && (

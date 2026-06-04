@@ -128,26 +128,45 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
 
     res.status(201).json({ success: true, data: attendance })
 
-    // Notify parents of absent/late students (async, non-blocking)
-    const flagged = records.filter((r) => r.status === 'absent' || r.status === 'late')
-    if (flagged.length > 0) {
-      const ids = flagged.map((r) => r.student)
+    // Notify parents of attendance status for each student (async, non-blocking)
+    const notifiable = records.filter((r) => ['present', 'absent', 'late', 'excused'].includes(r.status))
+    if (notifiable.length > 0) {
+      const ids = notifiable.map((r) => r.student)
       Student.find({ _id: { $in: ids } })
         .populate('parentUser', 'email name')
         .populate('class', 'name')
         .then((students) => {
           students.forEach((s) => {
-            const status = flagged.find((r) => r.student.toString() === s._id.toString())?.status
-            if (s.parentUser?.email) {
-              sendEmail({
-                to: s.parentUser.email,
-                subject: `📋 Présence — ${s.lastName} ${s.firstName} (${status === 'absent' ? 'Absent' : 'Retard'})`,
-                html: `<p>Bonjour,</p>
-                  <p>Votre enfant <strong>${s.lastName} ${s.firstName}</strong> (${s.class?.name || ''}) a été marqué(e) <strong style="color:${status === 'absent' ? '#DC2626' : '#D97706'}">${status === 'absent' ? 'absent(e)' : 'en retard'}</strong> le <strong>${new Date(date).toLocaleDateString('fr-FR')}</strong>.</p>
-                  <p>Connectez-vous à votre espace parent pour plus de détails.</p>
-                  <p style="color:#6B7280;font-size:12px;margin-top:24px">— KATD-SCHÜLE</p>`,
-              }).catch(() => {})
+            const rec = notifiable.find((r) => r.student.toString() === s._id.toString())
+            const status = rec?.status
+            if (!status || !s.parentUser?.email) return
+
+            let label = 'Présent'
+            let adjective = 'présent(e)'
+            let color = '#16A34A'
+
+            if (status === 'absent') {
+              label = 'Absent'
+              adjective = 'absent(e)'
+              color = '#DC2626'
+            } else if (status === 'late') {
+              label = 'En retard'
+              adjective = 'en retard'
+              color = '#D97706'
+            } else if (status === 'excused') {
+              label = 'Justifié'
+              adjective = 'justifié(e)'
+              color = '#4F46E5'
             }
+
+            sendEmail({
+              to: s.parentUser.email,
+              subject: `📋 Présence — ${s.lastName} ${s.firstName} (${label})`,
+              html: `<p>Bonjour,</p>
+                <p>Votre enfant <strong>${s.lastName} ${s.firstName}</strong> (${s.class?.name || ''}) a été marqué(e) <strong style="color:${color}">${adjective}</strong> le <strong>${new Date(date).toLocaleDateString('fr-FR')}</strong>.</p>
+                <p>Connectez-vous à votre espace parent pour voir les détails de sa scolarité.</p>
+                <p style="color:#6B7280;font-size:12px;margin-top:24px">— KATD-SCHÜLE</p>`,
+            }).catch(() => {})
           })
         }).catch(() => {})
     }

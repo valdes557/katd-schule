@@ -345,7 +345,24 @@ export const teacherApi = {
   deleteResource: (id) => api.del(`/teacher/resources/${id}`),
   // Daily reports
   reports: () => api.get('/teacher/reports'),
-  createReport: (data) => api.post('/teacher/reports', data),
+  createReport: async (data) => {
+    const fd = new FormData()
+    if (data.title) fd.append('title', data.title)
+    if (data.content) fd.append('content', data.content)
+    ;(data.classes || []).forEach((c) => fd.append('classes', c))
+    if (data.attachment) fd.append('attachment', data.attachment)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/teacher/reports`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+  updateReport: (id, data) => api.put(`/teacher/reports/${id}`, data),
+  deleteReport: (id) => api.del(`/teacher/reports/${id}`),
 }
 
 export const parentApi = {

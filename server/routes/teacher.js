@@ -1,6 +1,8 @@
 const express = require('express')
 const router = express.Router()
 const mongoose = require('mongoose')
+const multer = require('multer')
+const path = require('path')
 const { protect } = require('../middleware/auth')
 const Teacher = require('../models/Teacher')
 const Student = require('../models/Student')
@@ -25,6 +27,28 @@ const teacherOnly = (req, res, next) => {
 async function getTeacherProfile(userId) {
   return Teacher.findOne({ user: userId }).populate('classes', 'name level cycle room stats')
 }
+
+// Multer config for daily report attachments (PDF only)
+const reportStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => {
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9)
+    cb(null, `report-${unique}${path.extname(file.originalname)}`)
+  },
+})
+
+function reportFileFilter(req, file, cb) {
+  if (!file.mimetype || !file.mimetype.includes('pdf')) {
+    return cb(new Error('Seuls les fichiers PDF sont autorisés pour les rapports'))
+  }
+  cb(null, true)
+}
+
+const uploadReport = multer({
+  storage: reportStorage,
+  fileFilter: reportFileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+})
 
 // ─── DASHBOARD ───
 router.get('/dashboard', protect, teacherOnly, async (req, res) => {
@@ -675,7 +699,7 @@ router.get('/reports', protect, teacherOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-router.post('/reports', protect, teacherOnly, async (req, res) => {
+router.post('/reports', protect, teacherOnly, uploadReport.single('attachment'), async (req, res) => {
   try {
     const teacher = await getTeacherProfile(req.user._id)
     if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
@@ -695,9 +719,55 @@ router.post('/reports', protect, teacherOnly, async (req, res) => {
     if (!payload.content || String(payload.content).trim().length === 0) {
       return res.status(400).json({ message: 'Le contenu du rapport est requis' })
     }
+    if (req.file) {
+      payload.attachmentUrl = `/uploads/${req.file.filename}`
+      payload.attachmentName = req.file.originalname
+    }
+
     const r = await DailyReport.create(payload)
     const populated = await DailyReport.findById(r._id).populate('classes', 'name level')
     res.status(201).json({ success: true, data: populated })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// Update a teacher's own report (title/content only for now)
+router.put('/reports/:id', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+
+    const update = {}
+    if (typeof req.body.title !== 'undefined') {
+      update.title = req.body.title
+    }
+    if (typeof req.body.content !== 'undefined') {
+      if (!String(req.body.content).trim().length) {
+        return res.status(400).json({ message: 'Le contenu du rapport est requis' })
+      }
+      update.content = req.body.content
+    }
+
+    const r = await DailyReport.findOneAndUpdate(
+      { _id: req.params.id, teacher: teacher._id },
+      update,
+      { new: true }
+    ).populate('classes', 'name level')
+
+    if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
+    res.json({ success: true, data: r })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// Delete a teacher's own report
+router.delete('/reports/:id', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+
+    const r = await DailyReport.findOneAndDelete({ _id: req.params.id, teacher: teacher._id })
+    if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
+
+    res.json({ success: true, message: 'Rapport supprimé' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { dashboardApi, classesApi, teachersApi } from '../lib/api'
-import { FileText, Filter, Loader2, CheckCircle2, Clock } from 'lucide-react'
+import { FileText, Filter, Loader2, CheckCircle2, Clock, Eye, X } from 'lucide-react'
 
 export default function DirectorReportsPage() {
   const [reports, setReports] = useState([])
@@ -9,6 +9,7 @@ export default function DirectorReportsPage() {
   const [classes, setClasses] = useState([])
   const [teachers, setTeachers] = useState([])
   const [processing, setProcessing] = useState(null)
+  const [viewReport, setViewReport] = useState(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -98,7 +99,7 @@ export default function DirectorReportsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                {['Date', 'Enseignant', 'Classes', 'Titre', 'Extrait', 'Statut', ''].map((h) => (
+                {['Date', 'Enseignant', 'Classes', 'Titre', 'Extrait', 'Statut', 'Actions'].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
                 ))}
               </tr>
@@ -118,15 +119,21 @@ export default function DirectorReportsPage() {
                       <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200"><Clock size={12} /> Soumis</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right space-x-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setViewReport(r)}
+                      className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                    >
+                      <Eye size={12} /> Voir
+                    </button>
                     <button
                       onClick={() => toggleReview(r)}
                       disabled={processing === r._id}
-                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${r.status === 'reviewed' ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'}`}
+                      className={`inline-flex items-center justify-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${r.status === 'reviewed' ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'}`}
                     >
-                      {processing === r._id ? <Loader2 size={12} className="animate-spin inline" /> : null}
-                      {processing === r._id ? ' ' : ''}
-                      {r.status === 'reviewed' ? 'Annuler' : 'Marquer revu'}
+                      {processing === r._id ? <Loader2 size={12} className="animate-spin" /> : null}
+                      {processing === r._id ? '' : (r.status === 'reviewed' ? 'Annuler' : 'Marquer revu')}
                     </button>
                   </td>
                 </tr>
@@ -135,6 +142,47 @@ export default function DirectorReportsPage() {
           </table>
         )}
       </div>
+
+      {/* View modal */}
+      {viewReport && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <FileText size={16} className="text-blue-600" /> {viewReport.title || 'Rapport'}
+                </h3>
+                <p className="text-[11px] text-gray-500">
+                  {new Date(viewReport.date).toLocaleDateString('fr-FR')} · {(viewReport.classes || []).map((c) => c.name || c).join(', ')}
+                </p>
+                {viewReport.teacher && (
+                  <p className="text-[11px] text-gray-500">
+                    {viewReport.teacher.lastName} {viewReport.teacher.firstName}
+                  </p>
+                )}
+              </div>
+              <button onClick={() => setViewReport(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto text-sm text-gray-800 whitespace-pre-line">
+              {viewReport.content}
+              {viewReport.attachmentUrl && (
+                <div className="mt-4 text-xs">
+                  <a
+                    href={viewReport.attachmentUrl.startsWith('http') ? viewReport.attachmentUrl : `${import.meta.env.VITE_API_URL || ''}${viewReport.attachmentUrl}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                  >
+                    <Eye size={12} /> Ouvrir le PDF joint{viewReport.attachmentName ? ` (${viewReport.attachmentName})` : ''}
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

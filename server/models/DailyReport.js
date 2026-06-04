@@ -8,6 +8,8 @@ const dailyReportSchema = new mongoose.Schema(
     date: { type: Date, default: Date.now },
     title: { type: String, trim: true },
     content: { type: String, required: true, trim: true },
+    attachmentUrl: { type: String },
+    attachmentName: { type: String },
     status: { type: String, enum: ['submitted', 'reviewed'], default: 'submitted' },
     reviewedAt: { type: Date },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
