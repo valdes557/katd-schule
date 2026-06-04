@@ -4,7 +4,7 @@ import {
   ArrowLeft, MessageCircle, Share2, Send, Star, Phone, Mail,
   Globe, Users, FileText, Shield, HelpCircle, Gift, CreditCard, Loader2,
   ThumbsUp, ChevronDown, ChevronUp, Play, Eye, GraduationCap,
-  Facebook, Instagram, Twitter, Youtube, Linkedin, X,
+  Facebook, Instagram, Twitter, Youtube, Linkedin, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
@@ -179,7 +179,38 @@ export default function SchoolDetailPage() {
 function SocialTab({ schoolId, posts, setPosts, user }) {
   const [commentText, setCommentText] = useState({})
   const [expandedComments, setExpandedComments] = useState({})
-  const [viewer, setViewer] = useState(null) // { type: 'image' | 'video', src, post }
+  const [viewer, setViewer] = useState(null) // { type: 'image' | 'video', src, post, index }
+  const [viewerZoom, setViewerZoom] = useState(1)
+
+  useEffect(() => {
+    setViewerZoom(1)
+  }, [viewer])
+
+  const findNextMediaIndex = (startIndex, direction) => {
+    if (!Array.isArray(posts) || !posts.length || startIndex == null || startIndex < 0) return null
+    let i = startIndex + direction
+    while (i >= 0 && i < posts.length) {
+      const p = posts[i]
+      if (p) {
+        if (p.type === 'video' && p.videoUrl) return i
+        if (p.images?.[0] || p.thumbnail) return i
+      }
+      i += direction
+    }
+    return null
+  }
+
+  const openMediaAtIndex = (index) => {
+    if (!Array.isArray(posts) || index == null || index < 0 || index >= posts.length) return
+    const p = posts[index]
+    if (!p) return
+    if (p.type === 'video' && p.videoUrl) {
+      setViewer({ type: 'video', src: p.videoUrl, post: p, index })
+    } else {
+      const imgSrc = p.images?.[0] || p.thumbnail
+      if (imgSrc) setViewer({ type: 'image', src: imgSrc, post: p, index })
+    }
+  }
 
   const timeAgo = (date) => {
     const diff = Date.now() - new Date(date).getTime()
@@ -219,20 +250,13 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {posts.map((post) => (
+          {posts.map((post, index) => (
             <div key={post._id} className="bg-white border border-gray-100 rounded-xl overflow-hidden hover:shadow-card transition-all">
               {/* Thumbnail */}
               <button
                 type="button"
                 className="relative aspect-video bg-gray-100 w-full"
-                onClick={() => {
-                  const imageSrc = post.images?.[0] || post.thumbnail
-                  if (post.type === 'video' && post.videoUrl) {
-                    setViewer({ type: 'video', src: post.videoUrl, post })
-                  } else if (imageSrc) {
-                    setViewer({ type: 'image', src: imageSrc, post })
-                  }
-                }}
+                onClick={() => openMediaAtIndex(index)}
               >
                 {post.thumbnail ? (
                   <img src={post.thumbnail} alt="" className="w-full h-full object-cover" />
@@ -341,7 +365,7 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
           onClick={() => setViewer(null)}
         >
           <div
-            className="relative max-w-5xl w-full max-h-[90vh] flex items-center justify-center"
+            className="relative max-w-5xl w-full max-h-[90vh] flex items-center justify-center overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -351,11 +375,39 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
             >
               <X size={18} />
             </button>
+            {viewer && (() => {
+              const currentIndex = viewer.index ?? -1
+              const prevIndex = findNextMediaIndex(currentIndex, -1)
+              const nextIndex = findNextMediaIndex(currentIndex, 1)
+              return (
+                <>
+                  {prevIndex !== null && (
+                    <button
+                      type="button"
+                      onClick={() => openMediaAtIndex(prevIndex)}
+                      className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 text-white bg-black/40 hover:bg-black/70 rounded-full p-2"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                  )}
+                  {nextIndex !== null && (
+                    <button
+                      type="button"
+                      onClick={() => openMediaAtIndex(nextIndex)}
+                      className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 text-white bg-black/40 hover:bg-black/70 rounded-full p-2"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  )}
+                </>
+              )
+            })()}
             {viewer.type === 'image' && viewer.src && (
               <img
                 src={viewer.src}
                 alt={viewer.post?.title || ''}
-                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-lg"
+                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-lg transition-transform duration-200"
+                style={{ transform: `scale(${viewerZoom})` }}
               />
             )}
             {viewer.type === 'video' && viewer.src && (
@@ -374,6 +426,25 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
                   className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-lg bg-black"
                 />
               )
+            )}
+            {viewer.type === 'image' && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/40 text-white text-xs px-3 py-1.5 rounded-full">
+                <button
+                  type="button"
+                  onClick={() => setViewerZoom((z) => Math.max(0.5, z - 0.25))}
+                  className="p-1 hover:bg-black/50 rounded-full"
+                >
+                  <ZoomOut size={14} />
+                </button>
+                <span className="min-w-[36px] text-center">{Math.round(viewerZoom * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setViewerZoom((z) => Math.min(3, z + 0.25))}
+                  className="p-1 hover:bg-black/50 rounded-full"
+                >
+                  <ZoomIn size={14} />
+                </button>
+              </div>
             )}
           </div>
         </div>
