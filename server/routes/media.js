@@ -1,10 +1,9 @@
 const express = require('express')
 const router = express.Router()
-const multer = require('multer')
-const path = require('path')
 const Media = require('../models/Media')
 const Comment = require('../models/Comment')
 const { protect } = require('../middleware/auth')
+const { createUpload } = require('../utils/multerUpload')
 
 // Optional auth middleware — sets req.user if token present, else continues
 const optionalAuth = async (req, res, next) => {
@@ -20,22 +19,10 @@ const optionalAuth = async (req, res, next) => {
   next()
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9)
-    cb(null, `${unique}${path.extname(file.originalname)}`)
-  },
+const upload = createUpload({
+  allowedExts: /jpeg|jpg|png|gif|mp4|avi|mov|mp3|wav|aac|ogg/,
+  maxSize: 100 * 1024 * 1024,
 })
-
-const fileFilter = (req, file, cb) => {
-  const allowed = /jpeg|jpg|png|gif|mp4|avi|mov|mp3|wav|aac|ogg/
-  const ext = path.extname(file.originalname).toLowerCase().replace('.', '')
-  if (allowed.test(ext)) cb(null, true)
-  else cb(new Error('Type de fichier non autorisé'), false)
-}
-
-const upload = multer({ storage, fileFilter, limits: { fileSize: 100 * 1024 * 1024 } })
 
 // @route  GET /api/media  (public)
 router.get('/', async (req, res) => {
