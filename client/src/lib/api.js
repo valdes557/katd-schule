@@ -47,19 +47,44 @@ export const api = {
   del: (path) => request(path, { method: 'DELETE' }),
 }
 
+/**
+ * Send a request with FormData body (file uploads).
+ * Handles auth header and error handling consistently.
+ */
+async function requestFormData(path, { method = 'POST', body } = {}) {
+  const token = localStorage.getItem('token')
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+  return data
+}
+
+/**
+ * Create a standard CRUD API object for a resource.
+ */
+function createCrudApi(basePath) {
+  return {
+    list: (params = '') => api.get(`${basePath}?${params}`),
+    get: (id) => api.get(`${basePath}/${id}`),
+    create: (data) => api.post(basePath, data),
+    update: (id, data) => api.put(`${basePath}/${id}`, data),
+    remove: (id) => api.del(`${basePath}/${id}`),
+  }
+}
+
 export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (payload) => api.post('/auth/register', payload),
   me: () => api.get('/auth/me'),
   updateProfile: (data) => api.put('/auth/profile', data),
-  uploadAvatar: async (file) => {
+  uploadAvatar: (file) => {
     const fd = new FormData()
     fd.append('avatar', file)
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/auth/avatar`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
-    return data
+    return requestFormData('/auth/avatar', { body: fd })
   },
 }
 
@@ -72,39 +97,20 @@ export const dashboardApi = {
 }
 
 export const studentsApi = {
-  list: (params = '') => api.get(`/students?${params}`),
-  get: (id) => api.get(`/students/${id}`),
-  create: (data) => api.post('/students', data),
-  update: (id, data) => api.put(`/students/${id}`, data),
-  remove: (id) => api.del(`/students/${id}`),
+  ...createCrudApi('/students'),
   withParents: () => api.get('/students/with-parents'),
   createParentAccount: (studentId, data) => api.post(`/students/${studentId}/parent-account`, data),
   linkParent: (email, studentIds) => api.post('/students/link-parent', { email, studentIds }),
 }
 
-export const teachersApi = {
-  list: (params = '') => api.get(`/teachers?${params}`),
-  get: (id) => api.get(`/teachers/${id}`),
-  create: (data) => api.post('/teachers', data),
-  update: (id, data) => api.put(`/teachers/${id}`, data),
-  remove: (id) => api.del(`/teachers/${id}`),
-}
+export const teachersApi = createCrudApi('/teachers')
 
-export const classesApi = {
-  list: (params = '') => api.get(`/classes?${params}`),
-  get: (id) => api.get(`/classes/${id}`),
-  create: (data) => api.post('/classes', data),
-  update: (id, data) => api.put(`/classes/${id}`, data),
-  remove: (id) => api.del(`/classes/${id}`),
-}
+export const classesApi = createCrudApi('/classes')
 
 export const gradesApi = {
-  list: (params = '') => api.get(`/grades?${params}`),
+  ...createCrudApi('/grades'),
   stats: (params = '') => api.get(`/grades/stats?${params}`),
   bulletin: (studentId, term) => api.get(`/grades/bulletin/${studentId}?term=${term}`),
-  create: (data) => api.post('/grades', data),
-  update: (id, data) => api.put(`/grades/${id}`, data),
-  remove: (id) => api.del(`/grades/${id}`),
 }
 
 export const attendanceApi = {
@@ -139,38 +145,20 @@ export const schoolsApi = {
   list: (params = '') => api.get(`/schools?${params}`),
   get: (id) => api.get(`/schools/${id}`),
   mine: () => api.get('/schools/mine'),
-  create: async (formData) => {
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/schools`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
-    return res.json()
-  },
-  setup: async (id, formData) => {
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/schools/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
-    return res.json()
-  },
+  create: (formData) => requestFormData('/schools', { body: formData }),
+  setup: (id, formData) => requestFormData(`/schools/${id}`, { method: 'PUT', body: formData }),
   remove: (id) => api.del(`/schools/${id}`),
 }
 
 export const locationsApi = {
+  ...createCrudApi('/locations'),
   countries: () => api.get('/locations/countries'),
   cities: (countryId) => api.get(`/locations/cities/${countryId}`),
   neighborhoods: (cityId) => api.get(`/locations/neighborhoods/${cityId}`),
-  list: (params = '') => api.get(`/locations?${params}`),
-  create: (data) => api.post('/locations', data),
-  update: (id, data) => api.put(`/locations/${id}`, data),
-  remove: (id) => api.del(`/locations/${id}`),
 }
 
 export const schoolRegistrationApi = {
-  submit: async (formData) => {
-    const token = localStorage.getItem('token')
-    const headers = token ? { Authorization: `Bearer ${token}` } : {}
-    const res = await fetch(`${API_URL}/school-registrations`, { method: 'POST', headers, body: formData })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
-    return data
-  },
+  submit: (formData) => requestFormData('/school-registrations', { body: formData }),
   list: (params = '') => api.get(`/school-registrations?${params}`),
   get: (id) => api.get(`/school-registrations/${id}`),
   approve: (id) => api.put(`/school-registrations/${id}/approve`),
@@ -182,30 +170,21 @@ export const schoolRegistrationApi = {
 export const registrationsApi = schoolRegistrationApi
 
 export const plansApi = {
-  list: () => api.get('/platform/plans'),
+  ...createCrudApi('/platform/plans'),
   listAll: () => api.get('/platform/plans/all'),
-  create: (data) => api.post('/platform/plans', data),
-  update: (id, data) => api.put(`/platform/plans/${id}`, data),
-  remove: (id) => api.del(`/platform/plans/${id}`),
 }
 
 export const platformApi = {
   get: () => api.get('/platform'),
   update: (data) => api.put('/platform', data),
-  uploadImages: async (files) => {
+  uploadImages: (files) => {
     const fd = new FormData()
     files.forEach((f) => fd.append('images', f))
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/platform/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
-    return res.json()
+    return requestFormData('/platform/upload', { body: fd })
   },
   // Feed
   getFeed: (page = 1, category = '') => api.get(`/platform/feed?page=${page}${category ? `&category=${category}` : ''}`),
-  createPost: async (formData) => {
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/platform/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
-    return res.json()
-  },
+  createPost: (formData) => requestFormData('/platform/posts', { body: formData }),
   updatePost: (id, data) => api.put(`/platform/posts/${id}`, data),
   deletePost: (id) => api.del(`/platform/posts/${id}`),
   likePost: (id) => api.put(`/platform/posts/${id}/like`),
@@ -229,26 +208,12 @@ export const platformApi = {
   // Resources
   getResources: (category = '') => api.get(`/platform/resources${category ? `?category=${category}` : ''}`),
   getAllResources: () => api.get('/platform/resources/all'),
-  createResource: async (formData) => {
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/platform/resources`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
-    return res.json()
-  },
-  updateResource: async (id, formData) => {
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/platform/resources/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
-    return res.json()
-  },
+  createResource: (formData) => requestFormData('/platform/resources', { body: formData }),
+  updateResource: (id, formData) => requestFormData(`/platform/resources/${id}`, { method: 'PUT', body: formData }),
   deleteResource: (id) => api.del(`/platform/resources/${id}`),
 }
 
-export const subjectsApi = {
-  list: (params = '') => api.get(`/subjects?${params}`),
-  get: (id) => api.get(`/subjects/${id}`),
-  create: (data) => api.post('/subjects', data),
-  update: (id, data) => api.put(`/subjects/${id}`, data),
-  remove: (id) => api.del(`/subjects/${id}`),
-}
+export const subjectsApi = createCrudApi('/subjects')
 
 export const timetablesApi = {
   list: () => api.get('/timetables'),
@@ -261,33 +226,19 @@ export const timetablesApi = {
 export const schoolPagesApi = {
   get: (schoolId) => api.get(`/school-pages/${schoolId}`),
   update: (schoolId, data) => api.put(`/school-pages/${schoolId}`, data),
-  uploadImages: async (schoolId, files) => {
+  uploadImages: (schoolId, files) => {
     const fd = new FormData()
     files.forEach((f) => fd.append('images', f))
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/school-pages/${schoolId}/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
-    return res.json()
+    return requestFormData(`/school-pages/${schoolId}/upload`, { body: fd })
   },
   // Team
   getTeam: (schoolId) => api.get(`/school-pages/${schoolId}/team`),
-  addTeamMember: async (schoolId, formData) => {
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/school-pages/${schoolId}/team`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
-    return res.json()
-  },
-  updateTeamMember: async (id, formData) => {
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/school-pages/team/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
-    return res.json()
-  },
+  addTeamMember: (schoolId, formData) => requestFormData(`/school-pages/${schoolId}/team`, { body: formData }),
+  updateTeamMember: (id, formData) => requestFormData(`/school-pages/team/${id}`, { method: 'PUT', body: formData }),
   deleteTeamMember: (id) => api.del(`/school-pages/team/${id}`),
   // Posts
   getPosts: (schoolId, page = 1) => api.get(`/school-pages/${schoolId}/posts?page=${page}`),
-  createPost: async (schoolId, formData) => {
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/school-pages/${schoolId}/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
-    return res.json()
-  },
+  createPost: (schoolId, formData) => requestFormData(`/school-pages/${schoolId}/posts`, { body: formData }),
   likePost: (id) => api.put(`/school-pages/posts/${id}/like`),
   commentPost: (id, content) => api.post(`/school-pages/posts/${id}/comment`, { content }),
   deletePost: (id) => api.del(`/school-pages/posts/${id}`),
@@ -306,14 +257,7 @@ export const schoolPagesApi = {
 
 export const enrollmentApi = {
   getClasses: (schoolId) => api.get(`/enrollments/school/${schoolId}/classes`),
-  submit: async (formData) => {
-    const token = localStorage.getItem('token')
-    const headers = token ? { Authorization: `Bearer ${token}` } : {}
-    const res = await fetch(`${API_URL}/enrollments`, { method: 'POST', headers, body: formData })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
-    return data
-  },
+  submit: (formData) => requestFormData('/enrollments', { body: formData }),
   list: (params = '') => api.get(`/enrollments?${params}`),
   approve: (id) => api.put(`/enrollments/${id}/approve`),
   reject: (id, reason) => api.put(`/enrollments/${id}/reject`, { reason }),
@@ -345,21 +289,13 @@ export const teacherApi = {
   deleteResource: (id) => api.del(`/teacher/resources/${id}`),
   // Daily reports
   reports: () => api.get('/teacher/reports'),
-  createReport: async (data) => {
+  createReport: (data) => {
     const fd = new FormData()
     if (data.title) fd.append('title', data.title)
     if (data.content) fd.append('content', data.content)
     ;(data.classes || []).forEach((c) => fd.append('classes', c))
     if (data.attachment) fd.append('attachment', data.attachment)
-    const token = localStorage.getItem('token')
-    const res = await fetch(`${API_URL}/teacher/reports`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: fd,
-    })
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
-    return json
+    return requestFormData('/teacher/reports', { body: fd })
   },
   updateReport: (id, data) => api.put(`/teacher/reports/${id}`, data),
   deleteReport: (id) => api.del(`/teacher/reports/${id}`),

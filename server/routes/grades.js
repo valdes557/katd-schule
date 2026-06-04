@@ -8,13 +8,14 @@ const Class = require('../models/Class')
 const Subject = require('../models/Subject')
 const Teacher = require('../models/Teacher')
 const { protect, authorize } = require('../middleware/auth')
+const { getSchoolId, getTeacherProfile, getParentChildIds } = require('../utils/routeHelpers')
 const { sendEmail } = require('../utils/emailService')
 
 // GET /api/grades
 router.get('/', protect, async (req, res) => {
   try {
     const { classId, student, subject, term, sequence, page = 1, limit = 200 } = req.query
-    const query = { school: req.user.school._id || req.user.school }
+    const query = { school: getSchoolId(req) }
     if (classId) query.class = classId
     if (student) query.student = student
     if (subject) query.subject = subject
@@ -23,7 +24,7 @@ router.get('/', protect, async (req, res) => {
 
     // Scope by role
     if (req.user.role === 'enseignant') {
-      const teacher = await Teacher.findOne({ user: req.user._id })
+      const teacher = await getTeacherProfile(req.user._id, 'classes')
       if (!teacher) return res.json({ success: true, total: 0, data: [] })
       const teacherClassIds = (teacher.classes || []).map((c) => c.toString())
       if (classId && !teacherClassIds.includes(classId.toString())) {
@@ -31,8 +32,7 @@ router.get('/', protect, async (req, res) => {
       }
       if (!classId) query.class = { $in: teacherClassIds }
     } else if (req.user.role === 'parent') {
-      const children = await Student.find({ parentUser: req.user._id }).select('_id')
-      const childIds = children.map((s) => s._id)
+      const childIds = await getParentChildIds(req.user._id)
       if (childIds.length === 0) return res.json({ success: true, total: 0, data: [] })
       if (student) {
         if (!childIds.some((id) => id.toString() === student.toString())) {
@@ -58,9 +58,8 @@ router.get('/', protect, async (req, res) => {
 // GET /api/grades/stats
 router.get('/stats', protect, async (req, res) => {
   try {
-    const schoolId = req.user.school._id || req.user.school
+    const match = { school: getSchoolId(req) }
     const { classId, term } = req.query
-    const match = { school: schoolId }
     if (classId) match.class = require('mongoose').Types.ObjectId(classId)
     if (term) match.term = term
 
@@ -132,7 +131,7 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
         return res.status(403).json({ message: 'Accès refusé' })
       }
     } else if (['directeur', 'enseignant'].includes(req.user.role)) {
-      const userSchool = (req.user.school?._id || req.user.school || '').toString()
+      const userSchool = (getSchoolId(req) || '').toString()
       if (userSchool && student.school?._id?.toString() !== userSchool) {
         return res.status(403).json({ message: 'Accès refusé' })
       }
@@ -285,12 +284,12 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
 // POST /api/grades (single or batch)
 router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
   try {
-    const schoolId = req.user.school._id || req.user.school
+    const schoolId = getSchoolId(req)
 
     // For teachers, validate that the target class belongs to them
     let teacherId = null
     if (req.user.role === 'enseignant') {
-      const teacher = await Teacher.findOne({ user: req.user._id })
+      const teacher = await getTeacherProfile(req.user._id, 'classes')
       if (!teacher) return res.status(403).json({ message: 'Profil enseignant non trouvé' })
       const teacherClassIds = (teacher.classes || []).map((c) => c.toString())
       const body = Array.isArray(req.body) ? req.body : [req.body]

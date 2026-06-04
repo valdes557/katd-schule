@@ -3,93 +3,75 @@ const router = express.Router()
 const Student = require('../models/Student')
 const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
-const School = require('../models/School')
 const Teacher = require('../models/Teacher')
+const { getSchoolId, getTeacherClassIds, applyCycleScope, enforceCyclePermission, asyncHandler } = require('../utils/routeHelpers')
 
 // @route  GET /api/students
-router.get('/', protect, async (req, res) => {
-  try {
-    const { search, class: className, classId, cycle, page = 1, limit = 50 } = req.query
-    const schoolId = req.user.school?._id || req.user.school
+router.get('/', protect, asyncHandler(async (req, res) => {
+  const { search, class: className, classId, cycle, page = 1, limit = 50 } = req.query
+  const schoolId = getSchoolId(req)
 
-    // For non-teachers, always scope students to the current school
-    if (req.user.role !== 'enseignant' && !schoolId) {
+  if (req.user.role !== 'enseignant' && !schoolId) {
+    return res.json({ success: true, total: 0, data: [] })
+  }
+
+  const query = {}
+  if (schoolId && req.user.role !== 'enseignant') {
+    query.school = schoolId
+  }
+
+  if (search) {
+    query.$or = [
+      { firstName: { $regex: search, $options: 'i' } },
+      { lastName: { $regex: search, $options: 'i' } },
+      { matricule: { $regex: search, $options: 'i' } },
+    ]
+  }
+  if (classId) query.class = classId
+  else if (className) query.class = className
+  if (req.user.role === 'super_admin') {
+    if (cycle) query.cycle = cycle
+  } else if (req.user.role !== 'enseignant') {
+    await applyCycleScope(query, schoolId, req.user.role)
+  }
+
+  if (req.user.role === 'enseignant') {
+    const teacherClassIds = await getTeacherClassIds(req.user._id)
+    if (teacherClassIds.length === 0) {
       return res.json({ success: true, total: 0, data: [] })
     }
-
-    const query = {}
-    if (schoolId && req.user.role !== 'enseignant') {
-      query.school = schoolId
-    }
-
-    if (search) {
-      query.$or = [
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
-        { matricule: { $regex: search, $options: 'i' } },
-      ]
-    }
-    if (classId) query.class = classId
-    else if (className) query.class = className
-    // Directors and other roles are scoped to the school's subscribed cycle by default
-    if (req.user.role === 'super_admin') {
-      if (cycle) query.cycle = cycle
-    } else if (req.user.role !== 'enseignant') {
-      const school = await School.findById(schoolId).select('subscription.cycle')
-      if (school?.subscription?.cycle) query.cycle = school.subscription.cycle
-    }
-
-    // Teachers can only view students from their assigned classes
-    if (req.user.role === 'enseignant') {
-      const t = await Teacher.findOne({ user: req.user._id }).select('classes')
-      const teacherClassIds = (t?.classes || []).map((c) => c.toString())
-      if (!teacherClassIds || teacherClassIds.length === 0) {
+    if (classId) {
+      if (!teacherClassIds.includes(classId.toString())) {
         return res.json({ success: true, total: 0, data: [] })
       }
-      if (classId) {
-        if (!teacherClassIds.includes(classId.toString())) {
-          return res.json({ success: true, total: 0, data: [] })
-        }
-        query.class = classId
-      } else {
-        query.class = { $in: teacherClassIds }
-      }
+      query.class = classId
+    } else {
+      query.class = { $in: teacherClassIds }
     }
-
-    const total = await Student.countDocuments(query)
-    const students = await Student.find(query)
-      .populate('class', 'name level cycle room')
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
-      .sort({ lastName: 1 })
-
-    res.json({ success: true, total, data: students })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
   }
-})
+
+  const total = await Student.countDocuments(query)
+  const students = await Student.find(query)
+    .populate('class', 'name level cycle room')
+    .skip((page - 1) * limit)
+    .limit(Number(limit))
+    .sort({ lastName: 1 })
+
+  res.json({ success: true, total, data: students })
+}))
 
 // @route  GET /api/students/:id
-router.get('/:id', protect, async (req, res) => {
-  try {
-    const student = await Student.findById(req.params.id).populate('class school')
-    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
-    res.json({ success: true, data: student })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
+router.get('/:id', protect, asyncHandler(async (req, res) => {
+  const student = await Student.findById(req.params.id).populate('class school')
+  if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+  res.json({ success: true, data: student })
+}))
 
 // @route  POST /api/students
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const schoolId = req.user.school?._id || req.user.school
-    if (req.user.role === 'directeur') {
-      const school = await School.findById(schoolId).select('subscription.cycle')
-      if (school?.subscription?.cycle && req.body.cycle && req.body.cycle !== school.subscription.cycle) {
-        return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ». ` })
-      }
-    }
+    const schoolId = getSchoolId(req)
+    if (await enforceCyclePermission(req, res)) return
     const student = await Student.create({ ...req.body, school: schoolId })
 
     if (req.body.teacher && student.class) {
@@ -104,28 +86,20 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 })
 
 // @route  PUT /api/students/:id
-router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
-  try {
-    const student = await Student.findByIdAndUpdate(req.params.id, req.body, {
-      new: true, runValidators: true,
-    })
-    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
-    res.json({ success: true, data: student })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
+router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'), asyncHandler(async (req, res) => {
+  const student = await Student.findByIdAndUpdate(req.params.id, req.body, {
+    new: true, runValidators: true,
+  })
+  if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+  res.json({ success: true, data: student })
+}))
 
 // @route  DELETE /api/students/:id
-router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
-  try {
-    const student = await Student.findByIdAndDelete(req.params.id)
-    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
-    res.json({ success: true, message: 'Élève supprimé' })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
+router.delete('/:id', protect, authorize('directeur', 'super_admin'), asyncHandler(async (req, res) => {
+  const student = await Student.findByIdAndDelete(req.params.id)
+  if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+  res.json({ success: true, message: 'Élève supprimé' })
+}))
 
 // POST /api/students/:id/parent-account — Director creates parent login account
 router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'), async (req, res) => {
@@ -223,35 +197,29 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
 })
 
 // GET /api/students/with-parents — list students with parent account status (for director)
-router.get('/with-parents', protect, authorize('directeur', 'super_admin'), async (req, res) => {
-  try {
-    const schoolId = req.user.school?._id || req.user.school
-    const students = await Student.find({ school: schoolId, status: 'active' })
-      .populate('class', 'name level')
-      .populate('parentUser', 'email lastLogin')
-      .sort({ lastName: 1 })
-    res.json({ success: true, data: students })
-  } catch (err) { res.status(500).json({ message: err.message }) }
-})
+router.get('/with-parents', protect, authorize('directeur', 'super_admin'), asyncHandler(async (req, res) => {
+  const schoolId = getSchoolId(req)
+  const students = await Student.find({ school: schoolId, status: 'active' })
+    .populate('class', 'name level')
+    .populate('parentUser', 'email lastLogin')
+    .sort({ lastName: 1 })
+  res.json({ success: true, data: students })
+}))
 
 // POST /api/students/link-parent — link an existing parent user to multiple students by email
-router.post('/link-parent', protect, authorize('directeur', 'super_admin'), async (req, res) => {
-  try {
-    const { email, studentIds } = req.body
-    if (!email || !Array.isArray(studentIds) || studentIds.length === 0) {
-      return res.status(400).json({ message: 'Email et liste des élèves requis' })
-    }
-    const user = await User.findOne({ email, role: 'parent' })
-    if (!user) return res.status(404).json({ message: 'Compte parent introuvable pour cet email' })
-    const schoolId = req.user.school?._id || req.user.school
-    const updated = await Student.updateMany(
-      { _id: { $in: studentIds }, school: schoolId },
-      { $set: { parentUser: user._id } }
-    )
-    res.json({ success: true, message: 'Parent associé aux élèves sélectionnés', data: { matched: updated.matchedCount || updated.n, modified: updated.modifiedCount || updated.nModified } })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
+router.post('/link-parent', protect, authorize('directeur', 'super_admin'), asyncHandler(async (req, res) => {
+  const { email, studentIds } = req.body
+  if (!email || !Array.isArray(studentIds) || studentIds.length === 0) {
+    return res.status(400).json({ message: 'Email et liste des élèves requis' })
   }
-})
+  const user = await User.findOne({ email, role: 'parent' })
+  if (!user) return res.status(404).json({ message: 'Compte parent introuvable pour cet email' })
+  const schoolId = getSchoolId(req)
+  const updated = await Student.updateMany(
+    { _id: { $in: studentIds }, school: schoolId },
+    { $set: { parentUser: user._id } }
+  )
+  res.json({ success: true, message: 'Parent associé aux élèves sélectionnés', data: { matched: updated.matchedCount || updated.n, modified: updated.modifiedCount || updated.nModified } })
+}))
 
 module.exports = router

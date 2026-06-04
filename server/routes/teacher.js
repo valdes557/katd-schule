@@ -1,8 +1,6 @@
 const express = require('express')
 const router = express.Router()
 const mongoose = require('mongoose')
-const multer = require('multer')
-const path = require('path')
 const { protect } = require('../middleware/auth')
 const Teacher = require('../models/Teacher')
 const Student = require('../models/Student')
@@ -17,37 +15,22 @@ const Resource = require('../models/Resource')
 const DailyReport = require('../models/DailyReport')
 const SchoolPost = require('../models/SchoolPost')
 const { sendEmail } = require('../utils/emailService')
+const { createUpload } = require('../utils/multerUpload')
+const { getTeacherProfile } = require('../utils/routeHelpers')
 
 const teacherOnly = (req, res, next) => {
   if (req.user.role !== 'enseignant') return res.status(403).json({ message: 'Accès réservé aux enseignants' })
   next()
 }
 
-// Helper: get teacher profile from User
-async function getTeacherProfile(userId) {
-  return Teacher.findOne({ user: userId }).populate('classes', 'name level cycle room stats')
-}
-
-// Multer config for daily report attachments (PDF only)
-const reportStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9)
-    cb(null, `report-${unique}${path.extname(file.originalname)}`)
+const uploadReport = createUpload({
+  prefix: 'report-',
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype || !file.mimetype.includes('pdf')) {
+      return cb(new Error('Seuls les fichiers PDF sont autorisés pour les rapports'))
+    }
+    cb(null, true)
   },
-})
-
-function reportFileFilter(req, file, cb) {
-  if (!file.mimetype || !file.mimetype.includes('pdf')) {
-    return cb(new Error('Seuls les fichiers PDF sont autorisés pour les rapports'))
-  }
-  cb(null, true)
-}
-
-const uploadReport = multer({
-  storage: reportStorage,
-  fileFilter: reportFileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 })
 
 // ─── DASHBOARD ───
