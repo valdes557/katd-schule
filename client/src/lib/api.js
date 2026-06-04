@@ -119,6 +119,9 @@ export const messagesApi = {
   send: (data) => api.post('/messages', data),
   contacts: () => api.get('/messages/contacts'),
   unreadCount: () => api.get('/messages/unread-count'),
+  groups: () => api.get('/messages/groups'),
+  createGroup: (data) => api.post('/messages/groups', data),
+  sendGroup: (groupId, data) => api.post(`/messages/groups/${groupId}`, data),
 }
 
 export const mediaApi = {

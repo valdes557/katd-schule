@@ -4,7 +4,7 @@ import {
   Users, BookOpen, CalendarCheck, CreditCard, MessageSquare,
   TrendingUp, Clock, FileText, Loader2, RefreshCw, ArrowRight, Shield,
   GraduationCap, CheckCircle2, XCircle, AlertTriangle, Banknote, Calendar,
-  Receipt,
+  Receipt, Bell,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { parentApi } from '../lib/api'
@@ -37,6 +37,7 @@ export default function ParentDashboardPage() {
 
   const children = data?.children || []
   const s = data?.stats || {}
+  const announcements = data?.announcements || []
 
   if (children.length === 0) {
     return (
@@ -191,7 +192,7 @@ export default function ParentDashboardPage() {
         </div>
       </div>
 
-      {/* Stats Overview */}
+      {/* Stats Overview + Announcements */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {statsCards.map((card) => (
           <div key={card.title} className="card p-4">
@@ -203,6 +204,24 @@ export default function ParentDashboardPage() {
           </div>
         ))}
       </div>
+
+      {announcements.length > 0 && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2"><Bell size={15} /> Annonces de l'école</h2>
+            <Link to="/dashboard/annonces" className="text-[11px] text-blue-600 hover:underline">Voir tout</Link>
+          </div>
+          <div className="space-y-2">
+            {announcements.map((a) => (
+              <div key={a._id} className="text-xs border-b border-gray-50 last:border-0 pb-2">
+                <div className="font-semibold text-gray-800 truncate">{a.title || 'Annonce'}</div>
+                <div className="text-gray-500 line-clamp-2 text-[11px]">{a.content}</div>
+                <div className="text-[10px] text-gray-400 mt-0.5">{new Date(a.createdAt).toLocaleDateString('fr-FR')}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Quick links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

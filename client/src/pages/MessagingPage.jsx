@@ -8,6 +8,7 @@ export default function MessagingPage() {
   const { user } = useAuth()
   const [conversations, setConversations] = useState([])
   const [contacts, setContacts] = useState([])
+  const [groups, setGroups] = useState([])
   const [activeConv, setActiveConv] = useState(null)
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(true)
@@ -17,6 +18,8 @@ export default function MessagingPage() {
   const [showCompose, setShowCompose] = useState(false)
   const [composeForm, setComposeForm] = useState({ recipientId: '', subject: '', body: '' })
   const [search, setSearch] = useState('')
+  const [showGroupModal, setShowGroupModal] = useState(false)
+  const [groupForm, setGroupForm] = useState({ name: '', memberIds: [] })
 
   const fetchConversations = async () => {
     setLoading(true)
@@ -27,6 +30,24 @@ export default function MessagingPage() {
     setLoading(false)
   }
 
+  const openGroupConversation = async (group) => {
+    const conv = {
+      conversationId: `group_${group._id}`,
+      contact: { _id: group._id, name: group.name, role: 'groupe' },
+      isGroup: true,
+      groupId: group._id,
+      lastMessage: null,
+      unread: 0,
+    }
+    setActiveConv(conv)
+    setLoadingMsgs(true)
+    try {
+      const res = await messagesApi.conversation(conv.conversationId)
+      setMessages(res.data || [])
+    } catch (e) { console.error(e) }
+    setLoadingMsgs(false)
+  }
+
   const fetchContacts = async () => {
     try {
       const res = await messagesApi.contacts()
@@ -34,7 +55,14 @@ export default function MessagingPage() {
     } catch (e) {}
   }
 
-  useEffect(() => { fetchConversations(); fetchContacts() }, [])
+  const fetchGroups = async () => {
+    try {
+      const res = await messagesApi.groups()
+      setGroups(res.data || [])
+    } catch (e) {}
+  }
+
+  useEffect(() => { fetchConversations(); fetchContacts(); fetchGroups() }, [])
 
   const openConversation = async (conv) => {
     setActiveConv(conv)
@@ -50,11 +78,18 @@ export default function MessagingPage() {
     if (!reply.trim() || !activeConv) return
     setSending(true)
     try {
-      await messagesApi.send({
-        recipientId: activeConv.contact?._id,
-        subject: activeConv.lastMessage?.subject || '',
-        body: reply,
-      })
+      if (activeConv.isGroup && activeConv.groupId) {
+        await messagesApi.sendGroup(activeConv.groupId, {
+          subject: activeConv.lastMessage?.subject || '',
+          body: reply,
+        })
+      } else {
+        await messagesApi.send({
+          recipientId: activeConv.contact?._id,
+          subject: activeConv.lastMessage?.subject || '',
+          body: reply,
+        })
+      }
       setReply('')
       const res = await messagesApi.conversation(activeConv.conversationId)
       setMessages(res.data || [])
@@ -75,6 +110,31 @@ export default function MessagingPage() {
     setSending(false)
   }
 
+  const toggleGroupMember = (id) => {
+    setGroupForm((prev) => {
+      const exists = prev.memberIds.includes(id)
+      return {
+        ...prev,
+        memberIds: exists ? prev.memberIds.filter((m) => m !== id) : [...prev.memberIds, id],
+      }
+    })
+  }
+
+  const handleCreateGroup = async (e) => {
+    e.preventDefault()
+    if (!groupForm.name.trim() || groupForm.memberIds.length === 0) return
+    setSending(true)
+    try {
+      await messagesApi.createGroup(groupForm)
+      setShowGroupModal(false)
+      setGroupForm({ name: '', memberIds: [] })
+      fetchGroups()
+    } catch (err) {
+      alert(err.message)
+    }
+    setSending(false)
+  }
+
   const filteredConvs = conversations.filter((c) => {
     if (!search) return true
     const name = c.contact?.name || ''
@@ -88,19 +148,42 @@ export default function MessagingPage() {
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <MessageSquare size={22} className="text-indigo-600" /> Messagerie
         </h1>
-        <button onClick={() => setShowCompose(true)} className="btn-primary text-sm self-start">
-          <Plus size={15} /> Nouveau message
-        </button>
+        <div className="flex gap-2 self-start">
+          {user?.role === 'directeur' && (
+            <button onClick={() => setShowGroupModal(true)} className="btn-ghost text-sm border border-gray-200">
+              <Users size={15} /> Nouveau groupe
+            </button>
+          )}
+          <button onClick={() => setShowCompose(true)} className="btn-primary text-sm">
+            <Plus size={15} /> Nouveau message
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5" style={{ minHeight: 500 }}>
         {/* Conversations list */}
         <div className={cn('card overflow-hidden flex flex-col', activeConv && 'hidden lg:flex')}>
-          <div className="p-3 border-b border-gray-100">
+          <div className="p-3 border-b border-gray-100 space-y-2">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher..." className="input pl-9 text-sm" />
             </div>
+            {groups.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 text-[11px]">
+                {groups.map((g) => (
+                  <button
+                    key={g._id}
+                    type="button"
+                    onClick={() => openGroupConversation(g)}
+                    className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 truncate max-w-full"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <Users size={11} /> {g.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {loading ? (
@@ -144,7 +227,10 @@ export default function MessagingPage() {
                 <button onClick={() => setActiveConv(null)} className="lg:hidden p-1 rounded hover:bg-gray-100"><ArrowLeft size={18} /></button>
                 <div>
                   <div className="text-sm font-bold text-gray-900">{activeConv.contact?.name}</div>
-                  <div className="text-xs text-gray-500">{activeConv.contact?.role} · {activeConv.contact?.email}</div>
+                  <div className="text-xs text-gray-500">
+                    {activeConv.isGroup ? 'Groupe d\'échange' : activeConv.contact?.role}
+                    {!activeConv.isGroup && activeConv.contact?.email ? ` · ${activeConv.contact.email}` : ''}
+                  </div>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ maxHeight: 400 }}>
@@ -215,6 +301,56 @@ export default function MessagingPage() {
                 <button type="button" onClick={() => setShowCompose(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
                 <button type="submit" disabled={sending} className="btn-primary flex-1 justify-center">
                   {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Envoyer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Group creation modal (director) */}
+      {showGroupModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Nouveau groupe d'enseignants</h3>
+              <button onClick={() => setShowGroupModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+            </div>
+            <form onSubmit={handleCreateGroup} className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600">Nom du groupe</label>
+                <input
+                  required
+                  value={groupForm.name}
+                  onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
+                  className="input text-sm mt-1"
+                  placeholder="Ex: Équipe CP matin"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Enseignants</label>
+                <div className="mt-1 max-h-40 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1">
+                  {contacts.filter((c) => c.role === 'enseignant').length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">Aucun enseignant disponible</p>
+                  ) : (
+                    contacts.filter((c) => c.role === 'enseignant').map((c) => (
+                      <label key={c._id} className="flex items-center gap-2 text-xs py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300"
+                          checked={groupForm.memberIds.includes(c._id)}
+                          onChange={() => toggleGroupMember(c._id)}
+                        />
+                        <span className="truncate">{c.name}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowGroupModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
+                <button type="submit" disabled={sending || !groupForm.name.trim() || groupForm.memberIds.length === 0} className="btn-primary flex-1 justify-center">
+                  {sending ? <Loader2 size={15} className="animate-spin" /> : <Users size={15} />} Créer le groupe
                 </button>
               </div>
             </form>

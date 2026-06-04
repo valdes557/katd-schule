@@ -13,6 +13,7 @@ const Subject = require('../models/Subject')
 const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
 const DailyReport = require('../models/DailyReport')
+const SchoolPost = require('../models/SchoolPost')
 const { sendEmail } = require('../utils/emailService')
 
 const teacherOnly = (req, res, next) => {
@@ -34,7 +35,7 @@ router.get('/dashboard', protect, teacherOnly, async (req, res) => {
     const classIds = (teacher.classes || []).map((c) => c._id)
     const schoolId = teacher.school
 
-    const [studentCount, recentGrades, attendanceAgg, homeworkAgg, upcomingHomework] = await Promise.all([
+    const [studentCount, recentGrades, attendanceAgg, homeworkAgg, upcomingHomework, announcements] = await Promise.all([
       Student.countDocuments({ class: { $in: classIds }, status: 'active' }),
       Grade.find({ teacher: teacher._id }).sort({ date: -1 }).limit(10)
         .populate('student', 'firstName lastName'),
@@ -79,6 +80,11 @@ router.get('/dashboard', protect, teacherOnly, async (req, res) => {
       // Upcoming due homeworks
       Homework.find({ teacher: teacher._id, dueDate: { $gte: new Date() } })
         .sort({ dueDate: 1 }).limit(5).populate('class', 'name'),
+      // Recent school announcements
+      SchoolPost.find({ school: schoolId, isPublic: true })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('title content createdAt'),
     ])
 
     const att = attendanceAgg[0] || { total: 0, present: 0, absent: 0, late: 0 }
@@ -150,6 +156,7 @@ router.get('/dashboard', protect, teacherOnly, async (req, res) => {
           totalSubmissions: hw.totalSubmissions,
         },
         alerts: alerts.slice(0, 5),
+        announcements,
         recentGrades,
         upcomingHomework: upcomingHomework.map((h) => ({
           _id: h._id,

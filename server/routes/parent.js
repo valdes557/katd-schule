@@ -16,6 +16,7 @@ const Teacher = require('../models/Teacher')
 const Subject = require('../models/Subject')
 const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
+const SchoolPost = require('../models/SchoolPost')
 
 // Middleware: only parents
 const parentOnly = (req, res, next) => {
@@ -40,7 +41,7 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
     const schoolId = children[0]?.school?._id
 
     // Aggregate stats across all children
-    const [totalGrades, attendanceAgg, homeworkStats, feeStats, unreadMessages] = await Promise.all([
+    const [totalGrades, attendanceAgg, homeworkStats, feeStats, unreadMessages, announcements] = await Promise.all([
       Grade.aggregate([
         { $match: { student: { $in: childIds } } },
         { $group: { _id: null, avg: { $avg: '$value' }, count: { $sum: 1 } } },
@@ -96,6 +97,12 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
         },
       ]),
       Message.countDocuments({ recipient: req.user._id, read: false }),
+      schoolId
+        ? SchoolPost.find({ school: schoolId, isPublic: true })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('title content createdAt')
+        : [],
     ])
 
     const att = attendanceAgg[0] || { total: 0, present: 0, absent: 0, late: 0 }
@@ -150,6 +157,7 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
           pendingInstallments,
           nearestInstallmentDeadline: nearestDeadline,
         },
+        announcements,
       },
     })
   } catch (err) {

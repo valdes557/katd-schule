@@ -58,6 +58,7 @@ const ParentSectionPage = lazy(() => import('./pages/ParentSectionPage'))
 const BulletinPage = lazy(() => import('./pages/BulletinPage'))
 const ParentActivitiesPage = lazy(() => import('./pages/ParentActivitiesPage'))
 const DashboardSocialPage = lazy(() => import('./pages/DashboardSocialPage'))
+const AnnoncesPage = lazy(() => import('./pages/AnnoncesPage'))
 
 function PageFallback() {
   return (
@@ -140,7 +141,7 @@ export default function App() {
         <Route path="devoirs" element={<TeacherHomeworkPage />} />
         <Route path="activites" element={<TeacherActivitiesPage />} />
         <Route path="ressources" element={<TeacherResourcesPage />} />
-        <Route path="annonces" element={<PlaceholderPage title="Annonces" />} />
+        <Route path="annonces" element={<AnnoncesPage />} />
         <Route path="documents" element={<PlaceholderPage title="Documents partagés" />} />
         <Route path="paiements" element={<PlaceholderPage title="Historique des paiements" />} />
         <Route path="factures" element={<PlaceholderPage title="Factures" />} />

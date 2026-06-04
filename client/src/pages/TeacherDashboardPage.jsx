@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Users, BookOpen, CalendarCheck, FileText, Clock, Loader2, RefreshCw,
   ArrowRight, AlertTriangle, AlertCircle, XCircle, TrendingUp, BarChart2,
-  ClipboardList, CheckCircle2, GraduationCap,
+  ClipboardList, CheckCircle2, GraduationCap, Bell,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { teacherApi } from '../lib/api'
@@ -26,7 +26,7 @@ export default function TeacherDashboardPage() {
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (!data) return <div className="text-center py-16 text-sm text-gray-500">Profil enseignant non trouvé. Contactez l'administration.</div>
 
-  const { teacher, stats, alerts, recentGrades, upcomingHomework } = data
+  const { teacher, stats, alerts, recentGrades, upcomingHomework, announcements = [] } = data
 
   const statCards = [
     { title: 'Mes élèves', value: stats.totalStudents, icon: Users, bg: 'bg-blue-100', color: 'text-blue-600' },
@@ -147,24 +147,44 @@ export default function TeacherDashboardPage() {
         </div>
       </div>
 
-      {/* Recent Grades */}
-      {recentGrades.length > 0 && (
-        <div className="card p-5">
-          <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3"><GraduationCap size={15} /> Notes récentes</h2>
-          <div className="space-y-1">
-            {recentGrades.map((g) => (
-              <div key={g._id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${g.value >= 10 ? 'bg-green-500' : 'bg-red-500'}`} />
-                  <span className="font-medium text-gray-700">{g.student?.firstName} {g.student?.lastName}</span>
-                  <span className="text-gray-400">· {g.subject}</span>
+      {/* Recent Grades + Announcements */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {recentGrades.length > 0 && (
+          <div className="card p-5">
+            <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3"><GraduationCap size={15} /> Notes récentes</h2>
+            <div className="space-y-1">
+              {recentGrades.map((g) => (
+                <div key={g._id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${g.value >= 10 ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="font-medium text-gray-700">{g.student?.firstName} {g.student?.lastName}</span>
+                    <span className="text-gray-400">· {g.subject}</span>
+                  </div>
+                  <span className={`font-bold ${g.value >= 10 ? 'text-green-600' : 'text-red-600'}`}>{g.value}/20</span>
                 </div>
-                <span className={`font-bold ${g.value >= 10 ? 'text-green-600' : 'text-red-600'}`}>{g.value}/20</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {announcements.length > 0 && (
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2"><Bell size={15} /> Annonces de l'école</h2>
+              <Link to="/dashboard/annonces" className="text-[11px] text-blue-600 hover:underline">Voir tout</Link>
+            </div>
+            <div className="space-y-2">
+              {announcements.map((a) => (
+                <div key={a._id} className="text-xs border-b border-gray-50 last:border-0 pb-2">
+                  <div className="font-semibold text-gray-800 truncate">{a.title || 'Annonce'}</div>
+                  <div className="text-gray-500 line-clamp-2 text-[11px]">{a.content}</div>
+                  <div className="text-[10px] text-gray-400 mt-0.5">{new Date(a.createdAt).toLocaleDateString('fr-FR')}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Quick Links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

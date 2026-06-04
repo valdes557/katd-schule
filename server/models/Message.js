@@ -10,6 +10,9 @@ const messageSchema = new mongoose.Schema(
     body: { type: String, required: true },
     read: { type: Boolean, default: false },
     readAt: { type: Date },
+    isGroup: { type: Boolean, default: false },
+    group: { type: mongoose.Schema.Types.ObjectId, ref: 'MessageGroup' },
+    broadcastKey: { type: String, index: true },
     attachments: [
       {
         filename: { type: String },
