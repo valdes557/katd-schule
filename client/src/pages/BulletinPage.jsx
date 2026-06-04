@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Download, Printer, Loader2, AlertCircle, Calendar } from 'lucide-react'
+import html2pdf from 'html2pdf.js'
 import { gradesApi, parentApi, studentsApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import BulletinView from '../components/BulletinView'
@@ -57,6 +58,37 @@ export default function BulletinPage() {
   // Sync URL
   useEffect(() => { setSearchParams({ term }, { replace: true }) }, [term])
 
+  const handleDownloadPdf = () => {
+    if (!data) return
+    const element = document.querySelector('.bulletin-doc')
+    if (!element) {
+      // Fallback: open print dialog if for some reason we can't find the bulletin container
+      window.print()
+      return
+    }
+
+    const filenameParts = []
+    if (data?.student?.lastName || data?.student?.firstName) {
+      filenameParts.push(`${data.student.lastName || ''}_${data.student.firstName || ''}`.trim())
+    } else {
+      filenameParts.push('bulletin')
+    }
+    if (data?.academicYear) filenameParts.push(data.academicYear)
+    if (data?.term) filenameParts.push(data.term.replace(/\s+/g, '_'))
+
+    const filename = `${filenameParts.join('_') || 'bulletin'}.pdf`
+
+    const options = {
+      margin: [10, 10, 10, 10],
+      filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    }
+
+    html2pdf().set(options).from(element).save()
+  }
+
   const handlePrint = () => window.print()
 
   const accessibleList = user?.role === 'parent' ? children : students
@@ -82,7 +114,7 @@ export default function BulletinPage() {
           <select value={term} onChange={(e) => setTerm(e.target.value)} className="input text-sm w-auto">
             {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <button onClick={handlePrint} disabled={!data} className="btn-primary text-sm">
+          <button onClick={handleDownloadPdf} disabled={!data} className="btn-primary text-sm">
             <Download size={14} /> Télécharger (PDF)
           </button>
           <button onClick={handlePrint} disabled={!data} className="btn-ghost text-sm border border-gray-200">

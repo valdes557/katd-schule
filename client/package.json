@@ -24,6 +24,7 @@
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-slot": "^1.0.2",
+    "html2pdf.js": "^0.10.1",
     "date-fns": "^3.3.1"
   },
   "devDependencies": {
