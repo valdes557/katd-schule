@@ -57,6 +57,7 @@ const AdminSchoolSubjectsPage = lazy(() => import('./pages/AdminSchoolSubjectsPa
 const ParentSectionPage = lazy(() => import('./pages/ParentSectionPage'))
 const BulletinPage = lazy(() => import('./pages/BulletinPage'))
 const ParentActivitiesPage = lazy(() => import('./pages/ParentActivitiesPage'))
+const DashboardSocialPage = lazy(() => import('./pages/DashboardSocialPage'))
 
 function PageFallback() {
   return (
@@ -180,6 +181,7 @@ export default function App() {
         <Route path="parent/documents" element={<ParentDocumentsPage />} />
         <Route path="parent/activites" element={<ParentActivitiesPage section="activities" />} />
         <Route path="parent/ressources" element={<ParentActivitiesPage section="resources" />} />
+        <Route path="social" element={<DashboardSocialPage />} />
       </Route>
 
       {/* 404 fallback */}

@@ -33,12 +33,24 @@ export default function SocialTab({ feed, setFeed, user }) {
 
   const findNextMediaIndex = (startIndex, direction) => {
     if (!Array.isArray(feed) || !feed.length || startIndex == null || startIndex < 0) return null
+    const currentAuthorId = viewer?.post?.author?._id || viewer?.post?.authorId
+    const currentAuthorName = viewer?.post?.author?.name || viewer?.post?.authorName
     let i = startIndex + direction
     while (i >= 0 && i < feed.length) {
       const p = feed[i]
       if (p) {
-        if (p.type === 'video' && p.videoUrl) return i
-        if (p.images?.[0] || p.thumbnail) return i
+        const pAuthorId = p.author?._id || p.authorId
+        const pAuthorName = p.author?.name || p.authorName
+        const sameAuthor = currentAuthorId
+          ? (pAuthorId && pAuthorId.toString() === currentAuthorId.toString())
+          : currentAuthorName
+            ? (pAuthorName && pAuthorName === currentAuthorName)
+            : true
+
+        if (sameAuthor) {
+          if (p.type === 'video' && p.videoUrl) return i
+          if (p.images?.[0] || p.thumbnail) return i
+        }
       }
       i += direction
     }
@@ -170,6 +182,36 @@ export default function SocialTab({ feed, setFeed, user }) {
             >
               <X size={18} />
             </button>
+            {viewer && (() => {
+              const currentIdx = currentIndex
+              if (currentIdx < 0 || !Array.isArray(feed) || !feed.length) return null
+              const currentAuthorId = viewer.post?.author?._id || viewer.post?.authorId
+              const currentAuthorName = viewer.post?.author?.name || viewer.post?.authorName
+              const sameIndices = []
+              feed.forEach((p, idx) => {
+                if (!p) return
+                const pAuthorId = p.author?._id || p.authorId
+                const pAuthorName = p.author?.name || p.authorName
+                const sameAuthor = currentAuthorId
+                  ? (pAuthorId && pAuthorId.toString() === currentAuthorId.toString())
+                  : currentAuthorName
+                    ? (pAuthorName && pAuthorName === currentAuthorName)
+                    : true
+                if (!sameAuthor) return
+                if (p.type === 'video' && p.videoUrl) sameIndices.push(idx)
+                else if (p.images?.[0] || p.thumbnail) sameIndices.push(idx)
+              })
+              if (sameIndices.length === 0) return null
+              const pos = sameIndices.indexOf(currentIdx) + 1
+              const total = sameIndices.length
+              const displayName = currentAuthorName || 'cet utilisateur'
+              return (
+                <div className="absolute top-3 left-3 bg-black/40 text-white text-[11px] px-3 py-1.5 rounded-full max-w-[70%] truncate">
+                  Publications de <span className="font-semibold">{displayName}</span>
+                  {total > 1 && ` (${pos > 0 ? pos : 1} / ${total})`}
+                </div>
+              )
+            })()}
             {prevIndex !== null && (
               <button
                 type="button"

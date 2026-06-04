@@ -60,8 +60,8 @@ router.get('/feed', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/platform/posts — Super Admin: create platform-level post
-router.post('/posts', protect, authorize('super_admin'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'audio', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
+// POST /api/platform/posts — Super Admin, directors and teachers: create social post
+router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'audio', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const images = (req.files?.images || []).map((f) => f.path)
     const audioFile = req.files?.audio?.[0]?.path || ''
@@ -75,7 +75,11 @@ router.post('/posts', protect, authorize('super_admin'), upload.fields([{ name: 
     else if (mediaType === 'video' || videoUrl) type = 'video'
     else if (images.length > 0 || mediaType === 'photo') type = 'photo'
 
+    const isPlatform = req.user.role === 'super_admin'
+    const schoolId = !isPlatform && (req.user.school?._id || req.user.school) ? (req.user.school._id || req.user.school) : null
+
     const post = await SchoolPost.create({
+      school: schoolId,
       author: req.user._id,
       content: req.body.content,
       title: req.body.title || '',
@@ -86,7 +90,7 @@ router.post('/posts', protect, authorize('super_admin'), upload.fields([{ name: 
       videoUrl: videoUrl || undefined,
       audioUrl: audioUrl || undefined,
       duration: req.body.duration || '',
-      isPlatform: true,
+      isPlatform,
       isPublic: true,
     })
     const populated = await post.populate('author', 'name avatar')
