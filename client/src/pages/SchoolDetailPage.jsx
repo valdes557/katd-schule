@@ -4,7 +4,7 @@ import {
   ArrowLeft, MessageCircle, Share2, Send, Star, Phone, Mail,
   Globe, Users, FileText, Shield, HelpCircle, Gift, CreditCard, Loader2,
   ThumbsUp, ChevronDown, ChevronUp, Play, Eye, GraduationCap,
-  Facebook, Instagram, Twitter, Youtube, Linkedin,
+  Facebook, Instagram, Twitter, Youtube, Linkedin, X,
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
@@ -179,6 +179,7 @@ export default function SchoolDetailPage() {
 function SocialTab({ schoolId, posts, setPosts, user }) {
   const [commentText, setCommentText] = useState({})
   const [expandedComments, setExpandedComments] = useState({})
+  const [viewer, setViewer] = useState(null) // { type: 'image' | 'video', src, post }
 
   const timeAgo = (date) => {
     const diff = Date.now() - new Date(date).getTime()
@@ -221,7 +222,18 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
           {posts.map((post) => (
             <div key={post._id} className="bg-white border border-gray-100 rounded-xl overflow-hidden hover:shadow-card transition-all">
               {/* Thumbnail */}
-              <div className="relative aspect-video bg-gray-100">
+              <button
+                type="button"
+                className="relative aspect-video bg-gray-100 w-full"
+                onClick={() => {
+                  const imageSrc = post.images?.[0] || post.thumbnail
+                  if (post.type === 'video' && post.videoUrl) {
+                    setViewer({ type: 'video', src: post.videoUrl, post })
+                  } else if (imageSrc) {
+                    setViewer({ type: 'image', src: imageSrc, post })
+                  }
+                }}
+              >
                 {post.thumbnail ? (
                   <img src={post.thumbnail} alt="" className="w-full h-full object-cover" />
                 ) : post.images?.[0] ? (
@@ -244,7 +256,7 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
                 {post.category && (
                   <span className="absolute top-2 left-2 bg-black/40 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full">{post.category}</span>
                 )}
-              </div>
+              </button>
 
               {/* Body */}
               <div className="p-3">
@@ -320,6 +332,50 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {viewer && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setViewer(null)}
+        >
+          <div
+            className="relative max-w-5xl w-full max-h-[90vh] flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setViewer(null)}
+              className="absolute top-2 right-2 text-white bg-black/50 rounded-full p-1.5 hover:bg-black/70"
+            >
+              <X size={18} />
+            </button>
+            {viewer.type === 'image' && viewer.src && (
+              <img
+                src={viewer.src}
+                alt={viewer.post?.title || ''}
+                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-lg"
+              />
+            )}
+            {viewer.type === 'video' && viewer.src && (
+              viewer.src.includes('youtube') || viewer.src.includes('youtu.be') ? (
+                <iframe
+                  className="w-full h-[60vh] max-h-[85vh] rounded-lg shadow-lg"
+                  src={viewer.src.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')}
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  controls
+                  autoPlay
+                  src={viewer.src}
+                  className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-lg bg-black"
+                />
+              )
+            )}
+          </div>
         </div>
       )}
     </div>

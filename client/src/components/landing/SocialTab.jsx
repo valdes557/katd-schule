@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Globe2, Play, Eye, ThumbsUp, MessageCircle, Share2, Send, ChevronDown,
-  Download, Music, Lock, Check,
+  Download, Music, Lock, Check, X,
 } from 'lucide-react'
 import { platformApi } from '../../lib/api'
 
@@ -24,6 +24,7 @@ export default function SocialTab({ feed, setFeed, user }) {
   const [feedCategory, setFeedCategory] = useState('')
   const [commentText, setCommentText] = useState({})
   const [expandedComments, setExpandedComments] = useState({})
+  const [viewer, setViewer] = useState(null) // { type: 'image' | 'video', src, post }
 
   const handleLike = async (postId) => {
     try {
@@ -106,6 +107,7 @@ export default function SocialTab({ feed, setFeed, user }) {
                 commentText={commentText} setCommentText={setCommentText}
                 expandedComments={expandedComments} setExpandedComments={setExpandedComments}
                 onDownload={(id) => setFeed((prev) => prev.map((p) => p._id === id ? { ...p, downloads: (p.downloads || 0) + 1 } : p))}
+                onOpenMedia={setViewer}
               />
             ))}
           </div>
@@ -116,14 +118,57 @@ export default function SocialTab({ feed, setFeed, user }) {
           </div>
         </>
       )}
+
+      {viewer && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setViewer(null)}
+        >
+          <div
+            className="relative max-w-5xl w-full max-h-[90vh] flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setViewer(null)}
+              className="absolute top-2 right-2 text-white bg-black/50 rounded-full p-1.5 hover:bg-black/70"
+            >
+              <X size={18} />
+            </button>
+            {viewer.type === 'image' && viewer.src && (
+              <img
+                src={viewer.src}
+                alt={viewer.post?.title || ''}
+                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-lg"
+              />
+            )}
+            {viewer.type === 'video' && viewer.src && (
+              viewer.src.includes('youtube') || viewer.src.includes('youtu.be') ? (
+                <iframe
+                  className="w-full h-[60vh] max-h-[85vh] rounded-lg shadow-lg"
+                  src={viewer.src.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')}
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  controls
+                  autoPlay
+                  src={viewer.src}
+                  className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-lg bg-black"
+                />
+              )
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentText, setCommentText, expandedComments, setExpandedComments }) {
+function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
   const navigate = useNavigate()
   const [shareCopied, setShareCopied] = useState(false)
-  const [videoExpanded, setVideoExpanded] = useState(false)
 
   const handleDownload = async () => {
     if (!user) { navigate('/login'); return }
@@ -175,43 +220,43 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
           )}
         </div>
       ) : post.type === 'video' ? (
-        <div className="relative aspect-video bg-black">
-          {videoExpanded && (post.videoUrl?.includes('youtube') || post.videoUrl?.includes('youtu.be')) ? (
-            <iframe
-              className="w-full h-full"
-              src={post.videoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')}
-              allow="autoplay; encrypted-media" allowFullScreen
-            />
-          ) : videoExpanded && post.videoUrl ? (
-            <video controls autoPlay src={post.videoUrl} className="w-full h-full object-contain" />
+        <button
+          type="button"
+          className="relative aspect-video bg-black w-full"
+          onClick={() => {
+            if (!post.videoUrl && !post.thumbnail && !(post.images && post.images[0])) return
+            const src = post.videoUrl || post.thumbnail || (post.images && post.images[0])
+            if (onOpenMedia) onOpenMedia({ type: 'video', src, post })
+          }}
+        >
+          {post.thumbnail || post.images?.[0] ? (
+            <img src={post.thumbnail || post.images[0]} alt="" className="w-full h-full object-cover" />
           ) : (
-            <>
-              {post.thumbnail || post.images?.[0] ? (
-                <img src={post.thumbnail || post.images[0]} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gray-900">
-                  <Play size={40} className="text-gray-600" />
-                </div>
-              )}
-              <button
-                onClick={() => setVideoExpanded(true)}
-                className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors"
-              >
-                <div className="w-14 h-14 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
-                  <Play size={22} className="text-gray-900 fill-gray-900 ml-1" />
-                </div>
-              </button>
-              {post.duration && (
-                <span className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{post.duration}</span>
-              )}
-            </>
+            <div className="w-full h-full flex items-center justify-center bg-gray-900">
+              <Play size={40} className="text-gray-600" />
+            </div>
+          )}
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors">
+            <div className="w-14 h-14 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
+              <Play size={22} className="text-gray-900 fill-gray-900 ml-1" />
+            </div>
+          </div>
+          {post.duration && (
+            <span className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{post.duration}</span>
           )}
           {post.category && (
             <span className="absolute top-2 left-2 bg-black/50 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full">{post.category}</span>
           )}
-        </div>
+        </button>
       ) : post.images?.length > 0 ? (
-        <div className="relative aspect-video bg-gray-100">
+        <button
+          type="button"
+          className="relative aspect-video bg-gray-100 w-full"
+          onClick={() => {
+            if (!post.images?.[0]) return
+            if (onOpenMedia) onOpenMedia({ type: 'image', src: post.images[0], post })
+          }}
+        >
           <img src={post.images[0]} alt="" className="w-full h-full object-cover" />
           {post.images.length > 1 && (
             <span className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">+{post.images.length - 1}</span>
@@ -219,7 +264,7 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
           {post.category && (
             <span className="absolute top-2 left-2 bg-black/40 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full">{post.category}</span>
           )}
-        </div>
+        </button>
       ) : (
         <div className="h-16 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-center">
           <Globe2 size={24} className="text-blue-200" />
