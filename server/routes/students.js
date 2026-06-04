@@ -24,11 +24,11 @@ router.get('/', protect, async (req, res) => {
     if (classId) query.class = classId
     else if (className) query.class = className
     // Directors and other roles are scoped to the school's subscribed cycle by default
-    if (req.user.role !== 'super_admin') {
+    if (req.user.role === 'super_admin') {
+      if (cycle) query.cycle = cycle
+    } else if (req.user.role !== 'enseignant') {
       const school = await School.findById(schoolId).select('subscription.cycle')
       if (school?.subscription?.cycle) query.cycle = school.subscription.cycle
-    } else if (cycle) {
-      query.cycle = cycle
     }
 
     // Teachers can only view students from their assigned classes
