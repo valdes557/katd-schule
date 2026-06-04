@@ -4,6 +4,7 @@ const Attendance = require('../models/Attendance')
 const Student = require('../models/Student')
 const Class = require('../models/Class')
 const Teacher = require('../models/Teacher')
+const mongoose = require('mongoose')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
 
@@ -53,7 +54,13 @@ router.get('/stats', protect, async (req, res) => {
     const schoolId = req.user.school._id || req.user.school
     const { classId } = req.query
     const match = { school: schoolId }
-    if (classId) match.class = require('mongoose').Types.ObjectId(classId)
+    if (classId) {
+      try {
+        match.class = new mongoose.Types.ObjectId(classId)
+      } catch (e) {
+        return res.status(400).json({ message: 'Classe invalide' })
+      }
+    }
 
     const stats = await Attendance.aggregate([
       { $match: match },
