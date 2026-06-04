@@ -13,7 +13,7 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: (process.env.SMTP_PASS || '').replace(/\s/g, ''),
   },
-  tls: { rejectUnauthorized: false },
+  tls: { rejectUnauthorized: process.env.NODE_ENV === 'production' },
 })
 
 // Verify SMTP connection at startup

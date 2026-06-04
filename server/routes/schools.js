@@ -4,6 +4,7 @@ const School = require('../models/School')
 const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
+const { escapeRegex } = require('../utils/sanitize')
 
 // @route  GET /api/schools  (public)
 router.get('/', async (req, res) => {
@@ -11,9 +12,10 @@ router.get('/', async (req, res) => {
     const { search, cycle, page = 1, limit = 50 } = req.query
     const query = { isActive: { $ne: false } }
     if (search) {
+      const safe = escapeRegex(search)
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { 'address.city': { $regex: search, $options: 'i' } },
+        { name: { $regex: safe, $options: 'i' } },
+        { 'address.city': { $regex: safe, $options: 'i' } },
       ]
     }
     if (cycle) query.cycles = { $in: [cycle] }

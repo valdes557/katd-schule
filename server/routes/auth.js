@@ -34,7 +34,11 @@ router.post(
         return res.status(400).json({ message: 'Cet email est déjà utilisé' })
       }
 
-      const user = await User.create({ name, email, password, role: role || 'directeur' })
+      // Prevent privilege escalation — only allow safe roles via public registration
+      const allowedRoles = ['directeur', 'enseignant', 'parent', 'eleve']
+      const safeRole = allowedRoles.includes(role) ? role : 'directeur'
+
+      const user = await User.create({ name, email, password, role: safeRole })
       const token = generateToken(user._id)
 
       res.status(201).json({
@@ -102,6 +106,12 @@ router.get('/me', protect, async (req, res) => {
 router.put('/password', protect, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Les champs currentPassword et newPassword sont requis' })
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Le nouveau mot de passe doit comporter au moins 6 caractères' })
+    }
     const user = await User.findById(req.user._id)
     const isMatch = await user.matchPassword(currentPassword)
     if (!isMatch) {
@@ -198,7 +208,7 @@ router.post('/admin-reset-password', protect, async (req, res) => {
       })
     } catch (_) {}
 
-    res.json({ success: true, email: user.email, rawPassword })
+    res.json({ success: true, email: user.email, message: 'Mot de passe réinitialisé. Un email a été envoyé.' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
