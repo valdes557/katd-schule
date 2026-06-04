@@ -24,4 +24,4 @@ async function generateMatricule(schoolId, date = new Date()) {
   return `${prefix}-${year}-${seqStr}`
 }
 
-module.exports = { generateMatricule }
+module.exports = { generateMatricule, buildSchoolPrefix }
