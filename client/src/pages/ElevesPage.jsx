@@ -73,6 +73,12 @@ export default function ElevesPage() {
   const [parentResult, setParentResult] = useState(null)
   const [parentSaving, setParentSaving] = useState(false)
 
+  const [selectedStudentIds, setSelectedStudentIds] = useState([])
+  const [linkParentModalOpen, setLinkParentModalOpen] = useState(false)
+  const [linkParentForm, setLinkParentForm] = useState({ email: '' })
+  const [linkParentSaving, setLinkParentSaving] = useState(false)
+  const [linkParentResult, setLinkParentResult] = useState(null)
+
   const openParentModal = (s) => {
     setParentModal(s)
     setParentForm({ name: s.parent?.name || '', email: s.parent?.email || '', phone: s.parent?.phone || '', password: '' })
@@ -90,6 +96,44 @@ export default function ElevesPage() {
     setParentSaving(false)
   }
 
+  const toggleSelectStudent = (id) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
+  const toggleSelectAll = () => {
+    const allIds = students.map((s) => s._id)
+    if (allIds.length === 0) return
+    const allSelected = allIds.every((id) => selectedStudentIds.includes(id))
+    setSelectedStudentIds(allSelected ? [] : allIds)
+  }
+
+  const handleBulkLinkParent = async (e) => {
+    e.preventDefault()
+    if (!linkParentForm.email || selectedStudentIds.length === 0) return
+    setLinkParentSaving(true)
+    try {
+      const res = await studentsApi.linkParent(linkParentForm.email, selectedStudentIds)
+      if (res.success) {
+        setLinkParentResult(res)
+        fetchStudents()
+      } else {
+        alert(res.message || 'Erreur')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+    setLinkParentSaving(false)
+  }
+
+  const closeLinkParentModal = () => {
+    setLinkParentModalOpen(false)
+    setLinkParentForm({ email: '' })
+    setLinkParentResult(null)
+    setSelectedStudentIds([])
+  }
+
   const openEdit = (s) => {
     setEditing(s)
     setForm({
@@ -104,6 +148,9 @@ export default function ElevesPage() {
 
   const filteredClasses = classes.filter((c) => !form.cycle || c.cycle === form.cycle)
   const filteredTeachers = teachers.filter((t) => !form.cycle || t.cycle === form.cycle)
+
+  const allSelectableIds = students.map((s) => s._id)
+  const allSelected = allSelectableIds.length > 0 && allSelectableIds.every((id) => selectedStudentIds.includes(id))
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -138,6 +185,16 @@ export default function ElevesPage() {
             <option key={c._id} value={c._id}>{c.name}</option>
           ))}
         </select>
+        {isDirecteur && (
+          <button
+            type="button"
+            onClick={() => setLinkParentModalOpen(true)}
+            disabled={selectedStudentIds.length === 0}
+            className="btn-ghost text-xs border border-gray-200 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <UserPlus size={13} /> Associer parent existant
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -152,6 +209,15 @@ export default function ElevesPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
+                {isDirecteur && (
+                  <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
+                )}
                 {['Matricule', 'Nom', 'Classe', 'Genre', 'Naissance', 'Parent', ...(isDirecteur ? ['Actions'] : [])].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
                 ))}
@@ -160,6 +226,15 @@ export default function ElevesPage() {
             <tbody className="divide-y divide-gray-50">
               {students.map((s) => (
                 <tr key={s._id} className="hover:bg-gray-50">
+                  {isDirecteur && (
+                    <td className="px-4 py-3 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={selectedStudentIds.includes(s._id)}
+                        onChange={() => toggleSelectStudent(s._id)}
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-xs font-mono text-gray-600">{s.matricule}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{s.lastName} {s.firstName}</td>
                   <td className="px-4 py-3 text-xs text-gray-600">{s.class?.name || '—'}</td>
@@ -182,6 +257,63 @@ export default function ElevesPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Bulk Link Parent Modal */}
+      {linkParentModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                Associer un parent existant
+              </h3>
+              <button onClick={closeLinkParentModal} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+
+            {linkParentResult ? (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                  <CheckCircle2 size={32} className="text-green-500 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-green-800">{linkParentResult.message}</p>
+                  {linkParentResult.data && (
+                    <p className="text-xs text-green-700 mt-1">
+                      Élèves concernés : {linkParentResult.data.modified ?? linkParentResult.data.matched}
+                    </p>
+                  )}
+                </div>
+                <button onClick={closeLinkParentModal} className="btn-primary w-full justify-center">Fermer</button>
+              </div>
+            ) : (
+              <form onSubmit={handleBulkLinkParent} className="space-y-3">
+                <p className="text-xs text-gray-500">
+                  Vous allez lier <strong>{selectedStudentIds.length}</strong> élève(s) à un <strong>compte parent déjà existant</strong> via son email.
+                </p>
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 max-h-32 overflow-y-auto text-xs text-gray-700">
+                  {students.filter((s) => selectedStudentIds.includes(s._id)).map((s) => (
+                    <div key={s._id}>{s.lastName} {s.firstName} — {s.class?.name || 'Sans classe'}</div>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Email du compte parent existant *</label>
+                  <input
+                    required
+                    type="email"
+                    value={linkParentForm.email}
+                    onChange={(e) => setLinkParentForm({ email: e.target.value })}
+                    className="input text-sm mt-1 w-full"
+                    placeholder="email-parent@exemple.com"
+                  />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={closeLinkParentModal} className="btn-ghost flex-1 justify-center">Annuler</button>
+                  <button type="submit" disabled={linkParentSaving} className="btn-primary flex-1 justify-center">
+                    {linkParentSaving ? <Loader2 size={14} className="animate-spin" /> : 'Associer le parent'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
 
