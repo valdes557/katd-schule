@@ -43,6 +43,7 @@ router.post(
         user: { id: user._id, name: user.name, email: user.email, role: user.role },
       })
     } catch (err) {
+      console.error(err)
       res.status(500).json({ message: err.message })
     }
   }
@@ -83,6 +84,7 @@ router.post(
         school: user.school,
       })
     } catch (err) {
+      console.error(err)
       res.status(500).json({ message: err.message })
     }
   }
@@ -111,6 +113,7 @@ router.put('/password', protect, async (req, res) => {
     await user.save()
     res.json({ success: true, message: 'Mot de passe mis à jour' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -126,6 +129,7 @@ router.put('/profile', protect, async (req, res) => {
     await user.save()
     res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone } })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -136,7 +140,7 @@ router.post('/avatar', protect, upload.single('avatar'), async (req, res) => {
     if (!req.file?.path) return res.status(400).json({ message: 'Aucun fichier reçu' })
     const user = await User.findByIdAndUpdate(req.user._id, { avatar: req.file.path }, { new: true })
     res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone } })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router
@@ -200,6 +204,7 @@ router.post('/admin-reset-password', protect, async (req, res) => {
 
     res.json({ success: true, email: user.email, rawPassword })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

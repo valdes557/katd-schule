@@ -30,6 +30,7 @@ router.get('/school/:schoolId/classes', async (req, res) => {
       .sort({ cycle: 1, name: 1 })
     res.json({ success: true, data: classes })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -84,6 +85,7 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       data: enrollment,
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -106,6 +108,7 @@ router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res)
 
     res.json({ success: true, total, data: enrollments })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -212,6 +215,7 @@ router.put('/:id/approve', protect, authorize('directeur', 'super_admin'), async
     if (err.code === 11000) {
       return res.status(400).json({ message: 'Un compte avec cet email existe déjà' })
     }
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -234,6 +238,7 @@ router.put('/:id/reject', protect, authorize('directeur', 'super_admin'), async 
 
     res.json({ success: true, message: 'Demande rejetée. L\'utilisateur a été notifié.', data: enrollment })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -253,6 +258,7 @@ router.put('/students/:id/block', protect, authorize('directeur', 'super_admin')
 
     res.json({ success: true, message: 'Compte élève bloqué' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -271,6 +277,7 @@ router.put('/students/:id/unblock', protect, authorize('directeur', 'super_admin
 
     res.json({ success: true, message: 'Compte élève débloqué' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

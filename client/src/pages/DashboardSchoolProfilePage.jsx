@@ -141,15 +141,15 @@ export default function DashboardSchoolProfilePage() {
   const [selNeighborhood, setSelNeighborhood] = useState('')
 
   useEffect(() => {
-    locationsApi.countries().then((r) => setCountries(r.data || [])).catch(() => {})
+    locationsApi.countries().then((r) => setCountries(r.data || [])).catch((err) => console.error(err))
   }, [])
 
   useEffect(() => {
-    if (selCountry) locationsApi.cities(selCountry).then((r) => { setCities(r.data || []); setNeighborhoods([]) }).catch(() => {})
+    if (selCountry) locationsApi.cities(selCountry).then((r) => { setCities(r.data || []); setNeighborhoods([]) }).catch((err) => console.error(err))
   }, [selCountry])
 
   useEffect(() => {
-    if (selCity) locationsApi.neighborhoods(selCity).then((r) => setNeighborhoods(r.data || [])).catch(() => {})
+    if (selCity) locationsApi.neighborhoods(selCity).then((r) => setNeighborhoods(r.data || [])).catch((err) => console.error(err))
   }, [selCity])
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export default function DashboardSchoolProfilePage() {
             mobileMoneyAccounts: s.mobileMoneyAccounts || [],
           })
         }
-      } catch (_) {}
+      } catch (err) { console.error(err) }
       setLoading(false)
     }
     load()

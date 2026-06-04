@@ -60,7 +60,7 @@ export default function LandingPage() {
         setSchools(sRes.data?.data || sRes.data || [])
         setExperiences(eRes.data?.slice(0, 3) || [])
       })
-      .catch(() => {})
+      .catch((err) => console.error(err))
       .finally(() => setLoadingSchools(false))
   }, [])
 

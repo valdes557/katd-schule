@@ -18,7 +18,7 @@ export default function AdminEcolesPage() {
       const res = await schoolsApi.list(params.toString())
       setSchools(res.data || [])
       setTotal(res.total || 0)
-    } catch (e) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 

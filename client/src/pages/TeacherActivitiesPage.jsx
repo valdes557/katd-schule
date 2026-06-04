@@ -30,7 +30,7 @@ export default function TeacherActivitiesPage() {
       const [a, d] = await Promise.all([teacherApi.activities(), teacherApi.dashboard()])
       setItems(a.data || [])
       setClasses(d.data?.teacher?.classes || [])
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { load() }, [])

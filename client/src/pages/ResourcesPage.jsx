@@ -8,7 +8,7 @@ export default function ResourcesPage() {
   const [platformData, setPlatformData] = useState(null)
 
   useEffect(() => {
-    platformApi.get().then((r) => setPlatformData(r.data)).catch(() => {})
+    platformApi.get().then((r) => setPlatformData(r.data)).catch((err) => console.error(err))
   }, [])
 
   return (

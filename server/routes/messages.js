@@ -147,6 +147,7 @@ router.get('/conversations', protect, async (req, res) => {
 
     res.json({ success: true, data: populated })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -179,6 +180,7 @@ router.get('/conversation/:conversationId', protect, async (req, res) => {
 
     res.json({ success: true, data: messages })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -218,6 +220,7 @@ router.post('/', protect, async (req, res) => {
 
     res.status(201).json({ success: true, data: populated })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -228,6 +231,7 @@ router.get('/contacts', protect, async (req, res) => {
     const users = await getAllowedContacts(req.user)
     res.json({ success: true, data: users })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -238,6 +242,7 @@ router.get('/unread-count', protect, async (req, res) => {
     const count = await Message.countDocuments({ recipient: req.user._id, read: false })
     res.json({ success: true, data: { count } })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -260,6 +265,7 @@ router.get('/groups', protect, async (req, res) => {
 
     res.json({ success: true, data })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -299,6 +305,7 @@ router.post('/groups', protect, authorize('directeur', 'super_admin'), async (re
 
     res.status(201).json({ success: true, data: group })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -355,6 +362,7 @@ router.post('/groups/:groupId', protect, async (req, res) => {
 
     res.status(201).json({ success: true, data: populated })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

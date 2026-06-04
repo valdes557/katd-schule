@@ -52,14 +52,14 @@ export default function MessagingPage() {
     try {
       const res = await messagesApi.contacts()
       setContacts(res.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   const fetchGroups = async () => {
     try {
       const res = await messagesApi.groups()
       setGroups(res.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   useEffect(() => { fetchConversations(); fetchContacts(); fetchGroups() }, [])

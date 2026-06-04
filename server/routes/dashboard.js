@@ -93,6 +93,7 @@ router.get('/stats', protect, async (req, res) => {
       },
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -134,6 +135,7 @@ router.get('/admin-stats', protect, async (req, res) => {
       },
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -153,7 +155,7 @@ router.get('/reports', protect, authorize('directeur', 'super_admin'), async (re
       .sort({ date: -1, createdAt: -1 })
       .limit(Number(limit))
     res.json({ success: true, data: items })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.put('/reports/:id/review', protect, authorize('directeur', 'super_admin'), async (req, res) => {
@@ -165,7 +167,7 @@ router.put('/reports/:id/review', protect, authorize('directeur', 'super_admin')
     ).populate('teacher', 'firstName lastName').populate('classes', 'name level')
     if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
     res.json({ success: true, data: r })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.put('/reports/:id/unreview', protect, authorize('directeur', 'super_admin'), async (req, res) => {
@@ -177,7 +179,7 @@ router.put('/reports/:id/unreview', protect, authorize('directeur', 'super_admin
     ).populate('teacher', 'firstName lastName').populate('classes', 'name level')
     if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
     res.json({ success: true, data: r })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

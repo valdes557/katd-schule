@@ -58,7 +58,7 @@ export default function EcolesPage() {
         if (cycleFilter !== 'Tous') params.set('cycle', cycleFilter)
         const res = await schoolsApi.list(params.toString())
         setSchools(res.data || [])
-      } catch (e) {}
+      } catch (err) { console.error(err) }
       setLoading(false)
     }
     const t = setTimeout(load, 300)

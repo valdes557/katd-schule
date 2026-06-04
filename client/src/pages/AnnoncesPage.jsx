@@ -23,7 +23,8 @@ export default function AnnoncesPage() {
     try {
       const res = await schoolPagesApi.getPosts(schoolId, 1)
       setPosts(res.data || [])
-    } catch (_) {
+    } catch (err) {
+      console.error(err)
       setPosts([])
     }
     setLoading(false)
@@ -42,7 +43,7 @@ export default function AnnoncesPage() {
       await schoolPagesApi.createPost(schoolId, fd)
       setForm({ title: '', content: '' })
       loadPosts()
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setCreating(false)
   }
 
@@ -51,7 +52,7 @@ export default function AnnoncesPage() {
     try {
       await schoolPagesApi.deletePost(id)
       setPosts((prev) => prev.filter((p) => p._id !== id))
-    } catch (_) {}
+    } catch (err) { console.error(err) }
   }
 
   return (

@@ -18,7 +18,7 @@ export default function TeacherDashboardPage() {
     try {
       const r = await teacherApi.dashboard()
       setData(r.data)
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { load() }, [])

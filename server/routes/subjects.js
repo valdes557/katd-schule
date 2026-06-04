@@ -67,6 +67,7 @@ router.get('/', protect, async (req, res) => {
       .sort({ cycle: 1, name: 1 })
     res.json({ success: true, data: subjects })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -77,6 +78,7 @@ router.get('/:id', protect, async (req, res) => {
     if (!subject) return res.status(404).json({ message: 'Matière non trouvée' })
     res.json({ success: true, data: subject })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -101,6 +103,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
     const subject = await Subject.create({ ...req.body, school })
     res.status(201).json({ success: true, data: subject })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -115,6 +118,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
     if (!subject) return res.status(404).json({ message: 'Matière non trouvée' })
     res.json({ success: true, data: subject })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -124,6 +128,7 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
     await Subject.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Matière supprimée' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

@@ -52,10 +52,10 @@ export default function SchoolDetailPage() {
   }, [schoolId])
 
   useEffect(() => {
-    if (tab === 'social') schoolPagesApi.getPosts(schoolId).then((r) => setPosts(r.data || [])).catch(() => {})
-    if (tab === 'team') schoolPagesApi.getTeam(schoolId).then((r) => setTeam(r.data || [])).catch(() => {})
-    if (tab === 'reviews') schoolPagesApi.getReviews(schoolId).then((r) => setReviews(r.data || [])).catch(() => {})
-    if (tab === 'payments') schoolPagesApi.getPayments(schoolId).then((r) => setPaymentMods(r.data || [])).catch(() => {})
+    if (tab === 'social') schoolPagesApi.getPosts(schoolId).then((r) => setPosts(r.data || [])).catch((err) => console.error(err))
+    if (tab === 'team') schoolPagesApi.getTeam(schoolId).then((r) => setTeam(r.data || [])).catch((err) => console.error(err))
+    if (tab === 'reviews') schoolPagesApi.getReviews(schoolId).then((r) => setReviews(r.data || [])).catch((err) => console.error(err))
+    if (tab === 'payments') schoolPagesApi.getPayments(schoolId).then((r) => setPaymentMods(r.data || [])).catch((err) => console.error(err))
   }, [tab, schoolId])
 
   if (loading) return (

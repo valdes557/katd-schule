@@ -62,7 +62,7 @@ export default function ExplorerPage() {
         await navigator.clipboard.writeText(window.location.href)
         alert('Lien copié !')
       }
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   const handleDownload = async (m) => {
@@ -85,7 +85,7 @@ export default function ExplorerPage() {
       const res = await mediaApi.get(m._id)
       setSelectedMedia(res.data)
       setComments(res.data.comments || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
     setLoadingDetail(false)
   }
 

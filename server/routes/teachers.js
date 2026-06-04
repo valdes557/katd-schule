@@ -35,6 +35,7 @@ router.get('/', protect, async (req, res) => {
       .sort({ lastName: 1 })
     res.json({ success: true, total, data: teachers })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -46,6 +47,7 @@ router.get('/:id', protect, async (req, res) => {
     if (!teacher) return res.status(404).json({ message: 'Enseignant non trouvé' })
     res.json({ success: true, data: teacher })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -89,6 +91,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
     const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email')
     res.status(201).json({ success: true, data: populated })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -119,6 +122,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
     const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email')
     res.json({ success: true, data: populated })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -138,6 +142,7 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
 
     res.json({ success: true, message: 'Enseignant supprimé' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

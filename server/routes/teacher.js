@@ -193,6 +193,7 @@ router.get('/dashboard', protect, teacherOnly, async (req, res) => {
       },
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -238,6 +239,7 @@ router.get('/students', protect, teacherOnly, async (req, res) => {
 
     res.json({ success: true, data: enriched })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -275,6 +277,7 @@ router.get('/homeworks', protect, teacherOnly, async (req, res) => {
 
     res.json({ success: true, data: filtered })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -303,6 +306,7 @@ router.post('/homeworks', protect, teacherOnly, async (req, res) => {
       })
     }).catch(() => {})
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -314,6 +318,7 @@ router.put('/homeworks/:id', protect, teacherOnly, async (req, res) => {
     if (!hw) return res.status(404).json({ message: 'Devoir non trouvé' })
     res.json({ success: true, data: hw })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -323,6 +328,7 @@ router.delete('/homeworks/:id', protect, teacherOnly, async (req, res) => {
     await Homework.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Devoir supprimé' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -340,6 +346,7 @@ router.put('/homeworks/:hwId/submissions/:subId/grade', protect, teacherOnly, as
     await hw.save()
     res.json({ success: true, data: hw })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -446,6 +453,7 @@ router.get('/analytics', protect, teacherOnly, async (req, res) => {
       },
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -479,7 +487,7 @@ router.get('/class/:classId/parents', protect, teacherOnly, async (req, res) => 
     }))
 
     res.json({ success: true, data: result })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── MARQUER LE STATUT DEVOIR PAR ÉLÈVE (fait / non fait) ───
@@ -524,7 +532,7 @@ router.put('/homework/:hwId/completion', protect, teacherOnly, async (req, res) 
     }
 
     res.json({ success: true, message: 'Statut des devoirs mis à jour', data: homework })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── SOUMETTRE LA PRÉSENCE + NOTIFIER LES PARENTS ───
@@ -553,7 +561,7 @@ router.post('/attendance/:classId/notify', protect, teacherOnly, async (req, res
     }
 
     res.json({ success: true, message: `${sent} parent(s) notifié(s)` })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── ACTIVITIES ───
@@ -565,7 +573,7 @@ router.get('/activities', protect, teacherOnly, async (req, res) => {
       .populate('class', 'name level')
       .sort({ date: -1 })
     res.json({ success: true, data: items })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.post('/activities', protect, teacherOnly, async (req, res) => {
@@ -603,7 +611,7 @@ router.post('/activities', protect, teacherOnly, async (req, res) => {
         }).catch(() => {})
       })
     }).catch(() => {})
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.put('/activities/:id', protect, teacherOnly, async (req, res) => {
@@ -617,7 +625,7 @@ router.put('/activities/:id', protect, teacherOnly, async (req, res) => {
     ).populate('class', 'name level')
     if (!act) return res.status(404).json({ message: 'Activité non trouvée' })
     res.json({ success: true, data: act })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.delete('/activities/:id', protect, teacherOnly, async (req, res) => {
@@ -627,7 +635,7 @@ router.delete('/activities/:id', protect, teacherOnly, async (req, res) => {
     const r = await Activity.findOneAndDelete({ _id: req.params.id, teacher: teacher._id })
     if (!r) return res.status(404).json({ message: 'Activité non trouvée' })
     res.json({ success: true, message: 'Activité supprimée' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── RESOURCES ───
@@ -639,7 +647,7 @@ router.get('/resources', protect, teacherOnly, async (req, res) => {
       .populate('classes', 'name level')
       .sort({ createdAt: -1 })
     res.json({ success: true, data: items })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.post('/resources', protect, teacherOnly, async (req, res) => {
@@ -659,7 +667,7 @@ router.post('/resources', protect, teacherOnly, async (req, res) => {
       author: req.user._id,
     })
     res.status(201).json({ success: true, data: r })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.put('/resources/:id', protect, teacherOnly, async (req, res) => {
@@ -673,7 +681,7 @@ router.put('/resources/:id', protect, teacherOnly, async (req, res) => {
     )
     if (!r) return res.status(404).json({ message: 'Ressource non trouvée' })
     res.json({ success: true, data: r })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.delete('/resources/:id', protect, teacherOnly, async (req, res) => {
@@ -683,7 +691,7 @@ router.delete('/resources/:id', protect, teacherOnly, async (req, res) => {
     const r = await Resource.findOneAndDelete({ _id: req.params.id, teacher: teacher._id })
     if (!r) return res.status(404).json({ message: 'Ressource non trouvée' })
     res.json({ success: true, message: 'Ressource supprimée' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // ─── DAILY REPORTS ───
@@ -696,7 +704,7 @@ router.get('/reports', protect, teacherOnly, async (req, res) => {
       .sort({ date: -1, createdAt: -1 })
       .limit(100)
     res.json({ success: true, data: items })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.post('/reports', protect, teacherOnly, uploadReport.single('attachment'), async (req, res) => {
@@ -727,7 +735,7 @@ router.post('/reports', protect, teacherOnly, uploadReport.single('attachment'),
     const r = await DailyReport.create(payload)
     const populated = await DailyReport.findById(r._id).populate('classes', 'name level')
     res.status(201).json({ success: true, data: populated })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // Update a teacher's own report (title/content only for now)
@@ -755,7 +763,7 @@ router.put('/reports/:id', protect, teacherOnly, async (req, res) => {
 
     if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
     res.json({ success: true, data: r })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // Delete a teacher's own report
@@ -768,7 +776,7 @@ router.delete('/reports/:id', protect, teacherOnly, async (req, res) => {
     if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
 
     res.json({ success: true, message: 'Rapport supprimé' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

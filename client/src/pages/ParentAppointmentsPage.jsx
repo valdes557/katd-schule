@@ -25,7 +25,7 @@ export default function ParentAppointmentsPage() {
         const [appts, dash] = await Promise.all([parentApi.appointments(), parentApi.dashboard()])
         setAppointments(appts.data || [])
         setChildren(dash.data?.children || [])
-      } catch (_) {}
+      } catch (err) { console.error(err) }
       setLoading(false)
     })()
   }, [])

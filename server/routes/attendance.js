@@ -44,6 +44,7 @@ router.get('/', protect, async (req, res) => {
       .sort({ date: -1 })
     res.json({ success: true, total, data: records })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -82,6 +83,7 @@ router.get('/stats', protect, async (req, res) => {
 
     res.json({ success: true, data: { ...s, attendanceRate: rate } })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -171,6 +173,7 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
         }).catch(() => {})
     }
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

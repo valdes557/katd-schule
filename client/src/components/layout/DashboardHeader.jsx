@@ -138,7 +138,7 @@ export default function DashboardHeader({ onMenuClick }) {
               <button onClick={() => fileRef.current?.click()} className="text-xs border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50">Changer la photo</button>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
                 const f = e.target.files?.[0]; if (!f) return; setSaving(true)
-                try { const r = await authApi.uploadAvatar(f); if (r?.user) { setUser(r.user); try { localStorage.setItem('katd_user', JSON.stringify(r.user)) } catch (_) {} } }
+                try { const r = await authApi.uploadAvatar(f); if (r?.user) { setUser(r.user); try { localStorage.setItem('katd_user', JSON.stringify(r.user)) } catch (err) { console.error(err) } } }
                 catch (err) { alert(err.message) }
                 setSaving(false)
               }} />
@@ -158,7 +158,7 @@ export default function DashboardHeader({ onMenuClick }) {
             <button onClick={() => setProfileOpen(false)} className="flex-1 justify-center border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50">Fermer</button>
             <button disabled={saving} onClick={async () => {
               setSaving(true)
-              try { const r = await authApi.updateProfile({ name: pForm.name, phone: pForm.phone }); if (r?.user) { setUser(r.user); try { localStorage.setItem('katd_user', JSON.stringify(r.user)) } catch (_) {} } }
+              try { const r = await authApi.updateProfile({ name: pForm.name, phone: pForm.phone }); if (r?.user) { setUser(r.user); try { localStorage.setItem('katd_user', JSON.stringify(r.user)) } catch (err) { console.error(err) } } }
               catch (err) { alert(err.message) }
               setSaving(false); setProfileOpen(false)
             }} className="btn-primary flex-1 justify-center">Enregistrer</button>

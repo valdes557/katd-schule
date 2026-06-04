@@ -60,35 +60,35 @@ export default function ParentChildDetailPage() {
       ])
       setData(detail.data)
       setReport(rep.data)
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 
   const loadClassAttendance = async () => {
     if (classAtt) return
     setClassAttLoading(true)
-    try { const r = await parentApi.classAttendance(studentId); setClassAtt(r.data) } catch (_) {}
+    try { const r = await parentApi.classAttendance(studentId); setClassAtt(r.data) } catch (err) { console.error(err) }
     setClassAttLoading(false)
   }
 
   const loadTeachers = async () => {
     if (teachers) return
     setTeachersLoading(true)
-    try { const r = await parentApi.classTeachers(studentId); setTeachers(r.data || []) } catch (_) {}
+    try { const r = await parentApi.classTeachers(studentId); setTeachers(r.data || []) } catch (err) { console.error(err) }
     setTeachersLoading(false)
   }
 
   const loadCompletion = async (hwId) => {
     if (completionData[hwId]) return
     setCompletionLoading(hwId)
-    try { const r = await parentApi.homeworkClassCompletion(hwId); setCompletionData((p) => ({ ...p, [hwId]: r.data })) } catch (_) {}
+    try { const r = await parentApi.homeworkClassCompletion(hwId); setCompletionData((p) => ({ ...p, [hwId]: r.data })) } catch (err) { console.error(err) }
     setCompletionLoading(null)
   }
 
   const loadSubjects = async () => {
     if (subjects) return
     setSubjectsLoading(true)
-    try { const r = await parentApi.childSubjects(studentId); setSubjects(r.data || []) } catch (_) {}
+    try { const r = await parentApi.childSubjects(studentId); setSubjects(r.data || []) } catch (err) { console.error(err) }
     setSubjectsLoading(false)
   }
 

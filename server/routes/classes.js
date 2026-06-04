@@ -29,6 +29,7 @@ router.get('/', protect, async (req, res) => {
     const classes = await Class.find(query).populate('mainTeacher', 'firstName lastName').sort({ cycle: 1, name: 1 })
     res.json({ success: true, data: classes })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -41,6 +42,7 @@ router.get('/:id', protect, async (req, res) => {
     const students = await Student.find({ class: cls._id }).sort({ lastName: 1 })
     res.json({ success: true, data: { ...cls.toObject(), students } })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -59,6 +61,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
     const cls = await Class.create({ ...req.body, school: schoolId })
     res.status(201).json({ success: true, data: cls })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -70,6 +73,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
     if (!cls) return res.status(404).json({ message: 'Classe non trouvée' })
     res.json({ success: true, data: cls })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -80,6 +84,7 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
     await Class.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Classe supprimée' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

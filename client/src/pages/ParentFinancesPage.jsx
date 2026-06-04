@@ -27,7 +27,7 @@ export default function ParentFinancesPage() {
       const r = await parentApi.fees()
       setFees(r.data || [])
       setSummary(r.summary || {})
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { load() }, [])

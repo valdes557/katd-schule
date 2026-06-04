@@ -86,6 +86,7 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       data: registration,
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -104,6 +105,7 @@ router.get('/', protect, authorize('super_admin'), async (req, res) => {
 
     res.json({ success: true, total, data: registrations })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -297,6 +299,7 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
     })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Un compte avec cet email existe déjà' })
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -332,6 +335,7 @@ router.put('/:id/reject', protect, authorize('super_admin'), async (req, res) =>
 
     res.json({ success: true, message: 'Demande rejetée', data: reg })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -408,6 +412,7 @@ router.post('/:id/resend-credentials', protect, authorize('super_admin'), async 
         : 'Mot de passe réinitialisé mais email non envoyé : ' + (emailResult.error || 'erreur'),
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -434,6 +439,7 @@ router.delete('/:id/revoke', protect, authorize('super_admin'), async (req, res)
 
     res.json({ success: true, message: 'Compte directeur, école et tous les dossiers liés à cet email ont été supprimés. Une nouvelle souscription peut être soumise.' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })
@@ -445,6 +451,7 @@ router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
     if (!reg) return res.status(404).json({ message: 'Demande non trouvée' })
     res.json({ success: true, message: 'Demande supprimée' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ message: err.message })
   }
 })

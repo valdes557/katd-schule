@@ -19,7 +19,7 @@ function AdminSouscriptions() {
       const params = filter ? `status=${filter}` : ''
       const r = await registrationsApi.list(params)
       setItems(r.data || [])
-    } catch (_) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { load() }, [filter])

@@ -19,7 +19,7 @@ export default function ParentControlsPage() {
         const kids = r.data?.children || []
         setChildren(kids)
         if (kids.length > 0) setSelectedChild(kids[0]._id)
-      } catch (_) {}
+      } catch (err) { console.error(err) }
     })()
   }, [])
 
@@ -31,7 +31,7 @@ export default function ParentControlsPage() {
       try {
         const r = await parentApi.getControls(selectedChild)
         setControls(r.data)
-      } catch (_) { setControls(null) }
+      } catch (err) { console.error(err); setControls(null) }
       setLoading(false)
     })()
   }, [selectedChild])

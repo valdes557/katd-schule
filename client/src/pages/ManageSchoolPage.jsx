@@ -29,7 +29,7 @@ export default function ManageSchoolPage() {
 
   useEffect(() => {
     if (!schoolId) return
-    schoolPagesApi.get(schoolId).then((r) => setPage(r.data || {})).catch(() => {})
+    schoolPagesApi.get(schoolId).then((r) => setPage(r.data || {})).catch((err) => console.error(err))
   }, [schoolId])
 
   const savePage = async (updates) => {

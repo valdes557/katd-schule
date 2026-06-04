@@ -32,7 +32,7 @@ export default function DashboardSocialPage() {
   useEffect(() => {
     platformApi.getFeed(1)
       .then((r) => setFeed(r.data || []))
-      .catch(() => {})
+      .catch((err) => console.error(err))
       .finally(() => setLoading(false))
   }, [])
 

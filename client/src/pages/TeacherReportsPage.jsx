@@ -18,7 +18,7 @@ export default function TeacherReportsPage() {
 
   const fetchReports = async () => {
     setLoading(true)
-    try { const res = await teacherApi.reports(); setReports(res.data || []) } catch (e) {}
+    try { const res = await teacherApi.reports(); setReports(res.data || []) } catch (err) { console.error(err) }
     setLoading(false)
   }
 
@@ -71,7 +71,7 @@ export default function TeacherReportsPage() {
       const res = await teacherApi.dashboard()
       const classes = res?.data?.teacher?.classes || []
       setTeacherClasses(classes)
-    } catch (_) {}
+    } catch (err) { console.error(err) }
   }
 
   const toggleClass = (id) => {

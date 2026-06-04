@@ -33,7 +33,7 @@ export default function EmploiDuTempsPage() {
         setSubjects(sr.data || [])
         setTeachers(tr.data || [])
         if (cr.data?.length > 0) setSelectedClass(cr.data[0]._id)
-      } catch (e) {}
+      } catch (err) { console.error(err) }
       setLoading(false)
     }
     init()
@@ -46,7 +46,7 @@ export default function EmploiDuTempsPage() {
       try {
         const r = await timetablesApi.getByClass(selectedClass)
         setTimetable(r.data || null)
-      } catch (e) {}
+      } catch (err) { console.error(err) }
       setSlotLoading(false)
     }
     loadTT()

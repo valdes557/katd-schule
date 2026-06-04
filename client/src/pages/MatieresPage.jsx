@@ -34,7 +34,7 @@ export default function MatieresPage() {
       setSubjects(sr.data || [])
       setClasses(cr.data || [])
       setTeachers(tr.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 

@@ -32,7 +32,7 @@ router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res)
       .skip((page - 1) * limit)
       .limit(Number(limit))
     res.json({ success: true, total, data: fees })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // GET /api/fees/payment-status — Summary by class: who paid/not paid
@@ -76,7 +76,7 @@ router.get('/payment-status', protect, authorize('directeur', 'super_admin'), as
       }
     })
     res.json({ success: true, data: result })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/fees — Create fee for a student
@@ -102,7 +102,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 
     await fee.populate('student', 'firstName lastName matricule')
     res.status(201).json({ success: true, data: fee })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // PUT /api/fees/:id — Update fee
@@ -114,7 +114,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
     await fee.save()
     await fee.populate('student', 'firstName lastName matricule')
     res.json({ success: true, data: fee })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/fees/:id/record-payment — Record a payment (full or installment)
@@ -154,7 +154,7 @@ router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin'
     }
 
     res.json({ success: true, data: fee })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // POST /api/fees/:id/notify-installment — Send reminder to parent for overdue installment
@@ -180,7 +180,7 @@ router.post('/:id/notify-installment', protect, authorize('directeur', 'super_ad
     inst.notified = true
     await fee.save()
     res.json({ success: true, message: 'Rappel envoyé' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 router.get('/:id/receipt/:paymentIndex', protect, async (req, res) => {
@@ -246,7 +246,7 @@ router.get('/:id/receipt/:paymentIndex', protect, async (req, res) => {
     doc.moveDown()
     doc.fontSize(10).fillColor('#6b7280').text('Merci pour votre paiement.', { align: 'center' })
     doc.end()
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 // DELETE /api/fees/:id
@@ -254,7 +254,7 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
   try {
     await Fee.findOneAndDelete({ _id: req.params.id, school: schoolId(req) })
     res.json({ success: true, message: 'Frais supprimé' })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: err.message }) }
 })
 
 module.exports = router

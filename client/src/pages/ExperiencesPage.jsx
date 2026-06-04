@@ -8,7 +8,7 @@ export default function ExperiencesPage() {
   const [experiences, setExperiences] = useState([])
 
   useEffect(() => {
-    platformApi.getExperiences().then((r) => setExperiences(r.data || [])).catch(() => {})
+    platformApi.getExperiences().then((r) => setExperiences(r.data || [])).catch((err) => console.error(err))
   }, [])
 
   return (

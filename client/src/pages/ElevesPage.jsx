@@ -32,7 +32,7 @@ export default function ElevesPage() {
       const res = await studentsApi.list(params.toString())
       setStudents(res.data || [])
       setTotal(res.total || 0)
-    } catch (e) {}
+    } catch (err) { console.error(err) }
     setLoading(false)
   }
 
@@ -44,7 +44,7 @@ export default function ElevesPage() {
       ])
       setClasses(classRes.data || [])
       setTeachers(teacherRes.data || [])
-    } catch (e) {}
+    } catch (err) { console.error(err) }
   }
 
   useEffect(() => { fetchStudents(); fetchClasses() }, [])

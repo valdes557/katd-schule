@@ -22,7 +22,7 @@ function AdminDashboard({ user }) {
 
   const fetch = async () => {
     setLoading(true)
-    try { const r = await dashboardApi.getAdminStats(); setStats(r.data) } catch (_) {}
+    try { const r = await dashboardApi.getAdminStats(); setStats(r.data) } catch (err) { console.error(err) }
     setLoading(false)
   }
   useEffect(() => { fetch() }, [])
