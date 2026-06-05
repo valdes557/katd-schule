@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { GraduationCap, Upload, CheckCircle2, Loader2, ArrowLeft, AlertCircle, MapPin, Banknote, Copy, Phone } from 'lucide-react'
+import { GraduationCap, Upload, CheckCircle2, Loader2, ArrowLeft, AlertCircle, MapPin, Banknote, Copy, Phone, Camera } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { enrollmentApi, schoolsApi } from '../lib/api'
@@ -28,6 +28,8 @@ export default function EnrollmentPage() {
     classId: '',
   })
   const [paymentFile, setPaymentFile] = useState(null)
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
 
   useEffect(() => {
     const load = async () => {
@@ -64,6 +66,7 @@ export default function EnrollmentPage() {
       })
       formData.append('schoolId', schoolId)
       formData.append('paymentProof', paymentFile)
+      if (photoFile) formData.append('photo', photoFile)
 
       await enrollmentApi.submit(formData)
       setSubmitted(true)
@@ -171,6 +174,34 @@ export default function EnrollmentPage() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Lieu de naissance *</label>
                 <input required value={form.placeOfBirth} onChange={(e) => setForm({ ...form, placeOfBirth: e.target.value })} className="input text-sm" placeholder="Ex: Yaoundé" />
+              </div>
+            </div>
+
+            {/* Photo upload (optional) */}
+            <div className="flex items-center gap-4">
+              <div className="relative w-20 h-20 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden flex-shrink-0">
+                {photoPreview ? (
+                  <img src={photoPreview} alt="Photo" className="w-full h-full object-cover" />
+                ) : (
+                  <Camera size={24} className="text-gray-400" />
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const f = e.target.files[0]
+                    if (f) {
+                      setPhotoFile(f)
+                      setPhotoPreview(URL.createObjectURL(f))
+                    }
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-600">Photo de l'élève</p>
+                <p className="text-xs text-gray-400">Optionnel · JPG, PNG · Max 5 Mo</p>
+                {photoFile && <p className="text-xs text-green-600 mt-0.5">{photoFile.name}</p>}
               </div>
             </div>
 
