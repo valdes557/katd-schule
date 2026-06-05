@@ -455,7 +455,14 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
         {/* Login prompt if not logged in */}
         {!user && (
           <p className="text-[10px] text-center text-gray-400 mt-1">
-            <a href="/login" className="text-blue-500 hover:underline">Connectez-vous</a> pour télécharger
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="text-blue-500 hover:underline"
+            >
+              Connectez-vous
+            </button>{' '}
+            pour télécharger
           </p>
         )}
 
@@ -489,7 +496,14 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
               </div>
             ) : (
               <p className="text-xs text-center text-gray-400">
-                <a href="/login" className="text-blue-500 hover:underline">Connectez-vous</a> pour commenter
+                <button
+                  type="button"
+                  onClick={() => navigate('/login')}
+                  className="text-blue-500 hover:underline"
+                >
+                  Connectez-vous
+                </button>{' '}
+                pour commenter
               </p>
             )}
           </div>
