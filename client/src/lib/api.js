@@ -76,6 +76,30 @@ export const studentsApi = {
   get: (id) => api.get(`/students/${id}`),
   create: (data) => api.post('/students', data),
   update: (id, data) => api.put(`/students/${id}`, data),
+  createWithFile: async (data, photoFile) => {
+    const fd = new FormData()
+    Object.entries(data).forEach(([key, val]) => {
+      if (val != null && val !== '') fd.append(key, typeof val === 'object' ? JSON.stringify(val) : val)
+    })
+    if (photoFile) fd.append('photo', photoFile)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/students`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+  updateWithFile: async (id, data, photoFile) => {
+    const fd = new FormData()
+    Object.entries(data).forEach(([key, val]) => {
+      if (val != null && val !== '') fd.append(key, typeof val === 'object' ? JSON.stringify(val) : val)
+    })
+    if (photoFile) fd.append('photo', photoFile)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/students/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
   remove: (id) => api.del(`/students/${id}`),
   withParents: () => api.get('/students/with-parents'),
   createParentAccount: (studentId, data) => api.post(`/students/${studentId}/parent-account`, data),

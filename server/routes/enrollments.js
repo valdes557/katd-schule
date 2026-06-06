@@ -12,12 +12,13 @@ const { protect, authorize } = require('../middleware/auth')
 const { sendEnrollmentApprovalEmail, sendEnrollmentRejectionEmail } = require('../utils/emailService')
 const { generateMatricule } = require('../utils/matricule')
 
-// Multer config for payment proof
+// Multer config for payment proof and optional student photo
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => {
+    const prefix = file.fieldname === 'photo' ? 'photo' : 'proof'
     const unique = Date.now() + '-' + Math.round(Math.random() * 1e9)
-    cb(null, `proof-${unique}${path.extname(file.originalname)}`)
+    cb(null, `${prefix}-${unique}${path.extname(file.originalname)}`)
   },
 })
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } })
@@ -35,7 +36,7 @@ router.get('/school/:schoolId/classes', async (req, res) => {
 })
 
 // POST /api/enrollments — Public: submit enrollment request
-router.post('/', upload.single('paymentProof'), async (req, res) => {
+router.post('/', upload.fields([{ name: 'paymentProof', maxCount: 1 }, { name: 'photo', maxCount: 1 }]), async (req, res) => {
   try {
     const { firstName, lastName, dateOfBirth, placeOfBirth, gender, email, phone, schoolId, classId, fatherName, motherName, fatherPhone } = req.body
 
@@ -43,7 +44,10 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       return res.status(400).json({ message: 'Tous les champs obligatoires doivent être remplis' })
     }
 
-    if (!req.file) {
+    const paymentFile = req.files?.paymentProof?.[0]
+    const photoFile = req.files?.photo?.[0]
+
+    if (!paymentFile) {
       return res.status(400).json({ message: 'La preuve de paiement est obligatoire' })
     }
 
@@ -75,7 +79,8 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       class: classId,
       className: `${cls.name} (${cls.level})`,
       amount: cls.enrollmentFee || school.enrollmentFee || 0,
-      paymentProof: `/uploads/${req.file.filename}`,
+      paymentProof: `/uploads/${paymentFile.filename}`,
+      ...(photoFile ? { photo: `/uploads/${photoFile.filename}` } : {}),
     })
 
     res.status(201).json({
@@ -146,7 +151,9 @@ router.put('/:id/approve', protect, authorize('directeur', 'super_admin'), async
       lastName: enrollment.lastName,
       matricule,
       dateOfBirth: enrollment.dateOfBirth,
+      placeOfBirth: enrollment.placeOfBirth,
       gender: enrollment.gender,
+      photo: enrollment.photo || undefined,
       school: enrollment.school._id,
       class: enrollment.class._id,
       cycle: enrollment.class.cycle,

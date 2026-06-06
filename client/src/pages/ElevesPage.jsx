@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus } from 'lucide-react'
+import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus, Camera } from 'lucide-react'
 import { studentsApi, classesApi, teachersApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -21,6 +21,8 @@ export default function ElevesPage() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
 
   const fetchStudents = async () => {
     setLoading(true)
@@ -54,11 +56,18 @@ export default function ElevesPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      if (editing) await studentsApi.update(editing._id, form)
-      else await studentsApi.create(form)
+      if (photoFile) {
+        if (editing) await studentsApi.updateWithFile(editing._id, form, photoFile)
+        else await studentsApi.createWithFile(form, photoFile)
+      } else {
+        if (editing) await studentsApi.update(editing._id, form)
+        else await studentsApi.create(form)
+      }
       setShowModal(false)
       setEditing(null)
       setForm(EMPTY)
+      setPhotoFile(null)
+      setPhotoPreview(null)
       fetchStudents()
     } catch (e) { alert(e.message) }
   }
@@ -143,6 +152,8 @@ export default function ElevesPage() {
       teacher: s.teacher?._id || s.teacher || '',
       parent: s.parent || { name: '', phone: '', email: '', relation: 'pere' },
     })
+    setPhotoFile(null)
+    setPhotoPreview(s.photo || null)
     setShowModal(true)
   }
 
@@ -162,7 +173,7 @@ export default function ElevesPage() {
           <p className="text-sm text-gray-500">{total} élève(s) inscrit(s)</p>
         </div>
         {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
+          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setPhotoFile(null); setPhotoPreview(null); setShowModal(true) }} className="btn-primary text-sm self-start">
             <Plus size={15} /> Ajouter un élève
           </button>
         )}
@@ -428,6 +439,34 @@ export default function ElevesPage() {
               <button onClick={() => setShowModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-3">
+              {/* Photo upload (optional) */}
+              <div className="flex items-center gap-4">
+                <div className="relative w-20 h-20 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {photoPreview ? (
+                    <img src={photoPreview.startsWith('blob:') ? photoPreview : (photoPreview.startsWith('/') ? photoPreview : photoPreview)} alt="Photo" className="w-full h-full object-cover" />
+                  ) : (
+                    <Camera size={24} className="text-gray-400" />
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files[0]
+                      if (f) {
+                        setPhotoFile(f)
+                        setPhotoPreview(URL.createObjectURL(f))
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-600">Photo de l'élève</p>
+                  <p className="text-xs text-gray-400">Optionnel · JPG, PNG · Max 5 Mo</p>
+                  {photoFile && <p className="text-xs text-green-600 mt-0.5">{photoFile.name}</p>}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600">Prénom *</label>

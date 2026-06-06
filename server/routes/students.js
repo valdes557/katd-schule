@@ -1,10 +1,21 @@
 const express = require('express')
 const router = express.Router()
+const multer = require('multer')
+const path = require('path')
 const Student = require('../models/Student')
 const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
 const Teacher = require('../models/Teacher')
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => {
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9)
+    cb(null, `photo-${unique}${path.extname(file.originalname)}`)
+  },
+})
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } })
 
 // @route  GET /api/students
 router.get('/', protect, async (req, res) => {
@@ -81,7 +92,7 @@ router.get('/:id', protect, async (req, res) => {
 })
 
 // @route  POST /api/students
-router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin'), upload.single('photo'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
     if (req.user.role === 'directeur') {
@@ -90,7 +101,10 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
         return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ». ` })
       }
     }
-    const student = await Student.create({ ...req.body, school: schoolId })
+    const body = { ...req.body }
+    if (req.file) body.photo = `/uploads/${req.file.filename}`
+    if (body.parent && typeof body.parent === 'string') body.parent = JSON.parse(body.parent)
+    const student = await Student.create({ ...body, school: schoolId })
 
     if (req.body.teacher && student.class) {
       await Teacher.findByIdAndUpdate(req.body.teacher, { $addToSet: { classes: student.class } })
@@ -104,9 +118,12 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 })
 
 // @route  PUT /api/students/:id
-router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'), upload.single('photo'), async (req, res) => {
   try {
-    const student = await Student.findByIdAndUpdate(req.params.id, req.body, {
+    const body = { ...req.body }
+    if (req.file) body.photo = `/uploads/${req.file.filename}`
+    if (body.parent && typeof body.parent === 'string') body.parent = JSON.parse(body.parent)
+    const student = await Student.findByIdAndUpdate(req.params.id, body, {
       new: true, runValidators: true,
     })
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
