@@ -147,6 +147,10 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
     if (academicYear) gradeQuery.academicYear = academicYear
     const grades = await Grade.find(gradeQuery).lean()
 
+    // Which terms actually have grades for this student (used by the UI to avoid
+    // showing an empty bulletin when notes exist in another term).
+    const availableTerms = await Grade.distinct('term', { student: studentId })
+
     // 3. All subjects + their coefficient (from Subject model when available)
     const subjectDocs = classId ? await Subject.find({ classes: classId }).lean() : []
     const coefMap = {}
@@ -272,6 +276,7 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
         class: student.class ? { name: student.class.name, level: student.class.level, cycle: student.class.cycle } : null,
         academicYear: year,
         term: term || null,
+        availableTerms,
         subjects,
         generalAverage,
         appreciation: appreciationFor(generalAverage),

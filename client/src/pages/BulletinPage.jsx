@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Download, Printer, Loader2, AlertCircle, Calendar } from 'lucide-react'
 import html2pdf from 'html2pdf.js'
@@ -21,6 +21,10 @@ export default function BulletinPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const autoSwitchedRef = useRef(false)
+
+  // When the selected student changes, allow one automatic term switch again
+  useEffect(() => { autoSwitchedRef.current = false }, [studentId])
 
   // Load list of accessible students depending on role
   useEffect(() => {
@@ -49,7 +53,17 @@ export default function BulletinPage() {
       setLoading(true); setError(null)
       try {
         const r = await gradesApi.bulletin(studentId, term)
-        setData(r.data)
+        const d = r.data
+        // If this term has no grades but other terms do, switch automatically (once)
+        const noNotes = !d?.subjects || d.subjects.length === 0
+        const others = (d?.availableTerms || []).filter((t) => t && t !== term)
+        if (noNotes && others.length > 0 && !autoSwitchedRef.current) {
+          autoSwitchedRef.current = true
+          const ordered = TERMS.filter((t) => d.availableTerms.includes(t))
+          const best = ordered.length ? ordered[ordered.length - 1] : others[0]
+          if (best && best !== term) { setTerm(best); return } // re-fetch will run with the new term
+        }
+        setData(d)
       } catch (e) { setError(e.message || 'Erreur de chargement') }
       setLoading(false)
     })()
@@ -86,7 +100,22 @@ export default function BulletinPage() {
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     }
 
-    html2pdf().set(options).from(element).save()
+    // Generate the PDF as a Blob and trigger a real download so it is reliably
+    // saved to the device's storage (Downloads folder on phone/desktop).
+    const worker = html2pdf().set(options).from(element)
+    worker.outputPdf('blob').then((blob) => {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+    }).catch(() => {
+      // Fallback to html2pdf's built-in save if blob generation fails
+      html2pdf().set(options).from(element).save()
+    })
   }
 
   const handlePrint = () => window.print()
@@ -140,7 +169,7 @@ export default function BulletinPage() {
       )}
 
       <div className="no-print text-center text-xs text-gray-400 pt-2">
-        <Calendar size={11} className="inline mr-1" /> Astuce : le bouton « Télécharger (PDF) » ouvre la boîte de dialogue d'impression — choisissez <strong>« Enregistrer au format PDF »</strong> comme destination.
+        <Calendar size={11} className="inline mr-1" /> Le bouton « Télécharger (PDF) » enregistre directement le bulletin sur votre appareil (dossier <strong>Téléchargements</strong>).
       </div>
     </div>
   )

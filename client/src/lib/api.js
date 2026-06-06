@@ -206,6 +206,25 @@ export const platformApi = {
     const res = await fetch(`${API_URL}/platform/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
+  // Same as createPost but reports upload progress (0-100) via onProgress — uses
+  // XMLHttpRequest because fetch() cannot report upload progress.
+  createPostWithProgress: (formData, onProgress) => new Promise((resolve, reject) => {
+    const token = localStorage.getItem('token')
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_URL}/platform/posts`)
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch (_) {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+      else reject(new Error(data.message || `Erreur HTTP ${xhr.status}`))
+    }
+    xhr.onerror = () => reject(new Error('Impossible de joindre le serveur. Vérifiez votre connexion.'))
+    xhr.send(formData)
+  }),
   updatePost: (id, data) => api.put(`/platform/posts/${id}`, data),
   deletePost: (id) => api.del(`/platform/posts/${id}`),
   likePost: (id) => api.put(`/platform/posts/${id}/like`),

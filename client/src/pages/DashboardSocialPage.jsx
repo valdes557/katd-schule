@@ -24,6 +24,7 @@ export default function DashboardSocialPage() {
   const [videoFile, setVideoFile] = useState(null)
   const [previews, setPreviews] = useState([])
   const [submitting, setSubmitting] = useState(false)
+  const [progress, setProgress] = useState(0)
 
   const imageRef = useRef(null)
   const audioRef = useRef(null)
@@ -54,6 +55,7 @@ export default function DashboardSocialPage() {
     e.preventDefault()
     if (!form.content.trim() || !form.title.trim()) return
     setSubmitting(true)
+    setProgress(0)
     const fd = new FormData()
     fd.append('mediaType', mediaType)
     Object.entries(form).forEach(([k, v]) => {
@@ -63,7 +65,7 @@ export default function DashboardSocialPage() {
     if (audioFile) fd.append('audio', audioFile)
     if (videoFile) fd.append('video', videoFile)
     try {
-      const r = await platformApi.createPost(fd)
+      const r = await platformApi.createPostWithProgress(fd, setProgress)
       if (r.success && r.data) {
         setFeed((prev) => [r.data, ...(prev || [])])
         resetForm()
@@ -74,6 +76,7 @@ export default function DashboardSocialPage() {
       alert(err.message)
     }
     setSubmitting(false)
+    setProgress(0)
   }
 
   return (
@@ -219,8 +222,18 @@ export default function DashboardSocialPage() {
 
           <button type="submit" disabled={submitting} className="btn-primary text-sm">
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-            Publier
+            {submitting && progress > 0 && progress < 100 ? `Envoi… ${progress}%` : 'Publier'}
           </button>
+
+          {/* Upload progress bar — shown while media is being sent to the server */}
+          {submitting && progress > 0 && (
+            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-blue-600 h-full transition-all duration-200"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          )}
         </form>
       </div>
 
