@@ -22,6 +22,16 @@ export default function TeacherHomeworkPage() {
   const [completionStudents, setCompletionStudents] = useState({}) // hwId -> []
   const [completionLoading, setCompletionLoading] = useState(null)
   const [notifying, setNotifying] = useState(null)
+  const [subStatus, setSubStatus] = useState({})     // hwId -> { studentId: 'none'|'on_time'|'late' }
+  const [subDateTime, setSubDateTime] = useState({}) // hwId -> { studentId: 'YYYY-MM-DDTHH:mm' }
+  const [savingSub, setSavingSub] = useState(null)
+
+  // Format a Date into the value expected by <input type="datetime-local"> (local time)
+  const toLocalDatetime = (d) => {
+    const dt = new Date(d)
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+  }
 
   const load = async () => {
     setLoading(true)
@@ -91,27 +101,52 @@ export default function TeacherHomeworkPage() {
       })
       setCompletionStudents((p) => ({ ...p, [hw._id]: classStudents }))
       const init = {}
+      const initStatus = {}
+      const initDt = {}
       classStudents.forEach((s) => {
         const sub = hw.submissions?.find((sub) => sub.student === s._id || sub.student?._id === s._id)
         init[s._id] = !!sub
+        if (sub) {
+          initStatus[s._id] = sub.submissionType === 'late' ? 'late' : 'on_time'
+          initDt[s._id] = sub.submittedAt ? toLocalDatetime(sub.submittedAt) : ''
+        } else {
+          initStatus[s._id] = 'none'
+          initDt[s._id] = ''
+        }
       })
       setCompletions((p) => ({ ...p, [hw._id]: init }))
+      setSubStatus((p) => ({ ...p, [hw._id]: initStatus }))
+      setSubDateTime((p) => ({ ...p, [hw._id]: initDt }))
     } catch (_) {}
     setCompletionLoading(null)
   }
 
-  const toggleCompletion = (hwId, studentId) => {
-    setCompletions((p) => ({ ...p, [hwId]: { ...p[hwId], [studentId]: !p[hwId]?.[studentId] } }))
+  const setStudentStatus = (hwId, studentId, status) => {
+    setSubStatus((p) => ({ ...p, [hwId]: { ...p[hwId], [studentId]: status } }))
   }
 
-  const saveCompletion = async (hwId) => {
-    const entries = Object.entries(completions[hwId] || {})
-    const payload = entries.map(([studentId, done]) => ({ studentId, done }))
+  const setStudentDateTime = (hwId, studentId, value) => {
+    setSubDateTime((p) => ({ ...p, [hwId]: { ...p[hwId], [studentId]: value } }))
+  }
+
+  const saveSubmissions = async (hwId) => {
+    const statusMap = subStatus[hwId] || {}
+    const dtMap = subDateTime[hwId] || {}
+    // Every "late" submission must carry a submission date/time
+    const missingDt = Object.entries(statusMap).some(([sid, st]) => st === 'late' && !dtMap[sid])
+    if (missingDt) return alert("Veuillez indiquer la date et l'heure de remise pour chaque devoir remis en retard.")
+    const entries = Object.entries(statusMap).map(([studentId, status]) => {
+      const e = { studentId, submissionType: status }
+      if (status === 'late') e.submittedAt = new Date(dtMap[studentId]).toISOString()
+      return e
+    })
+    setSavingSub(hwId)
     try {
-      await teacherApi.markHomeworkCompletion(hwId, payload)
-      alert('Complétion enregistrée')
+      await teacherApi.recordSubmissions(hwId, entries)
+      alert('Remises validées ✅ — les parents concernés ont été notifiés par email.')
       load()
     } catch (e) { alert(e.message) }
+    setSavingSub(null)
   }
 
   const handleGrade = async (hwId, subId) => {
@@ -212,11 +247,15 @@ export default function TeacherHomeworkPage() {
                           completionView[hw._id] === 'completion'
                             ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                         }`}
-                      >Marquer complétion</button>
+                      >Remises &amp; validation</button>
                     </div>
 
                     {completionView[hw._id] === 'completion' && (
                       <div className="space-y-2">
+                        <p className="text-[11px] text-gray-500">
+                          Pour chaque élève, indiquez s'il a remis le devoir <strong>à temps</strong> ou <strong>en retard</strong>.
+                          En cas de retard, précisez la date et l'heure de remise. À la validation, les parents concernés sont notifiés par email.
+                        </p>
                         {completionLoading === hw._id && (
                           <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin text-blue-600" /></div>
                         )}
@@ -224,27 +263,50 @@ export default function TeacherHomeworkPage() {
                           <p className="text-xs text-gray-400 text-center py-2">Aucun élève trouvé pour cette classe</p>
                         )}
                         {completionLoading !== hw._id && (completionStudents[hw._id] || []).length > 0 && (
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             {(completionStudents[hw._id] || []).map((s) => {
-                              const done = completions[hw._id]?.[s._id] ?? false
+                              const status = subStatus[hw._id]?.[s._id] ?? 'none'
+                              const bg = status === 'on_time' ? 'bg-green-50' : status === 'late' ? 'bg-amber-50' : 'bg-gray-50'
+                              const Opt = ({ value, label, activeClass }) => (
+                                <button
+                                  onClick={() => setStudentStatus(hw._id, s._id, value)}
+                                  className={`text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${
+                                    status === value ? activeClass : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100'
+                                  }`}
+                                >{label}</button>
+                              )
                               return (
-                                <div key={s._id} className={`flex items-center gap-3 p-2 rounded-lg ${done ? 'bg-green-50' : 'bg-red-50'}`}>
-                                  <button onClick={() => toggleCompletion(hw._id, s._id)} className={`flex-shrink-0 ${done ? 'text-green-600' : 'text-red-400'}`}>
-                                    {done ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-                                  </button>
-                                  <div className="flex-1">
-                                    <p className="text-xs font-medium text-gray-800">{s.lastName} {s.firstName}</p>
-                                    <p className="text-[10px] text-gray-400">{s.matricule}</p>
+                                <div key={s._id} className={`p-2 rounded-lg ${bg}`}>
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium text-gray-800 truncate">{s.lastName} {s.firstName}</p>
+                                      <p className="text-[10px] text-gray-400">{s.matricule}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      <Opt value="none" label="Non remis" activeClass="bg-red-100 text-red-600 border border-red-200" />
+                                      <Opt value="on_time" label="✅ À temps" activeClass="bg-green-600 text-white" />
+                                      <Opt value="late" label="⏰ En retard" activeClass="bg-amber-500 text-white" />
+                                    </div>
                                   </div>
-                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${done ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                                    {done ? '✅ Fait' : '❌ Non fait'}
-                                  </span>
+                                  {status === 'late' && (
+                                    <div className="mt-2 flex items-center gap-2 pl-1">
+                                      <Clock size={12} className="text-amber-600 flex-shrink-0" />
+                                      <label className="text-[10px] text-gray-500">Remis le :</label>
+                                      <input
+                                        type="datetime-local"
+                                        value={subDateTime[hw._id]?.[s._id] || ''}
+                                        onChange={(e) => setStudentDateTime(hw._id, s._id, e.target.value)}
+                                        className="input text-[11px] py-1 w-auto"
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                               )
                             })}
                             <div className="flex gap-2 pt-2">
-                              <button onClick={() => saveCompletion(hw._id)} className="btn-primary text-xs flex-1 justify-center">
-                                <Save size={12} /> Enregistrer &amp; notifier parents
+                              <button onClick={() => saveSubmissions(hw._id)} disabled={savingSub === hw._id} className="btn-primary text-xs flex-1 justify-center">
+                                {savingSub === hw._id ? <Loader2 size={12} className="animate-spin" /> : <Bell size={12} />}
+                                Approuver &amp; notifier les parents
                               </button>
                             </div>
                           </div>
@@ -274,6 +336,13 @@ export default function TeacherHomeworkPage() {
                                   </p>
                                   {sub.text && <p className="text-[10px] text-gray-500 mt-1 italic line-clamp-2">{sub.text}</p>}
                                   {sub.file && <a href={sub.file} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 hover:underline mt-1 inline-flex items-center gap-1"><FileText size={10} /> Fichier joint</a>}
+                                  {sub.justification?.submittedAt && (
+                                    <div className="mt-1.5 p-2 rounded-lg bg-blue-50 border border-blue-100">
+                                      <p className="text-[10px] font-semibold text-blue-700 flex items-center gap-1"><Bell size={10} /> Justificatif du parent</p>
+                                      {sub.justification.text && <p className="text-[10px] text-gray-600 italic mt-0.5">{sub.justification.text}</p>}
+                                      {sub.justification.file && <a href={sub.justification.file.startsWith('http') ? sub.justification.file : `${import.meta.env.VITE_API_URL || ''}${sub.justification.file}`} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 hover:underline mt-0.5 inline-flex items-center gap-1"><FileText size={10} /> Pièce jointe</a>}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {sub.status === 'graded' && (

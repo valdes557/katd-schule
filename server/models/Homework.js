@@ -8,6 +8,18 @@ const submissionSchema = new mongoose.Schema({
   grade: { type: Number, min: 0, max: 20 },
   comment: { type: String },
   status: { type: String, enum: ['submitted', 'late', 'graded'], default: 'submitted' },
+  // Whether the homework was handed in on time or late (set by the teacher when validating)
+  submissionType: { type: String, enum: ['on_time', 'late'], default: 'on_time' },
+  // Teacher approval + parent notification tracking
+  approved: { type: Boolean, default: false },
+  approvedAt: { type: Date },
+  parentNotifiedAt: { type: Date },
+  // Justification sent by the parent (message + optional attached file)
+  justification: {
+    text: { type: String },
+    file: { type: String },
+    submittedAt: { type: Date },
+  },
 })
 
 const homeworkSchema = new mongoose.Schema(

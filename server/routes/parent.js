@@ -17,6 +17,20 @@ const Subject = require('../models/Subject')
 const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
 const SchoolPost = require('../models/SchoolPost')
+const User = require('../models/User')
+const { sendEmail } = require('../utils/emailService')
+const multer = require('multer')
+const path = require('path')
+
+// Disk storage for parent justification attachments (same pattern as teacher reports)
+const justificationStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => cb(null, `justif-${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`),
+})
+const uploadJustification = multer({
+  storage: justificationStorage,
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
+})
 
 // Middleware: only parents
 const parentOnly = (req, res, next) => {
@@ -191,6 +205,10 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
               hws.map((h) => {
                 const sub = h.submissions.find((s) => s.student.toString() === student._id.toString())
                 const teacherMarkedDone = h.submissions.some((s) => s.student.toString() === student._id.toString())
+                // Prefer the teacher-set submissionType; fall back to date comparison
+                const isLate = sub
+                  ? (sub.submissionType === 'late' || (!sub.submissionType && sub.submittedAt > h.dueDate))
+                  : (!sub && new Date() > h.dueDate)
                 return {
                   _id: h._id,
                   title: h.title,
@@ -202,9 +220,15 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
                   teacherMarkedDone,
                   submitted: !!sub,
                   submittedAt: sub?.submittedAt,
+                  submissionType: sub?.submissionType || null,
+                  approved: sub?.approved || false,
+                  approvedAt: sub?.approvedAt || null,
                   grade: sub?.grade,
-                  isLate: sub ? sub.submittedAt > h.dueDate : (!sub && new Date() > h.dueDate),
-                  status: sub ? (sub.submittedAt > h.dueDate ? 'late' : 'submitted') : (new Date() > h.dueDate ? 'overdue' : 'pending'),
+                  justification: sub?.justification?.submittedAt
+                    ? { text: sub.justification.text, file: sub.justification.file, submittedAt: sub.justification.submittedAt }
+                    : null,
+                  isLate,
+                  status: sub ? (isLate ? 'late' : 'submitted') : (new Date() > h.dueDate ? 'overdue' : 'pending'),
                 }
               })
             )
@@ -316,6 +340,54 @@ router.get('/homework/:hwId/completion', protect, parentOnly, async (req, res) =
         stats: { done: doneCount, notDone: completion.length - doneCount, total: completion.length },
       },
     })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── PARENT SENDS A JUSTIFICATION FOR A CHILD'S HOMEWORK SUBMISSION ───
+// multipart/form-data: { studentId, text } + optional file field "file"
+router.post('/homework/:hwId/justification', protect, parentOnly, uploadJustification.single('file'), async (req, res) => {
+  try {
+    const { studentId, text } = req.body
+    if (!studentId) return res.status(400).json({ message: 'studentId requis' })
+    if (!text && !req.file) return res.status(400).json({ message: 'Un message ou un fichier est requis' })
+
+    // Verify the parent owns this child
+    const child = await Student.findOne({ _id: studentId, parentUser: req.user._id })
+    if (!child) return res.status(403).json({ message: 'Accès refusé — cet élève n\'est pas votre enfant' })
+
+    const hw = await Homework.findById(req.params.hwId)
+    if (!hw) return res.status(404).json({ message: 'Devoir non trouvé' })
+
+    // Find (or create) the child's submission entry to attach the justification
+    let sub = hw.submissions.find((s) => s.student.toString() === studentId.toString())
+    if (!sub) {
+      hw.submissions.push({ student: studentId, status: 'submitted', submissionType: 'on_time', approved: false })
+      sub = hw.submissions[hw.submissions.length - 1]
+    }
+    sub.justification = {
+      text: text || '',
+      file: req.file ? `/uploads/${req.file.filename}` : (sub.justification?.file || undefined),
+      submittedAt: new Date(),
+    }
+    await hw.save()
+
+    // Notify the teacher by email (async, non-blocking)
+    if (hw.teacher) {
+      Teacher.findById(hw.teacher).populate('user', 'email name').then((teacher) => {
+        const email = teacher?.user?.email
+        if (!email) return
+        const fileLink = req.file
+          ? `<p><a href="${process.env.SERVER_URL || ''}/uploads/${req.file.filename}">📎 Pièce jointe</a></p>`
+          : ''
+        sendEmail({
+          to: email,
+          subject: `📝 Justificatif de remise — ${hw.subject} (${child.lastName} ${child.firstName})`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:#2563EB;padding:20px;border-radius:8px 8px 0 0"><h2 style="color:white;margin:0">Nouveau justificatif d'un parent</h2></div><div style="background:#F9FAFB;padding:20px;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 8px 8px"><p>Le parent de <strong>${child.lastName} ${child.firstName}</strong> a envoyé un justificatif concernant le devoir <strong>${hw.title}</strong> (${hw.subject}) :</p><blockquote style="border-left:3px solid #2563EB;margin:12px 0;padding:8px 12px;background:#EFF6FF;color:#1E3A8A;font-style:italic">${(text || '').replace(/</g, '&lt;') || '(aucun message)'}</blockquote>${fileLink}<div style="text-align:center;margin-top:20px"><a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="background:#2563EB;color:white;padding:10px 24px;border-radius:6px;text-decoration:none;font-size:14px">Voir dans mon espace</a></div></div></div>`,
+        }).catch(() => {})
+      }).catch(() => {})
+    }
+
+    res.json({ success: true, message: 'Justificatif envoyé à l\'enseignant', data: { justification: sub.justification } })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

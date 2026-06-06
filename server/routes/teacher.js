@@ -527,6 +527,91 @@ router.put('/homework/:hwId/completion', protect, teacherOnly, async (req, res) 
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// ─── VALIDER LES REMISES DE DEVOIR (à temps / en retard) + NOTIFIER LES PARENTS ───
+// Body: { entries: [{ studentId, submissionType: 'none'|'on_time'|'late', submittedAt? }] }
+router.put('/homework/:hwId/submissions', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
+
+    const homework = await Homework.findOne({ _id: req.params.hwId, teacher: teacher._id })
+    if (!homework) return res.status(404).json({ message: 'Devoir non trouvé' })
+
+    const { entries } = req.body
+    if (!Array.isArray(entries)) return res.status(400).json({ message: 'entries doit être un tableau' })
+
+    const now = new Date()
+    const toNotify = [] // { studentId, submissionType, submittedAt }
+
+    entries.forEach(({ studentId, submissionType, submittedAt }) => {
+      if (!studentId) return
+      const idx = homework.submissions.findIndex((s) => s.student.toString() === studentId.toString())
+
+      // 'none' => remove any existing submission (not handed in)
+      if (submissionType === 'none' || !submissionType) {
+        if (idx !== -1) homework.submissions.splice(idx, 1)
+        return
+      }
+
+      const isLate = submissionType === 'late'
+      const when = isLate && submittedAt ? new Date(submittedAt) : now
+
+      const fields = {
+        submissionType: isLate ? 'late' : 'on_time',
+        submittedAt: when,
+        approved: true,
+        approvedAt: now,
+        parentNotifiedAt: now,
+      }
+
+      if (idx === -1) {
+        homework.submissions.push({ student: studentId, status: isLate ? 'late' : 'submitted', ...fields })
+      } else {
+        const sub = homework.submissions[idx]
+        // Don't downgrade a graded submission's status, but keep the rest in sync
+        if (sub.status !== 'graded') sub.status = isLate ? 'late' : 'submitted'
+        sub.submissionType = fields.submissionType
+        sub.submittedAt = fields.submittedAt
+        sub.approved = true
+        sub.approvedAt = now
+        sub.parentNotifiedAt = now
+      }
+
+      toNotify.push({ studentId, submissionType: fields.submissionType, submittedAt: when })
+    })
+
+    await homework.save()
+
+    // Notify each concerned parent immediately by email (async, non-blocking)
+    if (toNotify.length > 0) {
+      const ids = toNotify.map((t) => t.studentId)
+      Student.find({ _id: { $in: ids } })
+        .populate('parentUser', 'email name')
+        .then((students) => {
+          const dueStr = new Date(homework.dueDate).toLocaleDateString('fr-FR')
+          toNotify.forEach((t) => {
+            const s = students.find((st) => st._id.toString() === t.studentId.toString())
+            if (!s?.parentUser?.email) return
+            const isLate = t.submissionType === 'late'
+            const whenStr = new Date(t.submittedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            const badge = isLate
+              ? `<span style="background:#FEF3C7;color:#92400E;padding:4px 10px;border-radius:999px;font-weight:700">⏰ Remis en retard</span>`
+              : `<span style="background:#DCFCE7;color:#166534;padding:4px 10px;border-radius:999px;font-weight:700">✅ Remis à temps</span>`
+            sendEmail({
+              to: s.parentUser.email,
+              subject: isLate
+                ? `⏰ Devoir remis en retard — ${homework.subject}`
+                : `✅ Devoir remis à temps — ${homework.subject}`,
+              html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto"><div style="background:#7C3AED;padding:20px;border-radius:8px 8px 0 0"><h2 style="color:white;margin:0">Remise de devoir confirmée</h2></div><div style="background:#F9FAFB;padding:20px;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 8px 8px"><p>Bonjour <strong>${s.parentUser.name || ''}</strong>,</p><p>L'enseignant a validé la remise du devoir de votre enfant <strong>${s.lastName} ${s.firstName}</strong> :</p><table style="width:100%;border-collapse:collapse;font-size:14px"><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Devoir</td><td style="padding:8px;border-bottom:1px solid #E5E7EB;font-weight:700">${homework.title}</td></tr><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Matière</td><td style="padding:8px;border-bottom:1px solid #E5E7EB">${homework.subject}</td></tr><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">Statut</td><td style="padding:8px;border-bottom:1px solid #E5E7EB">${badge}</td></tr><tr><td style="padding:8px;border-bottom:1px solid #E5E7EB;color:#6B7280">${isLate ? 'Remis le' : 'Validé le'}</td><td style="padding:8px;border-bottom:1px solid #E5E7EB;font-weight:700">${whenStr}</td></tr><tr><td style="padding:8px;color:#6B7280">Date limite</td><td style="padding:8px">${dueStr}</td></tr></table>${isLate ? `<p style="margin-top:16px;color:#92400E">Vous pouvez envoyer un justificatif depuis votre espace parent pour expliquer ce retard.</p>` : ''}<div style="text-align:center;margin-top:20px"><a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="background:#7C3AED;color:white;padding:10px 24px;border-radius:6px;text-decoration:none;font-size:14px">Voir dans mon espace parent</a></div></div></div>`,
+            }).catch(() => {})
+          })
+        }).catch(() => {})
+    }
+
+    res.json({ success: true, message: 'Remises validées et parents notifiés', data: homework })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // ─── SOUMETTRE LA PRÉSENCE + NOTIFIER LES PARENTS ───
 // Override the existing attendance submission to also notify parents (new route suffix)
 router.post('/attendance/:classId/notify', protect, teacherOnly, async (req, res) => {

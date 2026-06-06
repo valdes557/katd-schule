@@ -330,6 +330,7 @@ export const teacherApi = {
   deleteHomework: (id) => api.del(`/teacher/homeworks/${id}`),
   gradeSubmission: (hwId, subId, data) => api.put(`/teacher/homeworks/${hwId}/submissions/${subId}/grade`, data),
   markHomeworkCompletion: (hwId, completions) => api.put(`/teacher/homework/${hwId}/completion`, { completions }),
+  recordSubmissions: (hwId, entries) => api.put(`/teacher/homework/${hwId}/submissions`, { entries }),
   notifyAttendance: (classId, attendanceId) => api.post(`/teacher/attendance/${classId}/notify`, { attendanceId }),
   classParents: (classId) => api.get(`/teacher/class/${classId}/parents`),
   analytics: () => api.get('/teacher/analytics'),
@@ -381,6 +382,21 @@ export const parentApi = {
   classTeachers: (studentId) => api.get(`/parent/children/${studentId}/teachers`),
   feeInstallments: () => api.get('/parent/fees/installments'),
   homeworkClassCompletion: (hwId) => api.get(`/parent/homework/${hwId}/completion`),
+  sendHomeworkJustification: async (hwId, { studentId, text, file }) => {
+    const fd = new FormData()
+    fd.append('studentId', studentId)
+    if (text) fd.append('text', text)
+    if (file) fd.append('file', file)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/parent/homework/${hwId}/justification`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    return data
+  },
   childSubjects: (studentId) => api.get(`/parent/children/${studentId}/subjects`),
   activities: () => api.get('/parent/activities'),
   resources: () => api.get('/parent/resources'),

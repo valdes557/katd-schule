@@ -8,7 +8,7 @@ import {
   ArrowLeft, BookOpen, CalendarCheck, FileText, Clock, CheckCircle2,
   XCircle, AlertTriangle, Loader2, RefreshCw, User, Download, Wifi,
   Users, GraduationCap, Phone, Mail, Banknote, ListChecks, ChevronDown, ChevronRight,
-  ClipboardList,
+  ClipboardList, Send, Paperclip,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
 import { cn } from '../lib/utils'
@@ -50,6 +50,23 @@ export default function ParentChildDetailPage() {
   const [expandedHw, setExpandedHw] = useState(null)
   const [subjects, setSubjects] = useState(null)
   const [subjectsLoading, setSubjectsLoading] = useState(false)
+  const [justifOpen, setJustifOpen] = useState(null)   // hwId whose justification form is open
+  const [justifForm, setJustifForm] = useState({})     // hwId -> { text, file }
+  const [justifSaving, setJustifSaving] = useState(null)
+
+  const sendJustification = async (hwId) => {
+    const f = justifForm[hwId] || {}
+    if (!f.text && !f.file) return alert('Veuillez écrire un message ou joindre un fichier.')
+    setJustifSaving(hwId)
+    try {
+      await parentApi.sendHomeworkJustification(hwId, { studentId, text: f.text, file: f.file })
+      alert('Justificatif envoyé à l\'enseignant ✅')
+      setJustifOpen(null)
+      setJustifForm((p) => ({ ...p, [hwId]: { text: '', file: null } }))
+      load()
+    } catch (e) { alert(e.message) }
+    setJustifSaving(null)
+  }
 
   const load = async () => {
     setLoading(true)
@@ -423,13 +440,27 @@ export default function ParentChildDetailPage() {
                     <span>Assigné: {new Date(h.assignedDate).toLocaleDateString('fr-FR')}</span>
                     <span>Échéance: {new Date(h.dueDate).toLocaleDateString('fr-FR')}</span>
                   </div>
-                  {/* Teacher completion status */}
-                  <div className="flex items-center gap-2 mt-2">
-                    {h.teacherMarkedDone
-                      ? <span className="inline-flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold"><CheckCircle2 size={10} /> Fait (confirmé par l'enseignant)</span>
-                      : <span className="inline-flex items-center gap-1 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"><XCircle size={10} /> Pas encore marqué fait</span>
-                    }
+                  {/* Teacher completion / submission status */}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {!h.teacherMarkedDone && (
+                      <span className="inline-flex items-center gap-1 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"><XCircle size={10} /> Pas encore marqué fait</span>
+                    )}
+                    {h.teacherMarkedDone && h.submissionType === 'late' && (
+                      <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold"><Clock size={10} /> Remis en retard</span>
+                    )}
+                    {h.teacherMarkedDone && h.submissionType !== 'late' && (
+                      <span className="inline-flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold"><CheckCircle2 size={10} /> Remis à temps</span>
+                    )}
+                    {h.teacherMarkedDone && h.approved && (
+                      <span className="inline-flex items-center gap-1 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"><CheckCircle2 size={10} /> Validé par l'enseignant</span>
+                    )}
                   </div>
+                  {h.teacherMarkedDone && h.submittedAt && (
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      {h.submissionType === 'late' ? 'Remis le ' : 'Validé le '}
+                      <strong>{new Date(h.submittedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong>
+                    </p>
+                  )}
                 </div>
                 <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap flex-shrink-0',
                   h.status === 'submitted' ? 'bg-green-100 text-green-700' :
@@ -442,6 +473,48 @@ export default function ParentChildDetailPage() {
               </div>
               {h.grade != null && <p className="text-xs text-blue-600 mt-1 font-medium">Note: {h.grade}/20</p>}
               {h.description && <p className="text-xs text-gray-400 mt-1 italic">{h.description}</p>}
+
+              {/* Justificatif déjà envoyé */}
+              {h.justification?.submittedAt && (
+                <div className="mt-2 p-2 rounded-lg bg-blue-50 border border-blue-100">
+                  <p className="text-[10px] font-semibold text-blue-700 flex items-center gap-1"><CheckCircle2 size={10} /> Justificatif envoyé le {new Date(h.justification.submittedAt).toLocaleDateString('fr-FR')}</p>
+                  {h.justification.text && <p className="text-[10px] text-gray-600 italic mt-0.5">{h.justification.text}</p>}
+                  {h.justification.file && <a href={h.justification.file.startsWith('http') ? h.justification.file : `${import.meta.env.VITE_API_URL || ''}${h.justification.file}`} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 hover:underline mt-0.5 inline-flex items-center gap-1"><Paperclip size={10} /> Pièce jointe</a>}
+                </div>
+              )}
+
+              {/* Envoyer / mettre à jour un justificatif */}
+              {h.teacherMarkedDone && (
+                justifOpen === h._id ? (
+                  <div className="mt-2 p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
+                    <p className="text-[11px] font-semibold text-gray-700">Justifier la remise auprès de l'enseignant</p>
+                    <textarea
+                      value={justifForm[h._id]?.text || ''}
+                      onChange={(e) => setJustifForm((p) => ({ ...p, [h._id]: { ...p[h._id], text: e.target.value } }))}
+                      className="input text-xs w-full" rows={3}
+                      placeholder="Ex: Mon enfant était malade, certificat médical joint…"
+                    />
+                    <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer">
+                      <Paperclip size={12} />
+                      <span>{justifForm[h._id]?.file ? justifForm[h._id].file.name : 'Joindre un fichier (optionnel)'}</span>
+                      <input type="file" className="hidden" onChange={(e) => setJustifForm((p) => ({ ...p, [h._id]: { ...p[h._id], file: e.target.files?.[0] || null } }))} />
+                    </label>
+                    <div className="flex gap-2">
+                      <button onClick={() => setJustifOpen(null)} className="btn-ghost text-xs flex-1 justify-center border border-gray-200">Annuler</button>
+                      <button onClick={() => sendJustification(h._id)} disabled={justifSaving === h._id} className="btn-primary text-xs flex-1 justify-center">
+                        {justifSaving === h._id ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Envoyer
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setJustifOpen(h._id)}
+                    className="mt-2 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    <Send size={11} /> {h.justification?.submittedAt ? 'Modifier le justificatif' : 'Envoyer un justificatif'}
+                  </button>
+                )
+              )}
             </div>
           ))}
           {homeworks.length === 0 && <p className="text-sm text-gray-400 text-center py-8">Aucun devoir enregistré</p>}
