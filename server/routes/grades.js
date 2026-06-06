@@ -152,40 +152,44 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
     const coefMap = {}
     subjectDocs.forEach((s) => { coefMap[s.name] = s.coefficient || 1 })
 
-    // 4. Group grades by subject -> compute devoirs avg, controles avg, exam, final avg
+    // 4. Group grades by subject, then by type (devoir, examen, composition, oral, tp)
+    //    Each type keeps its own average AND the list of individual notes entered by the teacher.
+    const GRADE_TYPES = ['devoir', 'examen', 'composition', 'oral', 'tp']
     const grouped = {}
     grades.forEach((g) => {
-      if (!grouped[g.subject]) grouped[g.subject] = { devoirs: [], controles: [], exams: [], all: [], comments: [] }
+      if (!grouped[g.subject]) grouped[g.subject] = { all: [], comments: [], byType: {} }
       grouped[g.subject].all.push(g)
       if (g.comment) grouped[g.subject].comments.push(g.comment)
-      const typeLower = (g.type || '').toLowerCase()
-      if (typeLower === 'devoir' || typeLower === 'tp' || typeLower === 'oral') grouped[g.subject].devoirs.push(g.value)
-      else if (typeLower === 'examen' || typeLower === 'controle') grouped[g.subject].controles.push(g.value)
-      else if (typeLower === 'composition') grouped[g.subject].exams.push(g.value)
-      else grouped[g.subject].devoirs.push(g.value)
+      let t = (g.type || 'devoir').toLowerCase()
+      if (t === 'controle') t = 'examen' // legacy alias
+      if (!GRADE_TYPES.includes(t)) t = 'devoir'
+      if (!grouped[g.subject].byType[t]) grouped[g.subject].byType[t] = []
+      grouped[g.subject].byType[t].push(g.value)
     })
 
-    const avg = (arr) => arr.length === 0 ? null : Math.round((arr.reduce((s, v) => s + v, 0) / arr.length) * 100) / 100
+    const avg = (arr) => (!arr || arr.length === 0) ? null : Math.round((arr.reduce((s, v) => s + v, 0) / arr.length) * 100) / 100
 
     const subjects = Object.entries(grouped).map(([name, g]) => {
-      const devoirsAvg = avg(g.devoirs)
-      const controlesAvg = avg(g.controles)
-      const examAvg = avg(g.exams)
-      // Final subject average: weighted (devoirs 40% + controles 40% + exam 20%) if all exist, otherwise simple
-      const components = []
-      if (devoirsAvg != null) components.push({ value: devoirsAvg, w: 1 })
-      if (controlesAvg != null) components.push({ value: controlesAvg, w: 1 })
-      if (examAvg != null) components.push({ value: examAvg, w: 1 })
-      const final = components.length === 0
+      // Per-type breakdown: average + every individual note for this subject
+      const byType = {}
+      GRADE_TYPES.forEach((t) => {
+        const values = g.byType[t] || []
+        byType[t] = { avg: avg(values), values, count: values.length }
+      })
+      // Final subject average: coefficient-weighted over EVERY note (so all types count)
+      const totalCoef = g.all.reduce((s, x) => s + (x.coefficient || 1), 0)
+      const final = totalCoef === 0
         ? 0
-        : components.reduce((s, c) => s + c.value * c.w, 0) / components.reduce((s, c) => s + c.w, 0)
+        : g.all.reduce((s, x) => s + x.value * (x.coefficient || 1), 0) / totalCoef
       const coefficient = coefMap[name] || g.all[0]?.coefficient || 1
       return {
         name,
         coefficient,
-        devoirsAvg,
-        controlesAvg,
-        examAvg,
+        byType,
+        // kept for backward compatibility with any other consumer
+        devoirsAvg: byType.devoir.avg,
+        controlesAvg: byType.examen.avg,
+        examAvg: byType.composition.avg,
         average: Math.round(final * 100) / 100,
         teacherComment: g.comments.find(Boolean) || appreciationFor(final),
       }

@@ -82,30 +82,36 @@ export default function BulletinView({ data, schoolBranding = true }) {
           <thead>
             <tr>
               <th>MATIÈRES</th>
-              <th>COEFFICIENT</th>
-              <th>DEVOIRS<br/><span className="th-sub">(/20)</span></th>
-              <th>CONTRÔLES<br/><span className="th-sub">(/20)</span></th>
+              <th>COEF</th>
+              <th>DEVOIR<br/><span className="th-sub">(/20)</span></th>
+              <th>EXAMEN<br/><span className="th-sub">(/20)</span></th>
+              <th>COMPO.<br/><span className="th-sub">(/20)</span></th>
+              <th>ORAL<br/><span className="th-sub">(/20)</span></th>
+              <th>TP<br/><span className="th-sub">(/20)</span></th>
               <th>MOYENNE<br/><span className="th-sub">(/20)</span></th>
               <th>APPRÉCIATION DE L'ENSEIGNANT</th>
             </tr>
           </thead>
           <tbody>
             {subjects.length === 0 ? (
-              <tr><td colSpan={6} className="bulletin-empty">Aucune note enregistrée pour cette période</td></tr>
+              <tr><td colSpan={9} className="bulletin-empty">Aucune note enregistrée pour cette période</td></tr>
             ) : (
               subjects.map((s, i) => (
                 <tr key={i}>
                   <td className="bulletin-subject-name">{s.name}</td>
                   <td>{s.coefficient}</td>
-                  <td>{s.devoirsAvg != null ? s.devoirsAvg : '—'}</td>
-                  <td>{s.controlesAvg != null ? s.controlesAvg : '—'}</td>
+                  <TypeCell cell={s.byType?.devoir} />
+                  <TypeCell cell={s.byType?.examen} />
+                  <TypeCell cell={s.byType?.composition} />
+                  <TypeCell cell={s.byType?.oral} />
+                  <TypeCell cell={s.byType?.tp} />
                   <td className="bulletin-avg">{s.average != null ? s.average.toFixed(2) : '—'}</td>
                   <td className="bulletin-comment">{s.teacherComment}</td>
                 </tr>
               ))
             )}
             <tr className="bulletin-row-total">
-              <td colSpan={4}>MOYENNE GÉNÉRALE</td>
+              <td colSpan={7}>MOYENNE GÉNÉRALE</td>
               <td className="bulletin-avg">{generalAverage != null ? generalAverage.toFixed(2) : '—'} <span className="bulletin-avg-unit">/20</span></td>
               <td className="bulletin-comment">{appreciation}</td>
             </tr>
@@ -198,13 +204,16 @@ export default function BulletinView({ data, schoolBranding = true }) {
         .bulletin-photo-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #6366F1; }
         .bulletin-student-info { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
 
-        .bulletin-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-        .bulletin-table thead th { background: #EEF2FF; color: #1E1B4B; padding: 6px 8px; text-align: center; font-weight: 700; font-size: 10px; border-right: 1px solid #C7D2FE; }
+        .bulletin-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        .bulletin-table thead th { background: #EEF2FF; color: #1E1B4B; padding: 5px 4px; text-align: center; font-weight: 700; font-size: 9px; border-right: 1px solid #C7D2FE; }
         .bulletin-table thead th:last-child { border-right: none; text-align: left; }
-        .bulletin-table .th-sub { font-weight: 400; font-size: 9px; color: #6366F1; }
-        .bulletin-table tbody td { padding: 7px 8px; text-align: center; border-top: 1px solid #E0E7FF; border-right: 1px solid #E0E7FF; }
+        .bulletin-table .th-sub { font-weight: 400; font-size: 8px; color: #6366F1; }
+        .bulletin-table tbody td { padding: 6px 4px; text-align: center; border-top: 1px solid #E0E7FF; border-right: 1px solid #E0E7FF; }
         .bulletin-table tbody td:last-child { border-right: none; text-align: left; font-style: italic; color: #4B5563; }
         .bulletin-subject-name { text-align: left !important; font-weight: 600; color: #1E1B4B; }
+        .bulletin-type-cell { white-space: nowrap; }
+        .bulletin-type-avg { font-weight: 700; color: #1E1B4B; font-size: 11px; }
+        .bulletin-note-detail { font-size: 8px; color: #9CA3AF; font-weight: 400; margin-top: 1px; font-style: normal; }
         .bulletin-avg { font-weight: 800; color: #4F46E5; font-size: 12px; }
         .bulletin-avg-unit { color: #9CA3AF; font-weight: 400; font-size: 10px; }
         .bulletin-comment { color: #4B5563; }
@@ -251,6 +260,18 @@ export default function BulletinView({ data, schoolBranding = true }) {
         }
       `}</style>
     </div>
+  )
+}
+
+function TypeCell({ cell }) {
+  if (!cell || cell.count === 0) return <td className="bulletin-type-cell">—</td>
+  return (
+    <td className="bulletin-type-cell">
+      <div className="bulletin-type-avg">{cell.avg != null ? cell.avg : '—'}</div>
+      {cell.values.length > 0 && (
+        <div className="bulletin-note-detail">({cell.values.join(', ')})</div>
+      )}
+    </td>
   )
 }
 
