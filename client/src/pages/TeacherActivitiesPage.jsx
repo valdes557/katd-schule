@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Plus, Calendar, MapPin, Users, Trash2, Edit2, X, Loader2, Sparkles } from 'lucide-react'
 import { teacherApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const TYPES = [
   { value: 'sortie', label: 'Sortie scolaire' },
@@ -13,9 +15,6 @@ const TYPES = [
 ]
 
 export default function TeacherActivitiesPage() {
-  const [items, setItems] = useState([])
-  const [classes, setClasses] = useState([])
-  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -24,16 +23,17 @@ export default function TeacherActivitiesPage() {
     cost: 0, requiresAuthorization: false, class: '',
   })
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [a, d] = await Promise.all([teacherApi.activities(), teacherApi.dashboard()])
-      setItems(a.data || [])
-      setClasses(d.data?.teacher?.classes || [])
-    } catch (_) {}
-    setLoading(false)
-  }
-  useEffect(() => { load() }, [])
+  const activitiesQ = useCachedFetch('/teacher/activities?', async () => (await teacherApi.activities()).data || [], [])
+  const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => {
+    const r = await teacherApi.dashboard()
+    return r.data?.teacher?.classes || []
+  }, [])
+
+  const items = activitiesQ.data || []
+  const classes = dashboardQ.data || []
+  const loading = activitiesQ.loading
+
+  const refresh = () => { cache.invalidate('/teacher/activities'); activitiesQ.refetch() }
 
   const open = (act) => {
     if (act) {
@@ -60,14 +60,14 @@ export default function TeacherActivitiesPage() {
       if (editId) await teacherApi.updateActivity(editId, form)
       else await teacherApi.createActivity(form)
       setShowForm(false)
-      load()
+      refresh()
     } catch (e) { alert(e.message) }
     setSaving(false)
   }
 
   const remove = async (id) => {
     if (!confirm('Supprimer cette activité ?')) return
-    try { await teacherApi.deleteActivity(id); load() } catch (e) { alert(e.message) }
+    try { await teacherApi.deleteActivity(id); refresh() } catch (e) { alert(e.message) }
   }
 
   return (

@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { schoolPagesApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const TABS = [
   { id: 'about', label: 'À propos', icon: Users },
@@ -23,21 +25,24 @@ export default function ManageSchoolPage() {
   const { school } = useAuth()
   const schoolId = school?._id
   const [tab, setTab] = useState('about')
-  const [page, setPage] = useState(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
 
-  useEffect(() => {
-    if (!schoolId) return
-    schoolPagesApi.get(schoolId).then((r) => setPage(r.data || {})).catch(() => {})
-  }, [schoolId])
+  // Page-level fetch — migrated to SWR cache.
+  const pageQ = useCachedFetch(
+    schoolId ? `/school-pages/${schoolId}?` : null,
+    async () => (await schoolPagesApi.get(schoolId)).data || {},
+    [schoolId],
+  )
+  const page = pageQ.data
 
   const savePage = async (updates) => {
     setSaving(true)
     setMsg('')
     try {
       const r = await schoolPagesApi.update(schoolId, { ...page, ...updates })
-      setPage(r.data)
+      pageQ.setData(r.data)
+      cache.invalidate(`/school-pages/${schoolId}`)
       setMsg('✅ Sauvegardé')
       setTimeout(() => setMsg(''), 2000)
     } catch (e) { setMsg('❌ Erreur: ' + e.message) }
@@ -124,17 +129,17 @@ function AboutEditor({ page, savePage, saving, schoolId }) {
 
 /* ========== TEAM ========== */
 function TeamEditor({ schoolId }) {
-  const [members, setMembers] = useState([])
   const [form, setForm] = useState({ name: '', role: '', description: '' })
   const [photo, setPhoto] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
 
-  const fetch = () => {
-    setLoading(true)
-    schoolPagesApi.getTeam(schoolId).then((r) => setMembers(r.data || [])).finally(() => setLoading(false))
-  }
-  useEffect(fetch, [schoolId])
+  const teamQ = useCachedFetch(
+    schoolId ? `/school-pages/${schoolId}/team?` : null,
+    async () => (await schoolPagesApi.getTeam(schoolId)).data || [],
+    [schoolId],
+  )
+  const members = teamQ.data || []
+  const loading = teamQ.loading
 
   const handleAdd = async (e) => {
     e.preventDefault()
@@ -148,7 +153,8 @@ function TeamEditor({ schoolId }) {
       await schoolPagesApi.addTeamMember(schoolId, fd)
       setForm({ name: '', role: '', description: '' })
       setPhoto(null)
-      fetch()
+      cache.invalidate(`/school-pages/${schoolId}/team`)
+      teamQ.refetch()
     } catch (e) { alert(e.message) }
     setAdding(false)
   }
@@ -156,7 +162,8 @@ function TeamEditor({ schoolId }) {
   const handleDelete = async (id) => {
     if (!confirm('Supprimer ce membre ?')) return
     await schoolPagesApi.deleteTeamMember(id)
-    fetch()
+    cache.invalidate(`/school-pages/${schoolId}/team`)
+    teamQ.refetch()
   }
 
   return (
@@ -199,19 +206,19 @@ function TeamEditor({ schoolId }) {
 
 /* ========== POSTS ========== */
 function PostsEditor({ schoolId }) {
-  const [posts, setPosts] = useState([])
   const [content, setContent] = useState('')
   const [files, setFiles] = useState(null)
   const [videoFile, setVideoFile] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [posting, setPosting] = useState(false)
   const [progress, setProgress] = useState(0)
 
-  const fetch = () => {
-    setLoading(true)
-    schoolPagesApi.getPosts(schoolId).then((r) => setPosts(r.data || [])).finally(() => setLoading(false))
-  }
-  useEffect(fetch, [schoolId])
+  const postsQ = useCachedFetch(
+    schoolId ? `/school-pages/${schoolId}/posts?` : null,
+    async () => (await schoolPagesApi.getPosts(schoolId)).data || [],
+    [schoolId],
+  )
+  const posts = postsQ.data || []
+  const loading = postsQ.loading
 
   const handlePost = async (e) => {
     e.preventDefault()
@@ -227,7 +234,8 @@ function PostsEditor({ schoolId }) {
       setContent('')
       setFiles(null)
       setVideoFile(null)
-      fetch()
+      cache.invalidate(`/school-pages/${schoolId}/posts`)
+      postsQ.refetch()
     } catch (e) { alert(e.message) }
     setPosting(false)
     setProgress(0)
@@ -236,7 +244,8 @@ function PostsEditor({ schoolId }) {
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cette publication ?')) return
     await schoolPagesApi.deletePost(id)
-    fetch()
+    cache.invalidate(`/school-pages/${schoolId}/posts`)
+    postsQ.refetch()
   }
 
   return (
@@ -294,16 +303,16 @@ function PostsEditor({ schoolId }) {
 
 /* ========== PAYMENTS ========== */
 function PaymentsEditor({ schoolId }) {
-  const [mods, setMods] = useState([])
   const [form, setForm] = useState({ className: '', totalAmount: '', installments: [{ label: '', amount: '', deadline: '' }] })
-  const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
 
-  const fetch = () => {
-    setLoading(true)
-    schoolPagesApi.getPayments(schoolId).then((r) => setMods(r.data || [])).finally(() => setLoading(false))
-  }
-  useEffect(fetch, [schoolId])
+  const paymentsQ = useCachedFetch(
+    schoolId ? `/school-pages/${schoolId}/payments?` : null,
+    async () => (await schoolPagesApi.getPayments(schoolId)).data || [],
+    [schoolId],
+  )
+  const mods = paymentsQ.data || []
+  const loading = paymentsQ.loading
 
   const addInstallment = () => setForm({ ...form, installments: [...form.installments, { label: '', amount: '', deadline: '' }] })
   const removeInstallment = (i) => setForm({ ...form, installments: form.installments.filter((_, j) => j !== i) })
@@ -319,7 +328,8 @@ function PaymentsEditor({ schoolId }) {
     try {
       await schoolPagesApi.addPayment(schoolId, { ...form, totalAmount: Number(form.totalAmount), installments: form.installments.filter((i) => i.label).map((i) => ({ ...i, amount: Number(i.amount) })) })
       setForm({ className: '', totalAmount: '', installments: [{ label: '', amount: '', deadline: '' }] })
-      fetch()
+      cache.invalidate(`/school-pages/${schoolId}/payments`)
+      paymentsQ.refetch()
     } catch (e) { alert(e.message) }
     setAdding(false)
   }
@@ -327,7 +337,8 @@ function PaymentsEditor({ schoolId }) {
   const handleDelete = async (id) => {
     if (!confirm('Supprimer ?')) return
     await schoolPagesApi.deletePayment(id)
-    fetch()
+    cache.invalidate(`/school-pages/${schoolId}/payments`)
+    paymentsQ.refetch()
   }
 
   return (
@@ -432,24 +443,25 @@ function TextEditor({ label, field, page, savePage, saving }) {
 
 /* ========== REVIEWS EDITOR ========== */
 function ReviewsEditor({ schoolId }) {
-  const [reviews, setReviews] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  const fetch = () => {
-    setLoading(true)
-    schoolPagesApi.getAllReviews(schoolId).then((r) => setReviews(r.data || [])).finally(() => setLoading(false))
-  }
-  useEffect(fetch, [schoolId])
+  const reviewsQ = useCachedFetch(
+    schoolId ? `/school-pages/${schoolId}/reviews?` : null,
+    async () => (await schoolPagesApi.getAllReviews(schoolId)).data || [],
+    [schoolId],
+  )
+  const reviews = reviewsQ.data || []
+  const loading = reviewsQ.loading
 
   const handleApprove = async (id) => {
     await schoolPagesApi.approveReview(id)
-    fetch()
+    cache.invalidate(`/school-pages/${schoolId}/reviews`)
+    reviewsQ.refetch()
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cet avis ?')) return
     await schoolPagesApi.deleteReview(id)
-    fetch()
+    cache.invalidate(`/school-pages/${schoolId}/reviews`)
+    reviewsQ.refetch()
   }
 
   return (

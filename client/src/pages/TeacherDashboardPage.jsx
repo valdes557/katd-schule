@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users, BookOpen, CalendarCheck, FileText, Clock, Loader2, RefreshCw,
@@ -7,21 +7,18 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { teacherApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 export default function TeacherDashboardPage() {
   const { user } = useAuth()
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const r = await teacherApi.dashboard()
-      setData(r.data)
-    } catch (_) {}
-    setLoading(false)
-  }
-  useEffect(() => { load() }, [])
+  const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => (await teacherApi.dashboard()).data || null, [])
+
+  const data = dashboardQ.data
+  const loading = dashboardQ.loading
+
+  const handleRefresh = () => { cache.invalidate('/teacher/dashboard'); dashboardQ.refetch() }
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (!data) return <div className="text-center py-16 text-sm text-gray-500">Profil enseignant non trouvé. Contactez l'administration.</div>
@@ -62,7 +59,7 @@ export default function TeacherDashboardPage() {
             )}
           </div>
         </div>
-        <button onClick={load} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
+        <button onClick={handleRefresh} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
       </div>
 
       {/* Smart Alerts */}

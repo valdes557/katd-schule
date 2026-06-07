@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { schoolsApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 const CYCLES_CONFIG = [
   {
@@ -44,26 +45,27 @@ const CYCLES_CONFIG = [
 const ACCENT_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4', '#EC4899', '#14B8A6']
 
 export default function EcolesPage() {
-  const [schools, setSchools] = useState([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [cycleFilter, setCycleFilter] = useState('Tous')
 
+  const [committed, setCommitted] = useState({ search: '', cycleFilter: 'Tous' })
   useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      try {
-        const params = new URLSearchParams()
-        if (search) params.set('search', search)
-        if (cycleFilter !== 'Tous') params.set('cycle', cycleFilter)
-        const res = await schoolsApi.list(params.toString())
-        setSchools(res.data || [])
-      } catch (e) {}
-      setLoading(false)
-    }
-    const t = setTimeout(load, 300)
+    const t = setTimeout(() => setCommitted({ search, cycleFilter }), 300)
     return () => clearTimeout(t)
   }, [search, cycleFilter])
+
+  const params = new URLSearchParams()
+  if (committed.search) params.set('search', committed.search)
+  if (committed.cycleFilter !== 'Tous') params.set('cycle', committed.cycleFilter)
+  const qs = params.toString()
+
+  const schoolsQ = useCachedFetch(`/schools?${qs}`, async () => {
+    const res = await schoolsApi.list(qs)
+    return res.data || []
+  }, [qs])
+
+  const schools = schoolsQ.data || []
+  const loading = schoolsQ.loading
 
   const schoolsByCycle = (cycle) => schools.filter((s) => s.cycles?.includes(cycle))
   const showGrouped = cycleFilter === 'Tous' && !search

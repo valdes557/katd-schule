@@ -1,28 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { CreditCard, CheckCircle2, Loader2, Search, Trash2, Eye, Edit2, AlertCircle, History, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { registrationsApi } from '../lib/api'
 import { subscriptionPlans } from '../data/mockData'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const STATUS_MAP = { pending: { label: 'En attente', cls: 'bg-amber-100 text-amber-700' }, approved: { label: 'Approuvé', cls: 'bg-green-100 text-green-700' }, rejected: { label: 'Rejeté', cls: 'bg-red-100 text-red-700' } }
 
 /* ─── Admin Souscriptions ─── */
 function AdminSouscriptions() {
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
   const [search, setSearch] = useState('')
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const params = filter ? `status=${filter}` : ''
-      const r = await registrationsApi.list(params)
-      setItems(r.data || [])
-    } catch (_) {}
-    setLoading(false)
+  const registrationsQ = useCachedFetch(`/registrations?status=${filter}`, async () => {
+    const params = filter ? `status=${filter}` : ''
+    const r = await registrationsApi.list(params)
+    return r.data || []
+  }, [filter])
+
+  const items = registrationsQ.data || []
+  const loading = registrationsQ.loading
+
+  const refreshRegistrations = () => {
+    cache.invalidate('/registrations')
+    registrationsQ.refetch()
   }
-  useEffect(() => { load() }, [filter])
 
   const filteredItems = search
     ? items.filter((i) => i.schoolName?.toLowerCase().includes(search.toLowerCase()) || i.directorName?.toLowerCase().includes(search.toLowerCase()) || i.email?.toLowerCase().includes(search.toLowerCase()))
@@ -30,16 +33,16 @@ function AdminSouscriptions() {
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cette souscription ?')) return
-    try { await registrationsApi.remove(id); load() } catch (e) { alert(e.message) }
+    try { await registrationsApi.remove(id); refreshRegistrations() } catch (e) { alert(e.message) }
   }
 
   const handleApprove = async (id) => {
-    try { await registrationsApi.approve(id); load() } catch (e) { alert(e.message) }
+    try { await registrationsApi.approve(id); refreshRegistrations() } catch (e) { alert(e.message) }
   }
 
   const handleReject = async (id) => {
     const reason = prompt('Motif du rejet (optionnel):')
-    try { await registrationsApi.reject(id, reason || ''); load() } catch (e) { alert(e.message) }
+    try { await registrationsApi.reject(id, reason || ''); refreshRegistrations() } catch (e) { alert(e.message) }
   }
 
   const totalRevenue = items.filter((i) => i.status === 'approved').reduce((s, i) => s + (i.amount || 0), 0)

@@ -1,26 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { teacherApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { Loader2, FileText, Plus, Check, Eye, X } from 'lucide-react'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 export default function TeacherReportsPage() {
   const { user } = useAuth()
-  const [reports, setReports] = useState([])
-  const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ classes: [], title: '', content: '', attachment: null })
   const [sending, setSending] = useState(false)
-  const [teacherClasses, setTeacherClasses] = useState([])
   const [viewReport, setViewReport] = useState(null)
   const [editReport, setEditReport] = useState(null)
   const [editForm, setEditForm] = useState({ title: '', content: '' })
   const [savingEdit, setSavingEdit] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
 
-  const fetchReports = async () => {
-    setLoading(true)
-    try { const res = await teacherApi.reports(); setReports(res.data || []) } catch (e) {}
-    setLoading(false)
-  }
+  const reportsQ = useCachedFetch('/teacher/reports?', async () => (await teacherApi.reports()).data || [], [])
+  const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => {
+    const res = await teacherApi.dashboard()
+    return res?.data?.teacher?.classes || []
+  }, [])
+
+  const reports = reportsQ.data || []
+  const teacherClasses = dashboardQ.data || []
+  const loading = reportsQ.loading
+
+  const refreshReports = () => { cache.invalidate('/teacher/reports'); reportsQ.refetch() }
 
   const openEdit = (r) => {
     setEditReport(r)
@@ -41,7 +46,7 @@ export default function TeacherReportsPage() {
         content: editForm.content,
       })
       if (res.success) {
-        setReports((prev) => prev.map((r) => (r._id === res.data._id ? res.data : r)))
+        refreshReports()
         setEditReport(null)
       }
     } catch (err) {
@@ -56,22 +61,12 @@ export default function TeacherReportsPage() {
     try {
       const res = await teacherApi.deleteReport(r._id)
       if (res.success) {
-        setReports((prev) => prev.filter((x) => x._id !== r._id))
+        refreshReports()
       }
     } catch (err) {
       alert(err.message)
     }
     setDeletingId(null)
-  }
-
-  useEffect(() => { fetchReports(); loadClasses() }, [])
-
-  const loadClasses = async () => {
-    try {
-      const res = await teacherApi.dashboard()
-      const classes = res?.data?.teacher?.classes || []
-      setTeacherClasses(classes)
-    } catch (_) {}
   }
 
   const toggleClass = (id) => {
@@ -86,7 +81,7 @@ export default function TeacherReportsPage() {
       const res = await teacherApi.createReport({ ...form })
       if (res.success) {
         setForm({ classes: [], title: '', content: '', attachment: null })
-        fetchReports()
+        refreshReports()
       }
     } catch (e) { alert(e.message) }
     setSending(false)
@@ -112,7 +107,7 @@ export default function TeacherReportsPage() {
         <div>
           <label className="text-xs font-medium text-gray-600">Contenu du rapport *</label>
           <textarea rows={5} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="input text-sm mt-1 resize-y" placeholder="Résumé des activités, présence, devoirs, incidents, etc." />
-          <p className="text-[11px] text-gray-400 mt-1">N’indiquez aucune donnée sensible.</p>
+          <p className="text-[11px] text-gray-400 mt-1">N'indiquez aucune donnée sensible.</p>
         </div>
         <div>
           <label className="text-xs font-medium text-gray-600">Pièce jointe PDF (optionnel)</label>
@@ -133,7 +128,7 @@ export default function TeacherReportsPage() {
           ) : (
             <div className="flex flex-wrap gap-2 mt-1">
               {teacherClasses.map((c) => (
-                <label key={c._id} className={`text-xs px-2 py-1 rounded-lg border ${form.classes.includes(c._id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600'} cursor-pointer`}> 
+                <label key={c._id} className={`text-xs px-2 py-1 rounded-lg border ${form.classes.includes(c._id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600'} cursor-pointer`}>
                   <input type="checkbox" className="mr-1 accent-blue-600" checked={form.classes.includes(c._id)} onChange={() => toggleClass(c._id)} />
                   {c.name} {c.level ? `(${c.level})` : ''}
                 </label>

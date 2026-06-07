@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ClipboardList, Plus, Search, Edit2, Trash2, X, Loader2, AlertCircle } from 'lucide-react'
 import { subjectsApi, classesApi, teachersApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
 
 const CYCLES = ['Maternelle', 'Primaire', 'Secondaire']
@@ -13,33 +15,28 @@ export default function MatieresPage() {
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
 
-  const [subjects, setSubjects] = useState([])
-  const [classes, setClasses] = useState([])
-  const [teachers, setTeachers] = useState([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [cycleFilter, setCycleFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [sr, cr, tr] = await Promise.all([
-        subjectsApi.list(cycleFilter ? `cycle=${cycleFilter}` : ''),
-        classesApi.list(),
-        teachersApi.list(),
-      ])
-      setSubjects(sr.data || [])
-      setClasses(cr.data || [])
-      setTeachers(tr.data || [])
-    } catch (e) {}
-    setLoading(false)
-  }
-
-  useEffect(() => { load() }, [cycleFilter])
   useEffect(() => { if (subscribedCycle && cycleFilter !== subscribedCycle) setCycleFilter(subscribedCycle) }, [subscribedCycle])
+
+  const subjectsQ = useCachedFetch(
+    `/subjects?${cycleFilter ? `cycle=${cycleFilter}` : ''}`,
+    async () => (await subjectsApi.list(cycleFilter ? `cycle=${cycleFilter}` : '')).data || [],
+    [cycleFilter],
+  )
+  const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
+  const teachersQ = useCachedFetch('/teachers?', async () => (await teachersApi.list()).data || [], [])
+
+  const subjects = subjectsQ.data || []
+  const classes = classesQ.data || []
+  const teachers = teachersQ.data || []
+  const loading = subjectsQ.loading
+
+  const refreshSubjects = () => { cache.invalidate('/subjects'); subjectsQ.refetch() }
 
   const filtered = subjects.filter((s) =>
     !search || s.name.toLowerCase().includes(search.toLowerCase()) || (s.code || '').toLowerCase().includes(search.toLowerCase())
@@ -55,13 +52,13 @@ export default function MatieresPage() {
       setShowModal(false)
       setEditing(null)
       setForm(EMPTY)
-      load()
+      refreshSubjects()
     } catch (e) { alert(e.message) }
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cette matière ?')) return
-    try { await subjectsApi.remove(id); load() } catch (e) { alert(e.message) }
+    try { await subjectsApi.remove(id); refreshSubjects() } catch (e) { alert(e.message) }
   }
 
   const openEdit = (s) => {

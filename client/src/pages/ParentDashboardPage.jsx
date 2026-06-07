@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users, BookOpen, CalendarCheck, CreditCard, MessageSquare,
@@ -8,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { parentApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { cn } from '../lib/utils'
 
 const TODAY_STATUS = {
@@ -20,18 +21,15 @@ const TODAY_STATUS = {
 
 export default function ParentDashboardPage() {
   const { user } = useAuth()
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const r = await parentApi.dashboard()
-      setData(r.data)
-    } catch (_) {}
-    setLoading(false)
-  }
-  useEffect(() => { load() }, [])
+  const dashQ = useCachedFetch(
+    '/parent/dashboard',
+    async () => (await parentApi.dashboard()).data || null,
+    [],
+  )
+
+  const data = dashQ.data
+  const loading = dashQ.loading
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
 
@@ -107,7 +105,7 @@ export default function ParentDashboardPage() {
           <h1 className="text-xl font-bold text-gray-900">Bonjour, {user?.name || 'Parent'} 👋</h1>
           <p className="text-sm text-gray-500">Suivi de {children.length > 1 ? `vos ${children.length} enfants` : `votre enfant`}</p>
         </div>
-        <button onClick={load} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
+        <button onClick={() => { cache.invalidate('/parent/dashboard'); dashQ.refetch() }} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
       </div>
 
       {/* 4 Quick Answers */}

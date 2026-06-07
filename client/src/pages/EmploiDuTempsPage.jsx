@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Clock, Plus, Trash2, X, Loader2, AlertCircle } from 'lucide-react'
 import { timetablesApi, classesApi, subjectsApi, teachersApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
 const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00']
@@ -14,50 +16,42 @@ export default function EmploiDuTempsPage() {
   const { user } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
 
-  const [classes, setClasses] = useState([])
-  const [subjects, setSubjects] = useState([])
-  const [teachers, setTeachers] = useState([])
   const [selectedClass, setSelectedClass] = useState('')
-  const [timetable, setTimetable] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [slotLoading, setSlotLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [slotForm, setSlotForm] = useState(EMPTY_SLOT)
 
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true)
-      try {
-        const [cr, sr, tr] = await Promise.all([classesApi.list(), subjectsApi.list(), teachersApi.list()])
-        setClasses(cr.data || [])
-        setSubjects(sr.data || [])
-        setTeachers(tr.data || [])
-        if (cr.data?.length > 0) setSelectedClass(cr.data[0]._id)
-      } catch (e) {}
-      setLoading(false)
-    }
-    init()
-  }, [])
+  const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
+  const subjectsQ = useCachedFetch('/subjects?', async () => (await subjectsApi.list()).data || [], [])
+  const teachersQ = useCachedFetch('/teachers?', async () => (await teachersApi.list()).data || [], [])
 
+  const classes = classesQ.data || []
+  const subjects = subjectsQ.data || []
+  const teachers = teachersQ.data || []
+
+  // Auto-select first class once classes are loaded
   useEffect(() => {
-    if (!selectedClass) return
-    const loadTT = async () => {
-      setSlotLoading(true)
-      try {
-        const r = await timetablesApi.getByClass(selectedClass)
-        setTimetable(r.data || null)
-      } catch (e) {}
-      setSlotLoading(false)
-    }
-    loadTT()
-  }, [selectedClass])
+    if (!selectedClass && classes.length > 0) setSelectedClass(classes[0]._id)
+  }, [classes, selectedClass])
+
+  const cls = selectedClass
+  const timetableQ = useCachedFetch(
+    cls ? `/timetables?classId=${cls}` : null,
+    async () => (await timetablesApi.getByClass(cls)).data || null,
+    [cls],
+  )
+
+  const timetable = timetableQ.data
+  const loading = classesQ.loading
+  const slotLoading = timetableQ.loading
+
+  const refreshTimetable = () => { cache.invalidate('/timetables'); timetableQ.refetch() }
 
   const addSlot = async (e) => {
     e.preventDefault()
     if (!timetable) return
     try {
       const r = await timetablesApi.addSlot(timetable._id, slotForm)
-      setTimetable(r.data)
+      timetableQ.setData(r.data)
       setShowModal(false)
       setSlotForm(EMPTY_SLOT)
     } catch (e) { alert(e.message) }
@@ -67,7 +61,7 @@ export default function EmploiDuTempsPage() {
     if (!confirm('Supprimer ce créneau ?')) return
     try {
       const r = await timetablesApi.removeSlot(timetable._id, slotId)
-      setTimetable(r.data)
+      timetableQ.setData(r.data)
     } catch (e) { alert(e.message) }
   }
 

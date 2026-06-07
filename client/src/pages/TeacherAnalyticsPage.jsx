@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line,
@@ -7,22 +7,18 @@ import {
   BarChart2, Loader2, RefreshCw, TrendingUp, Users, BookOpen, CheckCircle2,
 } from 'lucide-react'
 import { teacherApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const COLORS = ['#EF4444', '#F97316', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#6366F1']
 
 export default function TeacherAnalyticsPage() {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const analyticsQ = useCachedFetch('/teacher/analytics?', async () => (await teacherApi.analytics()).data || null, [])
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const r = await teacherApi.analytics()
-      setData(r.data)
-    } catch (_) {}
-    setLoading(false)
-  }
-  useEffect(() => { load() }, [])
+  const data = analyticsQ.data
+  const loading = analyticsQ.loading
+
+  const handleRefresh = () => { cache.invalidate('/teacher/analytics'); analyticsQ.refetch() }
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (!data) return <div className="text-center py-16 text-sm text-gray-500">Aucune donnée analytique disponible</div>
@@ -36,7 +32,7 @@ export default function TeacherAnalyticsPage() {
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><BarChart2 size={22} className="text-amber-600" /> Statistiques & Analytics</h1>
           <p className="text-sm text-gray-500">Vue détaillée de la performance de vos classes</p>
         </div>
-        <button onClick={load} className="btn-ghost text-xs border border-gray-200"><RefreshCw size={13} /> Actualiser</button>
+        <button onClick={handleRefresh} className="btn-ghost text-xs border border-gray-200"><RefreshCw size={13} /> Actualiser</button>
       </div>
 
       {/* Top row: class averages + subject averages */}

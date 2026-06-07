@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, GraduationCap, Loader2 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { plansApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 const FALLBACK_PLANS = [
   {
@@ -38,22 +39,18 @@ const ACCENTS = {
 
 export default function TarifsPage() {
   const [billing, setBilling] = useState('annual')
-  const [plans, setPlans] = useState([])
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    plansApi.list()
-      .then((r) => {
-        const data = r.data || []
-        if (data.length > 0) {
-          setPlans(data.map((p) => ({ ...p, ...(CYCLE_META[p.cycle] || CYCLE_META.Primaire) })))
-        } else {
-          setPlans(FALLBACK_PLANS)
-        }
-      })
-      .catch(() => setPlans(FALLBACK_PLANS))
-      .finally(() => setLoading(false))
+  const plansQ = useCachedFetch('/plans', async () => {
+    const r = await plansApi.list()
+    const data = r.data || []
+    if (data.length > 0) {
+      return data.map((p) => ({ ...p, ...(CYCLE_META[p.cycle] || CYCLE_META.Primaire) }))
+    }
+    return FALLBACK_PLANS
   }, [])
+
+  const plans = plansQ.data || FALLBACK_PLANS
+  const loading = plansQ.loading
 
   return (
     <div className="min-h-screen bg-gray-50">

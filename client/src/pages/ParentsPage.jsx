@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { studentsApi, classesApi } from '../lib/api'
 import { Users, Search, UserPlus, KeyRound, X, Loader2, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 export default function ParentsPage() {
   const { user, school } = useAuth()
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
-  const [rows, setRows] = useState([])
-  const [classes, setClasses] = useState([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [classFilter, setClassFilter] = useState('')
   const [onlyWithout, setOnlyWithout] = useState(false)
@@ -20,17 +19,14 @@ export default function ParentsPage() {
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState(null)
 
-  const fetch = async () => {
-    setLoading(true)
-    try {
-      const [sRes, cRes] = await Promise.all([studentsApi.withParents(), classesApi.list()])
-      setRows(sRes.data || [])
-      setClasses(cRes.data || [])
-    } catch (_) {}
-    setLoading(false)
-  }
+  const rowsQ = useCachedFetch('/students/with-parents', async () => (await studentsApi.withParents()).data || [], [])
+  const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
 
-  useEffect(() => { fetch() }, [])
+  const rows = rowsQ.data || []
+  const classes = classesQ.data || []
+  const loading = rowsQ.loading
+
+  const refreshRows = () => { cache.invalidate('/students'); rowsQ.refetch() }
 
   const filtered = useMemo(() => {
     return (rows || [])
@@ -59,7 +55,7 @@ export default function ParentsPage() {
     setSaving(true)
     try {
       const r = await studentsApi.createParentAccount(modal._id, form)
-      if (r.success) { setResult(r); fetch() } else alert(r.message || 'Erreur')
+      if (r.success) { setResult(r); refreshRows() } else alert(r.message || 'Erreur')
     } catch (e) { alert(e.message) }
     setSaving(false)
   }
@@ -97,7 +93,7 @@ export default function ParentsPage() {
           <div className="text-xs text-gray-600">{selected.length} élève(s) sélectionné(s)</div>
           <input value={linkEmail} onChange={(e) => setLinkEmail(e.target.value)} type="email" placeholder="Email du compte parent existant" className="input text-sm w-72" />
           <button
-            onClick={async () => { try { await studentsApi.linkParent(linkEmail, selected); setSelected([]); setLinkEmail(''); fetch() } catch (e) { alert(e.message) } }}
+            onClick={async () => { try { await studentsApi.linkParent(linkEmail, selected); setSelected([]); setLinkEmail(''); refreshRows() } catch (e) { alert(e.message) } }}
             disabled={!linkEmail || selected.length === 0}
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
           >Associer à cet email</button>

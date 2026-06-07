@@ -7,6 +7,8 @@ import {
 import { platformApi, plansApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import RichTextEditor from '../components/ui/RichTextEditor'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const TABS = [
   { id: 'posts', label: 'Social', icon: Globe2 },
@@ -991,15 +993,19 @@ function PlansPanel() {
 export default function AdminPlatformPage() {
   const { user } = useAuth()
   const [tab, setTab] = useState('posts')
-  const [platformData, setPlatformData] = useState(null)
-  const [loading, setLoading] = useState(true)
 
-  const load = () => {
-    setLoading(true)
-    platformApi.get().then((r) => setPlatformData(r.data || {})).finally(() => setLoading(false))
+  const platformQ = useCachedFetch('/platform?', async () => {
+    const r = await platformApi.get()
+    return r.data || {}
+  }, [])
+
+  const platformData = platformQ.data
+  const loading = platformQ.loading
+
+  const refresh = () => {
+    cache.invalidate('/platform')
+    platformQ.refetch()
   }
-
-  useEffect(() => { load() }, [])
 
   if (user?.role !== 'super_admin') {
     return (
@@ -1041,9 +1047,9 @@ export default function AdminPlatformPage() {
         <>
           {tab === 'posts' && <PostsPanel />}
           {tab === 'resources' && <ResourcesPanel />}
-          {tab === 'about' && <AboutPanel platformData={platformData} refresh={load} />}
-          {tab === 'contacts' && <ContactsPanel platformData={platformData} refresh={load} />}
-          {tab === 'support' && <DonationsPanel platformData={platformData} refresh={load} />}
+          {tab === 'about' && <AboutPanel platformData={platformData} refresh={refresh} />}
+          {tab === 'contacts' && <ContactsPanel platformData={platformData} refresh={refresh} />}
+          {tab === 'support' && <DonationsPanel platformData={platformData} refresh={refresh} />}
           {tab === 'experiences' && <ExperiencesPanel />}
           {tab === 'payments' && <PaymentsPanel />}
           {tab === 'plans' && <PlansPanel />}

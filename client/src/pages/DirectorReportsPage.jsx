@@ -1,49 +1,49 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { dashboardApi, classesApi, teachersApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { FileText, Filter, Loader2, CheckCircle2, Clock, Eye, X } from 'lucide-react'
 
 export default function DirectorReportsPage() {
-  const [reports, setReports] = useState([])
-  const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ classId: '', teacherId: '', status: '' })
-  const [classes, setClasses] = useState([])
-  const [teachers, setTeachers] = useState([])
   const [processing, setProcessing] = useState(null)
   const [viewReport, setViewReport] = useState(null)
 
-  const loadData = async () => {
-    setLoading(true)
-    try {
-      const qs = new URLSearchParams()
-      if (filters.classId) qs.set('classId', filters.classId)
-      if (filters.teacherId) qs.set('teacherId', filters.teacherId)
-      if (filters.status) qs.set('status', filters.status)
-      const res = await dashboardApi.getReports(qs.toString())
-      setReports(res.data || [])
-    } catch (_) {}
-    setLoading(false)
-  }
+  const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
+  const teachersQ = useCachedFetch('/teachers?', async () => (await teachersApi.list()).data || [], [])
 
-  const loadFilters = async () => {
-    try {
-      const [cRes, tRes] = await Promise.all([classesApi.list(), teachersApi.list()])
-      setClasses(cRes.data || [])
-      setTeachers(tRes.data || [])
-    } catch (_) {}
-  }
+  const classes = classesQ.data || []
+  const teachers = teachersQ.data || []
 
-  useEffect(() => { loadFilters() }, [])
-  useEffect(() => { loadData() }, [filters])
+  const qs = new URLSearchParams()
+  if (filters.classId) qs.set('classId', filters.classId)
+  if (filters.teacherId) qs.set('teacherId', filters.teacherId)
+  if (filters.status) qs.set('status', filters.status)
+  const qsStr = qs.toString()
+
+  const reportsQ = useCachedFetch(
+    `/reports?${qsStr}`,
+    async () => (await dashboardApi.getReports(qsStr)).data || [],
+    [qsStr],
+  )
+
+  const reports = reportsQ.data || []
+  const loading = reportsQ.loading
 
   const toggleReview = async (rep) => {
     setProcessing(rep._id)
     try {
       if (rep.status === 'reviewed') {
         const res = await dashboardApi.unreviewReport(rep._id)
-        setReports((prev) => prev.map((r) => r._id === rep._id ? res.data : r))
+        cache.invalidate('/reports')
+        reportsQ.refetch()
+        // Also update local view if modal is open for this report
+        if (viewReport?._id === rep._id) setViewReport(res.data)
       } else {
         const res = await dashboardApi.reviewReport(rep._id)
-        setReports((prev) => prev.map((r) => r._id === rep._id ? res.data : r))
+        cache.invalidate('/reports')
+        reportsQ.refetch()
+        if (viewReport?._id === rep._id) setViewReport(res.data)
       }
     } catch (_) {}
     setProcessing(null)

@@ -7,6 +7,7 @@ import {
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { locationsApi, schoolRegistrationApi, platformApi, plansApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 const CYCLE_META = {
   Maternelle: { icon: '🌸', gradient: 'from-orange-500 to-amber-400', color: 'text-orange-600', ring: 'ring-orange-400', btn: 'bg-orange-500 hover:bg-orange-600' },
@@ -18,17 +19,10 @@ export default function SchoolRegistrationPage() {
   const [params] = useSearchParams()
   const fileRef = useRef()
 
-  // Plans state
-  const [plans, setPlans] = useState([])
-  const [plansLoading, setPlansLoading] = useState(true)
   const [selected, setSelected] = useState(null) // { plan, billing: 'annual'|'trimestrial' }
-
-  // Payment methods
-  const [paymentMethods, setPaymentMethods] = useState([])
 
   // Form state
   const [step, setStep] = useState(1) // 1 = plan choice, 2 = form
-  const [countries, setCountries] = useState([])
   const [cities, setCities] = useState([])
   const [neighborhoods, setNeighborhoods] = useState([])
   const [submitting, setSubmitting] = useState(false)
@@ -44,22 +38,30 @@ export default function SchoolRegistrationPage() {
     whatsapp: '', email: '',
   })
 
+  // Stable on-mount fetches
+  const plansQ = useCachedFetch('/plans', async () => {
+    const r = await plansApi.list()
+    return r.data || []
+  }, [])
+  const paymentMethodsQ = useCachedFetch('/platform/payment-methods', async () => (await platformApi.getPaymentMethods()).data || [], [])
+  const countriesQ = useCachedFetch('/locations/countries', async () => (await locationsApi.countries()).data || [], [])
+
+  const plans = plansQ.data || []
+  const paymentMethods = paymentMethodsQ.data || []
+  const countries = countriesQ.data || []
+  const plansLoading = plansQ.loading
+
+  // Initialise billingMap once plans are loaded
   useEffect(() => {
-    plansApi.list()
-      .then((r) => {
-        const data = r.data || []
-        setPlans(data)
-        const initBilling = {}
-        data.forEach((p) => { initBilling[p._id] = 'annual' })
-        setBillingMap(initBilling)
-      })
-      .catch(() => {})
-      .finally(() => setPlansLoading(false))
+    if (plans.length > 0 && Object.keys(billingMap).length === 0) {
+      const initBilling = {}
+      plans.forEach((p) => { initBilling[p._id] = 'annual' })
+      setBillingMap(initBilling)
+    }
+  }, [plans, billingMap])
 
-    platformApi.getPaymentMethods().then((r) => setPaymentMethods(r.data || [])).catch(() => {})
-    locationsApi.countries().then((r) => setCountries(r.data || [])).catch(() => {})
-
-    // Pre-select from URL params if coming from landing page
+  // Pre-select from URL params if coming from landing page
+  useEffect(() => {
     const cycleParam = params.get('cycle')
     const planParam = params.get('plan')
     const amountParam = params.get('amount')
@@ -69,6 +71,7 @@ export default function SchoolRegistrationPage() {
     }
   }, [])
 
+  // Cascading location loads (depend on user selection — keep as local state)
   useEffect(() => {
     if (form.country) {
       locationsApi.cities(form.country).then((r) => setCities(r.data || [])).catch(() => {})

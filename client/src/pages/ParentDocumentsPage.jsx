@@ -3,6 +3,8 @@ import {
   FileText, Download, Loader2, User, GraduationCap, Calendar, School,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const DOC_TYPES = {
   certificat_scolarite: { label: 'Certificat de scolarité', icon: GraduationCap, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -12,34 +14,30 @@ const DOC_TYPES = {
 }
 
 export default function ParentDocumentsPage() {
-  const [children, setChildren] = useState([])
   const [selectedChild, setSelectedChild] = useState(null)
-  const [documents, setDocuments] = useState([])
-  const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(null)
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await parentApi.dashboard()
-        const kids = r.data?.children || []
-        setChildren(kids)
-        if (kids.length > 0) setSelectedChild(kids[0]._id)
-      } catch (_) {}
-    })()
-  }, [])
+  const dashQ = useCachedFetch(
+    '/parent/dashboard',
+    async () => (await parentApi.dashboard()).data || null,
+    [],
+  )
 
+  const children = dashQ.data?.children || []
+
+  // Auto-select first child once dashboard data arrives
   useEffect(() => {
-    if (!selectedChild) { setLoading(false); return }
-    (async () => {
-      setLoading(true)
-      try {
-        const r = await parentApi.documents(selectedChild)
-        setDocuments(r.data || [])
-      } catch (_) { setDocuments([]) }
-      setLoading(false)
-    })()
-  }, [selectedChild])
+    if (!selectedChild && children.length > 0) setSelectedChild(children[0]._id)
+  }, [children, selectedChild])
+
+  const docsQ = useCachedFetch(
+    selectedChild ? `/parent/documents/${selectedChild}` : null,
+    async () => (await parentApi.documents(selectedChild)).data || [],
+    [selectedChild],
+  )
+
+  const documents = docsQ.data || []
+  const loading = dashQ.loading || (selectedChild && docsQ.loading)
 
   const handleGenerate = async (type) => {
     if (!selectedChild) return
@@ -49,9 +47,8 @@ export default function ParentDocumentsPage() {
       if (r.data?.url) {
         window.open(r.data.url, '_blank')
       } else {
-        // Refresh list
-        const res = await parentApi.documents(selectedChild)
-        setDocuments(res.data || [])
+        cache.invalidate(`/parent/documents/${selectedChild}`)
+        docsQ.refetch()
       }
     } catch (e) { alert(e.message || 'Erreur lors de la génération') }
     setGenerating(null)

@@ -1,6 +1,8 @@
-import { useEffect, useState, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, KeyRound, AlertTriangle, MessageCircle } from 'lucide-react'
 import { schoolRegistrationApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { cn } from '../lib/utils'
 
 const STATUS_MAP = {
@@ -10,8 +12,6 @@ const STATUS_MAP = {
 }
 
 export default function AdminSchoolRegistrationsPage() {
-  const [registrations, setRegistrations] = useState([])
-  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [showRejectModal, setShowRejectModal] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
@@ -28,17 +28,22 @@ export default function AdminSchoolRegistrationsPage() {
     toastTimer.current = setTimeout(() => setToast(null), 5000)
   }
 
-  const load = async (newFilter) => {
-    setLoading(true)
-    try {
-      const f = newFilter !== undefined ? newFilter : filter
-      const res = await schoolRegistrationApi.list(`status=${f}`)
-      setRegistrations(res.data || [])
-    } catch (e) { showToast('error', 'Erreur de chargement : ' + e.message) }
-    setLoading(false)
-  }
+  const registrationsQ = useCachedFetch(
+    `/school-registrations?status=${filter}`,
+    async () => {
+      const res = await schoolRegistrationApi.list(`status=${filter}`)
+      return res.data || []
+    },
+    [filter],
+  )
 
-  useEffect(() => { load() }, [filter])
+  const registrations = registrationsQ.data || []
+  const loading = registrationsQ.loading
+
+  const refreshRegistrations = () => {
+    cache.invalidate('/school-registrations')
+    registrationsQ.refetch()
+  }
 
   const handleApprove = (reg) => {
     setConfirmModal({ id: reg._id, action: 'approve', schoolName: reg.schoolName, directorName: reg.directorName, email: reg.email })
@@ -78,11 +83,13 @@ export default function AdminSchoolRegistrationsPage() {
         }
         setExpandedId(null)
         setFilter('approved')
-        await load('approved')
+        cache.invalidate('/school-registrations')
+        registrationsQ.refetch()
       } else if (action === 'revoke') {
         await schoolRegistrationApi.revoke(id)
         showToast('success', `✅ Compte de "${confirmModal.schoolName}" révoqué. Le dossier peut être resoumis.`)
-        await load('approved')
+        cache.invalidate('/school-registrations')
+        registrationsQ.refetch()
       }
     } catch (e) {
       showToast('error', '❌ Erreur : ' + e.message)
@@ -120,7 +127,8 @@ export default function AdminSchoolRegistrationsPage() {
       setRejectReason('')
       setExpandedId(null)
       showToast('success', 'Demande rejetée et email envoyé.')
-      await load()
+      cache.invalidate('/school-registrations')
+      registrationsQ.refetch()
     } catch (e) { showToast('error', '❌ Erreur : ' + e.message) }
     setProcessing(null)
   }

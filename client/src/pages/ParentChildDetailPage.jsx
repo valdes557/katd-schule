@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,6 +11,8 @@ import {
   ClipboardList, Send, Paperclip,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { cn } from '../lib/utils'
 
 const PIE_COLORS = ['#10B981', '#EF4444', '#F59E0B', '#6366F1']
@@ -34,25 +36,62 @@ export default function ParentChildDetailPage() {
   const { studentId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialTab = searchParams.get('tab') || 'overview'
-  const [data, setData] = useState(null)
-  const [report, setReport] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [tab, _setTab] = useState(initialTab)
   const setTab = (t) => { _setTab(t); setSearchParams({ tab: t }, { replace: true }) }
-  const [classAtt, setClassAtt] = useState(null)
-  const [classAttLoading, setClassAttLoading] = useState(false)
-  const [teachers, setTeachers] = useState(null)
-  const [teachersLoading, setTeachersLoading] = useState(false)
   const [selectedTerm, setSelectedTerm] = useState('')
   const [selectedSeq, setSelectedSeq] = useState('')
   const [completionData, setCompletionData] = useState({})
   const [completionLoading, setCompletionLoading] = useState(null)
   const [expandedHw, setExpandedHw] = useState(null)
-  const [subjects, setSubjects] = useState(null)
-  const [subjectsLoading, setSubjectsLoading] = useState(false)
   const [justifOpen, setJustifOpen] = useState(null)   // hwId whose justification form is open
   const [justifForm, setJustifForm] = useState({})     // hwId -> { text, file }
   const [justifSaving, setJustifSaving] = useState(null)
+
+  // Primary datasets — always loaded
+  const detailQ = useCachedFetch(
+    `/parent/child/${studentId}`,
+    async () => (await parentApi.childDetail(studentId)).data || null,
+    [studentId],
+  )
+  const reportQ = useCachedFetch(
+    `/parent/child/${studentId}/report`,
+    async () => (await parentApi.weeklyReport(studentId)).data || null,
+    [studentId],
+  )
+
+  // Tab-specific datasets — enabled only when the matching tab is active
+  const classAttQ = useCachedFetch(
+    tab === 'classattendance' ? `/parent/child/${studentId}/classattendance` : null,
+    async () => (await parentApi.classAttendance(studentId)).data || null,
+    [studentId],
+  )
+  const teachersQ = useCachedFetch(
+    tab === 'teachers' ? `/parent/child/${studentId}/teachers` : null,
+    async () => (await parentApi.classTeachers(studentId)).data || [],
+    [studentId],
+  )
+  const subjectsQ = useCachedFetch(
+    tab === 'subjects' ? `/parent/child/${studentId}/subjects` : null,
+    async () => (await parentApi.childSubjects(studentId)).data || [],
+    [studentId],
+  )
+
+  const data = detailQ.data
+  const report = reportQ.data
+  const classAtt = classAttQ.data
+  const teachers = teachersQ.data
+  const subjects = subjectsQ.data
+  const loading = detailQ.loading
+  const classAttLoading = classAttQ.loading
+  const teachersLoading = teachersQ.loading
+  const subjectsLoading = subjectsQ.loading
+
+  const loadCompletion = async (hwId) => {
+    if (completionData[hwId]) return
+    setCompletionLoading(hwId)
+    try { const r = await parentApi.homeworkClassCompletion(hwId); setCompletionData((p) => ({ ...p, [hwId]: r.data })) } catch (_) {}
+    setCompletionLoading(null)
+  }
 
   const sendJustification = async (hwId) => {
     const f = justifForm[hwId] || {}
@@ -63,56 +102,11 @@ export default function ParentChildDetailPage() {
       alert('Justificatif envoyé à l\'enseignant ✅')
       setJustifOpen(null)
       setJustifForm((p) => ({ ...p, [hwId]: { text: '', file: null } }))
-      load()
+      cache.invalidate(`/parent/child/${studentId}`)
+      detailQ.refetch()
     } catch (e) { alert(e.message) }
     setJustifSaving(null)
   }
-
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [detail, rep] = await Promise.all([
-        parentApi.childDetail(studentId),
-        parentApi.weeklyReport(studentId),
-      ])
-      setData(detail.data)
-      setReport(rep.data)
-    } catch (_) {}
-    setLoading(false)
-  }
-
-  const loadClassAttendance = async () => {
-    if (classAtt) return
-    setClassAttLoading(true)
-    try { const r = await parentApi.classAttendance(studentId); setClassAtt(r.data) } catch (_) {}
-    setClassAttLoading(false)
-  }
-
-  const loadTeachers = async () => {
-    if (teachers) return
-    setTeachersLoading(true)
-    try { const r = await parentApi.classTeachers(studentId); setTeachers(r.data || []) } catch (_) {}
-    setTeachersLoading(false)
-  }
-
-  const loadCompletion = async (hwId) => {
-    if (completionData[hwId]) return
-    setCompletionLoading(hwId)
-    try { const r = await parentApi.homeworkClassCompletion(hwId); setCompletionData((p) => ({ ...p, [hwId]: r.data })) } catch (_) {}
-    setCompletionLoading(null)
-  }
-
-  const loadSubjects = async () => {
-    if (subjects) return
-    setSubjectsLoading(true)
-    try { const r = await parentApi.childSubjects(studentId); setSubjects(r.data || []) } catch (_) {}
-    setSubjectsLoading(false)
-  }
-
-  useEffect(() => { load() }, [studentId])
-  useEffect(() => { if (tab === 'classattendance') loadClassAttendance() }, [tab])
-  useEffect(() => { if (tab === 'teachers') loadTeachers() }, [tab])
-  useEffect(() => { if (tab === 'subjects') loadSubjects() }, [tab])
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (!data) return <div className="text-center py-16 text-sm text-gray-500">Enfant non trouvé</div>
@@ -158,7 +152,7 @@ export default function ParentChildDetailPage() {
             <p className="text-xs text-gray-500">{student.class?.name} · {student.cycle} · {student.matricule}</p>
           </div>
         </div>
-        <button onClick={load} className="btn-ghost text-xs border border-gray-200"><RefreshCw size={13} /></button>
+        <button onClick={() => { cache.invalidate(`/parent/child/${studentId}`); detailQ.refetch(); reportQ.refetch() }} className="btn-ghost text-xs border border-gray-200"><RefreshCw size={13} /></button>
       </div>
 
       {/* Weekly Report Banner */}

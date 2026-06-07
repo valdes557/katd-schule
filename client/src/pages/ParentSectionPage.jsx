@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { Loader2, GraduationCap, ArrowRight, AlertCircle } from 'lucide-react'
 import { parentApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 import { getInitials } from '../lib/utils'
 
 const SECTION_TITLES = {
@@ -34,19 +34,19 @@ const SECTION_DESCRIPTIONS = {
 }
 
 export default function ParentSectionPage({ section = 'notes' }) {
-  const [children, setChildren] = useState([])
-  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await parentApi.dashboard()
-        setChildren(r.data?.children || r.data?.students || [])
-      } catch (_) {}
-      setLoading(false)
-    })()
-  }, [])
+  const dashQ = useCachedFetch(
+    '/parent/dashboard',
+    async () => {
+      const r = await parentApi.dashboard()
+      return r.data?.children || r.data?.students || []
+    },
+    [],
+  )
+
+  const children = dashQ.data || []
+  const loading = dashQ.loading
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
 

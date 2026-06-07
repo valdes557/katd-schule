@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Compass, Search, Heart, MessageCircle, Share2, Download, Loader2, Play, Image, Music, X, Send } from 'lucide-react'
 import { mediaApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { cn } from '../lib/utils'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 const TYPES = [
   { key: '', label: 'Tous' },
@@ -19,8 +20,6 @@ const SORTS = [
 
 export default function ExplorerPage() {
   const { user } = useAuth()
-  const [media, setMedia] = useState([])
-  const [loading, setLoading] = useState(true)
   const [type, setType] = useState('')
   const [sort, setSort] = useState('recent')
   const [search, setSearch] = useState('')
@@ -29,23 +28,22 @@ export default function ExplorerPage() {
   const [commentText, setCommentText] = useState('')
   const [loadingDetail, setLoadingDetail] = useState(false)
 
-  const fetchMedia = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ sort, limit: '24' })
-      if (type) params.set('type', type)
-      const res = await mediaApi.list(params.toString())
-      setMedia(res.data || [])
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }
+  const params = new URLSearchParams({ sort, limit: '24' })
+  if (type) params.set('type', type)
+  const qs = params.toString()
 
-  useEffect(() => { fetchMedia() }, [type, sort])
+  const mediaQ = useCachedFetch(`/media?${qs}`, async () => {
+    const res = await mediaApi.list(qs)
+    return res.data || []
+  }, [qs])
+
+  const media = mediaQ.data || []
+  const loading = mediaQ.loading
 
   const handleLike = async (id) => {
     try {
       const res = await mediaApi.like(id)
-      setMedia((prev) => prev.map((m) => m._id === id ? { ...m, stats: { ...m.stats, likes: res.likes } } : m))
+      mediaQ.setData((prev) => (prev || []).map((m) => m._id === id ? { ...m, stats: { ...m.stats, likes: res.likes } } : m))
       if (selectedMedia?._id === id) {
         setSelectedMedia((prev) => ({ ...prev, stats: { ...prev.stats, likes: res.likes } }))
       }

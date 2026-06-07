@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight, BookOpen, GraduationCap, CheckCircle2,
@@ -8,6 +8,7 @@ import {
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { schoolsApi, platformApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 const FEATURES = [
   { icon: GraduationCap, title: 'Gestion complète', desc: 'Élèves, enseignants, classes, notes — tout centralisé', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -46,23 +47,23 @@ const PLANS = [
 ]
 
 export default function LandingPage() {
-  const [schools, setSchools] = useState([])
-  const [experiences, setExperiences] = useState([])
-  const [loadingSchools, setLoadingSchools] = useState(true)
   const [selectedPlans, setSelectedPlans] = useState({ Maternelle: 'annual', Primaire: 'annual', Secondaire: 'annual' })
 
-  useEffect(() => {
-    Promise.all([
+  // Bundle schools + experiences into one cache entry
+  const landingQ = useCachedFetch('/landing/home', async () => {
+    const [sRes, eRes] = await Promise.all([
       schoolsApi.list('limit=8'),
       platformApi.getExperiences(),
     ])
-      .then(([sRes, eRes]) => {
-        setSchools(sRes.data?.data || sRes.data || [])
-        setExperiences(eRes.data?.slice(0, 3) || [])
-      })
-      .catch(() => {})
-      .finally(() => setLoadingSchools(false))
+    return {
+      schools: sRes.data?.data || sRes.data || [],
+      experiences: eRes.data?.slice(0, 3) || [],
+    }
   }, [])
+
+  const schools = landingQ.data?.schools || []
+  const experiences = landingQ.data?.experiences || []
+  const loadingSchools = landingQ.loading
 
   const togglePlan = (cycle, value) =>
     setSelectedPlans((prev) => ({ ...prev, [cycle]: value }))

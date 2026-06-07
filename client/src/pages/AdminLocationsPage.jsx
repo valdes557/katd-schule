@@ -1,37 +1,49 @@
 import { useEffect, useState } from 'react'
 import { MapPin, Plus, Trash2, Loader2, Globe, Building2, Home, Search, AlertCircle } from 'lucide-react'
 import { locationsApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const TYPE_LABELS = { country: 'Pays', city: 'Ville', neighborhood: 'Quartier' }
 const TYPE_ICONS = { country: Globe, city: Building2, neighborhood: Home }
 
 export default function AdminLocationsPage() {
-  const [locations, setLocations] = useState([])
-  const [countries, setCountries] = useState([])
-  const [cities, setCities] = useState([])
-  const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('country')
   const [form, setForm] = useState({ type: 'country', name: '', parent: '', code: '' })
   const [adding, setAdding] = useState(false)
   const [search, setSearch] = useState('')
   const [error, setError] = useState(null)
 
-  const fetchAll = async () => {
-    setLoading(true)
-    try {
-      const res = await locationsApi.list(`type=${tab}`)
-      setLocations(res.data || [])
-      const cRes = await locationsApi.list('type=country')
-      setCountries(cRes.data || [])
-      if (tab === 'neighborhood') {
-        const ciRes = await locationsApi.list('type=city')
-        setCities(ciRes.data || [])
-      }
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }
+  const locationsQ = useCachedFetch(`/locations?type=${tab}`, async () => {
+    const res = await locationsApi.list(`type=${tab}`)
+    return res.data || []
+  }, [tab])
 
-  useEffect(() => { fetchAll() }, [tab])
+  const countriesQ = useCachedFetch('/locations?type=country', async () => {
+    const res = await locationsApi.list('type=country')
+    return res.data || []
+  }, [])
+
+  const citiesQ = useCachedFetch(
+    tab === 'neighborhood' ? '/locations?type=city' : null,
+    async () => {
+      const res = await locationsApi.list('type=city')
+      return res.data || []
+    },
+    [tab],
+  )
+
+  const locations = locationsQ.data || []
+  const countries = countriesQ.data || []
+  const cities = citiesQ.data || []
+  const loading = locationsQ.loading
+
+  const refreshLocations = () => {
+    cache.invalidate('/locations')
+    locationsQ.refetch()
+    countriesQ.refetch()
+    if (tab === 'neighborhood') citiesQ.refetch()
+  }
 
   const handleAdd = async (e) => {
     e.preventDefault()
@@ -40,7 +52,7 @@ export default function AdminLocationsPage() {
     try {
       await locationsApi.create({ type: form.type, name: form.name.trim(), parent: form.parent || undefined, code: form.code?.trim() || undefined })
       setForm({ type: tab, name: '', parent: '', code: '' })
-      fetchAll()
+      refreshLocations()
     } catch (err) {
       setError(err.message || 'Erreur lors de la création')
     }
@@ -51,7 +63,7 @@ export default function AdminLocationsPage() {
     if (!confirm('Supprimer cette localité et tous ses enfants ?')) return
     try {
       await locationsApi.remove(id)
-      fetchAll()
+      refreshLocations()
     } catch (err) { alert(err.message) }
   }
 

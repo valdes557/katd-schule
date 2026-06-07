@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Image as ImageIcon, Film, Music, Plus, Loader2 } from 'lucide-react'
 import { platformApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import SocialTab from '../components/landing/SocialTab'
 import { useAuth } from '../context/AuthContext'
 
@@ -14,8 +16,11 @@ const CATEGORIES = ['Éducation', 'Sport', 'Culture', 'Sciences', 'Technologie']
 
 export default function DashboardSocialPage() {
   const { user } = useAuth()
-  const [feed, setFeed] = useState([])
-  const [loading, setLoading] = useState(true)
+
+  const feedQ = useCachedFetch('/platform/feed?page=1', async () => (await platformApi.getFeed(1)).data || [], [])
+
+  const feed = feedQ.data || []
+  const loading = feedQ.loading
 
   const [mediaType, setMediaType] = useState('photo')
   const [form, setForm] = useState({ title: '', content: '', category: '', videoUrl: '', duration: '' })
@@ -30,13 +35,6 @@ export default function DashboardSocialPage() {
   const audioRef = useRef(null)
   const videoRef = useRef(null)
 
-  useEffect(() => {
-    platformApi.getFeed(1)
-      .then((r) => setFeed(r.data || []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
-
   const handleImages = (e) => {
     const files = Array.from(e.target.files || [])
     setImageFiles(files)
@@ -50,6 +48,10 @@ export default function DashboardSocialPage() {
     setVideoFile(null)
     setPreviews([])
   }
+
+  // setFeed kept for SocialTab compatibility — wraps feedQ.setData so the
+  // cache stays consistent when SocialTab updates feed locally (likes, etc.)
+  const setFeed = (updater) => feedQ.setData(updater)
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -67,7 +69,8 @@ export default function DashboardSocialPage() {
     try {
       const r = await platformApi.createPostWithProgress(fd, setProgress)
       if (r.success && r.data) {
-        setFeed((prev) => [r.data, ...(prev || [])])
+        cache.invalidate('/platform/feed')
+        feedQ.setData((prev) => [r.data, ...(prev || [])])
         resetForm()
       } else {
         alert(r.message || 'Erreur lors de la publication')

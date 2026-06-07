@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, Plus, Search, Edit2, Trash2, X, Loader2, AlertCircle, Users, DoorOpen } from 'lucide-react'
 import { classesApi, teachersApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
 
 const CYCLES = ['Maternelle', 'Primaire', 'Secondaire']
@@ -15,29 +17,28 @@ export default function ClassesPage() {
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
   const cycles = subscribedCycle ? [subscribedCycle] : CYCLES
 
-  const [classes, setClasses] = useState([])
-  const [teachers, setTeachers] = useState([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [cycleFilter, setCycleFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
 
-  const fetch = async () => {
-    setLoading(true)
-    try {
-      const [cr, tr] = await Promise.all([classesApi.list(cycleFilter ? `cycle=${cycleFilter}` : ''), teachersApi.list()])
-      setClasses(cr.data || [])
-      setTeachers(tr.data || [])
-    } catch (e) {}
-    setLoading(false)
-  }
-
-  useEffect(() => { fetch() }, [cycleFilter])
   useEffect(() => {
     if (subscribedCycle && cycleFilter !== subscribedCycle) setCycleFilter(subscribedCycle)
   }, [subscribedCycle])
+
+  const classesQ = useCachedFetch(
+    `/classes?${cycleFilter ? `cycle=${cycleFilter}` : ''}`,
+    async () => (await classesApi.list(cycleFilter ? `cycle=${cycleFilter}` : '')).data || [],
+    [cycleFilter],
+  )
+  const teachersQ = useCachedFetch('/teachers?', async () => (await teachersApi.list()).data || [], [])
+
+  const classes = classesQ.data || []
+  const teachers = teachersQ.data || []
+  const loading = classesQ.loading
+
+  const refreshClasses = () => { cache.invalidate('/classes'); classesQ.refetch() }
 
   const filtered = classes.filter((c) =>
     !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.room || '').toLowerCase().includes(search.toLowerCase())
@@ -51,13 +52,13 @@ export default function ClassesPage() {
       setShowModal(false)
       setEditing(null)
       setForm(EMPTY)
-      fetch()
+      refreshClasses()
     } catch (e) { alert(e.message) }
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cette classe ?')) return
-    try { await classesApi.remove(id); fetch() } catch (e) { alert(e.message) }
+    try { await classesApi.remove(id); refreshClasses() } catch (e) { alert(e.message) }
   }
 
   const openEdit = (c) => {

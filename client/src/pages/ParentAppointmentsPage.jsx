@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   CalendarCheck, Plus, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, X,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const STATUS_MAP = {
   pending: { label: 'En attente', cls: 'bg-amber-100 text-amber-700', icon: Clock },
@@ -12,31 +14,32 @@ const STATUS_MAP = {
 }
 
 export default function ParentAppointmentsPage() {
-  const [appointments, setAppointments] = useState([])
-  const [children, setChildren] = useState([])
-  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ studentId: '', withRole: 'enseignant', date: '', time: '', reason: '' })
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [appts, dash] = await Promise.all([parentApi.appointments(), parentApi.dashboard()])
-        setAppointments(appts.data || [])
-        setChildren(dash.data?.children || [])
-      } catch (_) {}
-      setLoading(false)
-    })()
-  }, [])
+  const appointmentsQ = useCachedFetch(
+    '/parent/appointments',
+    async () => (await parentApi.appointments()).data || [],
+    [],
+  )
+  const dashQ = useCachedFetch(
+    '/parent/dashboard',
+    async () => (await parentApi.dashboard()).data || null,
+    [],
+  )
+
+  const appointments = appointmentsQ.data || []
+  const children = dashQ.data?.children || []
+  const loading = appointmentsQ.loading || dashQ.loading
 
   const handleCreate = async () => {
     if (!form.studentId || !form.date || !form.time || !form.reason) return alert('Tous les champs sont obligatoires')
     setSubmitting(true)
     try {
       await parentApi.createAppointment(form)
-      const r = await parentApi.appointments()
-      setAppointments(r.data || [])
+      cache.invalidate('/parent/appointments')
+      appointmentsQ.refetch()
       setShowForm(false)
       setForm({ studentId: '', withRole: 'enseignant', date: '', time: '', reason: '' })
     } catch (e) { alert(e.message) }

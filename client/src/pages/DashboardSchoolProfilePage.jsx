@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { schoolsApi, locationsApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const CYCLES = ['Maternelle', 'Primaire', 'Secondaire']
 const CYCLE_COLORS = {
@@ -114,8 +116,9 @@ export default function DashboardSchoolProfilePage() {
   const { school: ctxSchool, user } = useAuth()
   const navigate = useNavigate()
 
+  // Mutable local school object (keeps in sync after saves without needing to
+  // re-fetch the whole page; the cache holds the initial load data).
   const [school, setSchool] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
 
@@ -140,6 +143,7 @@ export default function DashboardSchoolProfilePage() {
   const [selCity, setSelCity] = useState('')
   const [selNeighborhood, setSelNeighborhood] = useState('')
 
+  // Location lookups are UI-driven cascades, not page-level list fetches — keep as-is.
   useEffect(() => {
     locationsApi.countries().then((r) => setCountries(r.data || [])).catch(() => {})
   }, [])
@@ -152,35 +156,35 @@ export default function DashboardSchoolProfilePage() {
     if (selCity) locationsApi.neighborhoods(selCity).then((r) => setNeighborhoods(r.data || [])).catch(() => {})
   }, [selCity])
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      try {
-        const r = await schoolsApi.mine()
-        if (r.success && r.data) {
-          const s = r.data
-          setSchool(s)
-          setLogoPreview(s.logo || '')
-          setForm({
-            name: s.name || '',
-            description: s.description || '',
-            phone: s.phone || '',
-            email: s.email || s.contact?.email || '',
-            website: s.contact?.website || '',
-            city: s.address?.city || '',
-            neighborhood: s.address?.neighborhood || '',
-            country: s.address?.country || 'Cameroun',
-            cycles: s.cycles || [],
-            enrollmentFee: s.enrollmentFee || 0,
-            socials: { facebook: '', instagram: '', twitter: '', tiktok: '', youtube: '', linkedin: '', whatsapp: '', ...(s.socials || {}) },
-            mobileMoneyAccounts: s.mobileMoneyAccounts || [],
-          })
-        }
-      } catch (_) {}
-      setLoading(false)
-    }
-    load()
+  // Page-level data fetch → migrated to SWR cache.
+  const schoolQ = useCachedFetch('/schools/mine?', async () => {
+    const r = await schoolsApi.mine()
+    return (r.success && r.data) ? r.data : null
   }, [])
+
+  const loading = schoolQ.loading
+
+  // Seed local state when cache data arrives (first load or cache miss).
+  useEffect(() => {
+    const s = schoolQ.data
+    if (!s) return
+    setSchool(s)
+    setLogoPreview(s.logo || '')
+    setForm({
+      name: s.name || '',
+      description: s.description || '',
+      phone: s.phone || '',
+      email: s.email || s.contact?.email || '',
+      website: s.contact?.website || '',
+      city: s.address?.city || '',
+      neighborhood: s.address?.neighborhood || '',
+      country: s.address?.country || 'Cameroun',
+      cycles: s.cycles || [],
+      enrollmentFee: s.enrollmentFee || 0,
+      socials: { facebook: '', instagram: '', twitter: '', tiktok: '', youtube: '', linkedin: '', whatsapp: '', ...(s.socials || {}) },
+      mobileMoneyAccounts: s.mobileMoneyAccounts || [],
+    })
+  }, [schoolQ.data])
 
   const handleLogoChange = (e) => {
     const file = e.target.files?.[0]
@@ -222,6 +226,9 @@ export default function DashboardSchoolProfilePage() {
       const r = await schoolsApi.setup(school._id, fd)
       if (r.success) {
         setSchool(r.data)
+        // Update cache so next visit is instant with fresh data.
+        cache.invalidate('/schools/mine')
+        schoolQ.refetch()
         setLogoFile(null)
         setLogoPreview(r.data.logo || logoPreview)
         setMsg({ type: 'success', text: 'Profil de l\'école mis à jour avec succès !' })

@@ -1,22 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Plus, Loader2, ClipboardList, Trash2, Edit2, X, CheckCircle2, Clock,
   Users, AlertTriangle, ChevronDown, ChevronUp, FileText, Save, Star, Bell,
   ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { teacherApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 export default function TeacherHomeworkPage() {
-  const [homeworks, setHomeworks] = useState([])
-  const [classes, setClasses] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [filterClass, setFilterClass] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
   const [form, setForm] = useState({ title: '', description: '', subject: '', class: '', dueDate: '', type: 'devoir' })
   const [saving, setSaving] = useState(false)
   const [expanded, setExpanded] = useState(null)
   const [gradeForm, setGradeForm] = useState({})
-  const [filterClass, setFilterClass] = useState('')
   const [completionView, setCompletionView] = useState({}) // hwId -> 'submissions' | 'completion'
   const [completions, setCompletions] = useState({}) // hwId -> { studentId: bool }
   const [completionStudents, setCompletionStudents] = useState({}) // hwId -> []
@@ -33,19 +32,21 @@ export default function TeacherHomeworkPage() {
     return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
   }
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [hwRes, dashRes] = await Promise.all([
-        teacherApi.homeworks(filterClass ? `classId=${filterClass}` : ''),
-        teacherApi.dashboard(),
-      ])
-      setHomeworks(hwRes.data || [])
-      setClasses(dashRes.data?.teacher?.classes || [])
-    } catch (_) {}
-    setLoading(false)
-  }
-  useEffect(() => { load() }, [filterClass])
+  const hwKey = `/teacher/homeworks?classId=${filterClass}`
+  const homeworksQ = useCachedFetch(hwKey, async () => {
+    return (await teacherApi.homeworks(filterClass ? `classId=${filterClass}` : '')).data || []
+  }, [filterClass])
+
+  const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => {
+    const r = await teacherApi.dashboard()
+    return r.data?.teacher?.classes || []
+  }, [])
+
+  const homeworks = homeworksQ.data || []
+  const classes = dashboardQ.data || []
+  const loading = homeworksQ.loading
+
+  const refresh = () => { cache.invalidate('/teacher/homeworks'); homeworksQ.refetch() }
 
   const openCreate = () => {
     setEditId(null)
@@ -76,7 +77,7 @@ export default function TeacherHomeworkPage() {
         await teacherApi.createHomework(form)
       }
       setShowForm(false)
-      load()
+      refresh()
     } catch (e) { alert(e.message) }
     setSaving(false)
   }
@@ -85,7 +86,7 @@ export default function TeacherHomeworkPage() {
     if (!confirm('Supprimer ce devoir ?')) return
     try {
       await teacherApi.deleteHomework(id)
-      load()
+      refresh()
     } catch (e) { alert(e.message) }
   }
 
@@ -144,7 +145,7 @@ export default function TeacherHomeworkPage() {
     try {
       await teacherApi.recordSubmissions(hwId, entries)
       alert('Remises validées ✅ — les parents concernés ont été notifiés par email.')
-      load()
+      refresh()
     } catch (e) { alert(e.message) }
     setSavingSub(null)
   }
@@ -155,7 +156,7 @@ export default function TeacherHomeworkPage() {
     try {
       await teacherApi.gradeSubmission(hwId, subId, { grade: Number(g.grade), comment: g.comment || '' })
       setGradeForm((prev) => { const n = { ...prev }; delete n[subId]; return n })
-      load()
+      refresh()
     } catch (e) { alert(e.message) }
   }
 

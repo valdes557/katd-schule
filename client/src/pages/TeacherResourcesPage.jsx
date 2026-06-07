@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Plus, BookOpen, Link as LinkIcon, FileText, Trash2, Edit2, X, Loader2, ExternalLink } from 'lucide-react'
 import { teacherApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const TYPES = [
   { value: 'document', label: 'Document' },
@@ -12,9 +14,6 @@ const TYPES = [
 ]
 
 export default function TeacherResourcesPage() {
-  const [items, setItems] = useState([])
-  const [classes, setClasses] = useState([])
-  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -23,16 +22,17 @@ export default function TeacherResourcesPage() {
     subject: '', url: '', classes: [],
   })
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [r, d] = await Promise.all([teacherApi.resources(), teacherApi.dashboard()])
-      setItems(r.data || [])
-      setClasses(d.data?.teacher?.classes || [])
-    } catch (_) {}
-    setLoading(false)
-  }
-  useEffect(() => { load() }, [])
+  const resourcesQ = useCachedFetch('/teacher/resources?', async () => (await teacherApi.resources()).data || [], [])
+  const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => {
+    const d = await teacherApi.dashboard()
+    return d.data?.teacher?.classes || []
+  }, [])
+
+  const items = resourcesQ.data || []
+  const classes = dashboardQ.data || []
+  const loading = resourcesQ.loading
+
+  const refresh = () => { cache.invalidate('/teacher/resources'); resourcesQ.refetch() }
 
   const open = (r) => {
     if (r) {
@@ -63,14 +63,14 @@ export default function TeacherResourcesPage() {
       if (editId) await teacherApi.updateResource(editId, form)
       else await teacherApi.createResource(form)
       setShowForm(false)
-      load()
+      refresh()
     } catch (e) { alert(e.message) }
     setSaving(false)
   }
 
   const remove = async (id) => {
     if (!confirm('Supprimer cette ressource ?')) return
-    try { await teacherApi.deleteResource(id); load() } catch (e) { alert(e.message) }
+    try { await teacherApi.deleteResource(id); refresh() } catch (e) { alert(e.message) }
   }
 
   return (

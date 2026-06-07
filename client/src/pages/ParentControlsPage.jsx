@@ -3,51 +3,53 @@ import {
   Shield, Clock, Eye, Bell, Loader2, Save, User, AlertTriangle,
 } from 'lucide-react'
 import { parentApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 export default function ParentControlsPage() {
-  const [children, setChildren] = useState([])
   const [selectedChild, setSelectedChild] = useState(null)
-  const [controls, setControls] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // Load children from dashboard
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await parentApi.dashboard()
-        const kids = r.data?.children || []
-        setChildren(kids)
-        if (kids.length > 0) setSelectedChild(kids[0]._id)
-      } catch (_) {}
-    })()
-  }, [])
+  const dashQ = useCachedFetch(
+    '/parent/dashboard',
+    async () => (await parentApi.dashboard()).data || null,
+    [],
+  )
 
-  // Load controls when child changes
+  const children = dashQ.data?.children || []
+
+  // Auto-select first child once dashboard data arrives
   useEffect(() => {
-    if (!selectedChild) { setLoading(false); return }
-    (async () => {
-      setLoading(true)
-      try {
-        const r = await parentApi.getControls(selectedChild)
-        setControls(r.data)
-      } catch (_) { setControls(null) }
-      setLoading(false)
-    })()
-  }, [selectedChild])
+    if (!selectedChild && children.length > 0) setSelectedChild(children[0]._id)
+  }, [children, selectedChild])
+
+  const controlsQ = useCachedFetch(
+    selectedChild ? `/parent/controls/${selectedChild}` : null,
+    async () => (await parentApi.getControls(selectedChild)).data || null,
+    [selectedChild],
+  )
+
+  const controls = controlsQ.data
+  const loading = dashQ.loading || (selectedChild && controlsQ.loading)
+
+  // Local editable copy of controls (kept in sync with fetched data via setData)
+  const setControls = (updater) => {
+    controlsQ.setData(updater)
+  }
 
   const handleSave = async () => {
     if (!controls || !selectedChild) return
     setSaving(true)
     try {
       const r = await parentApi.updateControls(selectedChild, controls)
-      setControls(r.data)
+      cache.invalidate(`/parent/controls/${selectedChild}`)
+      controlsQ.setData(r.data)
     } catch (e) { alert(e.message) }
     setSaving(false)
   }
 
-  const updateScreenTime = (key, val) => setControls({ ...controls, screenTime: { ...controls.screenTime, [key]: val } })
-  const updateAlerts = (key, val) => setControls({ ...controls, alerts: { ...controls.alerts, [key]: val } })
+  const updateScreenTime = (key, val) => setControls((prev) => ({ ...prev, screenTime: { ...prev.screenTime, [key]: val } }))
+  const updateAlerts = (key, val) => setControls((prev) => ({ ...prev, alerts: { ...prev.alerts, [key]: val } }))
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -108,7 +110,7 @@ export default function ParentControlsPage() {
                 return (
                   <button key={mod} onClick={() => {
                     const mods = controls.blockedModules || []
-                    setControls({ ...controls, blockedModules: isBlocked ? mods.filter((m) => m !== mod) : [...mods, mod] })
+                    setControls((prev) => ({ ...prev, blockedModules: isBlocked ? mods.filter((m) => m !== mod) : [...mods, mod] }))
                   }} className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${isBlocked ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
                     {isBlocked ? '🚫' : '✅'} {mod}
                   </button>

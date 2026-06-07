@@ -1,19 +1,15 @@
 import { useEffect, useState } from 'react'
 import { ClipboardList, Plus, Search, Edit2, Trash2, X, Loader2, AlertCircle, School as SchoolIcon, Filter } from 'lucide-react'
 import { subjectsApi, classesApi, teachersApi, schoolsApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const CYCLES = ['Maternelle', 'Primaire', 'Secondaire']
 const CYCLE_COLORS = { Maternelle: 'bg-orange-100 text-orange-700', Primaire: 'bg-blue-100 text-blue-700', Secondaire: 'bg-green-100 text-green-700' }
 const EMPTY = { name: '', code: '', cycle: 'Primaire', level: '', coefficient: 1, hoursPerWeek: 2, teacher: '', classes: [], description: '', program: '' }
 
 export default function AdminSchoolSubjectsPage() {
-  const [schools, setSchools] = useState([])
   const [schoolId, setSchoolId] = useState('')
-  const [subjects, setSubjects] = useState([])
-  const [classes, setClasses] = useState([])
-  const [teachers, setTeachers] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [loadingSchools, setLoadingSchools] = useState(true)
   const [search, setSearch] = useState('')
   const [cycleFilter, setCycleFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -21,37 +17,46 @@ export default function AdminSchoolSubjectsPage() {
   const [form, setForm] = useState(EMPTY)
   const [submitting, setSubmitting] = useState(false)
 
-  // Load all schools on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await schoolsApi.list()
-        const list = r.data || []
-        setSchools(list)
-        if (list.length > 0) setSchoolId(list[0]._id)
-      } catch (_) {}
-      setLoadingSchools(false)
-    })()
+  const schoolsQ = useCachedFetch('/schools?', async () => {
+    const r = await schoolsApi.list()
+    return r.data || []
   }, [])
 
-  const load = async () => {
-    if (!schoolId) return
-    setLoading(true)
-    try {
-      const params = `schoolId=${schoolId}${cycleFilter ? `&cycle=${cycleFilter}` : ''}`
-      const [sr, cr, tr] = await Promise.all([
-        subjectsApi.list(params),
-        classesApi.list(`schoolId=${schoolId}`),
-        teachersApi.list(`schoolId=${schoolId}`),
-      ])
-      setSubjects(sr.data || [])
-      setClasses(cr.data || [])
-      setTeachers(tr.data || [])
-    } catch (_) {}
-    setLoading(false)
-  }
+  const schools = schoolsQ.data || []
+  const loadingSchools = schoolsQ.loading
 
-  useEffect(() => { load() }, [schoolId, cycleFilter])
+  // Auto-select first school once loaded
+  useEffect(() => {
+    if (!schoolId && schools.length > 0) setSchoolId(schools[0]._id)
+  }, [schools, schoolId])
+
+  const subjectsParams = schoolId ? `schoolId=${schoolId}${cycleFilter ? `&cycle=${cycleFilter}` : ''}` : null
+  const subjectsKey = schoolId ? `/subjects?schoolId=${schoolId}&cycle=${cycleFilter}` : null
+
+  const subjectsQ = useCachedFetch(subjectsKey, async () => {
+    const res = await subjectsApi.list(subjectsParams)
+    return res.data || []
+  }, [schoolId, cycleFilter])
+
+  const classesQ = useCachedFetch(schoolId ? `/classes?schoolId=${schoolId}` : null, async () => {
+    const res = await classesApi.list(`schoolId=${schoolId}`)
+    return res.data || []
+  }, [schoolId])
+
+  const teachersQ = useCachedFetch(schoolId ? `/teachers?schoolId=${schoolId}` : null, async () => {
+    const res = await teachersApi.list(`schoolId=${schoolId}`)
+    return res.data || []
+  }, [schoolId])
+
+  const subjects = subjectsQ.data || []
+  const classes = classesQ.data || []
+  const teachers = teachersQ.data || []
+  const loading = subjectsQ.loading
+
+  const refreshSubjects = () => {
+    cache.invalidate('/subjects')
+    subjectsQ.refetch()
+  }
 
   const filtered = subjects.filter((s) =>
     !search || s.name.toLowerCase().includes(search.toLowerCase()) || (s.code || '').toLowerCase().includes(search.toLowerCase())
@@ -66,14 +71,14 @@ export default function AdminSchoolSubjectsPage() {
       if (editing) await subjectsApi.update(editing._id, payload)
       else await subjectsApi.create(payload)
       setShowModal(false); setEditing(null); setForm(EMPTY)
-      load()
+      refreshSubjects()
     } catch (e) { alert(e.message) }
     setSubmitting(false)
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cette matière ?')) return
-    try { await subjectsApi.remove(id); load() } catch (e) { alert(e.message) }
+    try { await subjectsApi.remove(id); refreshSubjects() } catch (e) { alert(e.message) }
   }
 
   const openEdit = (s) => {

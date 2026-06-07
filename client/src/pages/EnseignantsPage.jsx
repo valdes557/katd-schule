@@ -3,6 +3,8 @@ import { UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Mail, 
 import { teachersApi, classesApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { getInitials } from '../lib/utils'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4']
 const EMPTY = { firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '', password: '', classes: [], cycle: '' }
@@ -12,29 +14,34 @@ export default function EnseignantsPage() {
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
 
-  const [teachers, setTeachers] = useState([])
-  const [allClasses, setAllClasses] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
+  const [committedSearch, setCommittedSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const [showPwd, setShowPwd] = useState(false)
 
-  const fetchTeachers = async () => {
-    setLoading(true)
-    try {
-      const [res, cr] = await Promise.all([teachersApi.list(search ? `search=${search}` : ''), classesApi.list()])
-      setTeachers(res.data || [])
-      setTotal(res.total || 0)
-      setAllClasses(cr.data || [])
-    } catch (e) {}
-    setLoading(false)
-  }
+  // Debounce the search before putting it in the cache key
+  useEffect(() => {
+    const t = setTimeout(() => setCommittedSearch(search), 400)
+    return () => clearTimeout(t)
+  }, [search])
 
-  useEffect(() => { fetchTeachers() }, [])
-  useEffect(() => { const t = setTimeout(fetchTeachers, 400); return () => clearTimeout(t) }, [search])
+  const qs = committedSearch ? `search=${committedSearch}` : ''
+
+  const teachersQ = useCachedFetch(`/teachers?${qs}`, async () => {
+    const res = await teachersApi.list(qs)
+    return { list: res.data || [], total: res.total || 0 }
+  }, [qs])
+
+  const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
+
+  const teachers = teachersQ.data?.list || []
+  const total = teachersQ.data?.total || 0
+  const allClasses = classesQ.data || []
+  const loading = teachersQ.loading
+
+  const refreshTeachers = () => { cache.invalidate('/teachers'); teachersQ.refetch() }
 
   const toggleClass = (id) => setForm((f) => ({ ...f, classes: f.classes.includes(id) ? f.classes.filter((c) => c !== id) : [...f.classes, id] }))
 
@@ -53,13 +60,13 @@ export default function EnseignantsPage() {
       setShowModal(false)
       setEditing(null)
       setForm(EMPTY)
-      fetchTeachers()
+      refreshTeachers()
     } catch (e) { alert(e.message) }
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cet enseignant et son compte de connexion ?')) return
-    try { await teachersApi.remove(id); fetchTeachers() } catch (e) { alert(e.message) }
+    try { await teachersApi.remove(id); refreshTeachers() } catch (e) { alert(e.message) }
   }
 
   const openEdit = (t) => {

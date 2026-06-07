@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { dashboardApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import ParentDashboardPage from './ParentDashboardPage'
 import TeacherDashboardPage from './TeacherDashboardPage'
 
@@ -17,15 +19,15 @@ const PIE_COLORS = ['#3B82F6', '#F59E0B', '#10B981']
 
 /* ─── Admin Dashboard ─── */
 function AdminDashboard({ user }) {
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const statsQ = useCachedFetch('/dashboard/admin-stats?', async () => {
+    const r = await dashboardApi.getAdminStats()
+    return r.data || null
+  }, [])
 
-  const fetch = async () => {
-    setLoading(true)
-    try { const r = await dashboardApi.getAdminStats(); setStats(r.data) } catch (_) {}
-    setLoading(false)
-  }
-  useEffect(() => { fetch() }, [])
+  const loading = statsQ.loading
+  const stats = statsQ.data
+
+  const refreshStats = () => { cache.invalidate('/dashboard/admin-stats'); statsQ.refetch() }
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   const s = stats || {}
@@ -46,7 +48,7 @@ function AdminDashboard({ user }) {
           <h1 className="text-xl font-bold text-gray-900">Administration KATD-SCHÜLE 🛡️</h1>
           <p className="text-sm text-gray-500">Vue d'ensemble de la plateforme</p>
         </div>
-        <button onClick={fetch} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
+        <button onClick={refreshStats} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -123,19 +125,19 @@ function AdminDashboard({ user }) {
 
 /* ─── Director Dashboard ─── */
 function DirectorDashboard({ user, school }) {
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const statsQ = useCachedFetch('/dashboard/stats?', async () => {
+    const res = await dashboardApi.getStats()
+    return res.data || null
+  }, [])
 
-  const fetchStats = async () => {
-    setLoading(true); setError(null)
-    try { const res = await dashboardApi.getStats(); setStats(res.data) } catch (err) { setError(err.message) }
-    setLoading(false)
-  }
-  useEffect(() => { fetchStats() }, [])
+  const loading = statsQ.loading
+  const error = statsQ.error
+  const stats = statsQ.data
+
+  const refreshStats = () => { cache.invalidate('/dashboard/stats'); statsQ.refetch() }
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
-  if (error) return <div className="text-center py-16"><AlertCircle size={36} className="mx-auto text-red-400 mb-3" /><p className="text-sm text-gray-600">{error}</p><button onClick={fetchStats} className="btn-primary text-sm mt-4">Réessayer</button></div>
+  if (error) return <div className="text-center py-16"><AlertCircle size={36} className="mx-auto text-red-400 mb-3" /><p className="text-sm text-gray-600">{error.message}</p><button onClick={refreshStats} className="btn-primary text-sm mt-4">Réessayer</button></div>
 
   const s = stats || {}
   const statsCards = [
@@ -159,7 +161,7 @@ function DirectorDashboard({ user, school }) {
             <div className="flex gap-1 mt-1">{schoolCycles.map((c) => <span key={c} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-medium">{c}</span>)}</div>
           )}
         </div>
-        <button onClick={fetchStats} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
+        <button onClick={refreshStats} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
       </div>
 
       {!school && (

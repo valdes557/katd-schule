@@ -1,33 +1,36 @@
 import { useEffect, useState } from 'react'
 import { School, Search, Trash2, Eye, Loader2, AlertCircle, MapPin } from 'lucide-react'
 import { schoolsApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 export default function AdminEcolesPage() {
-  const [schools, setSchools] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [cycleFilter, setCycleFilter] = useState('')
 
-  const fetchSchools = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (search) params.set('search', search)
-      if (cycleFilter) params.set('cycle', cycleFilter)
-      const res = await schoolsApi.list(params.toString())
-      setSchools(res.data || [])
-      setTotal(res.total || 0)
-    } catch (e) {}
-    setLoading(false)
-  }
+  const [committed, setCommitted] = useState({ search: '', cycleFilter: '' })
+  useEffect(() => {
+    const t = setTimeout(() => setCommitted({ search, cycleFilter }), 400)
+    return () => clearTimeout(t)
+  }, [search, cycleFilter])
 
-  useEffect(() => { fetchSchools() }, [])
-  useEffect(() => { const t = setTimeout(fetchSchools, 400); return () => clearTimeout(t) }, [search, cycleFilter])
+  const params = new URLSearchParams()
+  if (committed.search) params.set('search', committed.search)
+  if (committed.cycleFilter) params.set('cycle', committed.cycleFilter)
+  const qs = params.toString()
+
+  const schoolsQ = useCachedFetch(`/schools?${qs}`, async () => {
+    const res = await schoolsApi.list(qs)
+    return { list: res.data || [], total: res.total || 0 }
+  }, [qs])
+
+  const schools = schoolsQ.data?.list || []
+  const total = schoolsQ.data?.total || 0
+  const loading = schoolsQ.loading
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cette école ? Cette action est irréversible.')) return
-    try { await schoolsApi.remove(id); fetchSchools() } catch (e) { alert(e.message) }
+    try { await schoolsApi.remove(id); cache.invalidate('/schools'); schoolsQ.refetch() } catch (e) { alert(e.message) }
   }
 
   return (

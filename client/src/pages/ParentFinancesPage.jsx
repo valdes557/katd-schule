@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   CreditCard, CheckCircle2, Clock, AlertCircle, Loader2, DollarSign,
   FileText, Download, X,
 } from 'lucide-react'
 import { parentApi, feesApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const STATUS_LABELS = {
   paid: { label: 'Payé', cls: 'bg-green-100 text-green-700' },
@@ -13,24 +15,23 @@ const STATUS_LABELS = {
 }
 
 export default function ParentFinancesPage() {
-  const [fees, setFees] = useState([])
-  const [summary, setSummary] = useState({})
-  const [loading, setLoading] = useState(true)
   const [payModal, setPayModal] = useState(null)
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', reference: '' })
   const [paying, setPaying] = useState(false)
   const [downloading, setDownloading] = useState(null) // feeId:paymentIndex
 
-  const load = async () => {
-    setLoading(true)
-    try {
+  const feesQ = useCachedFetch(
+    '/parent/fees',
+    async () => {
       const r = await parentApi.fees()
-      setFees(r.data || [])
-      setSummary(r.summary || {})
-    } catch (_) {}
-    setLoading(false)
-  }
-  useEffect(() => { load() }, [])
+      return { list: r.data || [], summary: r.summary || {} }
+    },
+    [],
+  )
+
+  const fees = feesQ.data?.list || []
+  const summary = feesQ.data?.summary || {}
+  const loading = feesQ.loading
 
   const downloadReceipt = async (feeId, paymentIndex) => {
     const key = `${feeId}:${paymentIndex}`
@@ -52,7 +53,8 @@ export default function ParentFinancesPage() {
       await parentApi.payFee(payModal._id, { amount: Number(payForm.amount), method: payForm.method, reference: payForm.reference })
       setPayModal(null)
       setPayForm({ amount: '', method: 'cash', reference: '' })
-      load()
+      cache.invalidate('/parent/fees')
+      feesQ.refetch()
     } catch (e) {
       alert(e.message)
     }

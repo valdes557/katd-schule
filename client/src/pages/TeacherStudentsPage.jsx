@@ -4,35 +4,32 @@ import {
   ChevronDown, ChevronUp, ArrowUpDown, Phone, Mail, UserCheck,
 } from 'lucide-react'
 import { teacherApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 export default function TeacherStudentsPage() {
-  const [students, setStudents] = useState([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [sortField, setSortField] = useState('lastName')
   const [sortDir, setSortDir] = useState('asc')
   const [filterClass, setFilterClass] = useState('')
-  const [classes, setClasses] = useState([])
   const [activeView, setActiveView] = useState('students') // 'students' | 'parents'
   const [parents, setParents] = useState({})
   const [parentsLoading, setParentsLoading] = useState(false)
   const [parentsClass, setParentsClass] = useState('')
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [studRes, dashRes] = await Promise.all([
-          teacherApi.students(),
-          teacherApi.dashboard(),
-        ])
-        setStudents(studRes.data || [])
-        const cls = dashRes.data?.teacher?.classes || []
-        setClasses(cls)
-        if (cls.length > 0) setParentsClass(cls[0]._id)
-      } catch (_) {}
-      setLoading(false)
-    })()
+  const studentsQ = useCachedFetch('/teacher/students?', async () => (await teacherApi.students()).data || [], [])
+  const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => {
+    const r = await teacherApi.dashboard()
+    return r.data?.teacher?.classes || []
   }, [])
+
+  const students = studentsQ.data || []
+  const classes = dashboardQ.data || []
+  const loading = studentsQ.loading || dashboardQ.loading
+
+  // Set the initial parentsClass once classes load (mirrors the original initializer)
+  useEffect(() => {
+    if (classes.length > 0 && !parentsClass) setParentsClass(classes[0]._id)
+  }, [classes, parentsClass])
 
   const loadParents = async (classId) => {
     if (!classId) return

@@ -1,17 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users } from 'lucide-react'
 import { messagesApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { cn } from '../lib/utils'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 export default function MessagingPage() {
   const { user } = useAuth()
-  const [conversations, setConversations] = useState([])
-  const [contacts, setContacts] = useState([])
-  const [groups, setGroups] = useState([])
   const [activeConv, setActiveConv] = useState(null)
   const [messages, setMessages] = useState([])
-  const [loading, setLoading] = useState(true)
   const [loadingMsgs, setLoadingMsgs] = useState(false)
   const [reply, setReply] = useState('')
   const [sending, setSending] = useState(false)
@@ -21,14 +19,17 @@ export default function MessagingPage() {
   const [showGroupModal, setShowGroupModal] = useState(false)
   const [groupForm, setGroupForm] = useState({ name: '', memberIds: [], memberRole: 'enseignant' })
 
-  const fetchConversations = async () => {
-    setLoading(true)
-    try {
-      const res = await messagesApi.conversations()
-      setConversations(res.data || [])
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }
+  const convsQ = useCachedFetch('/messages/conversations', async () => (await messagesApi.conversations()).data || [], [])
+  const contactsQ = useCachedFetch('/messages/contacts', async () => (await messagesApi.contacts()).data || [], [])
+  const groupsQ = useCachedFetch('/messages/groups', async () => (await messagesApi.groups()).data || [], [])
+
+  const conversations = convsQ.data || []
+  const contacts = contactsQ.data || []
+  const groups = groupsQ.data || []
+  const loading = convsQ.loading
+
+  const refreshConversations = () => { cache.invalidate('/messages/conversations'); convsQ.refetch() }
+  const refreshGroups = () => { cache.invalidate('/messages/groups'); groupsQ.refetch() }
 
   const openGroupConversation = async (group) => {
     const conv = {
@@ -47,22 +48,6 @@ export default function MessagingPage() {
     } catch (e) { console.error(e) }
     setLoadingMsgs(false)
   }
-
-  const fetchContacts = async () => {
-    try {
-      const res = await messagesApi.contacts()
-      setContacts(res.data || [])
-    } catch (e) {}
-  }
-
-  const fetchGroups = async () => {
-    try {
-      const res = await messagesApi.groups()
-      setGroups(res.data || [])
-    } catch (e) {}
-  }
-
-  useEffect(() => { fetchConversations(); fetchContacts(); fetchGroups() }, [])
 
   const openConversation = async (conv) => {
     setActiveConv(conv)
@@ -93,7 +78,7 @@ export default function MessagingPage() {
       setReply('')
       const res = await messagesApi.conversation(activeConv.conversationId)
       setMessages(res.data || [])
-      fetchConversations()
+      refreshConversations()
     } catch (e) { alert(e.message) }
     setSending(false)
   }
@@ -105,7 +90,7 @@ export default function MessagingPage() {
       await messagesApi.send(composeForm)
       setShowCompose(false)
       setComposeForm({ recipientId: '', subject: '', body: '' })
-      fetchConversations()
+      refreshConversations()
     } catch (e) { alert(e.message) }
     setSending(false)
   }
@@ -128,7 +113,7 @@ export default function MessagingPage() {
       await messagesApi.createGroup(groupForm)
       setShowGroupModal(false)
       setGroupForm({ name: '', memberIds: [], memberRole: 'enseignant' })
-      fetchGroups()
+      refreshGroups()
     } catch (err) {
       alert(err.message)
     }

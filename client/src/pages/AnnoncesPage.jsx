@@ -1,35 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { schoolPagesApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { Loader2, Bell, Plus, Trash2 } from 'lucide-react'
 
 export default function AnnoncesPage() {
   const { user, school } = useAuth()
-  const [posts, setPosts] = useState([])
-  const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({ title: '', content: '' })
 
   const isDirector = user?.role === 'directeur'
   const schoolId = school?._id || school?.id || user?.school
 
-  const loadPosts = async () => {
-    if (!schoolId) {
-      setPosts([])
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    try {
-      const res = await schoolPagesApi.getPosts(schoolId, 1)
-      setPosts(res.data || [])
-    } catch (_) {
-      setPosts([])
-    }
-    setLoading(false)
-  }
+  const postsQ = useCachedFetch(
+    schoolId ? `/school-pages/${schoolId}/posts?` : null,
+    async () => (await schoolPagesApi.getPosts(schoolId, 1)).data || [],
+    [schoolId],
+  )
 
-  useEffect(() => { loadPosts() }, [schoolId])
+  const posts = postsQ.data || []
+  const loading = postsQ.loading
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -41,7 +32,8 @@ export default function AnnoncesPage() {
       fd.append('content', form.content)
       await schoolPagesApi.createPost(schoolId, fd)
       setForm({ title: '', content: '' })
-      loadPosts()
+      cache.invalidate(`/school-pages/${schoolId}/posts`)
+      postsQ.refetch()
     } catch (_) {}
     setCreating(false)
   }
@@ -50,7 +42,8 @@ export default function AnnoncesPage() {
     if (!isDirector) return
     try {
       await schoolPagesApi.deletePost(id)
-      setPosts((prev) => prev.filter((p) => p._id !== id))
+      cache.invalidate(`/school-pages/${schoolId}/posts`)
+      postsQ.refetch()
     } catch (_) {}
   }
 

@@ -1,20 +1,19 @@
-import { useEffect, useState } from 'react'
 import { Loader2, Calendar, MapPin, Users, Sparkles, BookOpen, ExternalLink } from 'lucide-react'
 import { parentApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 export default function ParentActivitiesPage({ section = 'activities' }) {
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
+  const itemsQ = useCachedFetch(
+    `/parent/${section}`,
+    async () => {
+      const r = section === 'resources' ? await parentApi.resources() : await parentApi.activities()
+      return r.data || []
+    },
+    [section],
+  )
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = section === 'resources' ? await parentApi.resources() : await parentApi.activities()
-        setItems(r.data || [])
-      } catch (_) {}
-      setLoading(false)
-    })()
-  }, [section])
+  const items = itemsQ.data || []
+  const loading = itemsQ.loading
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
 

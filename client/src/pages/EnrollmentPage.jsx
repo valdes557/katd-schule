@@ -1,15 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { GraduationCap, Upload, CheckCircle2, Loader2, ArrowLeft, AlertCircle, MapPin, Banknote, Copy, Phone } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { enrollmentApi, schoolsApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 export default function EnrollmentPage() {
   const { schoolId } = useParams()
-  const [school, setSchool] = useState(null)
-  const [classes, setClasses] = useState([])
-  const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
@@ -30,20 +28,18 @@ export default function EnrollmentPage() {
   const [paymentFile, setPaymentFile] = useState(null)
   const [photoFile, setPhotoFile] = useState(null)
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [schoolRes, classesRes] = await Promise.all([
-          schoolsApi.get(schoolId),
-          enrollmentApi.getClasses(schoolId),
-        ])
-        setSchool(schoolRes.data)
-        setClasses(classesRes.data || [])
-      } catch (e) { setError('École non trouvée') }
-      setLoading(false)
-    }
-    load()
+  // Bundle school + classes into one cache entry (single spinner, same schoolId key)
+  const dataQ = useCachedFetch(`/enrollment/${schoolId}/init`, async () => {
+    const [schoolRes, classesRes] = await Promise.all([
+      schoolsApi.get(schoolId),
+      enrollmentApi.getClasses(schoolId),
+    ])
+    return { school: schoolRes.data, classes: classesRes.data || [] }
   }, [schoolId])
+
+  const school = dataQ.data?.school || null
+  const classes = dataQ.data?.classes || []
+  const loading = dataQ.loading
 
   const selectedClass = classes.find((c) => c._id === form.classId)
 
@@ -97,7 +93,7 @@ export default function EnrollmentPage() {
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-3">Demande envoyée avec succès !</h2>
             <p className="text-sm text-gray-600 leading-relaxed mb-6">
-              Votre demande d'inscription est <strong className="text-orange-600">en attente d'approbation</strong> par le directeur de l'établissement. 
+              Votre demande d'inscription est <strong className="text-orange-600">en attente d'approbation</strong> par le directeur de l'établissement.
               Vous recevrez un email de confirmation avec vos identifiants de connexion dès que votre inscription sera approuvée.
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-sm">

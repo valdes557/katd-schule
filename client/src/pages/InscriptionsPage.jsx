@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { UserPlus, Check, X, Loader2, Eye, Clock, CheckCircle2, XCircle, Lock, Unlock, AlertCircle } from 'lucide-react'
 import { enrollmentApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { cn } from '../lib/utils'
 
 const STATUS_MAP = {
@@ -10,24 +12,28 @@ const STATUS_MAP = {
 }
 
 export default function InscriptionsPage() {
-  const [enrollments, setEnrollments] = useState([])
-  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [selected, setSelected] = useState(null)
   const [showRejectModal, setShowRejectModal] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [processing, setProcessing] = useState(false)
 
-  const fetchEnrollments = async () => {
-    setLoading(true)
-    try {
+  const enrollmentsQ = useCachedFetch(
+    `/enrollments?status=${filter}`,
+    async () => {
       const res = await enrollmentApi.list(`status=${filter}`)
-      setEnrollments(res.data || [])
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }
+      return res.data || []
+    },
+    [filter],
+  )
 
-  useEffect(() => { fetchEnrollments() }, [filter])
+  const enrollments = enrollmentsQ.data || []
+  const loading = enrollmentsQ.loading
+
+  const refreshEnrollments = () => {
+    cache.invalidate('/enrollments')
+    enrollmentsQ.refetch()
+  }
 
   const handleApprove = async (id) => {
     setProcessing(true)
@@ -37,7 +43,7 @@ export default function InscriptionsPage() {
       if (r?.data?.whatsappLink) {
         window.open(r.data.whatsappLink, '_blank', 'noopener,noreferrer')
       }
-      fetchEnrollments()
+      refreshEnrollments()
       setSelected(null)
     } catch (e) { alert(e.message) }
     setProcessing(false)
@@ -50,7 +56,7 @@ export default function InscriptionsPage() {
       await enrollmentApi.reject(showRejectModal, rejectReason)
       setShowRejectModal(null)
       setRejectReason('')
-      fetchEnrollments()
+      refreshEnrollments()
       setSelected(null)
     } catch (e) { alert(e.message) }
     setProcessing(false)
@@ -59,14 +65,14 @@ export default function InscriptionsPage() {
   const handleBlock = async (studentId) => {
     try {
       await enrollmentApi.blockStudent(studentId)
-      fetchEnrollments()
+      refreshEnrollments()
     } catch (e) { alert(e.message) }
   }
 
   const handleUnblock = async (studentId) => {
     try {
       await enrollmentApi.unblockStudent(studentId)
-      fetchEnrollments()
+      refreshEnrollments()
     } catch (e) { alert(e.message) }
   }
 

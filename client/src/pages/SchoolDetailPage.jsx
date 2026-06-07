@@ -10,6 +10,7 @@ import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { schoolsApi, schoolPagesApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 const TABS = [
   { id: 'social', label: 'Social', icon: Globe },
@@ -27,36 +28,47 @@ const TABS = [
 export default function SchoolDetailPage() {
   const { schoolId } = useParams()
   const { user } = useAuth()
-  const [school, setSchool] = useState(null)
-  const [page, setPage] = useState(null)
   const [tab, setTab] = useState('social')
-  const [posts, setPosts] = useState([])
-  const [team, setTeam] = useState([])
-  const [reviews, setReviews] = useState([])
-  const [paymentMods, setPaymentMods] = useState([])
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [sRes, pRes] = await Promise.all([
-          schoolsApi.get(schoolId),
-          schoolPagesApi.get(schoolId),
-        ])
-        setSchool(sRes.data)
-        setPage(pRes.data)
-      } catch (e) { console.error(e) }
-      setLoading(false)
-    }
-    load()
+  // Bundle school + page into a single cached entry so one spinner covers both
+  const mainQ = useCachedFetch(`/schools/${schoolId}/detail`, async () => {
+    const [sRes, pRes] = await Promise.all([
+      schoolsApi.get(schoolId),
+      schoolPagesApi.get(schoolId),
+    ])
+    return { school: sRes.data, page: pRes.data }
   }, [schoolId])
 
-  useEffect(() => {
-    if (tab === 'social') schoolPagesApi.getPosts(schoolId).then((r) => setPosts(r.data || [])).catch(() => {})
-    if (tab === 'team') schoolPagesApi.getTeam(schoolId).then((r) => setTeam(r.data || [])).catch(() => {})
-    if (tab === 'reviews') schoolPagesApi.getReviews(schoolId).then((r) => setReviews(r.data || [])).catch(() => {})
-    if (tab === 'payments') schoolPagesApi.getPayments(schoolId).then((r) => setPaymentMods(r.data || [])).catch(() => {})
-  }, [tab, schoolId])
+  const school = mainQ.data?.school || null
+  const page = mainQ.data?.page || null
+  const loading = mainQ.loading
+
+  // Tab-driven data: each tab gets its own cache entry, gated until the school is loaded
+  const postsQ = useCachedFetch(
+    schoolId && tab === 'social' ? `/school-pages/${schoolId}/posts` : null,
+    async () => (await schoolPagesApi.getPosts(schoolId)).data || [],
+    [schoolId, tab],
+  )
+  const teamQ = useCachedFetch(
+    schoolId && tab === 'team' ? `/school-pages/${schoolId}/team` : null,
+    async () => (await schoolPagesApi.getTeam(schoolId)).data || [],
+    [schoolId, tab],
+  )
+  const reviewsQ = useCachedFetch(
+    schoolId && tab === 'reviews' ? `/school-pages/${schoolId}/reviews` : null,
+    async () => (await schoolPagesApi.getReviews(schoolId)).data || [],
+    [schoolId, tab],
+  )
+  const paymentsQ = useCachedFetch(
+    schoolId && tab === 'payments' ? `/school-pages/${schoolId}/payments` : null,
+    async () => (await schoolPagesApi.getPayments(schoolId)).data || [],
+    [schoolId, tab],
+  )
+
+  const posts = postsQ.data || []
+  const team = teamQ.data || []
+  const reviews = reviewsQ.data || []
+  const paymentMods = paymentsQ.data || []
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50">
@@ -159,14 +171,14 @@ export default function SchoolDetailPage() {
 
       {/* Tab Content */}
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {tab === 'social' && <SocialTab schoolId={schoolId} posts={posts} setPosts={setPosts} user={user} />}
+        {tab === 'social' && <SocialTab schoolId={schoolId} posts={posts} setPosts={postsQ.setData} user={user} />}
         {tab === 'about' && <AboutTab page={page} />}
         {tab === 'team' && <TeamTab team={team} />}
         {tab === 'payments' && <PaymentsTab modalities={paymentMods} />}
         {tab === 'contact' && <ContactTab page={page} school={school} />}
         {tab === 'terms' && <TextTab title="Conditions d'utilisation" content={page?.terms} icon={FileText} />}
         {tab === 'privacy' && <TextTab title="Politique de confidentialité" content={page?.privacy} icon={Shield} />}
-        {tab === 'reviews' && <ReviewsTab schoolId={schoolId} reviews={reviews} setReviews={setReviews} />}
+        {tab === 'reviews' && <ReviewsTab schoolId={schoolId} reviews={reviews} setReviews={reviewsQ.setData} />}
         {tab === 'donate' && <DonateTab page={page} />}
         {tab === 'help' && <TextTab title="Aide" content={page?.help} icon={HelpCircle} />}
       </div>
@@ -227,7 +239,7 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
     if (!user) return
     try {
       const r = await schoolPagesApi.likePost(id)
-      setPosts((prev) => prev.map((p) => p._id === id ? r.data : p))
+      setPosts((prev) => (prev || []).map((p) => p._id === id ? r.data : p))
     } catch (e) { console.error(e) }
   }
 
@@ -236,7 +248,7 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
     if (!txt) return
     try {
       const r = await schoolPagesApi.commentPost(id, txt)
-      setPosts((prev) => prev.map((p) => p._id === id ? r.data : p))
+      setPosts((prev) => (prev || []).map((p) => p._id === id ? r.data : p))
       setCommentText((prev) => ({ ...prev, [id]: '' }))
     } catch (e) { console.error(e) }
   }
