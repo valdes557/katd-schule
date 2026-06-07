@@ -1,3 +1,5 @@
+import { cache } from './cache'
+
 const rawUrl = import.meta.env.VITE_API_URL || '/api'
 const API_URL = rawUrl.endsWith('/api') ? rawUrl : rawUrl === '/api' ? '/api' : rawUrl + '/api'
 
@@ -33,6 +35,7 @@ async function request(path, options = {}, retries = 2) {
       if (res.status === 401) {
         // Token expired or invalid → force re-login
         try { localStorage.removeItem('token') } catch (_) {}
+        cache.clear() // évite la fuite de données en cache vers un autre compte
       }
       throw new Error(data.message || `Erreur HTTP ${res.status}`)
     }

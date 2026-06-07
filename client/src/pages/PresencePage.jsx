@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { CalendarCheck, Check, X, Clock, AlertCircle, Loader2, Save } from 'lucide-react'
 import { attendanceApi, classesApi, studentsApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { cn } from '../lib/utils'
 
 const statusOptions = [
@@ -11,59 +13,55 @@ const statusOptions = [
 ]
 
 export default function PresencePage() {
-  const [classes, setClasses] = useState([])
-  const [students, setStudents] = useState([])
   const [selectedClass, setSelectedClass] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
   const [records, setRecords] = useState({})
-  const [history, setHistory] = useState([])
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [filterStatus, setFilterStatus] = useState('')
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await classesApi.list()
-        setClasses(res.data || [])
-        if (res.data?.length > 0) setSelectedClass(res.data[0]._id)
-      } catch (e) {}
-      setLoading(false)
-    }
-    load()
-  }, [])
+  const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
+  const classes = classesQ.data || []
 
+  // Sélectionne la première classe une fois les classes chargées.
   useEffect(() => {
-    if (!selectedClass) return
-    const load = async () => {
-      setLoading(true)
-      try {
-        const [studRes, attRes, statsRes] = await Promise.all([
-          studentsApi.list(`classId=${selectedClass}`),
-          attendanceApi.list(`classId=${selectedClass}&limit=10`),
-          attendanceApi.stats(`classId=${selectedClass}`),
-        ])
-        const studs = studRes.data || []
-        setStudents(studs)
-        setStats(statsRes.data || null)
-        setHistory(attRes.data || [])
+    if (!selectedClass && classes.length > 0) setSelectedClass(classes[0]._id)
+  }, [classes, selectedClass])
 
-        const todayRecord = (attRes.data || []).find(
-          (a) => new Date(a.date).toISOString().slice(0, 10) === selectedDate
-        )
-        const initial = {}
-        studs.forEach((s) => {
-          const existing = todayRecord?.records?.find((r) => (r.student?._id || r.student) === s._id)
-          initial[s._id] = existing?.status || 'present'
-        })
-        setRecords(initial)
-      } catch (e) { console.error(e) }
-      setLoading(false)
-    }
-    load()
-  }, [selectedClass, selectedDate])
+  const cls = selectedClass
+  const studentsQ = useCachedFetch(
+    cls ? `/students?classId=${cls}` : null,
+    async () => (await studentsApi.list(`classId=${cls}`)).data || [],
+    [cls],
+  )
+  const historyQ = useCachedFetch(
+    cls ? `/attendance?classId=${cls}&limit=10` : null,
+    async () => (await attendanceApi.list(`classId=${cls}&limit=10`)).data || [],
+    [cls],
+  )
+  const statsQ = useCachedFetch(
+    cls ? `/attendance/stats?classId=${cls}` : null,
+    async () => (await attendanceApi.stats(`classId=${cls}`)).data || null,
+    [cls],
+  )
+
+  const students = studentsQ.data || []
+  const history = historyQ.data || []
+  const stats = statsQ.data
+  const loading = classesQ.loading || studentsQ.loading
+
+  // records est DÉRIVÉ (pas mis en cache) : recalculé quand students/history/date changent.
+  useEffect(() => {
+    const todayRecord = history.find(
+      (a) => new Date(a.date).toISOString().slice(0, 10) === selectedDate
+    )
+    const initial = {}
+    students.forEach((s) => {
+      const existing = todayRecord?.records?.find((r) => (r.student?._id || r.student) === s._id)
+      initial[s._id] = existing?.status || 'present'
+    })
+    setRecords(initial)
+  }, [students, history, selectedDate])
 
   const handleSave = async () => {
     setSaving(true)
@@ -77,12 +75,9 @@ export default function PresencePage() {
       await attendanceApi.save(data)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
-      const [attRes, statsRes] = await Promise.all([
-        attendanceApi.list(`classId=${selectedClass}&limit=10`),
-        attendanceApi.stats(`classId=${selectedClass}`),
-      ])
-      setHistory(attRes.data || [])
-      setStats(statsRes.data || null)
+      cache.invalidate('/attendance')
+      historyQ.refetch()
+      statsQ.refetch()
     } catch (e) { alert(e.message) }
     setSaving(false)
   }

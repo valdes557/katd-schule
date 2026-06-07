@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus } from 'lucide-react'
 import { studentsApi, classesApi, teachersApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
 
 const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', photo: '', photoFile: null, parent: { name: '', phone: '', email: '', relation: 'pere' } }
@@ -10,11 +12,6 @@ export default function ElevesPage() {
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
 
-  const [students, setStudents] = useState([])
-  const [classes, setClasses] = useState([])
-  const [teachers, setTeachers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [cycleFilter, setCycleFilter] = useState('')
   const [classFilter, setClassFilter] = useState('')
@@ -22,34 +19,36 @@ export default function ElevesPage() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
 
-  const fetchStudents = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (search) params.set('search', search)
-      if (cycleFilter) params.set('cycle', cycleFilter)
-      if (classFilter) params.set('classId', classFilter)
-      const res = await studentsApi.list(params.toString())
-      setStudents(res.data || [])
-      setTotal(res.total || 0)
-    } catch (e) {}
-    setLoading(false)
-  }
+  // Les filtres sont « validés » après 400ms pour debouncer la recherche, puis
+  // injectés dans la clé de cache (une frappe répétée réaffiche instantanément).
+  const [committed, setCommitted] = useState({ search: '', cycleFilter: '', classFilter: '' })
+  useEffect(() => {
+    const t = setTimeout(() => setCommitted({ search, cycleFilter, classFilter }), 400)
+    return () => clearTimeout(t)
+  }, [search, cycleFilter, classFilter])
 
-  const fetchClasses = async () => {
-    try {
-      const [classRes, teacherRes] = await Promise.all([
-        classesApi.list(),
-        teachersApi.list(),
-      ])
-      setClasses(classRes.data || [])
-      setTeachers(teacherRes.data || [])
-    } catch (e) {}
-  }
+  const params = new URLSearchParams()
+  if (committed.search) params.set('search', committed.search)
+  if (committed.cycleFilter) params.set('cycle', committed.cycleFilter)
+  if (committed.classFilter) params.set('classId', committed.classFilter)
+  const qs = params.toString()
 
-  useEffect(() => { fetchStudents(); fetchClasses() }, [])
+  const studentsQ = useCachedFetch(`/students?${qs}`, async () => {
+    const res = await studentsApi.list(qs)
+    return { list: res.data || [], total: res.total || 0 }
+  }, [qs])
+  const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
+  const teachersQ = useCachedFetch('/teachers?', async () => (await teachersApi.list()).data || [], [])
+
+  const students = studentsQ.data?.list || []
+  const total = studentsQ.data?.total || 0
+  const classes = classesQ.data || []
+  const teachers = teachersQ.data || []
+  const loading = studentsQ.loading
+
+  const refreshStudents = () => { cache.invalidate('/students'); studentsQ.refetch() }
+
   useEffect(() => { if (subscribedCycle && cycleFilter !== subscribedCycle) setCycleFilter(subscribedCycle) }, [subscribedCycle])
-  useEffect(() => { const t = setTimeout(fetchStudents, 400); return () => clearTimeout(t) }, [search, cycleFilter, classFilter])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -59,13 +58,13 @@ export default function ElevesPage() {
       setShowModal(false)
       setEditing(null)
       setForm(EMPTY)
-      fetchStudents()
+      refreshStudents()
     } catch (e) { alert(e.message) }
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cet élève ?')) return
-    try { await studentsApi.remove(id); fetchStudents() } catch (e) { alert(e.message) }
+    try { await studentsApi.remove(id); refreshStudents() } catch (e) { alert(e.message) }
   }
 
   const [parentModal, setParentModal] = useState(null) // { student }
@@ -90,7 +89,7 @@ export default function ElevesPage() {
     setParentSaving(true)
     try {
       const r = await studentsApi.createParentAccount(parentModal._id, parentForm)
-      if (r.success) { setParentResult(r); fetchStudents() }
+      if (r.success) { setParentResult(r); refreshStudents() }
       else alert(r.message || 'Erreur')
     } catch (err) { alert(err.message) }
     setParentSaving(false)
@@ -117,7 +116,7 @@ export default function ElevesPage() {
       const res = await studentsApi.linkParent(linkParentForm.email, selectedStudentIds)
       if (res.success) {
         setLinkParentResult(res)
-        fetchStudents()
+        refreshStudents()
       } else {
         alert(res.message || 'Erreur')
       }

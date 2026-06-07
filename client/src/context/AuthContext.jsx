@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { authApi } from '../lib/api'
+import { cache } from '../lib/cache'
 
 const AuthContext = createContext(null)
 
@@ -71,6 +72,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token')
     localStorage.removeItem('katd_user')
     localStorage.removeItem('katd_school')
+    cache.clear() // vide le cache SWR pour éviter toute fuite entre comptes
   }
 
   const changeCycle = (newCycle) => {

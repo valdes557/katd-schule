@@ -1,18 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { FileText, Plus, Search, TrendingUp, Loader2, AlertCircle, X } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { gradesApi, classesApi, studentsApi } from '../lib/api'
+import { useCachedFetch } from '../hooks/useCachedFetch'
+import { cache } from '../lib/cache'
 
 const TERMS = ['Trimestre 1', 'Trimestre 2', 'Trimestre 3']
 const SEQUENCES = ['Séquence 1', 'Séquence 2', 'Séquence 3', 'Séquence 4', 'Séquence 5', 'Séquence 6']
 
 export default function NotesPage() {
   const [tab, setTab] = useState('notes')
-  const [grades, setGrades] = useState([])
-  const [stats, setStats] = useState(null)
-  const [classes, setClasses] = useState([])
-  const [students, setStudents] = useState([])
-  const [loading, setLoading] = useState(true)
   const [selectedClass, setSelectedClass] = useState('')
   const [selectedTerm, setSelectedTerm] = useState('Trimestre 1')
   const [selectedSeq, setSelectedSeq] = useState('')
@@ -20,40 +17,24 @@ export default function NotesPage() {
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1 })
 
-  const fetchData = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (selectedClass) params.set('classId', selectedClass)
-      if (selectedTerm) params.set('term', selectedTerm)
-      if (selectedSeq) params.set('sequence', selectedSeq)
+  const params = new URLSearchParams()
+  if (selectedClass) params.set('classId', selectedClass)
+  if (selectedTerm) params.set('term', selectedTerm)
+  if (selectedSeq) params.set('sequence', selectedSeq)
+  const qs = params.toString()
 
-      const [gradesRes, statsRes] = await Promise.all([
-        gradesApi.list(params.toString()),
-        gradesApi.stats(params.toString()),
-      ])
-      setGrades(gradesRes.data || [])
-      setStats(statsRes.data || null)
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }
+  const gradesQ = useCachedFetch(`/grades?${qs}`, async () => (await gradesApi.list(qs)).data || [], [qs])
+  const statsQ = useCachedFetch(`/grades/stats?${qs}`, async () => (await gradesApi.stats(qs)).data || null, [qs])
+  const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
+  const studentsQ = useCachedFetch('/students?', async () => (await studentsApi.list()).data || [], [])
 
-  const fetchClasses = async () => {
-    try {
-      const res = await classesApi.list()
-      setClasses(res.data || [])
-    } catch (e) {}
-  }
+  const grades = gradesQ.data || []
+  const stats = statsQ.data
+  const classes = classesQ.data || []
+  const students = studentsQ.data || []
+  const loading = gradesQ.loading
 
-  const fetchStudents = async () => {
-    try {
-      const res = await studentsApi.list()
-      setStudents(res.data || [])
-    } catch (e) {}
-  }
-
-  useEffect(() => { fetchClasses(); fetchStudents() }, [])
-  useEffect(() => { fetchData() }, [selectedClass, selectedTerm, selectedSeq])
+  const refreshGrades = () => { cache.invalidate('/grades'); gradesQ.refetch(); statsQ.refetch() }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -67,13 +48,13 @@ export default function NotesPage() {
       })
       setShowModal(false)
       setForm({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1 })
-      fetchData()
+      refreshGrades()
     } catch (e) { alert(e.message) }
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cette note ?')) return
-    try { await gradesApi.remove(id); fetchData() } catch (e) { alert(e.message) }
+    try { await gradesApi.remove(id); refreshGrades() } catch (e) { alert(e.message) }
   }
 
   const filteredGrades = grades.filter((g) => {
