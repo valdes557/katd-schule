@@ -136,8 +136,12 @@ router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'),
 // @route  DELETE /api/students/:id
 router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const student = await Student.findByIdAndDelete(req.params.id)
+    const student = await Student.findById(req.params.id)
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+    // Supprime aussi le compte de connexion élève éventuel pour libérer ses identifiants
+    // (permet de recréer plus tard un élève avec le même email/identifiants sans conflit).
+    if (student.user) await User.findByIdAndDelete(student.user)
+    await student.deleteOne()
     res.json({ success: true, message: 'Élève supprimé' })
   } catch (err) {
     res.status(500).json({ message: err.message })

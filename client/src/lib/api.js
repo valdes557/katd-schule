@@ -114,6 +114,15 @@ export const studentsApi = {
   linkParent: (email, studentIds) => api.post('/students/link-parent', { email, studentIds }),
 }
 
+// Gestion des parents par le directeur (CRUD + associations élèves)
+export const parentsApi = {
+  list: () => api.get('/parents'),
+  create: (data) => api.post('/parents', data),
+  update: (id, data) => api.put(`/parents/${id}`, data),
+  remove: (id) => api.del(`/parents/${id}`),
+  setStudents: (id, studentIds) => api.put(`/parents/${id}/students`, { studentIds }),
+}
+
 export const teachersApi = {
   list: (params = '') => api.get(`/teachers?${params}`),
   get: (id) => api.get(`/teachers/${id}`),
