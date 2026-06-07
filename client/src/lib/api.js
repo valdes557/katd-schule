@@ -54,6 +54,7 @@ export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (payload) => api.post('/auth/register', payload),
   me: () => api.get('/auth/me'),
+  forgotPassword: (email, newPassword) => api.post('/auth/forgot-password', { email, newPassword }),
   updateProfile: (data) => api.put('/auth/profile', data),
   uploadAvatar: async (file) => {
     const fd = new FormData()

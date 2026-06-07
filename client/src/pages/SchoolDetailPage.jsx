@@ -110,6 +110,11 @@ export default function SchoolDetailPage() {
                   {school.cycles?.map((c) => (
                     <span key={c} className="bg-white/15 backdrop-blur-sm text-xs px-2.5 py-0.5 rounded-full">{c}</span>
                   ))}
+                  {school.enrollmentFee > 0 && (
+                    <span className="inline-flex items-center gap-1 bg-amber-400/90 text-amber-950 font-semibold text-xs px-2.5 py-0.5 rounded-full">
+                      <GraduationCap size={12} /> Inscription : {school.enrollmentFee.toLocaleString()} FCFA
+                    </span>
+                  )}
                   {/* Socials */}
                   {school.socials && Object.entries(school.socials).some(([, v]) => v) && (
                     <span className="flex items-center gap-1 ml-1">

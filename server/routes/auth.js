@@ -115,6 +115,33 @@ router.put('/password', protect, async (req, res) => {
   }
 })
 
+// @route  POST /api/auth/forgot-password — public: réinitialise le mot de passe
+// directement à partir de l'email (l'utilisateur saisit uniquement le nouveau mot de passe).
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const email = (req.body.email || '').trim().toLowerCase()
+    const { newPassword } = req.body
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: 'Email et nouveau mot de passe requis' })
+    }
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' })
+    }
+    const user = await User.findOne({ email })
+    if (!user) {
+      return res.status(404).json({ message: 'Aucun compte associé à cet email' })
+    }
+    if (user.isActive === false) {
+      return res.status(403).json({ message: 'Ce compte est désactivé. Contactez l\'administrateur.' })
+    }
+    user.password = newPassword
+    await user.save()
+    res.json({ success: true, message: 'Mot de passe réinitialisé. Vous pouvez vous connecter.' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // @route  PUT /api/auth/profile — update basic profile fields
 router.put('/profile', protect, async (req, res) => {
   try {

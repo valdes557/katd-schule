@@ -44,7 +44,7 @@ export function AuthProvider({ children }) {
     try {
       const res = await authApi.login(email, password)
       const u = res.user
-      const s = res.school || mockSchool
+      const s = res.school || null
       localStorage.setItem('token', res.token)
       localStorage.setItem('katd_user', JSON.stringify(u))
       localStorage.setItem('katd_school', JSON.stringify(s))
@@ -52,16 +52,6 @@ export function AuthProvider({ children }) {
       setSchool(s)
       return { success: true, user: u }
     } catch (err) {
-      // Fallback : autoriser les comptes démo en mode offline
-      if (DEMO_USERS[email] && DEMO_USERS[email].password === password) {
-        const demo = { ...DEMO_USERS[email], email }
-        delete demo.password
-        localStorage.setItem('katd_user', JSON.stringify(demo))
-        localStorage.setItem('katd_school', JSON.stringify(mockSchool))
-        setUser(demo)
-        setSchool(mockSchool)
-        return { success: true, user: demo, offline: true }
-      }
       return { success: false, message: err.message || 'Identifiants invalides' }
     }
   }
@@ -85,21 +75,6 @@ export function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   )
-}
-
-const mockSchool = {
-  id: 1,
-  name: 'École Les Petits Génies',
-  type: 'Primaire',
-  city: 'Abidjan',
-  country: "Côte d'Ivoire",
-}
-
-export const DEMO_USERS = {
-  'directeur@katd.com':  { name: 'Directeur KATD',      role: 'directeur',   password: 'password123' },
-  'enseignant@katd.com': { name: 'M. Nkoulou Pierre',   role: 'enseignant',  password: 'password123' },
-  'parent@katd.com':     { name: 'Parent Mbarga',       role: 'parent',      password: 'password123' },
-  'admin@katd.com':      { name: 'Super Admin',         role: 'super_admin', password: 'password123' },
 }
 
 export const useAuth = () => {

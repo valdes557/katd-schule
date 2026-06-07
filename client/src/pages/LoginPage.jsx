@@ -1,14 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, School } from 'lucide-react'
+import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-
-const DEMO_USERS = [
-  { role: 'Directeur',    name: 'Directeur KATD',      email: 'directeur@katd.com',  password: 'password123', color: 'bg-blue-600' },
-  { role: 'Enseignant',   name: 'M. Nkoulou Pierre',   email: 'enseignant@katd.com', password: 'password123', color: 'bg-green-600' },
-  { role: 'Parent',       name: 'Parent Mbarga',       email: 'parent@katd.com',     password: 'password123', color: 'bg-purple-600' },
-  { role: 'Super Admin',  name: 'Super Admin',         email: 'admin@katd.com',      password: 'password123', color: 'bg-rose-600' },
-]
+import { authApi } from '../lib/api'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -18,6 +12,13 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const { login } = useAuth()
   const navigate = useNavigate()
+
+  // Mot de passe oublié (réinitialisation directe)
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgot, setForgot] = useState({ email: '', newPassword: '', confirm: '' })
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotError, setForgotError] = useState('')
+  const [forgotDone, setForgotDone] = useState(false)
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -32,9 +33,33 @@ export default function LoginPage() {
     }
   }
 
-  const handleDemoLogin = (user) => {
-    setEmail(user.email)
-    setPassword(user.password)
+  const openForgot = () => {
+    setForgot({ email, newPassword: '', confirm: '' })
+    setForgotError('')
+    setForgotDone(false)
+    setShowForgot(true)
+  }
+
+  const handleForgot = async (e) => {
+    e.preventDefault()
+    setForgotError('')
+    if (forgot.newPassword.length < 6) {
+      setForgotError('Le mot de passe doit contenir au moins 6 caractères.')
+      return
+    }
+    if (forgot.newPassword !== forgot.confirm) {
+      setForgotError('Les deux mots de passe ne correspondent pas.')
+      return
+    }
+    setForgotLoading(true)
+    try {
+      await authApi.forgotPassword(forgot.email, forgot.newPassword)
+      setForgotDone(true)
+      setEmail(forgot.email)
+    } catch (err) {
+      setForgotError(err.message || 'Impossible de réinitialiser le mot de passe.')
+    }
+    setForgotLoading(false)
   }
 
   return (
@@ -122,7 +147,7 @@ export default function LoginPage() {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-gray-700">Mot de passe</label>
-                  <a href="#" className="text-xs text-blue-600 hover:underline">Mot de passe oublié ?</a>
+                  <button type="button" onClick={openForgot} className="text-xs text-blue-600 hover:underline">Mot de passe oublié ?</button>
                 </div>
                 <div className="relative">
                   <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -163,32 +188,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Demo accounts */}
-            <div className="mt-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-xs text-gray-400 font-medium">Comptes démo</span>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
-              <div className="space-y-2">
-                {DEMO_USERS.map((user) => (
-                  <button
-                    key={user.role}
-                    onClick={() => handleDemoLogin(user)}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors text-left"
-                  >
-                    <div className={`w-8 h-8 ${user.color} rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-                      {user.name.slice(0, 1)}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-800">{user.name}</div>
-                      <div className="text-xs text-gray-400">{user.role} · {user.email}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <p className="text-center text-xs text-gray-500 mt-5">
               Votre école n'est pas encore inscrite ?{' '}
               <Link to="/ecoles" className="text-blue-600 font-medium hover:underline">
@@ -198,6 +197,69 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal mot de passe oublié */}
+      {showForgot && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <KeyRound size={18} className="text-blue-600" /> Réinitialiser le mot de passe
+              </h3>
+              <button onClick={() => setShowForgot(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+            </div>
+
+            {forgotDone ? (
+              <div className="text-center py-4">
+                <CheckCircle2 size={44} className="text-green-500 mx-auto mb-3" />
+                <p className="text-sm text-gray-700">Mot de passe réinitialisé avec succès.</p>
+                <p className="text-xs text-gray-500 mt-1">Connectez-vous avec votre nouveau mot de passe.</p>
+                <button onClick={() => setShowForgot(false)} className="btn-primary mt-4 justify-center w-full text-sm">Retour à la connexion</button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgot} className="space-y-3">
+                <p className="text-xs text-gray-500">Saisissez votre email et le nouveau mot de passe souhaité.</p>
+                {forgotError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{forgotError}</div>
+                )}
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Adresse email</label>
+                  <input
+                    type="email" required
+                    value={forgot.email}
+                    onChange={(e) => setForgot({ ...forgot, email: e.target.value })}
+                    className="input text-sm mt-1" placeholder="votre@email.com"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Nouveau mot de passe</label>
+                  <input
+                    type="password" required
+                    value={forgot.newPassword}
+                    onChange={(e) => setForgot({ ...forgot, newPassword: e.target.value })}
+                    className="input text-sm mt-1" placeholder="Au moins 6 caractères"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Confirmer le mot de passe</label>
+                  <input
+                    type="password" required
+                    value={forgot.confirm}
+                    onChange={(e) => setForgot({ ...forgot, confirm: e.target.value })}
+                    className="input text-sm mt-1" placeholder="Retapez le mot de passe"
+                  />
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setShowForgot(false)} className="btn-ghost flex-1 justify-center border border-gray-200 text-sm">Annuler</button>
+                  <button type="submit" disabled={forgotLoading} className="btn-primary flex-1 justify-center text-sm">
+                    {forgotLoading ? 'Réinitialisation...' : 'Réinitialiser'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
