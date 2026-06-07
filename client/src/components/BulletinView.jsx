@@ -60,7 +60,7 @@ export default function BulletinView({ data, schoolBranding = true }) {
         <div className="bulletin-student-grid">
           <div className="bulletin-photo">
             {student?.photo ? (
-              <img src={student.photo} alt={`${student.firstName} ${student.lastName}`} />
+              <img src={student.photo} alt={`${student.firstName} ${student.lastName}`} crossOrigin="anonymous" />
             ) : (
               <div className="bulletin-photo-fallback"><UserIcon size={40} /></div>
             )}

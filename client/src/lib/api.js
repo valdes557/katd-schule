@@ -71,11 +71,39 @@ export const dashboardApi = {
   unreviewReport: (id) => api.put(`/dashboard/reports/${id}/unreview`),
 }
 
+// Build a FormData body for a student, sending the photo file under `photo`,
+// nested objects (parent, address) as JSON strings, and scalars as-is.
+const studentFormData = (data) => {
+  const fd = new FormData()
+  Object.entries(data).forEach(([key, value]) => {
+    if (key === 'photoFile') {
+      if (value) fd.append('photo', value)
+    } else if (value && typeof value === 'object') {
+      fd.append(key, JSON.stringify(value))
+    } else if (value !== null && value !== undefined && value !== '') {
+      fd.append(key, value)
+    }
+  })
+  return fd
+}
+
+const sendStudentForm = async (path, method, data) => {
+  const token = localStorage.getItem('token')
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: studentFormData(data),
+  })
+  const result = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(result.message || `Erreur HTTP ${res.status}`)
+  return result
+}
+
 export const studentsApi = {
   list: (params = '') => api.get(`/students?${params}`),
   get: (id) => api.get(`/students/${id}`),
-  create: (data) => api.post('/students', data),
-  update: (id, data) => api.put(`/students/${id}`, data),
+  create: (data) => sendStudentForm('/students', 'POST', data),
+  update: (id, data) => sendStudentForm(`/students/${id}`, 'PUT', data),
   remove: (id) => api.del(`/students/${id}`),
   withParents: () => api.get('/students/with-parents'),
   createParentAccount: (studentId, data) => api.post(`/students/${studentId}/parent-account`, data),
@@ -307,6 +335,25 @@ export const schoolPagesApi = {
     const res = await fetch(`${API_URL}/school-pages/${schoolId}/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
+  // Same as createPost but reports upload progress (0-100) via onProgress — useful
+  // for large video uploads. Uses XMLHttpRequest because fetch() can't report it.
+  createPostWithProgress: (schoolId, formData, onProgress) => new Promise((resolve, reject) => {
+    const token = localStorage.getItem('token')
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_URL}/school-pages/${schoolId}/posts`)
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch (_) {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+      else reject(new Error(data.message || `Erreur HTTP ${xhr.status}`))
+    }
+    xhr.onerror = () => reject(new Error('Impossible de joindre le serveur. Vérifiez votre connexion.'))
+    xhr.send(formData)
+  }),
   likePost: (id) => api.put(`/school-pages/posts/${id}/like`),
   commentPost: (id, content) => api.post(`/school-pages/posts/${id}/comment`, { content }),
   deletePost: (id) => api.del(`/school-pages/posts/${id}`),

@@ -111,7 +111,8 @@ export default function ParentsPage() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-gray-400">Aucun élève trouvé</div>
         ) : (
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="px-3 py-3"><input type="checkbox" checked={filtered.length > 0 && selected.length === filtered.length} onChange={(e) => setSelected(e.target.checked ? filtered.map((s) => s._id) : [])} /></th>
@@ -137,6 +138,7 @@ export default function ParentsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

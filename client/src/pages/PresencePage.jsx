@@ -176,8 +176,8 @@ export default function PresencePage() {
         <div className="text-center py-16 text-gray-400"><AlertCircle size={36} className="mx-auto mb-3 opacity-30" /><p>Aucun élève dans cette classe</p></div>
       ) : (
         <>
-          <div className="card overflow-hidden">
-            <table className="w-full">
+          <div className="card overflow-x-auto">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Élève</th>

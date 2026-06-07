@@ -3,7 +3,7 @@ import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Ke
 import { studentsApi, classesApi, teachersApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
-const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', parent: { name: '', phone: '', email: '', relation: 'pere' } }
+const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', photo: '', photoFile: null, parent: { name: '', phone: '', email: '', relation: 'pere' } }
 
 export default function ElevesPage() {
   const { user, school } = useAuth()
@@ -142,6 +142,7 @@ export default function ElevesPage() {
       placeOfBirth: s.placeOfBirth || '',
       teacher: s.teacher?._id || s.teacher || '',
       parent: s.parent || { name: '', phone: '', email: '', relation: 'pere' },
+      photo: s.photo || '', photoFile: null,
     })
     setShowModal(true)
   }
@@ -206,7 +207,7 @@ export default function ElevesPage() {
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 {isDirecteur && (
@@ -218,7 +219,7 @@ export default function ElevesPage() {
                     />
                   </th>
                 )}
-                {['Matricule', 'Nom', 'Classe', 'Genre', 'Naissance', 'Parent', ...(isDirecteur ? ['Actions'] : [])].map((h) => (
+                {['Photo', 'Matricule', 'Nom', 'Classe', 'Genre', 'Naissance', 'Parent', ...(isDirecteur ? ['Actions'] : [])].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
                 ))}
               </tr>
@@ -235,6 +236,15 @@ export default function ElevesPage() {
                       />
                     </td>
                   )}
+                  <td className="px-4 py-3">
+                    <div className="w-9 h-9 rounded-full bg-gray-100 overflow-hidden flex items-center justify-center border border-gray-200">
+                      {s.photo ? (
+                        <img src={s.photo} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <GraduationCap size={16} className="text-gray-300" />
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-xs font-mono text-gray-600">{s.matricule}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{s.lastName} {s.firstName}</td>
                   <td className="px-4 py-3 text-xs text-gray-600">{s.class?.name || '—'}</td>
@@ -479,6 +489,27 @@ export default function ElevesPage() {
                 <div>
                   <label className="text-xs font-medium text-gray-600">Lieu de naissance</label>
                   <input value={form.placeOfBirth} onChange={(e) => setForm({ ...form, placeOfBirth: e.target.value })} className="input text-sm mt-1" placeholder="Ex: Douala" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600">Photo de l'élève</label>
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="w-16 h-16 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center flex-shrink-0 border border-gray-200">
+                    {form.photoFile ? (
+                      <img src={URL.createObjectURL(form.photoFile)} alt="" className="w-full h-full object-cover" />
+                    ) : form.photo ? (
+                      <img src={form.photo} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <GraduationCap size={22} className="text-gray-300" />
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setForm({ ...form, photoFile: e.target.files?.[0] || null })}
+                    className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-600 file:text-xs file:font-medium hover:file:bg-blue-100 file:cursor-pointer"
+                  />
                 </div>
               </div>
 

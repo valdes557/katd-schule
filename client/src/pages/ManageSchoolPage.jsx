@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Globe, Users, CreditCard, Phone, FileText, Shield, Star, Gift, HelpCircle,
-  Save, Loader2, Plus, Trash2, Image as ImageIcon, Upload, Check, X, Eye, EyeOff,
+  Save, Loader2, Plus, Trash2, Image as ImageIcon, Upload, Check, X, Eye, EyeOff, Video,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { schoolPagesApi } from '../lib/api'
@@ -202,8 +202,10 @@ function PostsEditor({ schoolId }) {
   const [posts, setPosts] = useState([])
   const [content, setContent] = useState('')
   const [files, setFiles] = useState(null)
+  const [videoFile, setVideoFile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [posting, setPosting] = useState(false)
+  const [progress, setProgress] = useState(0)
 
   const fetch = () => {
     setLoading(true)
@@ -215,16 +217,20 @@ function PostsEditor({ schoolId }) {
     e.preventDefault()
     if (!content.trim()) return
     setPosting(true)
+    setProgress(0)
     const fd = new FormData()
     fd.append('content', content)
     if (files) Array.from(files).forEach((f) => fd.append('images', f))
+    if (videoFile) fd.append('video', videoFile)
     try {
-      await schoolPagesApi.createPost(schoolId, fd)
+      await schoolPagesApi.createPostWithProgress(schoolId, fd, setProgress)
       setContent('')
       setFiles(null)
+      setVideoFile(null)
       fetch()
     } catch (e) { alert(e.message) }
     setPosting(false)
+    setProgress(0)
   }
 
   const handleDelete = async (id) => {
@@ -238,16 +244,27 @@ function PostsEditor({ schoolId }) {
       <form onSubmit={handlePost} className="card p-4 space-y-3">
         <h3 className="text-sm font-bold text-gray-800">Nouvelle publication</h3>
         <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={3} className="input text-sm resize-none w-full" placeholder="Quoi de neuf dans votre établissement ?" />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="text-xs text-blue-600 cursor-pointer flex items-center gap-1 hover:underline">
             <ImageIcon size={12} /> Ajouter des images
             <input type="file" accept="image/*" multiple onChange={(e) => setFiles(e.target.files)} className="hidden" />
           </label>
-          {files && <span className="text-xs text-gray-400">{files.length} fichier(s)</span>}
+          {files && <span className="text-xs text-gray-400">{files.length} image(s)</span>}
+          <label className="text-xs text-purple-600 cursor-pointer flex items-center gap-1 hover:underline">
+            <Video size={12} /> Ajouter une vidéo
+            <input type="file" accept="video/*" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} className="hidden" />
+          </label>
+          {videoFile && <span className="text-xs text-gray-400 truncate max-w-[140px]">{videoFile.name}</span>}
           <button type="submit" disabled={posting} className="btn-primary text-sm ml-auto">
-            {posting ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />} Publier
+            {posting ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+            {posting && progress > 0 && progress < 100 ? ` ${progress}%` : ' Publier'}
           </button>
         </div>
+        {posting && progress > 0 && (
+          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+            <div className="bg-blue-600 h-full transition-all duration-200" style={{ width: `${progress}%` }} />
+          </div>
+        )}
       </form>
 
       {loading ? <div className="text-center py-8"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></div> : (
@@ -257,12 +274,15 @@ function PostsEditor({ schoolId }) {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-gray-800 line-clamp-2">{p.content}</p>
-                  <p className="text-[10px] text-gray-400 mt-1">{new Date(p.createdAt).toLocaleDateString('fr-FR')} · {p.likes?.length || 0} likes · {p.comments?.length || 0} commentaires</p>
+                  <p className="text-[10px] text-gray-400 mt-1">{new Date(p.createdAt).toLocaleDateString('fr-FR')} · {p.likes?.length || 0} likes · {p.comments?.length || 0} commentaires{p.type === 'video' ? ' · 🎬 vidéo' : ''}</p>
                 </div>
                 <button onClick={() => handleDelete(p._id)} className="text-red-400 hover:text-red-600 flex-shrink-0 ml-2"><Trash2 size={14} /></button>
               </div>
               {p.images?.length > 0 && (
                 <div className="flex gap-1 mt-2">{p.images.slice(0, 3).map((img, i) => <img key={i} src={img} className="w-16 h-16 rounded object-cover" />)}</div>
+              )}
+              {p.type === 'video' && p.videoUrl && (
+                <video src={p.videoUrl} className="mt-2 w-full max-w-xs rounded" controls preload="metadata" />
               )}
             </div>
           ))}

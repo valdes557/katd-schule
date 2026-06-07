@@ -153,7 +153,8 @@ export default function TeacherReportsPage() {
         ) : reports.length === 0 ? (
           <div className="text-center py-10 text-gray-400">Aucun rapport envoyé</div>
         ) : (
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 {['Date', 'Titre', 'Classes', 'Statut', 'Actions'].map((h) => (
@@ -196,6 +197,7 @@ export default function TeacherReportsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

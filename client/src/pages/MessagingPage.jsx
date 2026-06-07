@@ -19,7 +19,7 @@ export default function MessagingPage() {
   const [composeForm, setComposeForm] = useState({ recipientId: '', subject: '', body: '' })
   const [search, setSearch] = useState('')
   const [showGroupModal, setShowGroupModal] = useState(false)
-  const [groupForm, setGroupForm] = useState({ name: '', memberIds: [] })
+  const [groupForm, setGroupForm] = useState({ name: '', memberIds: [], memberRole: 'enseignant' })
 
   const fetchConversations = async () => {
     setLoading(true)
@@ -127,7 +127,7 @@ export default function MessagingPage() {
     try {
       await messagesApi.createGroup(groupForm)
       setShowGroupModal(false)
-      setGroupForm({ name: '', memberIds: [] })
+      setGroupForm({ name: '', memberIds: [], memberRole: 'enseignant' })
       fetchGroups()
     } catch (err) {
       alert(err.message)
@@ -175,7 +175,7 @@ export default function MessagingPage() {
                     key={g._id}
                     type="button"
                     onClick={() => openGroupConversation(g)}
-                    className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 truncate max-w-full"
+                    className={`px-2 py-0.5 rounded-full border hover:brightness-95 truncate max-w-full ${g.type === 'parent_group' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}
                   >
                     <span className="inline-flex items-center gap-1">
                       <Users size={11} /> {g.name}
@@ -313,10 +313,25 @@ export default function MessagingPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Nouveau groupe d'enseignants</h3>
+              <h3 className="text-lg font-bold text-gray-900">{groupForm.memberRole === 'parent' ? 'Nouveau groupe de parents' : "Nouveau groupe d'enseignants"}</h3>
               <button onClick={() => setShowGroupModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
             </div>
             <form onSubmit={handleCreateGroup} className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600">Type de groupe</label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {[{ v: 'enseignant', l: 'Enseignants' }, { v: 'parent', l: 'Parents' }].map((opt) => (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() => setGroupForm({ ...groupForm, memberRole: opt.v, memberIds: [] })}
+                      className={`text-sm py-2 rounded-xl border transition-colors ${groupForm.memberRole === opt.v ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="text-xs font-medium text-gray-600">Nom du groupe</label>
                 <input
@@ -324,16 +339,16 @@ export default function MessagingPage() {
                   value={groupForm.name}
                   onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
                   className="input text-sm mt-1"
-                  placeholder="Ex: Équipe CP matin"
+                  placeholder={groupForm.memberRole === 'parent' ? 'Ex: Parents CP' : 'Ex: Équipe CP matin'}
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600">Enseignants</label>
+                <label className="text-xs font-medium text-gray-600">{groupForm.memberRole === 'parent' ? 'Parents' : 'Enseignants'}</label>
                 <div className="mt-1 max-h-40 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1">
-                  {contacts.filter((c) => c.role === 'enseignant').length === 0 ? (
-                    <p className="text-xs text-gray-400 text-center py-4">Aucun enseignant disponible</p>
+                  {contacts.filter((c) => c.role === groupForm.memberRole).length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">{groupForm.memberRole === 'parent' ? 'Aucun parent disponible' : 'Aucun enseignant disponible'}</p>
                   ) : (
-                    contacts.filter((c) => c.role === 'enseignant').map((c) => (
+                    contacts.filter((c) => c.role === groupForm.memberRole).map((c) => (
                       <label key={c._id} className="flex items-center gap-2 text-xs py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">
                         <input
                           type="checkbox"

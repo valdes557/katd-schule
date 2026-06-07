@@ -256,6 +256,7 @@ router.get('/groups', protect, async (req, res) => {
       _id: g._id,
       name: g.name,
       membersCount: g.members.length,
+      type: g.type,
     }))
 
     res.json({ success: true, data })
@@ -264,30 +265,42 @@ router.get('/groups', protect, async (req, res) => {
   }
 })
 
-// POST /api/messages/groups — director creates a teacher group
+// POST /api/messages/groups — director creates a teacher or parent group
 router.post('/groups', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const { name, memberIds = [] } = req.body
+    const { name, memberIds = [], memberRole = 'enseignant' } = req.body
     if (!name || String(name).trim().length === 0) {
       return res.status(400).json({ message: 'Le nom du groupe est requis' })
     }
 
+    const role = memberRole === 'parent' ? 'parent' : 'enseignant'
     const schoolId = req.user.school?._id || req.user.school
     if (!schoolId) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
 
-    const teachers = await User.find({
-      _id: { $in: memberIds },
-      school: schoolId,
-      role: 'enseignant',
-      isActive: true,
-    }).select('_id')
+    // For parents, school is stored on the Student, not the parent User — so we
+    // validate against the parent accounts linked to active students of this school.
+    let validMemberIds = []
+    if (role === 'parent') {
+      const students = await Student.find({ school: schoolId, parentUser: { $in: memberIds }, status: 'active' })
+        .select('parentUser')
+        .lean()
+      validMemberIds = [...new Set(students.map((s) => s.parentUser?.toString()).filter(Boolean))]
+    } else {
+      const teachers = await User.find({
+        _id: { $in: memberIds },
+        school: schoolId,
+        role: 'enseignant',
+        isActive: true,
+      }).select('_id')
+      validMemberIds = teachers.map((t) => t._id.toString())
+    }
 
-    const teacherIds = teachers.map((t) => t._id.toString())
-    const members = new Set(teacherIds)
+    const members = new Set(validMemberIds)
     members.add(req.user._id.toString())
 
     if (members.size <= 1) {
-      return res.status(400).json({ message: 'Sélectionnez au moins un enseignant pour le groupe' })
+      const who = role === 'parent' ? 'parent' : 'enseignant'
+      return res.status(400).json({ message: `Sélectionnez au moins un ${who} pour le groupe` })
     }
 
     const group = await MessageGroup.create({
@@ -295,6 +308,7 @@ router.post('/groups', protect, authorize('directeur', 'super_admin'), async (re
       school: schoolId,
       createdBy: req.user._id,
       members: Array.from(members),
+      type: role === 'parent' ? 'parent_group' : 'teacher_group',
     })
 
     res.status(201).json({ success: true, data: group })

@@ -28,6 +28,7 @@ export default function EnrollmentPage() {
     classId: '',
   })
   const [paymentFile, setPaymentFile] = useState(null)
+  const [photoFile, setPhotoFile] = useState(null)
 
   useEffect(() => {
     const load = async () => {
@@ -64,6 +65,7 @@ export default function EnrollmentPage() {
       })
       formData.append('schoolId', schoolId)
       formData.append('paymentProof', paymentFile)
+      if (photoFile) formData.append('photo', photoFile)
 
       await enrollmentApi.submit(formData)
       setSubmitted(true)
@@ -183,6 +185,28 @@ export default function EnrollmentPage() {
                     <span className="text-sm text-gray-700">{g.label}</span>
                   </label>
                 ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Photo de l'élève</label>
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center flex-shrink-0 border border-gray-200">
+                  {photoFile ? (
+                    <img src={URL.createObjectURL(photoFile)} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <GraduationCap size={28} className="text-gray-300" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                    className="text-xs text-gray-500 file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-600 file:text-xs file:font-medium hover:file:bg-blue-100 file:cursor-pointer"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Photo d'identité de l'élève (JPG, PNG). Facultatif.</p>
+                </div>
               </div>
             </div>
 

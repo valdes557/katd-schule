@@ -5,6 +5,19 @@ const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
 const Teacher = require('../models/Teacher')
+const { upload } = require('../config/cloudinary')
+
+// When the body comes from multipart/form-data, nested objects (parent, address)
+// arrive as JSON strings — parse them back into objects before saving.
+const parseNested = (body) => {
+  const out = { ...body }
+  for (const key of ['parent', 'address']) {
+    if (typeof out[key] === 'string') {
+      try { out[key] = JSON.parse(out[key]) } catch (_) { /* leave as-is */ }
+    }
+  }
+  return out
+}
 
 // @route  GET /api/students
 router.get('/', protect, async (req, res) => {
@@ -81,19 +94,21 @@ router.get('/:id', protect, async (req, res) => {
 })
 
 // @route  POST /api/students
-router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin'), upload.single('photo'), async (req, res) => {
   try {
+    const body = parseNested(req.body)
     const schoolId = req.user.school?._id || req.user.school
     if (req.user.role === 'directeur') {
       const school = await School.findById(schoolId).select('subscription.cycle')
-      if (school?.subscription?.cycle && req.body.cycle && req.body.cycle !== school.subscription.cycle) {
+      if (school?.subscription?.cycle && body.cycle && body.cycle !== school.subscription.cycle) {
         return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ». ` })
       }
     }
-    const student = await Student.create({ ...req.body, school: schoolId })
+    const photo = req.file?.path || body.photo || ''
+    const student = await Student.create({ ...body, photo, school: schoolId })
 
-    if (req.body.teacher && student.class) {
-      await Teacher.findByIdAndUpdate(req.body.teacher, { $addToSet: { classes: student.class } })
+    if (body.teacher && student.class) {
+      await Teacher.findByIdAndUpdate(body.teacher, { $addToSet: { classes: student.class } })
     }
 
     res.status(201).json({ success: true, data: student })
@@ -104,9 +119,11 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 })
 
 // @route  PUT /api/students/:id
-router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'), upload.single('photo'), async (req, res) => {
   try {
-    const student = await Student.findByIdAndUpdate(req.params.id, req.body, {
+    const updates = parseNested(req.body)
+    if (req.file?.path) updates.photo = req.file.path
+    const student = await Student.findByIdAndUpdate(req.params.id, updates, {
       new: true, runValidators: true,
     })
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })

@@ -12,6 +12,7 @@ const enrollmentSchema = new mongoose.Schema(
     fatherName: { type: String, trim: true },
     motherName: { type: String, trim: true },
     fatherPhone: { type: String, trim: true },
+    photo: { type: String },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     class: { type: mongoose.Schema.Types.ObjectId, ref: 'Class', required: true },
     className: { type: String },

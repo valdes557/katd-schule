@@ -95,9 +95,10 @@ router.get('/:schoolId/posts', async (req, res) => {
 })
 
 // POST /api/school-pages/:schoolId/posts — Director
-router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), upload.array('images', 5), async (req, res) => {
+router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
-    const images = req.files?.map((f) => f.path) || []
+    const images = req.files?.images?.map((f) => f.path) || []
+    const videoUrl = req.files?.video?.[0]?.path || req.body.videoUrl || ''
     const post = await SchoolPost.create({
       school: req.params.schoolId,
       author: req.user._id,
@@ -106,8 +107,8 @@ router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), 
       category: req.body.category || '',
       images,
       thumbnail: images[0] || req.body.thumbnail || '',
-      type: req.body.videoUrl ? 'video' : images.length > 0 ? 'photo' : 'text',
-      videoUrl: req.body.videoUrl || undefined,
+      type: videoUrl ? 'video' : images.length > 0 ? 'photo' : 'text',
+      videoUrl: videoUrl || undefined,
       duration: req.body.duration || '',
     })
     const populated = await post.populate('author', 'name avatar')

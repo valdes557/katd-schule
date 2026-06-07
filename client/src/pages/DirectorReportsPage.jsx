@@ -96,7 +96,8 @@ export default function DirectorReportsPage() {
         ) : reports.length === 0 ? (
           <div className="text-center py-10 text-gray-400">Aucun rapport trouvé</div>
         ) : (
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 {['Date', 'Enseignant', 'Classes', 'Titre', 'Extrait', 'Statut', 'Actions'].map((h) => (
@@ -140,6 +141,7 @@ export default function DirectorReportsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

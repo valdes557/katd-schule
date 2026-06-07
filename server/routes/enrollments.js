@@ -1,7 +1,5 @@
 const express = require('express')
 const router = express.Router()
-const multer = require('multer')
-const path = require('path')
 const bcrypt = require('bcryptjs')
 const Enrollment = require('../models/Enrollment')
 const Class = require('../models/Class')
@@ -11,16 +9,7 @@ const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEnrollmentApprovalEmail, sendEnrollmentRejectionEmail } = require('../utils/emailService')
 const { generateMatricule } = require('../utils/matricule')
-
-// Multer config for payment proof
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9)
-    cb(null, `proof-${unique}${path.extname(file.originalname)}`)
-  },
-})
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } })
+const { upload } = require('../config/cloudinary')
 
 // GET /api/enrollments/school/:schoolId/classes — Public: get classes with fees for a school
 router.get('/school/:schoolId/classes', async (req, res) => {
@@ -35,7 +24,7 @@ router.get('/school/:schoolId/classes', async (req, res) => {
 })
 
 // POST /api/enrollments — Public: submit enrollment request
-router.post('/', upload.single('paymentProof'), async (req, res) => {
+router.post('/', upload.fields([{ name: 'paymentProof', maxCount: 1 }, { name: 'photo', maxCount: 1 }]), async (req, res) => {
   try {
     const { firstName, lastName, dateOfBirth, placeOfBirth, gender, email, phone, schoolId, classId, fatherName, motherName, fatherPhone } = req.body
 
@@ -43,9 +32,11 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       return res.status(400).json({ message: 'Tous les champs obligatoires doivent être remplis' })
     }
 
-    if (!req.file) {
+    const proofFile = req.files?.paymentProof?.[0]
+    if (!proofFile) {
       return res.status(400).json({ message: 'La preuve de paiement est obligatoire' })
     }
+    const photoUrl = req.files?.photo?.[0]?.path || ''
 
     // Verify school and class exist
     const school = await School.findById(schoolId)
@@ -71,11 +62,12 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       fatherName,
       motherName,
       fatherPhone,
+      photo: photoUrl,
       school: schoolId,
       class: classId,
       className: `${cls.name} (${cls.level})`,
       amount: cls.enrollmentFee || school.enrollmentFee || 0,
-      paymentProof: `/uploads/${req.file.filename}`,
+      paymentProof: proofFile.path,
     })
 
     res.status(201).json({
@@ -147,6 +139,7 @@ router.put('/:id/approve', protect, authorize('directeur', 'super_admin'), async
       matricule,
       dateOfBirth: enrollment.dateOfBirth,
       gender: enrollment.gender,
+      photo: enrollment.photo || '',
       school: enrollment.school._id,
       class: enrollment.class._id,
       cycle: enrollment.class.cycle,
