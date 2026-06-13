@@ -443,6 +443,8 @@ export const teacherApi = {
   },
   updateReport: (id, data) => api.put(`/teacher/reports/${id}`, data),
   deleteReport: (id) => api.del(`/teacher/reports/${id}`),
+  // Salaires (historique de l'enseignant)
+  salaries: () => api.get('/teacher/salaries'),
 }
 
 export const parentApi = {
@@ -481,9 +483,27 @@ export const parentApi = {
   resources: () => api.get('/parent/resources'),
 }
 
+// Dépenses / factures de l'école (directeur)
+export const expensesApi = {
+  list: (params = '') => api.get(`/expenses?${params}`),
+  create: (data) => api.post('/expenses', data),
+  update: (id, data) => api.put(`/expenses/${id}`, data),
+  remove: (id) => api.del(`/expenses/${id}`),
+}
+
+// Salaires des enseignants (directeur: CRUD ; enseignant: son historique via teacherApi.salaries)
+export const salariesApi = {
+  list: (params = '') => api.get(`/salaries?${params}`),
+  create: (data) => api.post('/salaries', data),
+  update: (id, data) => api.put(`/salaries/${id}`, data),
+  pay: (id, data) => api.put(`/salaries/${id}/pay`, data),
+  remove: (id) => api.del(`/salaries/${id}`),
+}
+
 export const feesApi = {
   list: (params = '') => api.get(`/fees?${params}`),
   paymentStatus: (classId) => api.get(`/fees/payment-status?classId=${classId}`),
+  paymentHistory: (classId = '') => api.get(`/fees/payment-history${classId ? `?classId=${classId}` : ''}`),
   create: (data) => api.post('/fees', data),
   update: (id, data) => api.put(`/fees/${id}`, data),
   remove: (id) => api.del(`/fees/${id}`),

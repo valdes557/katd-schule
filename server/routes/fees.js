@@ -79,6 +79,75 @@ router.get('/payment-status', protect, authorize('directeur', 'super_admin'), as
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// GET /api/fees/payment-history — Directeur: tous les paiements par élève/parent + reste
+router.get('/payment-history', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const { classId } = req.query
+    const query = { school: schoolId(req) }
+    if (classId) {
+      const students = await Student.find({ class: classId, school: schoolId(req) }).select('_id')
+      query.student = { $in: students.map((s) => s._id) }
+    }
+
+    const fees = await Fee.find(query)
+      .populate('student', 'firstName lastName matricule class parent')
+      .populate({ path: 'student', populate: { path: 'class', select: 'name level' } })
+      .sort({ createdAt: -1 })
+
+    // Regrouper par élève
+    const byStudent = new Map()
+    for (const f of fees) {
+      const s = f.student
+      if (!s) continue
+      const key = s._id.toString()
+      if (!byStudent.has(key)) {
+        byStudent.set(key, {
+          studentId: s._id,
+          studentName: `${s.lastName} ${s.firstName}`,
+          matricule: s.matricule,
+          className: s.class?.name || '—',
+          parentName: s.parent?.name || '—',
+          parentPhone: s.parent?.phone || '',
+          totalDue: 0,
+          totalPaid: 0,
+          remaining: 0,
+          payments: [],
+        })
+      }
+      const entry = byStudent.get(key)
+      entry.totalDue += f.amount || 0
+      entry.totalPaid += f.paid || 0
+      ;(f.payments || []).forEach((p, idx) => {
+        entry.payments.push({
+          feeId: f._id,
+          paymentIndex: idx,
+          label: f.label,
+          amount: p.amount,
+          method: p.method,
+          reference: p.reference,
+          date: p.date,
+          note: p.note,
+        })
+      })
+    }
+
+    const data = Array.from(byStudent.values()).map((e) => {
+      e.remaining = Math.max(0, e.totalDue - e.totalPaid)
+      e.payments.sort((a, b) => new Date(b.date) - new Date(a.date))
+      return e
+    }).sort((a, b) => a.studentName.localeCompare(b.studentName))
+
+    const summary = {
+      totalDue: data.reduce((s, e) => s + e.totalDue, 0),
+      totalPaid: data.reduce((s, e) => s + e.totalPaid, 0),
+      remaining: data.reduce((s, e) => s + e.remaining, 0),
+      studentCount: data.length,
+    }
+
+    res.json({ success: true, data, summary })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // POST /api/fees — Create fee for a student
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {

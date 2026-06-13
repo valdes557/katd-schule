@@ -16,6 +16,7 @@ const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
 const DailyReport = require('../models/DailyReport')
 const SchoolPost = require('../models/SchoolPost')
+const Salary = require('../models/Salary')
 const { sendEmail } = require('../utils/emailService')
 
 const teacherOnly = (req, res, next) => {
@@ -853,6 +854,26 @@ router.delete('/reports/:id', protect, teacherOnly, async (req, res) => {
     if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
 
     res.json({ success: true, message: 'Rapport supprimé' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ─── MES SALAIRES (historique de l'enseignant) ───
+router.get('/salaries', protect, teacherOnly, async (req, res) => {
+  try {
+    const teacher = await getTeacherProfile(req.user._id)
+    if (!teacher) return res.json({ success: true, data: [], summary: { total: 0, totalPaid: 0, totalPending: 0 } })
+
+    const salaries = await Salary.find({ teacher: teacher._id })
+      .sort({ month: -1, createdAt: -1 })
+
+    const total = salaries.reduce((s, x) => s + (x.amount || 0), 0)
+    const totalPaid = salaries.filter((s) => s.status === 'paid').reduce((s, x) => s + (x.amount || 0), 0)
+
+    res.json({
+      success: true,
+      data: salaries,
+      summary: { total, totalPaid, totalPending: total - totalPaid, count: salaries.length },
+    })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

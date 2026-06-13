@@ -59,6 +59,10 @@ const BulletinPage = lazy(() => import('./pages/BulletinPage'))
 const ParentActivitiesPage = lazy(() => import('./pages/ParentActivitiesPage'))
 const DashboardSocialPage = lazy(() => import('./pages/DashboardSocialPage'))
 const AnnoncesPage = lazy(() => import('./pages/AnnoncesPage'))
+const PaymentHistoryPage = lazy(() => import('./pages/PaymentHistoryPage'))
+const FacturesPage = lazy(() => import('./pages/FacturesPage'))
+const SalariesPage = lazy(() => import('./pages/SalariesPage'))
+const TeacherSalaryPage = lazy(() => import('./pages/TeacherSalaryPage'))
 
 function PageFallback() {
   return (
@@ -143,8 +147,9 @@ export default function App() {
         <Route path="ressources" element={<TeacherResourcesPage />} />
         <Route path="annonces" element={<AnnoncesPage />} />
         <Route path="documents" element={<PlaceholderPage title="Documents partagés" />} />
-        <Route path="paiements" element={<PlaceholderPage title="Historique des paiements" />} />
-        <Route path="factures" element={<PlaceholderPage title="Factures" />} />
+        <Route path="paiements" element={<PaymentHistoryPage />} />
+        <Route path="factures" element={<FacturesPage />} />
+        <Route path="salaires" element={<SalariesPage />} />
         <Route path="rapports" element={<DirectorReportsPage />} />
         <Route path="rapports/detail" element={<PlaceholderPage title="Rapports détaillés" />} />
         <Route path="statistiques" element={<PlaceholderPage title="Statistiques" />} />
@@ -162,6 +167,7 @@ export default function App() {
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />
         <Route path="teacher/analytics" element={<TeacherAnalyticsPage />} />
         <Route path="teacher/rapports" element={<TeacherReportsPage />} />
+        <Route path="teacher/salaires" element={<TeacherSalaryPage />} />
 
         {/* Parent routes */}
         <Route path="parent/enfant/:studentId" element={<ParentChildDetailPage />} />

@@ -2,7 +2,7 @@ import {
   School, Info, BookOpen, Clock, Users, GraduationCap,
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
-  BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield,
+  BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet,
 } from 'lucide-react'
 
 // roles: array of allowed roles. undefined = all roles.
@@ -44,6 +44,7 @@ export const navSections = [
     items: [
       { label: 'Frais & tranches', icon: Receipt, path: '/dashboard/parent/frais' },
       { label: 'Paiements', icon: CreditCard, path: '/dashboard/parent/finances' },
+      { label: 'Historique des paiements', icon: History, path: '/dashboard/paiements' },
       { label: 'Documents administratifs', icon: FolderOpen, path: '/dashboard/parent/documents' },
       { label: 'Rendez-vous', icon: CalendarCheck, path: '/dashboard/parent/rendez-vous' },
     ],
@@ -75,6 +76,7 @@ export const navSections = [
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
       { label: 'Rapports quotidiens', icon: FileText, path: '/dashboard/teacher/rapports' },
+      { label: 'Mes salaires', icon: Wallet, path: '/dashboard/teacher/salaires' },
     ],
   },
   {
@@ -105,16 +107,17 @@ export const navSections = [
     roles: ['directeur', 'super_admin'],
     items: [
       { label: 'Pensions & Frais', icon: CreditCard, path: '/dashboard/director/pensions', roles: ['directeur'] },
-      { label: 'Souscriptions', icon: CreditCard, path: '/dashboard/souscriptions' },
       { label: 'Historique des paiements', icon: History, path: '/dashboard/paiements' },
+      { label: 'Salaires', icon: Wallet, path: '/dashboard/salaires', roles: ['directeur'] },
       { label: 'Factures', icon: Receipt, path: '/dashboard/factures' },
+      { label: 'Souscriptions', icon: CreditCard, path: '/dashboard/souscriptions' },
     ],
   },
   {
     label: 'RAPPORTS & STATISTIQUES',
     roles: ['directeur'],
     items: [
-      { label: 'Tableaux de bord', icon: BarChart2, path: '/dashboard/rapports' },
+      { label: 'Rapports des enseignants', icon: FileText, path: '/dashboard/rapports' },
       { label: 'Rapports', icon: LineChart, path: '/dashboard/rapports/detail' },
       { label: 'Statistiques', icon: PieChart, path: '/dashboard/statistiques' },
     ],

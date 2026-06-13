@@ -56,6 +56,8 @@ app.use('/api/timetables', require('./routes/timetables'))
 app.use('/api/parent', require('./routes/parent'))
 app.use('/api/teacher', require('./routes/teacher'))
 app.use('/api/fees', require('./routes/fees'))
+app.use('/api/expenses', require('./routes/expenses'))
+app.use('/api/salaries', require('./routes/salaries'))
 
 app.get('/api/health', (req, res) => {
   res.json({
