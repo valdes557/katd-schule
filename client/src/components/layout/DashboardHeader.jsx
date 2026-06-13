@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
-import { Menu, Bell, ChevronDown, BookOpen, GraduationCap, Baby, Calendar } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Bell, ChevronDown, BookOpen, GraduationCap, Baby, Calendar, LogOut } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { getInitials } from '../../lib/utils'
 import { authApi } from '../../lib/api'
@@ -10,8 +11,9 @@ const CYCLES = [
   { label: 'Cycle Secondaire', icon: GraduationCap, color: 'text-green-600' },
 ]
 
-export default function DashboardHeader({ onMenuClick }) {
-  const { user, setUser, school, cycle, changeCycle } = useAuth()
+export default function DashboardHeader() {
+  const { user, setUser, school, cycle, changeCycle, logout } = useAuth()
+  const navigate = useNavigate()
   const [cycleOpen, setCycleOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
   const [notifications] = useState(3)
@@ -27,16 +29,17 @@ export default function DashboardHeader({ onMenuClick }) {
 
   return (
     <>
-    <header className="fixed top-0 right-0 left-0 lg:left-[260px] h-14 bg-white border-b border-gray-100 flex items-center justify-between px-3 sm:px-5 z-30">
-      {/* Left: hamburger (mobile only) */}
-      <button
-        onClick={onMenuClick}
-        className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
-        aria-label="Ouvrir le menu"
-      >
-        <Menu size={20} />
-      </button>
-      <div className="hidden lg:block" />
+    <header className="fixed top-0 right-0 left-0 h-14 bg-white border-b border-gray-100 flex items-center justify-between px-3 sm:px-5 z-30">
+      {/* Left: logo cliquable -> retour à l'accueil */}
+      <Link to="/dashboard" className="flex items-center gap-2.5 group" aria-label="Accueil">
+        <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-blue-700 transition-colors">
+          <BookOpen size={18} className="text-white" />
+        </div>
+        <div className="hidden sm:block">
+          <div className="text-[15px] font-bold text-gray-900 leading-tight">KATD-SCHÜLE</div>
+          <div className="text-[10px] text-gray-400 leading-tight">Apprendre, Partager, Grandir</div>
+        </div>
+      </Link>
 
       {/* Right: cycle + notif + user */}
       <div className="flex items-center gap-2 sm:gap-3">
@@ -116,6 +119,12 @@ export default function DashboardHeader({ onMenuClick }) {
               </div>
               <button onClick={() => { setProfileOpen(true); setUserOpen(false); setPForm({ name: user?.name || '', phone: user?.phone || '' }) }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Mon profil</button>
               <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Paramètres</button>
+              <button
+                onClick={() => { setUserOpen(false); logout(); navigate('/') }}
+                className="w-full flex items-center gap-2 text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 hover:text-red-600 border-t border-gray-100"
+              >
+                <LogOut size={15} /> Se déconnecter
+              </button>
             </div>
           )}
         </div>

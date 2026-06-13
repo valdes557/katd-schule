@@ -17,7 +17,7 @@ const NAV_TABS = [
 
 export default function PublicNavBar() {
   return (
-    <div className="fixed top-14 right-0 left-0 lg:left-[260px] h-10 bg-white border-b border-gray-100 z-20 flex items-center overflow-x-auto scrollbar-thin">
+    <div className="fixed top-14 right-0 left-0 h-10 bg-white border-b border-gray-100 z-20 flex items-center overflow-x-auto scrollbar-thin">
       <div className="flex items-center min-w-max px-3 gap-0">
         {NAV_TABS.map(({ label, path, icon: Icon }) => (
           <NavLink

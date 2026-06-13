@@ -1,15 +1,13 @@
-import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, School, Info, BookOpen, Clock, Users, GraduationCap,
+  School, Info, BookOpen, Clock, Users, GraduationCap,
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
-  BarChart2, LineChart, PieChart, HelpCircle, ChevronRight, LogOut, UserPlus, MapPin, Globe, LayoutGrid, Shield,
+  BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield,
 } from 'lucide-react'
-import { useAuth } from '../../context/AuthContext'
-import { cn } from '../../lib/utils'
 
 // roles: array of allowed roles. undefined = all roles.
-const sidebarSections = [
+// Source unique pour la navigation du dashboard (sidebar historique + grille de boutons ronds).
+export const navSections = [
   {
     label: 'GESTION DE L\'ÉCOLE',
     roles: ['directeur'],
@@ -134,125 +132,22 @@ const sidebarSections = [
   },
 ]
 
-export default function Sidebar({ mobileOpen, onClose }) {
-  const { logout, user, school } = useAuth()
-  const navigate = useNavigate()
-
-  // School cycles of the logged-in director
-  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
+// Renvoie les sections + items visibles pour l'utilisateur courant (filtrage rôle + cycle directeur).
+export function getVisibleSections(user, school) {
+  const role = user?.role
+  const isDirecteur = role === 'directeur'
+  const subscribedCycle = isDirecteur && school?.subscription?.cycle ? school.subscription.cycle : null
   const schoolCycles = subscribedCycle ? [subscribedCycle] : (school?.cycles || [])
-  const isDirecteur = user?.role === 'directeur'
 
-  // Filter items by cycle and role
-  const filterItems = (items) => {
-    return items.filter((item) => {
-      if (item.roles && !item.roles.includes(user?.role)) return false
-      if (item.cycles && isDirecteur && schoolCycles.length > 0 && !item.cycles.some((c) => schoolCycles.includes(c))) return false
-      return true
-    })
-  }
-
-  const handleLogout = () => {
-    logout()
-    navigate('/')
-  }
-
-  return (
-    <aside
-      className={cn(
-        'fixed left-0 top-0 h-full w-[260px] bg-white border-r border-gray-100 flex flex-col z-40 transition-transform duration-300',
-        'lg:translate-x-0',
-        mobileOpen ? 'translate-x-0' : '-translate-x-full'
-      )}
-    >
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 py-4 border-b border-gray-100 flex-shrink-0">
-        <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-          <BookOpen size={18} className="text-white" />
-        </div>
-        <div>
-          <div className="text-[15px] font-bold text-gray-900 leading-tight">KATD-SCHÜLE</div>
-          <div className="text-[10px] text-gray-400 leading-tight">Apprendre, Partager, Grandir</div>
-        </div>
-      </div>
-
-      {/* Active item: Tableau de bord */}
-      <div className="px-3 pt-3 flex-shrink-0">
-        <NavLink
-          to="/dashboard"
-          end
-          className={({ isActive }) =>
-            cn('sidebar-item', isActive && 'active')
-          }
-        >
-          <LayoutDashboard size={16} />
-          <span>Tableau de bord</span>
-        </NavLink>
-      </div>
-
-      {/* Cycle badge for directors */}
-      {isDirecteur && schoolCycles.length > 0 && (
-        <div className="px-3 pb-2 flex-shrink-0">
-          <div className="flex flex-wrap gap-1">
-            {schoolCycles.map((c) => (
-              <span key={c} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-medium">{c}</span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Scrollable nav sections */}
-      <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3">
-        {sidebarSections.filter((s) => {
-          if (s.roles && !s.roles.includes(user?.role)) return false
-          return true
-        }).map((section) => {
-          const visibleItems = filterItems(section.items)
-          if (visibleItems.length === 0) return null
-          return (
-            <div key={section.label}>
-              <div className="section-label">{section.label}</div>
-              <ul className="space-y-0.5">
-                {visibleItems.map((item) => (
-                  <li key={item.path}>
-                    <NavLink
-                      to={item.path}
-                      className={({ isActive }) =>
-                        cn('sidebar-item', isActive && 'active')
-                      }
-                      onClick={onClose}
-                    >
-                      <item.icon size={15} className="flex-shrink-0" />
-                      <span className="truncate">{item.label}</span>
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )
-        })}
-      </nav>
-
-      {/* Bottom: Help + Assistance */}
-      <div className="px-3 pb-4 border-t border-gray-100 pt-3 flex-shrink-0">
-        <div className="bg-blue-50 rounded-xl p-3 mb-3">
-          <div className="flex items-center gap-2 mb-1">
-            <HelpCircle size={14} className="text-blue-600" />
-            <span className="text-xs font-semibold text-gray-700">Besoin d'aide ?</span>
-          </div>
-          <p className="text-xs text-gray-500">Contactez notre support.</p>
-        </div>
-        <button className="btn-primary w-full justify-center text-sm py-2 mb-2">
-          Assistance
-        </button>
-        <button
-          onClick={handleLogout}
-          className="sidebar-item text-red-500 hover:bg-red-50 hover:text-red-600 w-full"
-        >
-          <LogOut size={15} />
-          <span>Se déconnecter</span>
-        </button>
-      </div>
-    </aside>
-  )
+  return navSections
+    .filter((s) => !s.roles || s.roles.includes(role))
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (item.roles && !item.roles.includes(role)) return false
+        if (item.cycles && isDirecteur && schoolCycles.length > 0 && !item.cycles.some((c) => schoolCycles.includes(c))) return false
+        return true
+      }),
+    }))
+    .filter((section) => section.items.length > 0)
 }

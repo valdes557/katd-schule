@@ -14,6 +14,7 @@ import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import ParentDashboardPage from './ParentDashboardPage'
 import TeacherDashboardPage from './TeacherDashboardPage'
+import AppLauncher from '../components/layout/AppLauncher'
 
 const PIE_COLORS = ['#3B82F6', '#F59E0B', '#10B981']
 
@@ -240,8 +241,17 @@ function DirectorDashboard({ user, school }) {
 
 export default function DashboardPage() {
   const { user, school } = useAuth()
-  if (user?.role === 'super_admin') return <AdminDashboard user={user} />
-  if (user?.role === 'parent') return <ParentDashboardPage />
-  if (user?.role === 'enseignant') return <TeacherDashboardPage />
-  return <DirectorDashboard user={user} school={school} />
+  let content
+  if (user?.role === 'super_admin') content = <AdminDashboard user={user} />
+  else if (user?.role === 'parent') content = <ParentDashboardPage />
+  else if (user?.role === 'enseignant') content = <TeacherDashboardPage />
+  else content = <DirectorDashboard user={user} school={school} />
+
+  return (
+    <div className="space-y-8">
+      {/* Grille de boutons ronds (remplace la sidebar) : accès rapide à toutes les fonctionnalités */}
+      <AppLauncher />
+      {content}
+    </div>
+  )
 }
