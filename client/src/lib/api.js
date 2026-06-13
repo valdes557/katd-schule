@@ -161,7 +161,22 @@ export const messagesApi = {
   contacts: () => api.get('/messages/contacts'),
   unreadCount: () => api.get('/messages/unread-count'),
   groups: () => api.get('/messages/groups'),
-  createGroup: (data) => api.post('/messages/groups', data),
+  createGroup: async (data) => {
+    const fd = new FormData()
+    fd.append('name', data.name || '')
+    fd.append('memberRole', data.memberRole || 'enseignant')
+    fd.append('memberIds', JSON.stringify(data.memberIds || []))
+    if (data.image) fd.append('image', data.image)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/messages/groups`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
   sendGroup: (groupId, data) => api.post(`/messages/groups/${groupId}`, data),
 }
 
@@ -498,6 +513,13 @@ export const salariesApi = {
   update: (id, data) => api.put(`/salaries/${id}`, data),
   pay: (id, data) => api.put(`/salaries/${id}/pay`, data),
   remove: (id) => api.del(`/salaries/${id}`),
+}
+
+// Annonces officielles du directeur (audience: all/parents/teachers)
+export const announcementsApi = {
+  list: () => api.get('/announcements'),
+  create: (data) => api.post('/announcements', data),
+  remove: (id) => api.del(`/announcements/${id}`),
 }
 
 export const feesApi = {

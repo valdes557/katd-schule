@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon } from 'lucide-react'
 import { messagesApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { cn } from '../lib/utils'
@@ -17,7 +17,9 @@ export default function MessagingPage() {
   const [composeForm, setComposeForm] = useState({ recipientId: '', subject: '', body: '' })
   const [search, setSearch] = useState('')
   const [showGroupModal, setShowGroupModal] = useState(false)
-  const [groupForm, setGroupForm] = useState({ name: '', memberIds: [], memberRole: 'enseignant' })
+  const [groupForm, setGroupForm] = useState({ name: '', memberIds: [], memberRole: 'enseignant', image: null })
+  const [groupImagePreview, setGroupImagePreview] = useState('')
+  const messagesEndRef = useRef(null)
 
   const convsQ = useCachedFetch('/messages/conversations', async () => (await messagesApi.conversations()).data || [], [])
   const contactsQ = useCachedFetch('/messages/contacts', async () => (await messagesApi.contacts()).data || [], [])
@@ -30,6 +32,11 @@ export default function MessagingPage() {
 
   const refreshConversations = () => { cache.invalidate('/messages/conversations'); convsQ.refetch() }
   const refreshGroups = () => { cache.invalidate('/messages/groups'); groupsQ.refetch() }
+
+  // Défilement automatique vers le dernier message (style WhatsApp)
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loadingMsgs])
 
   const openGroupConversation = async (group) => {
     const conv = {
@@ -112,7 +119,8 @@ export default function MessagingPage() {
     try {
       await messagesApi.createGroup(groupForm)
       setShowGroupModal(false)
-      setGroupForm({ name: '', memberIds: [], memberRole: 'enseignant' })
+      setGroupForm({ name: '', memberIds: [], memberRole: 'enseignant', image: null })
+      setGroupImagePreview('')
       refreshGroups()
     } catch (err) {
       alert(err.message)
@@ -145,9 +153,9 @@ export default function MessagingPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5" style={{ minHeight: 500 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5" style={{ height: 'calc(100vh - 210px)', minHeight: 460 }}>
         {/* Conversations list */}
-        <div className={cn('card overflow-hidden flex flex-col', activeConv && 'hidden lg:flex')}>
+        <div className={cn('card overflow-hidden flex flex-col h-full', activeConv && 'hidden lg:flex')}>
           <div className="p-3 border-b border-gray-100 space-y-2">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -163,7 +171,7 @@ export default function MessagingPage() {
                     className={`px-2 py-0.5 rounded-full border hover:brightness-95 truncate max-w-full ${g.type === 'parent_group' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}
                   >
                     <span className="inline-flex items-center gap-1">
-                      <Users size={11} /> {g.name}
+                      {g.image ? <img src={g.image} alt="" className="w-4 h-4 rounded-full object-cover" /> : <Users size={11} />} {g.name}
                     </span>
                   </button>
                 ))}
@@ -198,7 +206,7 @@ export default function MessagingPage() {
         </div>
 
         {/* Conversation detail */}
-        <div className={cn('card lg:col-span-2 flex flex-col overflow-hidden', !activeConv && 'hidden lg:flex')}>
+        <div className={cn('card lg:col-span-2 flex flex-col overflow-hidden h-full', !activeConv && 'hidden lg:flex')}>
           {!activeConv ? (
             <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
               <div className="text-center">
@@ -208,8 +216,15 @@ export default function MessagingPage() {
             </div>
           ) : (
             <>
-              <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+              <div className="p-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
                 <button onClick={() => setActiveConv(null)} className="lg:hidden p-1 rounded hover:bg-gray-100"><ArrowLeft size={18} /></button>
+                {activeConv.isGroup && (
+                  activeConv.contact?.image ? (
+                    <img src={activeConv.contact.image} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0"><Users size={16} className="text-indigo-600" /></div>
+                  )
+                )}
                 <div>
                   <div className="text-sm font-bold text-gray-900">{activeConv.contact?.name}</div>
                   <div className="text-xs text-gray-500">
@@ -218,7 +233,7 @@ export default function MessagingPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ maxHeight: 400 }}>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
                 {loadingMsgs ? (
                   <div className="text-center py-8"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></div>
                 ) : (
@@ -227,12 +242,15 @@ export default function MessagingPage() {
                     return (
                       <div key={m._id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
                         <div className={cn(
-                          'max-w-[75%] rounded-2xl px-4 py-2.5 text-sm',
-                          mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-800 rounded-bl-md'
+                          'max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm',
+                          mine ? 'bg-green-500 text-white rounded-br-md' : 'bg-white text-gray-800 border border-gray-200 rounded-bl-md'
                         )}>
-                          {m.subject && <div className={cn('text-xs font-semibold mb-1', mine ? 'text-blue-200' : 'text-gray-500')}>{m.subject}</div>}
-                          <p>{m.body}</p>
-                          <div className={cn('text-[10px] mt-1', mine ? 'text-blue-200' : 'text-gray-400')}>
+                          {activeConv.isGroup && !mine && m.sender?.name && (
+                            <div className="text-[11px] font-semibold mb-0.5 text-indigo-600">{m.sender.name}</div>
+                          )}
+                          {m.subject && <div className={cn('text-xs font-semibold mb-1', mine ? 'text-green-50' : 'text-gray-500')}>{m.subject}</div>}
+                          <p className="whitespace-pre-line">{m.body}</p>
+                          <div className={cn('text-[10px] mt-1 text-right', mine ? 'text-green-50' : 'text-gray-400')}>
                             {new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </div>
@@ -240,8 +258,9 @@ export default function MessagingPage() {
                     )
                   })
                 )}
+                <div ref={messagesEndRef} />
               </div>
-              <div className="p-3 border-t border-gray-100 flex gap-2">
+              <div className="p-3 border-t border-gray-100 flex gap-2 flex-shrink-0 bg-white">
                 <input
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
@@ -315,6 +334,33 @@ export default function MessagingPage() {
                       {opt.l}
                     </button>
                   ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Image du groupe (optionnel)</label>
+                <div className="flex items-center gap-3 mt-1">
+                  {groupImagePreview ? (
+                    <img src={groupImagePreview} alt="" className="w-12 h-12 rounded-full object-cover border border-gray-200" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center"><ImageIcon size={18} className="text-gray-400" /></div>
+                  )}
+                  <label className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                    Choisir une image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (!f) return
+                        setGroupForm({ ...groupForm, image: f })
+                        setGroupImagePreview(URL.createObjectURL(f))
+                      }}
+                    />
+                  </label>
+                  {groupImagePreview && (
+                    <button type="button" onClick={() => { setGroupForm({ ...groupForm, image: null }); setGroupImagePreview('') }} className="text-xs text-red-500 hover:underline">Retirer</button>
+                  )}
                 </div>
               </div>
               <div>

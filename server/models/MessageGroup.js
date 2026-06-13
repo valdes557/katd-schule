@@ -3,6 +3,7 @@ const mongoose = require('mongoose')
 const messageGroupSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    image: { type: String },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

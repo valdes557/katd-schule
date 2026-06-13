@@ -6,6 +6,7 @@ const Student = require('../models/Student')
 const Teacher = require('../models/Teacher')
 const MessageGroup = require('../models/MessageGroup')
 const { protect, authorize } = require('../middleware/auth')
+const { upload } = require('../config/cloudinary')
 
 // Helper: compute allowed contacts for the current user based on role & school
 async function getAllowedContacts(user) {
@@ -116,13 +117,14 @@ router.get('/conversations', protect, async (req, res) => {
         const isGroup = !!msg.isGroup
 
         if (isGroup && msg.group) {
-          const group = await MessageGroup.findById(msg.group).select('name members')
+          const group = await MessageGroup.findById(msg.group).select('name members image')
           if (group) {
             groupId = group._id
             contact = {
               _id: group._id,
               name: group.name,
               role: 'groupe',
+              image: group.image || null,
               membersCount: group.members.length,
             }
           }
@@ -255,6 +257,7 @@ router.get('/groups', protect, async (req, res) => {
     const data = groups.map((g) => ({
       _id: g._id,
       name: g.name,
+      image: g.image || null,
       membersCount: g.members.length,
       type: g.type,
     }))
@@ -265,10 +268,16 @@ router.get('/groups', protect, async (req, res) => {
   }
 })
 
-// POST /api/messages/groups — director creates a teacher or parent group
-router.post('/groups', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+// POST /api/messages/groups — director creates a teacher or parent group (avec image optionnelle)
+router.post('/groups', protect, authorize('directeur', 'super_admin'), upload.single('image'), async (req, res) => {
   try {
-    const { name, memberIds = [], memberRole = 'enseignant' } = req.body
+    let { name, memberIds = [], memberRole = 'enseignant' } = req.body
+    // En multipart, memberIds peut arriver en chaîne JSON ou en valeurs répétées
+    if (typeof memberIds === 'string') {
+      try { memberIds = JSON.parse(memberIds) } catch (_) { memberIds = memberIds ? [memberIds] : [] }
+    }
+    if (!Array.isArray(memberIds)) memberIds = [memberIds].filter(Boolean)
+
     if (!name || String(name).trim().length === 0) {
       return res.status(400).json({ message: 'Le nom du groupe est requis' })
     }
@@ -305,6 +314,7 @@ router.post('/groups', protect, authorize('directeur', 'super_admin'), async (re
 
     const group = await MessageGroup.create({
       name: name.trim(),
+      image: req.file?.path,
       school: schoolId,
       createdBy: req.user._id,
       members: Array.from(members),

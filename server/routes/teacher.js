@@ -16,6 +16,7 @@ const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
 const DailyReport = require('../models/DailyReport')
 const SchoolPost = require('../models/SchoolPost')
+const Announcement = require('../models/Announcement')
 const Salary = require('../models/Salary')
 const { sendEmail } = require('../utils/emailService')
 
@@ -105,8 +106,8 @@ router.get('/dashboard', protect, teacherOnly, async (req, res) => {
       // Upcoming due homeworks
       Homework.find({ teacher: teacher._id, dueDate: { $gte: new Date() } })
         .sort({ dueDate: 1 }).limit(5).populate('class', 'name'),
-      // Recent school announcements
-      SchoolPost.find({ school: schoolId, isPublic: true })
+      // Recent school announcements (annonces du directeur ciblant les enseignants)
+      Announcement.find({ school: schoolId, audience: { $in: ['all', 'teachers'] } })
         .sort({ createdAt: -1 })
         .limit(5)
         .select('title content createdAt'),

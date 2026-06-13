@@ -17,6 +17,7 @@ const Subject = require('../models/Subject')
 const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
 const SchoolPost = require('../models/SchoolPost')
+const Announcement = require('../models/Announcement')
 const User = require('../models/User')
 const { sendEmail } = require('../utils/emailService')
 const multer = require('multer')
@@ -112,7 +113,7 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
       ]),
       Message.countDocuments({ recipient: req.user._id, read: false }),
       schoolId
-        ? SchoolPost.find({ school: schoolId, isPublic: true })
+        ? Announcement.find({ school: schoolId, audience: { $in: ['all', 'parents'] } })
             .sort({ createdAt: -1 })
             .limit(5)
             .select('title content createdAt')
