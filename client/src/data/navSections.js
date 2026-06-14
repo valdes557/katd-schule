@@ -13,7 +13,6 @@ export const navSections = [
     roles: ['directeur'],
     items: [
       { label: "Profil de l'école", icon: School, path: '/dashboard/profil' },
-      { label: 'Informations générales', icon: Info, path: '/dashboard/infos' },
       { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes' },
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
@@ -96,6 +95,7 @@ export const navSections = [
     label: 'COMMUNICATION',
     roles: ['directeur', 'enseignant', 'parent'],
     items: [
+      { label: 'Informations générales', icon: Info, path: '/dashboard/infos' },
       { label: 'Messagerie', icon: MessageSquare, path: '/dashboard/messagerie' },
       { label: 'Annonces', icon: Bell, path: '/dashboard/annonces' },
       { label: 'Documents partagés', icon: FolderOpen, path: '/dashboard/documents' },

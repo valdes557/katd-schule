@@ -63,6 +63,8 @@ const PaymentHistoryPage = lazy(() => import('./pages/PaymentHistoryPage'))
 const FacturesPage = lazy(() => import('./pages/FacturesPage'))
 const SalariesPage = lazy(() => import('./pages/SalariesPage'))
 const TeacherSalaryPage = lazy(() => import('./pages/TeacherSalaryPage'))
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage'))
+const InfosPage = lazy(() => import('./pages/InfosPage'))
 
 function PageFallback() {
   return (
@@ -136,7 +138,7 @@ export default function App() {
         <Route path="inscriptions" element={<InscriptionsPage />} />
 
         <Route path="profil" element={<DashboardSchoolProfilePage />} />
-        <Route path="infos" element={<PlaceholderPage title="Informations générales" />} />
+        <Route path="infos" element={<InfosPage />} />
         <Route path="classes" element={<ClassesPage />} />
         <Route path="matieres" element={<MatieresPage />} />
         <Route path="emploi-du-temps" element={<EmploiDuTempsPage />} />
@@ -146,7 +148,7 @@ export default function App() {
         <Route path="activites" element={<TeacherActivitiesPage />} />
         <Route path="ressources" element={<TeacherResourcesPage />} />
         <Route path="annonces" element={<AnnoncesPage />} />
-        <Route path="documents" element={<PlaceholderPage title="Documents partagés" />} />
+        <Route path="documents" element={<DocumentsPage />} />
         <Route path="paiements" element={<PaymentHistoryPage />} />
         <Route path="factures" element={<FacturesPage />} />
         <Route path="salaires" element={<SalariesPage />} />

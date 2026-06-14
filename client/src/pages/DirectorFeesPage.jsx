@@ -27,6 +27,10 @@ export default function DirectorFeesPage() {
   const [payModal, setPayModal] = useState(null) // { feeId, installmentIndex?, total }
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', reference: '', note: '' })
   const [paying, setPaying] = useState(false)
+  const [bulkModal, setBulkModal] = useState(false)
+  const [bulkForm, setBulkForm] = useState({ scope: 'all', source: 'modality', label: 'Frais de scolarité', type: 'scolarite', amount: '', dueDate: '', term: '' })
+  const [bulkInstallments, setBulkInstallments] = useState([])
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   const loadClasses = async () => {
     try { const r = await classesApi.list(); setClasses(r.data || []) } catch (_) {}
@@ -100,11 +104,51 @@ export default function DirectorFeesPage() {
     } catch (err) { alert(err.message) }
   }
 
+  const handleBulkAssign = async (e) => {
+    e.preventDefault()
+    setBulkSaving(true)
+    try {
+      const payload = {
+        scope: bulkForm.scope,
+        source: bulkForm.source,
+        label: bulkForm.label,
+        type: bulkForm.type,
+        dueDate: bulkForm.dueDate || undefined,
+        term: bulkForm.term || undefined,
+      }
+      if (bulkForm.source === 'manual') {
+        payload.amount = Number(bulkForm.amount)
+        if (bulkInstallments.length > 0) {
+          payload.paymentMode = 'tranches'
+          payload.installments = bulkInstallments.map((inst) => ({ ...inst, amount: Number(inst.amount) }))
+        } else {
+          payload.paymentMode = 'complet'
+        }
+      }
+      const r = await feesApi.bulkAssign(payload)
+      if (r.success) {
+        const { created, skipped, noModality } = r.data
+        let msg = `${created} frais créé(s).`
+        if (skipped) msg += ` ${skipped} ignoré(s) (déjà existant / montant nul).`
+        if (noModality) msg += ` ${noModality} élève(s) sans modalité de paiement définie.`
+        alert(msg)
+        setBulkModal(false)
+        setBulkForm({ scope: 'all', source: 'modality', label: 'Frais de scolarité', type: 'scolarite', amount: '', dueDate: '', term: '' })
+        setBulkInstallments([])
+        if (selectedClass) loadPaymentStatus(selectedClass)
+      } else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+    setBulkSaving(false)
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><CreditCard size={22} className="text-blue-600" /> Gestion des Frais & Pensions</h1>
-        <p className="text-sm text-gray-500">Suivi des paiements et gestion des tranches par classe</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><CreditCard size={22} className="text-blue-600" /> Gestion des Frais & Pensions</h1>
+          <p className="text-sm text-gray-500">Suivi des paiements et gestion des tranches par classe</p>
+        </div>
+        <button onClick={() => setBulkModal(true)} className="btn-primary text-sm self-start"><Users size={15} /> Assigner les frais en masse</button>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -327,6 +371,96 @@ export default function DirectorFeesPage() {
                 <button type="button" onClick={() => setPayModal(null)} className="btn-ghost flex-1 justify-center">Annuler</button>
                 <button type="submit" disabled={paying} className="btn-primary flex-1 justify-center">
                   {paying ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Valider
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Assign Modal */}
+      {bulkModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2"><Users size={18} className="text-blue-600" /> Assigner les frais en masse</h3>
+              <button onClick={() => setBulkModal(false)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <form onSubmit={handleBulkAssign} className="space-y-3">
+              {/* Mode de génération */}
+              <div className="grid grid-cols-2 gap-2">
+                {[{ v: 'modality', l: 'Depuis les modalités' }, { v: 'manual', l: 'Montant unique' }].map((opt) => (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setBulkForm({ ...bulkForm, source: opt.v })}
+                    className={`text-sm py-2 rounded-xl border transition-colors ${bulkForm.source === opt.v ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {opt.l}
+                  </button>
+                ))}
+              </div>
+              {bulkForm.source === 'modality' && (
+                <p className="text-[11px] text-gray-500 bg-gray-50 rounded-lg p-2">Le montant et les tranches de chaque élève sont repris des <strong>modalités de paiement</strong> définies pour sa classe.</p>
+              )}
+
+              <div>
+                <label className="text-xs font-medium text-gray-600">Élèves concernés</label>
+                <select value={bulkForm.scope} onChange={(e) => setBulkForm({ ...bulkForm, scope: e.target.value })} className="input text-sm mt-1 w-full">
+                  <option value="all">Toute l'école</option>
+                  {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Libellé</label>
+                  <input value={bulkForm.label} onChange={(e) => setBulkForm({ ...bulkForm, label: e.target.value })} className="input text-sm mt-1 w-full" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Type</label>
+                  <select value={bulkForm.type} onChange={(e) => setBulkForm({ ...bulkForm, type: e.target.value })} className="input text-sm mt-1 w-full">
+                    {['scolarite', 'inscription', 'cantine', 'transport', 'uniforme', 'autre'].map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {bulkForm.source === 'manual' && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600">Montant (F CFA) *</label>
+                      <input required={bulkForm.source === 'manual'} type="number" min="1" value={bulkForm.amount} onChange={(e) => setBulkForm({ ...bulkForm, amount: e.target.value })} className="input text-sm mt-1 w-full" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600">Date limite</label>
+                      <input type="date" value={bulkForm.dueDate} onChange={(e) => setBulkForm({ ...bulkForm, dueDate: e.target.value })} className="input text-sm mt-1 w-full" />
+                    </div>
+                  </div>
+
+                  {/* Tranches optionnelles (mode manuel) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-gray-600">Tranches (optionnel)</label>
+                      <button type="button" onClick={() => setBulkInstallments([...bulkInstallments, { label: `${bulkInstallments.length + 1}ère tranche`, amount: '', dueDate: '' }])} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Ajouter</button>
+                    </div>
+                    {bulkInstallments.map((inst, i) => (
+                      <div key={i} className="flex gap-2 mb-2">
+                        <input value={inst.label} onChange={(e) => setBulkInstallments(bulkInstallments.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))} placeholder="Libellé" className="input text-xs flex-1" />
+                        <input type="number" value={inst.amount} onChange={(e) => setBulkInstallments(bulkInstallments.map((x, idx) => idx === i ? { ...x, amount: e.target.value } : x))} placeholder="Montant" className="input text-xs w-24" />
+                        <button type="button" onClick={() => setBulkInstallments(bulkInstallments.filter((_, idx) => idx !== i))} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <p className="text-[11px] text-gray-400">Les élèves ayant déjà ce frais (même libellé et année) seront ignorés automatiquement.</p>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setBulkModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
+                <button type="submit" disabled={bulkSaving} className="btn-primary flex-1 justify-center">
+                  {bulkSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Assigner
                 </button>
               </div>
             </form>

@@ -110,6 +110,7 @@ export default function EnseignantsPage() {
                   <div>
                     <div className="text-sm font-bold text-gray-900">{t.lastName} {t.firstName}</div>
                     <div className="text-xs text-gray-500">{t.speciality || 'Enseignant'}</div>
+                    {t.user?.matricule && <div className="text-[10px] font-mono text-gray-400 mt-0.5">{t.user.matricule}</div>}
                   </div>
                 </div>
                 {isDirecteur && (

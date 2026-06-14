@@ -174,6 +174,96 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// POST /api/fees/bulk-assign — Associer des frais à TOUS les élèves (classe ou école entière)
+// source 'manual' : même montant/tranches pour tous.
+// source 'modality' : montant/tranches récupérés depuis PaymentModality selon la classe.
+router.post('/bulk-assign', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const sid = schoolId(req)
+    if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+
+    const {
+      scope = 'all', source = 'manual', label, type, dueDate, term,
+      academicYear, paymentMode = 'complet', amount, installments,
+    } = req.body
+
+    const feeLabel = label || 'Frais de scolarité'
+    const year = academicYear || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
+
+    // Élèves concernés (actifs)
+    const studentQuery = { school: sid, status: 'active' }
+    if (scope && scope !== 'all') studentQuery.class = scope
+    const students = await Student.find(studentQuery).populate('class', 'name level')
+    if (students.length === 0) {
+      return res.status(400).json({ message: 'Aucun élève actif trouvé pour cette sélection' })
+    }
+
+    // Modalités par classe (pour source 'modality')
+    let modalitiesByClass = {}
+    if (source === 'modality') {
+      const PaymentModality = require('../models/PaymentModality')
+      const modalities = await PaymentModality.find({ school: sid })
+      modalitiesByClass = Object.fromEntries(modalities.map((m) => [m.className, m]))
+    }
+
+    // Frais déjà existants (anti-doublon) pour ce label + année
+    const existing = await Fee.find({ school: sid, label: feeLabel, academicYear: year }).select('student')
+    const alreadyHas = new Set(existing.map((f) => f.student.toString()))
+
+    const docs = []
+    let skipped = 0
+    let noModality = 0
+
+    for (const s of students) {
+      if (alreadyHas.has(s._id.toString())) { skipped++; continue }
+
+      let feeAmount = Number(amount) || 0
+      let feeInstallments = paymentMode === 'tranches' ? (installments || []) : []
+      let feeMode = paymentMode
+
+      if (source === 'modality') {
+        const modality = s.class?.name ? modalitiesByClass[s.class.name] : null
+        if (!modality) { noModality++; continue }
+        feeAmount = modality.totalAmount
+        if (Array.isArray(modality.installments) && modality.installments.length > 0) {
+          feeMode = 'tranches'
+          feeInstallments = modality.installments.map((inst) => ({
+            label: inst.label,
+            amount: inst.amount,
+            dueDate: inst.deadline || undefined,
+          }))
+        } else {
+          feeMode = 'complet'
+          feeInstallments = []
+        }
+      }
+
+      if (!feeAmount || feeAmount <= 0) { skipped++; continue }
+
+      docs.push({
+        student: s._id,
+        school: sid,
+        label: feeLabel,
+        type: type || 'scolarite',
+        amount: feeAmount,
+        dueDate: dueDate || undefined,
+        term,
+        academicYear: year,
+        status: 'pending',
+        paymentMode: feeMode,
+        installments: feeInstallments,
+      })
+    }
+
+    if (docs.length > 0) await Fee.insertMany(docs)
+
+    res.status(201).json({
+      success: true,
+      data: { created: docs.length, skipped, noModality, totalStudents: students.length },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // PUT /api/fees/:id — Update fee
 router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {

@@ -472,11 +472,15 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
             {post.comments?.length === 0 && <p className="text-xs text-gray-400 text-center py-1">Aucun commentaire</p>}
             {post.comments?.slice(0, 5).map((c, i) => (
               <div key={i} className="flex gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
-                  {c.author?.[0]?.toUpperCase()}
-                </div>
+                {c.authorId?.avatar ? (
+                  <img src={c.authorId.avatar} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                    {(c.author || c.authorId?.name)?.[0]?.toUpperCase()}
+                  </div>
+                )}
                 <div className="bg-gray-50 rounded-lg px-2 py-1 text-xs flex-1">
-                  <span className="font-semibold text-gray-700">{c.author}</span>
+                  <span className="font-semibold text-gray-700">{c.author || c.authorId?.name}</span>
                   <p className="text-gray-600">{c.content}</p>
                 </div>
               </div>

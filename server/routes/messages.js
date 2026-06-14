@@ -383,4 +383,36 @@ router.post('/groups/:groupId', protect, async (req, res) => {
   }
 })
 
+// DELETE /api/messages/:id — supprimer un message (pour tout le monde)
+// Règles : l'expéditeur peut supprimer son message ; un directeur/super_admin peut
+// supprimer n'importe quel message de son école. Pour les messages de groupe, on
+// supprime toutes les copies partageant le même broadcastKey.
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const msg = await Message.findById(req.params.id)
+    if (!msg) return res.status(404).json({ message: 'Message introuvable' })
+
+    const userId = req.user._id.toString()
+    const isSender = msg.sender.toString() === userId
+    const schoolId = (req.user.school?._id || req.user.school)?.toString()
+    const isAdmin =
+      ['directeur', 'super_admin'].includes(req.user.role) &&
+      schoolId && msg.school?.toString() === schoolId
+
+    if (!isSender && !isAdmin) {
+      return res.status(403).json({ message: 'Vous ne pouvez pas supprimer ce message' })
+    }
+
+    if (msg.broadcastKey) {
+      await Message.deleteMany({ broadcastKey: msg.broadcastKey })
+    } else {
+      await Message.deleteOne({ _id: msg._id })
+    }
+
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

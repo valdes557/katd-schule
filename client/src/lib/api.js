@@ -178,6 +178,7 @@ export const messagesApi = {
     return json
   },
   sendGroup: (groupId, data) => api.post(`/messages/groups/${groupId}`, data),
+  remove: (id) => api.del(`/messages/${id}`),
 }
 
 export const mediaApi = {
@@ -522,11 +523,40 @@ export const announcementsApi = {
   remove: (id) => api.del(`/announcements/${id}`),
 }
 
+export const eventsApi = {
+  list: () => api.get('/events'),
+  create: (data) => api.post('/events', data),
+  remove: (id) => api.del(`/events/${id}`),
+}
+
+export const documentsApi = {
+  list: (classId = '') => api.get(`/documents${classId ? `?classId=${classId}` : ''}`),
+  upload: async (data) => {
+    const fd = new FormData()
+    fd.append('title', data.title || '')
+    fd.append('description', data.description || '')
+    fd.append('category', data.category || 'Général')
+    if (data.classId) fd.append('classId', data.classId)
+    if (data.file) fd.append('file', data.file)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/documents`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+  remove: (id) => api.del(`/documents/${id}`),
+}
+
 export const feesApi = {
   list: (params = '') => api.get(`/fees?${params}`),
   paymentStatus: (classId) => api.get(`/fees/payment-status?classId=${classId}`),
   paymentHistory: (classId = '') => api.get(`/fees/payment-history${classId ? `?classId=${classId}` : ''}`),
   create: (data) => api.post('/fees', data),
+  bulkAssign: (data) => api.post('/fees/bulk-assign', data),
   update: (id, data) => api.put(`/fees/${id}`, data),
   remove: (id) => api.del(`/fees/${id}`),
   recordPayment: (id, data) => api.post(`/fees/${id}/record-payment`, data),

@@ -59,6 +59,8 @@ app.use('/api/fees', require('./routes/fees'))
 app.use('/api/expenses', require('./routes/expenses'))
 app.use('/api/salaries', require('./routes/salaries'))
 app.use('/api/announcements', require('./routes/announcements'))
+app.use('/api/documents', require('./routes/documents'))
+app.use('/api/events', require('./routes/events'))
 
 app.get('/api/health', (req, res) => {
   res.json({

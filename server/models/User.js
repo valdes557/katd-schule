@@ -14,6 +14,7 @@ const userSchema = new mongoose.Schema(
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School' },
     phone: { type: String },
     avatar: { type: String },
+    matricule: { type: String, unique: true, sparse: true },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
     twoFactorEnabled: { type: Boolean, default: false },

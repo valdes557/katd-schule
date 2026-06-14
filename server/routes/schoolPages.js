@@ -87,6 +87,7 @@ router.get('/:schoolId/posts', async (req, res) => {
     const total = await SchoolPost.countDocuments({ school: req.params.schoolId, isPublic: true })
     const posts = await SchoolPost.find({ school: req.params.schoolId, isPublic: true })
       .populate('author', 'name avatar')
+      .populate('comments.authorId', 'name avatar')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit))
@@ -136,6 +137,10 @@ router.post('/posts/:id/comment', protect, async (req, res) => {
     if (!post) return res.status(404).json({ message: 'Post non trouvé' })
     post.comments.push({ author: req.user.name, authorId: req.user._id, content: req.body.content })
     await post.save()
+    await post.populate([
+      { path: 'author', select: 'name avatar' },
+      { path: 'comments.authorId', select: 'name avatar' },
+    ])
     res.json({ success: true, data: post })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

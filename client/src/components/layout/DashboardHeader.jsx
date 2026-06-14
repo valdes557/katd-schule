@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bell, ChevronDown, BookOpen, GraduationCap, Baby, Calendar, LogOut } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { useUnread } from '../../context/UnreadContext'
 import { getInitials } from '../../lib/utils'
 import { authApi } from '../../lib/api'
 
@@ -13,10 +14,10 @@ const CYCLES = [
 
 export default function DashboardHeader() {
   const { user, setUser, school, cycle, changeCycle, logout } = useAuth()
+  const { unread } = useUnread()
   const navigate = useNavigate()
   const [cycleOpen, setCycleOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
-  const [notifications] = useState(3)
   const [profileOpen, setProfileOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [pForm, setPForm] = useState({ name: '', phone: '' })
@@ -78,12 +79,17 @@ export default function DashboardHeader() {
           )}
         </div>
 
-        {/* Notifications */}
-        <button className="relative p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+        {/* Messages non lus */}
+        <button
+          onClick={() => navigate('/dashboard/messagerie')}
+          aria-label="Messagerie"
+          title={unread > 0 ? `${unread} message(s) non lu(s)` : 'Messagerie'}
+          className="relative p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+        >
           <Bell size={19} />
-          {notifications > 0 && (
-            <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-              {notifications}
+          {unread > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+              {unread > 9 ? '9+' : unread}
             </span>
           )}
         </button>
@@ -154,6 +160,12 @@ export default function DashboardHeader() {
             </div>
           </div>
           <div className="space-y-2">
+            {user?.matricule && (
+              <div>
+                <label className="text-xs text-gray-600">Matricule</label>
+                <div className="w-full mt-0.5 text-sm font-mono text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 select-all">{user.matricule}</div>
+              </div>
+            )}
             <div>
               <label className="text-xs text-gray-600">Nom complet</label>
               <input value={pForm.name} onChange={(e) => setPForm({ ...pForm, name: e.target.value })} className="w-full mt-0.5 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />

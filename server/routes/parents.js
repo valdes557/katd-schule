@@ -3,6 +3,7 @@ const router = express.Router()
 const User = require('../models/User')
 const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
+const { generateUserMatricule } = require('../utils/matricule')
 
 // Toutes les routes : directeur ou super_admin, limitées à l'école de l'utilisateur.
 router.use(protect, authorize('directeur', 'super_admin'))
@@ -23,7 +24,7 @@ router.get('/', async (req, res) => {
     const parents = await User.find({
       role: 'parent',
       $or: [{ school: schoolId }, { _id: { $in: linkedIds } }],
-    }).select('name email phone lastLogin isActive').sort({ name: 1 })
+    }).select('name email phone lastLogin isActive matricule').sort({ name: 1 })
 
     // Enfants de chaque parent (dans cette école).
     const children = await Student.find({ school: schoolId, parentUser: { $in: parents.map((p) => p._id) } })
@@ -43,6 +44,7 @@ router.get('/', async (req, res) => {
       name: p.name,
       email: p.email,
       phone: p.phone || '',
+      matricule: p.matricule || '',
       lastLogin: p.lastLogin || null,
       isActive: p.isActive !== false,
       children: byParent.get(p._id.toString()) || [],
@@ -66,8 +68,9 @@ router.post('/', async (req, res) => {
     if (existing) return res.status(400).json({ message: 'Cet email est déjà utilisé par un autre compte' })
 
     const rawPassword = password || `parent${Math.floor(10000 + Math.random() * 90000)}`
+    const matricule = await generateUserMatricule('parent', schoolId)
     const user = await User.create({
-      name, email, phone: phone || '', password: rawPassword, role: 'parent', school: schoolId,
+      name, email, phone: phone || '', password: rawPassword, role: 'parent', school: schoolId, matricule,
     })
 
     if (Array.isArray(studentIds) && studentIds.length > 0) {
@@ -80,7 +83,7 @@ router.post('/', async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Compte parent créé',
-      data: { _id: user._id, name: user.name, email: user.email, phone: user.phone, rawPassword },
+      data: { _id: user._id, name: user.name, email: user.email, phone: user.phone, matricule: user.matricule, rawPassword },
     })
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'Cet email est déjà utilisé' })

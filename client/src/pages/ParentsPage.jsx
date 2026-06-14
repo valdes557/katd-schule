@@ -259,7 +259,10 @@ export default function ParentsPage() {
               <tbody className="divide-y divide-gray-50">
                 {parents.map((p) => (
                   <tr key={p._id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.name}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                      {p.name}
+                      {p.matricule && <div className="text-[10px] font-mono text-gray-400 font-normal">{p.matricule}</div>}
+                    </td>
                     <td className="px-4 py-3 text-xs text-gray-600">{p.email}</td>
                     <td className="px-4 py-3 text-xs text-gray-600">{p.phone || '—'}</td>
                     <td className="px-4 py-3 text-xs text-gray-600">

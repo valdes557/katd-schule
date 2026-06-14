@@ -79,7 +79,7 @@ router.post(
       res.json({
         success: true,
         token,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone },
+        user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone, matricule: user.matricule },
         school: user.school,
       })
     } catch (err) {
@@ -93,7 +93,7 @@ router.get('/me', protect, async (req, res) => {
   const u = req.user
   res.json({
     success: true,
-    user: { id: u._id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, phone: u.phone },
+    user: { id: u._id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, phone: u.phone, matricule: u.matricule },
     school: u.school || null,
   })
 })
@@ -151,7 +151,7 @@ router.put('/profile', protect, async (req, res) => {
     if (name !== undefined) user.name = name
     if (phone !== undefined) user.phone = phone
     await user.save()
-    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone } })
+    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone, matricule: user.matricule } })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -162,7 +162,7 @@ router.post('/avatar', protect, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file?.path) return res.status(400).json({ message: 'Aucun fichier reçu' })
     const user = await User.findByIdAndUpdate(req.user._id, { avatar: req.file.path }, { new: true })
-    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone } })
+    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone, matricule: user.matricule } })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

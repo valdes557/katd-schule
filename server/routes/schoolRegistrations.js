@@ -139,6 +139,8 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
 
     // Create director user account (pre-save hook in User model handles hashing)
     const rawPassword = `katd${Math.floor(10000 + Math.random() * 90000)}`
+    const { generateUserMatricule } = require('../utils/matricule')
+    const matricule = await generateUserMatricule('directeur', school._id)
 
     const user = await User.create({
       name: reg.directorName,
@@ -148,6 +150,7 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
       school: school._id,
       phone: reg.whatsapp,
       isActive: true,
+      matricule,
     })
 
     // Update school with director

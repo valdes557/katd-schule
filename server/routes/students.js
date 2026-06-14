@@ -176,6 +176,8 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
     }
 
     const rawPassword = req.body.password || `parent${Math.floor(10000 + Math.random() * 90000)}`
+    const { generateUserMatricule } = require('../utils/matricule')
+    const matricule = await generateUserMatricule('parent', student.school)
     const user = await User.create({
       name: req.body.name || student.parent?.name || `Parent de ${student.firstName}`,
       email,
@@ -183,6 +185,7 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
       role: 'parent',
       school: student.school,
       phone: req.body.phone || student.parent?.phone,
+      matricule,
     })
 
     student.parentUser = user._id

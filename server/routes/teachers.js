@@ -4,6 +4,7 @@ const Teacher = require('../models/Teacher')
 const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
+const { generateUserMatricule } = require('../utils/matricule')
 
 // GET /api/teachers
 router.get('/', protect, async (req, res) => {
@@ -29,7 +30,7 @@ router.get('/', protect, async (req, res) => {
     const total = await Teacher.countDocuments(query)
     const teachers = await Teacher.find(query)
       .populate('classes', 'name level cycle room')
-      .populate('user', 'email')
+      .populate('user', 'email matricule')
       .skip((page - 1) * limit)
       .limit(Number(limit))
       .sort({ lastName: 1 })
@@ -67,11 +68,13 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
     if (email && password) {
       const existing = await User.findOne({ email })
       if (existing) return res.status(400).json({ message: 'Cet email est déjà utilisé' })
+      const matricule = await generateUserMatricule('enseignant', schoolId)
       const user = await User.create({
         name: `${lastName} ${firstName}`,
         email, password,
         role: 'enseignant',
         school: schoolId,
+        matricule,
       })
       userId = user._id
     }
@@ -86,7 +89,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
       user: userId,
     })
 
-    const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email')
+    const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email matricule')
     res.status(201).json({ success: true, data: populated })
   } catch (err) {
     res.status(500).json({ message: err.message })
@@ -116,7 +119,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
     Object.assign(teacher, rest)
     if (email) teacher.email = email
     await teacher.save()
-    const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email')
+    const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email matricule')
     res.json({ success: true, data: populated })
   } catch (err) {
     res.status(500).json({ message: err.message })

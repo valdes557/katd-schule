@@ -53,6 +53,7 @@ router.get('/feed', async (req, res) => {
     const posts = await SchoolPost.find(query)
       .populate('author', 'name avatar')
       .populate('school', 'name logo')
+      .populate('comments.authorId', 'name avatar')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit))
@@ -140,7 +141,10 @@ router.post('/posts/:id/comment', protect, async (req, res) => {
     if (!post) return res.status(404).json({ message: 'Post non trouvé' })
     post.comments.push({ author: req.user.name, authorId: req.user._id, content: req.body.content })
     await post.save()
-    const populated = await post.populate('author', 'name avatar')
+    const populated = await post.populate([
+      { path: 'author', select: 'name avatar' },
+      { path: 'comments.authorId', select: 'name avatar' },
+    ])
     res.json({ success: true, data: populated })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

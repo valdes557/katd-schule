@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { useUnread } from '../../context/UnreadContext'
 import { getVisibleSections } from '../../data/navSections'
 
 // Palette de couleurs (fond pastel + icône) tournant par bouton, style écran d'accueil.
@@ -17,6 +18,7 @@ const PALETTE = [
 // Grille de boutons ronds remplaçant la sidebar : chaque bouton ouvre une fonctionnalité.
 export default function AppLauncher() {
   const { user, school } = useAuth()
+  const { unread } = useUnread()
   const sections = getVisibleSections(user, school)
   if (sections.length === 0) return null
 
@@ -31,14 +33,20 @@ export default function AppLauncher() {
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-x-2 gap-y-4">
             {section.items.map((item) => {
               const color = PALETTE[colorIndex++ % PALETTE.length]
+              const badge = item.path === '/dashboard/messagerie' ? unread : 0
               return (
                 <Link
                   key={item.path + item.label}
                   to={item.path}
                   className="group flex flex-col items-center gap-1.5 text-center focus:outline-none"
                 >
-                  <span className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-sm transition-all duration-200 group-hover:shadow-card-lg group-hover:-translate-y-0.5 ${color.bg}`}>
+                  <span className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-sm transition-all duration-200 group-hover:shadow-card-lg group-hover:-translate-y-0.5 ${color.bg}`}>
                     <item.icon size={24} className={`transition-colors ${color.icon}`} />
+                    {badge > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
+                        {badge > 9 ? '9+' : badge}
+                      </span>
+                    )}
                   </span>
                   <span className="text-[11px] leading-tight text-gray-600 group-hover:text-gray-900 line-clamp-2 max-w-[80px]">
                     {item.label}

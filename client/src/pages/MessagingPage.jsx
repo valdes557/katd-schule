@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon } from 'lucide-react'
+import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon, Trash2, Check, CheckCheck } from 'lucide-react'
 import { messagesApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { useUnread } from '../context/UnreadContext'
 import { cn } from '../lib/utils'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 
 export default function MessagingPage() {
   const { user } = useAuth()
+  const { refresh: refreshUnread } = useUnread()
   const [activeConv, setActiveConv] = useState(null)
   const [messages, setMessages] = useState([])
   const [loadingMsgs, setLoadingMsgs] = useState(false)
@@ -20,6 +22,7 @@ export default function MessagingPage() {
   const [groupForm, setGroupForm] = useState({ name: '', memberIds: [], memberRole: 'enseignant', image: null })
   const [groupImagePreview, setGroupImagePreview] = useState('')
   const messagesEndRef = useRef(null)
+  const prevCountRef = useRef(0)
 
   const convsQ = useCachedFetch('/messages/conversations', async () => (await messagesApi.conversations()).data || [], [])
   const contactsQ = useCachedFetch('/messages/contacts', async () => (await messagesApi.contacts()).data || [], [])
@@ -33,37 +36,78 @@ export default function MessagingPage() {
   const refreshConversations = () => { cache.invalidate('/messages/conversations'); convsQ.refetch() }
   const refreshGroups = () => { cache.invalidate('/messages/groups'); groupsQ.refetch() }
 
-  // Défilement automatique vers le dernier message (style WhatsApp)
+  // Défilement automatique vers le bas uniquement quand de NOUVEAUX messages
+  // arrivent (style WhatsApp) — évite de remonter brutalement lors du polling.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loadingMsgs])
+    if (messages.length > prevCountRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+    prevCountRef.current = messages.length
+  }, [messages])
+
+  // Rafraîchissement automatique de la conversation ouverte (toutes les 8s) :
+  // récupère les nouveaux messages et met à jour le compteur global de non-lus.
+  useEffect(() => {
+    if (!activeConv) return
+    const id = setInterval(async () => {
+      try {
+        const res = await messagesApi.conversation(activeConv.conversationId)
+        setMessages(res.data || [])
+        refreshUnread()
+      } catch (_) { /* silencieux */ }
+    }, 8000)
+    return () => clearInterval(id)
+  }, [activeConv, refreshUnread])
+
+  // Rafraîchissement automatique de la liste des conversations (toutes les 15s).
+  useEffect(() => {
+    const id = setInterval(() => { refreshConversations() }, 15000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const openGroupConversation = async (group) => {
     const conv = {
       conversationId: `group_${group._id}`,
-      contact: { _id: group._id, name: group.name, role: 'groupe' },
+      contact: { _id: group._id, name: group.name, role: 'groupe', image: group.image || null },
       isGroup: true,
       groupId: group._id,
       lastMessage: null,
       unread: 0,
     }
+    prevCountRef.current = 0
     setActiveConv(conv)
+    setMessages([])
     setLoadingMsgs(true)
     try {
       const res = await messagesApi.conversation(conv.conversationId)
       setMessages(res.data || [])
+      refreshUnread()
     } catch (e) { console.error(e) }
     setLoadingMsgs(false)
   }
 
   const openConversation = async (conv) => {
+    prevCountRef.current = 0
     setActiveConv(conv)
+    setMessages([])
     setLoadingMsgs(true)
     try {
       const res = await messagesApi.conversation(conv.conversationId)
       setMessages(res.data || [])
+      refreshUnread()
+      if (conv.unread > 0) refreshConversations()
     } catch (e) { console.error(e) }
     setLoadingMsgs(false)
+  }
+
+  const handleDeleteMessage = async (m) => {
+    if (!window.confirm('Supprimer ce message ?')) return
+    try {
+      await messagesApi.remove(m._id)
+      setMessages((prev) => prev.filter((x) => x._id !== m._id))
+      refreshConversations()
+    } catch (e) { alert(e.message) }
   }
 
   const handleSendReply = async () => {
@@ -239,8 +283,18 @@ export default function MessagingPage() {
                 ) : (
                   messages.map((m) => {
                     const mine = m.sender?._id === user?._id || m.sender === user?._id
+                    const canDelete = mine || (user?.role === 'directeur' && activeConv.isGroup)
                     return (
-                      <div key={m._id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+                      <div key={m._id} className={cn('group flex items-center gap-1.5', mine ? 'justify-end' : 'justify-start')}>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDeleteMessage(m)}
+                            title="Supprimer le message"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-red-500 flex-shrink-0"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                         <div className={cn(
                           'max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm',
                           mine ? 'bg-green-500 text-white rounded-br-md' : 'bg-white text-gray-800 border border-gray-200 rounded-bl-md'
@@ -250,8 +304,13 @@ export default function MessagingPage() {
                           )}
                           {m.subject && <div className={cn('text-xs font-semibold mb-1', mine ? 'text-green-50' : 'text-gray-500')}>{m.subject}</div>}
                           <p className="whitespace-pre-line">{m.body}</p>
-                          <div className={cn('text-[10px] mt-1 text-right', mine ? 'text-green-50' : 'text-gray-400')}>
-                            {new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                          <div className={cn('text-[10px] mt-1 flex items-center justify-end gap-1', mine ? 'text-green-50' : 'text-gray-400')}>
+                            <span>{new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                            {mine && !activeConv.isGroup && (
+                              m.read
+                                ? <CheckCheck size={14} className="text-white" title="Lu" />
+                                : <Check size={14} className="text-green-100" title="Envoyé" />
+                            )}
                           </div>
                         </div>
                       </div>
