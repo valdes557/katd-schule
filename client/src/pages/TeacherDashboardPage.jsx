@@ -9,9 +9,10 @@ import { useAuth } from '../context/AuthContext'
 import { teacherApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import AppLauncher from '../components/layout/AppLauncher'
 
 export default function TeacherDashboardPage() {
-  const { user } = useAuth()
+  const { user, school } = useAuth()
 
   const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => (await teacherApi.dashboard()).data || null, [])
 
@@ -36,11 +37,12 @@ export default function TeacherDashboardPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Welcome */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      {/* En-tête fixe (sticky) : identité de l'enseignant — reste en haut de la page */}
+      <div className="sticky top-24 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-gray-50/95 backdrop-blur-sm border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Bonjour, {teacher.firstName} {teacher.lastName} 👋</h1>
           <p className="text-sm text-gray-500">
+            {school?.name && <span className="font-medium text-gray-600">{school.name} · </span>}
             {teacher.subjects?.join(', ') || teacher.speciality || 'Enseignant'} · {stats.totalClasses} classe(s)
           </p>
           <div className="flex flex-wrap gap-2 mt-2">
@@ -59,8 +61,11 @@ export default function TeacherDashboardPage() {
             )}
           </div>
         </div>
-        <button onClick={handleRefresh} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
+        <button onClick={handleRefresh} className="btn-ghost text-xs border border-gray-200 self-start bg-white"><RefreshCw size={13} /> Actualiser</button>
       </div>
+
+      {/* Accès rapide à toutes les fonctionnalités */}
+      <AppLauncher />
 
       {/* Smart Alerts */}
       {alerts.length > 0 && (

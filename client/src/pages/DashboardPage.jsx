@@ -303,6 +303,10 @@ export default function DashboardPage() {
   else if (user?.role === 'enseignant') content = <TeacherDashboardPage />
   else content = <DirectorDashboard user={user} school={school} />
 
+  // Le tableau de bord enseignant gère lui-même son en-tête fixe puis l'AppLauncher,
+  // afin que l'identité (nom, école, cycle, actualiser) reste en haut de la page.
+  if (user?.role === 'enseignant') return content
+
   return (
     <div className="space-y-8">
       {/* Grille de boutons ronds (remplace la sidebar) : accès rapide à toutes les fonctionnalités */}

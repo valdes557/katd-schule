@@ -4,6 +4,8 @@ import {
   AlertCircle, X, ChevronDown, ChevronUp, Users, Search,
 } from 'lucide-react'
 import { feesApi, classesApi, studentsApi } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
 const FMT = (n) => Number(n || 0).toLocaleString('fr-FR')
 const STATUS_COLORS = { pending: 'bg-gray-100 text-gray-600', partial: 'bg-amber-100 text-amber-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700' }
@@ -14,7 +16,16 @@ const EMPTY_FEE = { label: 'Frais de scolarité', type: 'scolarite', amount: '',
 const EMPTY_INST = { label: '1ère tranche', amount: '', dueDate: '' }
 
 export default function DirectorFeesPage() {
-  const [classes, setClasses] = useState([])
+  const { user, school } = useAuth()
+  // Charge les classes via le même cache que la page « Classes » (clé identique
+  // tenant compte du cycle souscrit) pour garantir la parité d'affichage.
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : ''
+  const classesQ = useCachedFetch(
+    `/classes?${subscribedCycle ? `cycle=${subscribedCycle}` : ''}`,
+    async () => (await classesApi.list(subscribedCycle ? `cycle=${subscribedCycle}` : '')).data || [],
+    [subscribedCycle],
+  )
+  const classes = classesQ.data || []
   const [selectedClass, setSelectedClass] = useState('')
   const [paymentStatus, setPaymentStatus] = useState([])
   const [loading, setLoading] = useState(false)
@@ -32,10 +43,6 @@ export default function DirectorFeesPage() {
   const [bulkInstallments, setBulkInstallments] = useState([])
   const [bulkSaving, setBulkSaving] = useState(false)
 
-  const loadClasses = async () => {
-    try { const r = await classesApi.list(); setClasses(r.data || []) } catch (_) {}
-  }
-
   const loadPaymentStatus = async (classId) => {
     if (!classId) return
     setLoading(true)
@@ -43,7 +50,6 @@ export default function DirectorFeesPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadClasses() }, [])
   useEffect(() => { loadPaymentStatus(selectedClass) }, [selectedClass])
 
   const filteredStudents = paymentStatus.filter((s) =>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { feesApi, parentApi, classesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
-import { History, Loader2, ChevronDown, ChevronRight, Wallet, CheckCircle2, AlertCircle } from 'lucide-react'
+import { History, Loader2, ChevronDown, ChevronRight, Wallet, CheckCircle2, AlertCircle, Download } from 'lucide-react'
 
 const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} F CFA`
 const METHOD_LABELS = { cash: 'Espèces', mobile_money: 'Mobile Money', bank: 'Virement', online: 'En ligne' }
@@ -118,15 +118,30 @@ function DirectorView() {
 
 /* ─── Vue Parent : mes paiements et ce qu'il reste ─── */
 function ParentView() {
+  const [downloading, setDownloading] = useState(null) // `${feeId}:${index}`
   const feesQ = useCachedFetch('/parent/fees', async () => await parentApi.fees(), [])
   const fees = feesQ.data?.data || []
   const summary = feesQ.data?.summary || { totalDue: 0, totalPaid: 0, remaining: 0 }
   const loading = feesQ.loading
 
-  // Aplatir tous les versements
+  // Aplatir tous les versements (en conservant l'identifiant du frais et l'index
+  // du paiement pour permettre le téléchargement du reçu correspondant)
   const payments = []
-  fees.forEach((f) => (f.payments || []).forEach((p) => payments.push({ ...p, label: f.label, student: f.student })))
+  fees.forEach((f) => (f.payments || []).forEach((p, i) => payments.push({ ...p, label: f.label, student: f.student, feeId: f._id, paymentIndex: i })))
   payments.sort((a, b) => new Date(b.date) - new Date(a.date))
+
+  const downloadReceipt = async (feeId, paymentIndex) => {
+    const key = `${feeId}:${paymentIndex}`
+    setDownloading(key)
+    try {
+      const { blob, filename } = await feesApi.downloadReceipt(feeId, paymentIndex)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (e) { alert(e.message) }
+    setDownloading(null)
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -176,8 +191,8 @@ function ParentView() {
           <p className="text-sm text-gray-400 py-6 text-center">Aucun versement effectué pour le moment</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[420px]">
-              <thead><tr className="text-gray-400 text-xs border-b border-gray-100"><th className="text-left font-medium py-2">Date</th><th className="text-left font-medium">Libellé</th><th className="text-left font-medium">Méthode</th><th className="text-right font-medium">Montant</th></tr></thead>
+            <table className="w-full text-sm min-w-[480px]">
+              <thead><tr className="text-gray-400 text-xs border-b border-gray-100"><th className="text-left font-medium py-2">Date</th><th className="text-left font-medium">Libellé</th><th className="text-left font-medium">Méthode</th><th className="text-right font-medium">Montant</th><th className="text-right font-medium">Reçu</th></tr></thead>
               <tbody>
                 {payments.map((p, i) => (
                   <tr key={i} className="border-b border-gray-50 last:border-0">
@@ -185,6 +200,18 @@ function ParentView() {
                     <td className="text-gray-800">{p.label}</td>
                     <td className="text-gray-500 text-xs">{METHOD_LABELS[p.method] || p.method}</td>
                     <td className="text-right font-semibold text-green-600">{fmt(p.amount)}</td>
+                    <td className="text-right">
+                      <button
+                        title="Télécharger le reçu"
+                        onClick={() => downloadReceipt(p.feeId, p.paymentIndex)}
+                        disabled={downloading === `${p.feeId}:${p.paymentIndex}`}
+                        className="inline-flex items-center justify-center p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                      >
+                        {downloading === `${p.feeId}:${p.paymentIndex}`
+                          ? <Loader2 size={15} className="animate-spin" />
+                          : <Download size={15} />}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

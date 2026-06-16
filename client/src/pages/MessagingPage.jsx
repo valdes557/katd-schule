@@ -282,11 +282,16 @@ export default function MessagingPage() {
                   <div className="text-center py-8"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></div>
                 ) : (
                   messages.map((m) => {
-                    const mine = m.sender?._id === user?._id || m.sender === user?._id
+                    // L'API renvoie l'utilisateur sous la clé `id` (pas `_id`) :
+                    // on compare donc l'expéditeur à user.id pour distinguer
+                    // les messages envoyés des messages reçus.
+                    const myId = String(user?.id || user?._id || '')
+                    const senderId = String(m.sender?._id || m.sender || '')
+                    const mine = !!myId && senderId === myId
                     const canDelete = mine || (user?.role === 'directeur' && activeConv.isGroup)
                     return (
-                      <div key={m._id} className={cn('group flex items-center gap-1.5', mine ? 'justify-end' : 'justify-start')}>
-                        {canDelete && (
+                      <div key={m._id} className={cn('group flex items-end gap-1.5', mine ? 'justify-end' : 'justify-start')}>
+                        {canDelete && mine && (
                           <button
                             onClick={() => handleDeleteMessage(m)}
                             title="Supprimer le message"
@@ -297,22 +302,33 @@ export default function MessagingPage() {
                         )}
                         <div className={cn(
                           'max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm',
-                          mine ? 'bg-green-500 text-white rounded-br-md' : 'bg-white text-gray-800 border border-gray-200 rounded-bl-md'
+                          mine
+                            ? 'bg-blue-600 text-white rounded-br-md'
+                            : 'bg-gray-200 text-gray-800 rounded-bl-md'
                         )}>
                           {activeConv.isGroup && !mine && m.sender?.name && (
-                            <div className="text-[11px] font-semibold mb-0.5 text-indigo-600">{m.sender.name}</div>
+                            <div className="text-[11px] font-semibold mb-0.5 text-blue-700">{m.sender.name}</div>
                           )}
-                          {m.subject && <div className={cn('text-xs font-semibold mb-1', mine ? 'text-green-50' : 'text-gray-500')}>{m.subject}</div>}
+                          {m.subject && <div className={cn('text-xs font-semibold mb-1', mine ? 'text-blue-50' : 'text-gray-500')}>{m.subject}</div>}
                           <p className="whitespace-pre-line">{m.body}</p>
-                          <div className={cn('text-[10px] mt-1 flex items-center justify-end gap-1', mine ? 'text-green-50' : 'text-gray-400')}>
+                          <div className={cn('text-[10px] mt-1 flex items-center justify-end gap-1', mine ? 'text-blue-100' : 'text-gray-400')}>
                             <span>{new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
                             {mine && !activeConv.isGroup && (
                               m.read
                                 ? <CheckCheck size={14} className="text-white" title="Lu" />
-                                : <Check size={14} className="text-green-100" title="Envoyé" />
+                                : <Check size={14} className="text-blue-200" title="Envoyé" />
                             )}
                           </div>
                         </div>
+                        {canDelete && !mine && (
+                          <button
+                            onClick={() => handleDeleteMessage(m)}
+                            title="Supprimer le message"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-red-500 flex-shrink-0"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     )
                   })

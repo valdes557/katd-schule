@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import {
-  CreditCard, CheckCircle2, Clock, AlertCircle, Loader2, DollarSign,
-  FileText, Download, X,
+  CreditCard, CheckCircle2, Clock, Loader2, DollarSign,
+  FileText, Download,
 } from 'lucide-react'
 import { parentApi, feesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
-import { cache } from '../lib/cache'
 
 const STATUS_LABELS = {
   paid: { label: 'Payé', cls: 'bg-green-100 text-green-700' },
@@ -15,9 +14,6 @@ const STATUS_LABELS = {
 }
 
 export default function ParentFinancesPage() {
-  const [payModal, setPayModal] = useState(null)
-  const [payForm, setPayForm] = useState({ amount: '', method: 'cash', reference: '' })
-  const [paying, setPaying] = useState(false)
   const [downloading, setDownloading] = useState(null) // feeId:paymentIndex
 
   const feesQ = useCachedFetch(
@@ -44,21 +40,6 @@ export default function ParentFinancesPage() {
       window.URL.revokeObjectURL(url)
     } catch (e) { alert(e.message) }
     setDownloading(null)
-  }
-
-  const handlePay = async () => {
-    if (!payForm.amount || Number(payForm.amount) <= 0) return
-    setPaying(true)
-    try {
-      await parentApi.payFee(payModal._id, { amount: Number(payForm.amount), method: payForm.method, reference: payForm.reference })
-      setPayModal(null)
-      setPayForm({ amount: '', method: 'cash', reference: '' })
-      cache.invalidate('/parent/fees')
-      feesQ.refetch()
-    } catch (e) {
-      alert(e.message)
-    }
-    setPaying(false)
   }
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
@@ -133,54 +114,10 @@ export default function ParentFinancesPage() {
                       </div>
                     )}
                   </div>
-                  {f.status !== 'paid' && (
-                    <button onClick={() => { setPayModal(f); setPayForm({ amount: String(remaining), method: 'cash', reference: '' }) }} className="btn-primary text-xs py-1.5 px-3 flex-shrink-0">
-                      Payer
-                    </button>
-                  )}
                 </div>
               </div>
             )
           })}
-        </div>
-      )}
-
-      {/* Payment modal */}
-      {payModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Effectuer un paiement</h3>
-              <button onClick={() => setPayModal(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
-            </div>
-            <p className="text-sm text-gray-500 mb-4">{payModal.label} — {payModal.student?.firstName} {payModal.student?.lastName}</p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Montant (F CFA)</label>
-                <input type="number" value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} className="input text-sm" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Méthode</label>
-                <select value={payForm.method} onChange={(e) => setPayForm({ ...payForm, method: e.target.value })} className="input text-sm">
-                  <option value="cash">Espèces</option>
-                  <option value="mobile_money">Mobile Money</option>
-                  <option value="bank">Virement bancaire</option>
-                  <option value="online">Paiement en ligne</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Référence (optionnel)</label>
-                <input value={payForm.reference} onChange={(e) => setPayForm({ ...payForm, reference: e.target.value })} className="input text-sm" placeholder="N° transaction" />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setPayModal(null)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
-              <button onClick={handlePay} disabled={paying} className="btn-primary flex-1 justify-center">
-                {paying ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-                Confirmer
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
