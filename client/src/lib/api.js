@@ -529,6 +529,15 @@ export const eventsApi = {
   remove: (id) => api.del(`/events/${id}`),
 }
 
+export const teacherAttendanceApi = {
+  qr: () => api.get('/teacher-attendance/qr'),
+  regenerate: () => api.post('/teacher-attendance/qr/regenerate'),
+  setConfig: (data) => api.put('/teacher-attendance/config', data),
+  today: (day = '') => api.get(`/teacher-attendance/today${day ? `?day=${day}` : ''}`),
+  me: () => api.get('/teacher-attendance/me'),
+  scan: (token) => api.post('/teacher-attendance/scan', { token }),
+}
+
 export const documentsApi = {
   list: (classId = '') => api.get(`/documents${classId ? `?classId=${classId}` : ''}`),
   upload: async (data) => {

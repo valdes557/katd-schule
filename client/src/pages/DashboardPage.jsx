@@ -9,7 +9,7 @@ import {
   ArrowRight, Calendar, CreditCard, AlertCircle, CheckCircle2, Loader2, DollarSign, UserPlus,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { dashboardApi } from '../lib/api'
+import { dashboardApi, teacherAttendanceApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import ParentDashboardPage from './ParentDashboardPage'
@@ -125,6 +125,60 @@ function AdminDashboard({ user }) {
 }
 
 /* ─── Director Dashboard ─── */
+function TeacherAttendanceWidget() {
+  const attQ = useCachedFetch('/teacher-attendance/today', async () => {
+    const r = await teacherAttendanceApi.today()
+    return r.data || []
+  }, [])
+  const rows = attQ.data || []
+  const arrived = rows.filter((r) => r.status !== 'absent')
+  const late = rows.filter((r) => r.status === 'late')
+  // N'affiche que les mouvements (arrivée enregistrée), les plus récents d'abord
+  const events = arrived
+    .slice()
+    .sort((a, b) => new Date(b.checkInAt) - new Date(a.checkInAt))
+    .slice(0, 6)
+
+  const fmt = (d) => d ? new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2"><UserCheck size={15} className="text-indigo-600" /> Pointage du personnel — aujourd'hui</h3>
+        <Link to="/dashboard/pointage" className="text-xs text-blue-600 hover:underline">Voir tout →</Link>
+      </div>
+      {attQ.loading ? (
+        <div className="py-6 text-center"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></div>
+      ) : (
+        <>
+          <div className="flex gap-4 text-xs text-gray-500 mb-3">
+            <span><strong className="text-gray-900">{arrived.length}</strong>/{rows.length} présents</span>
+            {late.length > 0 && <span className="text-red-600 font-semibold">{late.length} en retard</span>}
+          </div>
+          {events.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">Aucun pointage enregistré aujourd'hui.</p>
+          ) : (
+            <div className="space-y-2">
+              {events.map((r) => (
+                <div key={r.teacherId} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700 truncate">{r.name}</span>
+                  <span className="flex items-center gap-2 flex-shrink-0">
+                    {r.status === 'late'
+                      ? <span className="text-xs text-red-600 font-semibold">en retard +{r.lateMinutes} min</span>
+                      : <span className="text-xs text-green-600">à l'heure</span>}
+                    <span className="text-gray-500">{fmt(r.checkInAt)}</span>
+                    {r.checkOutAt && <span className="text-gray-400">→ {fmt(r.checkOutAt)}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function DirectorDashboard({ user, school }) {
   const statsQ = useCachedFetch('/dashboard/stats?', async () => {
     const res = await dashboardApi.getStats()
@@ -206,6 +260,8 @@ function DirectorDashboard({ user, school }) {
           <ResponsiveContainer width="100%" height={200}><AreaChart data={attendanceChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" /><XAxis dataKey="date" fontSize={11} /><YAxis fontSize={11} /><Tooltip /><Area type="monotone" dataKey="présents" stroke="#10B981" fill="#D1FAE5" /><Area type="monotone" dataKey="absents" stroke="#EF4444" fill="#FEE2E2" /></AreaChart></ResponsiveContainer>
         ) : <p className="text-sm text-gray-400 py-12 text-center">Aucun appel enregistré cette semaine</p>}
       </div>
+
+      <TeacherAttendanceWidget />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[

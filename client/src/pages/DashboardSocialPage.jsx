@@ -240,8 +240,8 @@ export default function DashboardSocialPage() {
         </form>
       </div>
 
-      {/* Social feed preview */}
-      <div className="bg-white border border-gray-100 rounded-xl p-4">
+      {/* Social feed preview — pleine largeur sur mobile (annule le padding du layout) */}
+      <div className="bg-white sm:border border-gray-100 sm:rounded-xl p-0 sm:p-4 -mx-4 sm:mx-0">
         {loading ? (
           <div className="text-center py-10">
             <Loader2 size={22} className="animate-spin mx-auto text-blue-600" />

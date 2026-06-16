@@ -56,6 +56,14 @@ const schoolSchema = new mongoose.Schema(
       amount: { type: Number },
     },
     director: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Pointage QR du personnel enseignant
+    attendanceQrToken: { type: String, index: true },
+    attendanceConfig: {
+      // Heure limite d'arrivée (HH:MM) au-delà de laquelle l'enseignant est « en retard »
+      lateAfter: { type: String, default: '08:00' },
+      // Heure de sortie minimale (HH:MM) avant laquelle un départ est « anticipé »
+      earliestDeparture: { type: String, default: '16:00' },
+    },
     stats: {
       totalStudents: { type: Number, default: 0 },
       totalTeachers: { type: Number, default: 0 },

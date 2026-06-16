@@ -2,7 +2,7 @@ import {
   School, Info, BookOpen, Clock, Users, GraduationCap,
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
-  BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet,
+  BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet, QrCode,
 } from 'lucide-react'
 
 // roles: array of allowed roles. undefined = all roles.
@@ -64,6 +64,7 @@ export const navSections = [
       { label: 'Inscriptions en ligne', icon: UserPlus, path: '/dashboard/inscriptions' },
       { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents' },
       { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel' },
+      { label: 'Pointage du personnel', icon: QrCode, path: '/dashboard/pointage' },
     ],
   },
   {
@@ -75,6 +76,7 @@ export const navSections = [
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/emploi-du-temps' },
       { label: 'Rapports quotidiens', icon: FileText, path: '/dashboard/teacher/rapports' },
+      { label: 'Mon pointage', icon: QrCode, path: '/dashboard/teacher/pointage' },
       { label: 'Mes salaires', icon: Wallet, path: '/dashboard/teacher/salaires' },
     ],
   },

@@ -65,6 +65,8 @@ const SalariesPage = lazy(() => import('./pages/SalariesPage'))
 const TeacherSalaryPage = lazy(() => import('./pages/TeacherSalaryPage'))
 const DocumentsPage = lazy(() => import('./pages/DocumentsPage'))
 const InfosPage = lazy(() => import('./pages/InfosPage'))
+const TeacherAttendanceAdminPage = lazy(() => import('./pages/TeacherAttendanceAdminPage'))
+const TeacherAttendanceScanPage = lazy(() => import('./pages/TeacherAttendanceScanPage'))
 
 function PageFallback() {
   return (
@@ -164,9 +166,11 @@ export default function App() {
 
         {/* Director routes */}
         <Route path="director/pensions" element={<DirectorFeesPage />} />
+        <Route path="pointage" element={<TeacherAttendanceAdminPage />} />
 
         {/* Teacher routes */}
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />
+        <Route path="teacher/pointage" element={<TeacherAttendanceScanPage />} />
         <Route path="teacher/analytics" element={<TeacherAnalyticsPage />} />
         <Route path="teacher/rapports" element={<TeacherReportsPage />} />
         <Route path="teacher/salaires" element={<TeacherSalaryPage />} />
