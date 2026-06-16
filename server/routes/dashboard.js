@@ -7,6 +7,7 @@ const Grade = require('../models/Grade')
 const Attendance = require('../models/Attendance')
 const Media = require('../models/Media')
 const Message = require('../models/Message')
+const Homework = require('../models/Homework')
 const { protect, authorize } = require('../middleware/auth')
 const DailyReport = require('../models/DailyReport')
 
@@ -178,6 +179,89 @@ router.put('/reports/:id/unreview', protect, authorize('directeur', 'super_admin
     if (!r) return res.status(404).json({ message: 'Rapport non trouvé' })
     res.json({ success: true, data: r })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/dashboard/homework-overview — supervision des devoirs par classe (directeur)
+// Permet au directeur de vérifier que les enseignants donnent ET corrigent les devoirs.
+router.get('/homework-overview', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) return res.json({ success: true, data: { classes: [], summary: {} } })
+
+    const [classes, homeworks] = await Promise.all([
+      Class.find({ school: schoolId }).select('name level cycle').sort({ name: 1 }).lean(),
+      Homework.find({ school: schoolId })
+        .populate('class', 'name level')
+        .populate('teacher', 'firstName lastName')
+        .sort({ dueDate: -1 })
+        .lean(),
+    ])
+
+    const now = new Date()
+    // Nombre d'élèves actifs par classe (une seule passe)
+    const studentCounts = {}
+    await Promise.all(
+      classes.map(async (c) => {
+        studentCounts[c._id.toString()] = await Student.countDocuments({ class: c._id, status: 'active' })
+      })
+    )
+
+    const enrichHw = (h) => {
+      const submissionCount = (h.submissions || []).length
+      const gradedCount = (h.submissions || []).filter((s) => s.status === 'graded').length
+      const totalStudents = studentCounts[(h.class?._id || h.class || '').toString()] || 0
+      return {
+        _id: h._id,
+        title: h.title,
+        subject: h.subject,
+        type: h.type,
+        dueDate: h.dueDate,
+        teacherName: h.teacher ? `${h.teacher.firstName || ''} ${h.teacher.lastName || ''}`.trim() : 'Direction',
+        className: h.class?.name || '',
+        classId: (h.class?._id || h.class || '').toString(),
+        totalStudents,
+        submissionCount,
+        gradedCount,
+        notSubmitted: Math.max(0, totalStudents - submissionCount),
+        isOverdue: new Date(h.dueDate) < now,
+        fullyGraded: submissionCount > 0 && gradedCount === submissionCount,
+      }
+    }
+
+    const enriched = homeworks.map(enrichHw)
+
+    // Regrouper par classe (toutes les classes apparaissent, même sans devoir)
+    const byClass = classes.map((c) => {
+      const id = c._id.toString()
+      const items = enriched.filter((h) => h.classId === id)
+      const ungraded = items.reduce((n, h) => n + (h.submissionCount - h.gradedCount), 0)
+      return {
+        classId: id,
+        className: c.name,
+        level: c.level,
+        cycle: c.cycle,
+        totalHomeworks: items.length,
+        ungradedSubmissions: ungraded,
+        overdueWithMissing: items.filter((h) => h.isOverdue && h.notSubmitted > 0).length,
+        homeworks: items,
+      }
+    })
+
+    const totalHomeworks = enriched.length
+    const totalGraded = enriched.filter((h) => h.fullyGraded).length
+    const summary = {
+      totalHomeworks,
+      totalClasses: classes.length,
+      classesWithoutHomework: byClass.filter((c) => c.totalHomeworks === 0).length,
+      fullyGradedHomeworks: totalGraded,
+      pendingCorrection: enriched.reduce((n, h) => n + (h.submissionCount - h.gradedCount), 0),
+      gradedRate: totalHomeworks > 0 ? Math.round((totalGraded / totalHomeworks) * 100) : 0,
+    }
+
+    res.json({ success: true, data: { classes: byClass, summary } })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 module.exports = router

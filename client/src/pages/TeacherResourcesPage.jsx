@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Plus, BookOpen, Link as LinkIcon, FileText, Trash2, Edit2, X, Loader2, ExternalLink } from 'lucide-react'
-import { teacherApi } from '../lib/api'
+import { Plus, BookOpen, Trash2, Edit2, X, Loader2 } from 'lucide-react'
+import { teacherApi, classesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import { useAuth } from '../context/AuthContext'
+import ResourcePreview from '../components/ResourcePreview'
 
 const TYPES = [
   { value: 'document', label: 'Document' },
@@ -22,14 +24,22 @@ export default function TeacherResourcesPage() {
     subject: '', url: '', classes: [],
   })
 
+  const { user, school } = useAuth()
+  const isDirector = user?.role === 'directeur' || user?.role === 'super_admin'
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : ''
+
   const resourcesQ = useCachedFetch('/teacher/resources?', async () => (await teacherApi.resources()).data || [], [])
-  const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => {
-    const d = await teacherApi.dashboard()
-    return d.data?.teacher?.classes || []
-  }, [])
+  // Classes : directeur → toutes les classes de l'école (cache partagé) ; enseignant → ses classes
+  const classesQ = useCachedFetch(
+    isDirector ? `/classes?${subscribedCycle ? `cycle=${subscribedCycle}` : ''}` : '/teacher/dashboard?',
+    async () => isDirector
+      ? (await classesApi.list(subscribedCycle ? `cycle=${subscribedCycle}` : '')).data || []
+      : (await teacherApi.dashboard()).data?.teacher?.classes || [],
+    [isDirector, subscribedCycle],
+  )
 
   const items = resourcesQ.data || []
-  const classes = dashboardQ.data || []
+  const classes = classesQ.data || []
   const loading = resourcesQ.loading
 
   const refresh = () => { cache.invalidate('/teacher/resources'); resourcesQ.refetch() }
@@ -109,11 +119,7 @@ export default function TeacherResourcesPage() {
               <div className="flex flex-wrap gap-1 mb-2">
                 {(r.classes || []).map((c) => <span key={c._id || c} className="text-xs px-2 py-0.5 bg-gray-100 rounded">{c.name || ''}</span>)}
               </div>
-              {r.url && (
-                <a href={r.url} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline text-sm flex items-center gap-1">
-                  <ExternalLink className="w-3 h-3"/> Ouvrir
-                </a>
-              )}
+              <ResourcePreview type={r.type} url={r.url} title={r.title} />
             </div>
           ))}
         </div>

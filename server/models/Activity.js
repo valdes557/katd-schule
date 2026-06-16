@@ -16,7 +16,8 @@ const activitySchema = new mongoose.Schema(
     requiresAuthorization: { type: Boolean, default: false },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     class: { type: mongoose.Schema.Types.ObjectId, ref: 'Class', required: true },
-    teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+    teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
+    createdByUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     photos: [{ type: String }],
   },
   { timestamps: true }

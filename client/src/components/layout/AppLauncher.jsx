@@ -15,10 +15,25 @@ const PALETTE = [
   { bg: 'bg-indigo-100 group-hover:bg-indigo-600', icon: 'text-indigo-600 group-hover:text-white' },
 ]
 
+// Associe un chemin de rubrique à sa clé de compteur de nouveautés.
+const RUBRIC_BY_PATH = {
+  '/dashboard/social': 'social',
+  '/dashboard/annonces': 'annonces',
+  '/dashboard/activites': 'activites',
+  '/dashboard/parent/activites': 'activites',
+  '/dashboard/ressources': 'ressources',
+  '/dashboard/parent/ressources': 'ressources',
+  '/dashboard/documents': 'documents',
+  '/dashboard/parent/documents': 'documents',
+  '/dashboard/infos': 'infos',
+  '/dashboard/devoirs': 'devoirs',
+  '/dashboard/parent/devoirs': 'devoirs',
+}
+
 // Grille de boutons ronds remplaçant la sidebar : chaque bouton ouvre une fonctionnalité.
 export default function AppLauncher() {
   const { user, school } = useAuth()
-  const { unread } = useUnread()
+  const { unread, counts } = useUnread()
   const sections = getVisibleSections(user, school)
   if (sections.length === 0) return null
 
@@ -33,7 +48,8 @@ export default function AppLauncher() {
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-x-2 gap-y-4">
             {section.items.map((item) => {
               const color = PALETTE[colorIndex++ % PALETTE.length]
-              const badge = item.path === '/dashboard/messagerie' ? unread : 0
+              const rubric = RUBRIC_BY_PATH[item.path]
+              const badge = item.path === '/dashboard/messagerie' ? unread : (rubric ? (counts?.[rubric] || 0) : 0)
               return (
                 <Link
                   key={item.path + item.label}

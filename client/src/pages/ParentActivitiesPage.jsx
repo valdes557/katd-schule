@@ -1,6 +1,7 @@
-import { Loader2, Calendar, MapPin, Users, Sparkles, BookOpen, ExternalLink } from 'lucide-react'
+import { Loader2, Calendar, MapPin, Users, Sparkles, BookOpen } from 'lucide-react'
 import { parentApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
+import ResourcePreview from '../components/ResourcePreview'
 
 export default function ParentActivitiesPage({ section = 'activities' }) {
   const itemsQ = useCachedFetch(
@@ -46,12 +47,8 @@ export default function ParentActivitiesPage({ section = 'activities' }) {
               <div className="flex flex-wrap gap-1 mb-2">
                 {(it.classes || []).map((c) => <span key={c._id || c} className="text-xs px-2 py-0.5 bg-gray-100 rounded">{c.name}</span>)}
               </div>
-              <p className="text-xs text-gray-500">par {it.teacher?.firstName} {it.teacher?.lastName}</p>
-              {it.url && (
-                <a href={it.url} target="_blank" rel="noreferrer" className="mt-2 text-emerald-600 hover:underline text-sm flex items-center gap-1">
-                  <ExternalLink className="w-3 h-3"/> Ouvrir
-                </a>
-              )}
+              <p className="text-xs text-gray-500">par {it.teacher ? `${it.teacher.firstName || ''} ${it.teacher.lastName || ''}` : 'Direction'}</p>
+              <ResourcePreview type={it.type} url={it.url} title={it.title} />
             </div>
           ) : (
             <div key={it._id} className="bg-white border rounded-xl p-4 shadow-sm">

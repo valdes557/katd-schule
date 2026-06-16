@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Plus, Calendar, MapPin, Users, Trash2, Edit2, X, Loader2, Sparkles } from 'lucide-react'
-import { teacherApi } from '../lib/api'
+import { teacherApi, classesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import { useAuth } from '../context/AuthContext'
 
 const TYPES = [
   { value: 'sortie', label: 'Sortie scolaire' },
@@ -23,14 +24,22 @@ export default function TeacherActivitiesPage() {
     cost: 0, requiresAuthorization: false, class: '',
   })
 
+  const { user, school } = useAuth()
+  const isDirector = user?.role === 'directeur' || user?.role === 'super_admin'
+  const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : ''
+
   const activitiesQ = useCachedFetch('/teacher/activities?', async () => (await teacherApi.activities()).data || [], [])
-  const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => {
-    const r = await teacherApi.dashboard()
-    return r.data?.teacher?.classes || []
-  }, [])
+  // Classes : directeur → toutes les classes de l'école (cache partagé) ; enseignant → ses classes
+  const classesQ = useCachedFetch(
+    isDirector ? `/classes?${subscribedCycle ? `cycle=${subscribedCycle}` : ''}` : '/teacher/dashboard?',
+    async () => isDirector
+      ? (await classesApi.list(subscribedCycle ? `cycle=${subscribedCycle}` : '')).data || []
+      : (await teacherApi.dashboard()).data?.teacher?.classes || [],
+    [isDirector, subscribedCycle],
+  )
 
   const items = activitiesQ.data || []
-  const classes = dashboardQ.data || []
+  const classes = classesQ.data || []
   const loading = activitiesQ.loading
 
   const refresh = () => { cache.invalidate('/teacher/activities'); activitiesQ.refetch() }

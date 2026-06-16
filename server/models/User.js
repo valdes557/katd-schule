@@ -18,6 +18,8 @@ const userSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
     twoFactorEnabled: { type: Boolean, default: false },
+    // Date de dernière consultation par rubrique (clé → Date) pour les badges de nouveautés
+    rubricSeen: { type: Map, of: Date, default: {} },
   },
   { timestamps: true }
 )

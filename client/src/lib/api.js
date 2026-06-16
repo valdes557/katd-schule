@@ -73,6 +73,7 @@ export const dashboardApi = {
   getReports: (params = '') => api.get(`/dashboard/reports?${params}`),
   reviewReport: (id) => api.put(`/dashboard/reports/${id}/review`),
   unreviewReport: (id) => api.put(`/dashboard/reports/${id}/unreview`),
+  homeworkOverview: () => api.get('/dashboard/homework-overview'),
 }
 
 // Build a FormData body for a student, sending the photo file under `photo`,
@@ -584,6 +585,11 @@ export const feesApi = {
     const filename = decodeURIComponent(match?.[1] || match?.[2] || `recu-${id}-${paymentIndex + 1}.pdf`)
     return { blob, filename }
   },
+}
+
+export const notificationsApi = {
+  counts: () => api.get('/notifications/counts'),
+  markSeen: (rubric) => api.post('/notifications/seen', { rubric }),
 }
 
 export default api

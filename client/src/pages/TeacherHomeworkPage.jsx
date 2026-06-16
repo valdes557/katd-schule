@@ -4,11 +4,12 @@ import {
   Users, AlertTriangle, ChevronDown, ChevronUp, FileText, Save, Star, Bell,
   ToggleLeft, ToggleRight,
 } from 'lucide-react'
-import { teacherApi } from '../lib/api'
+import { teacherApi, dashboardApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import { useAuth } from '../context/AuthContext'
 
-export default function TeacherHomeworkPage() {
+function TeacherHomeworkView() {
   const [filterClass, setFilterClass] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
@@ -439,4 +440,118 @@ export default function TeacherHomeworkPage() {
       )}
     </div>
   )
+}
+
+/* ─── Vue Directeur : supervision des devoirs par classe (lecture seule) ─── */
+function DirectorHomeworkOverview() {
+  const [expanded, setExpanded] = useState(null)
+  const ovQ = useCachedFetch('/dashboard/homework-overview', async () => {
+    const r = await dashboardApi.homeworkOverview()
+    return r.data || { classes: [], summary: {} }
+  }, [])
+
+  const data = ovQ.data || { classes: [], summary: {} }
+  const classes = data.classes || []
+  const s = data.summary || {}
+  const loading = ovQ.loading
+
+  const refresh = () => { cache.invalidate('/dashboard/homework-overview'); ovQ.refetch() }
+
+  if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
+
+  const cards = [
+    { label: 'Devoirs donnés', value: s.totalHomeworks || 0, cls: 'text-blue-600' },
+    { label: 'Entièrement corrigés', value: s.fullyGradedHomeworks || 0, cls: 'text-green-600' },
+    { label: 'Copies à corriger', value: s.pendingCorrection || 0, cls: (s.pendingCorrection > 0 ? 'text-amber-600' : 'text-gray-500') },
+    { label: 'Classes sans devoir', value: s.classesWithoutHomework || 0, cls: (s.classesWithoutHomework > 0 ? 'text-red-500' : 'text-gray-500') },
+  ]
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><ClipboardList size={22} className="text-purple-600" /> Devoirs & Évaluations — supervision</h1>
+          <p className="text-sm text-gray-500">Vérifiez que chaque enseignant donne et corrige les devoirs, classe par classe</p>
+        </div>
+        <button onClick={refresh} className="btn-ghost text-xs border border-gray-200 self-start"><Loader2 size={13} className={ovQ.loading ? 'animate-spin' : 'hidden'} /> Actualiser</button>
+      </div>
+
+      {/* Résumé */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {cards.map((c) => (
+          <div key={c.label} className="card p-4 text-center">
+            <p className={`text-2xl font-bold ${c.cls}`}>{c.value}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{c.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Par classe */}
+      <div className="space-y-3">
+        {classes.map((c) => {
+          const isOpen = expanded === c.classId
+          return (
+            <div key={c.classId} className="card overflow-hidden">
+              <div className="p-4 flex items-center gap-3 cursor-pointer hover:bg-gray-50" onClick={() => setExpanded(isOpen ? null : c.classId)}>
+                <div className={`w-2 h-8 rounded-full flex-shrink-0 ${c.totalHomeworks === 0 ? 'bg-red-400' : c.ungradedSubmissions > 0 ? 'bg-amber-400' : 'bg-green-400'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-900">{c.className} <span className="text-xs font-normal text-gray-400">· {c.level || c.cycle}</span></p>
+                  <p className="text-xs text-gray-500">
+                    {c.totalHomeworks === 0
+                      ? 'Aucun devoir donné'
+                      : `${c.totalHomeworks} devoir(s)${c.ungradedSubmissions > 0 ? ` · ${c.ungradedSubmissions} copie(s) à corriger` : ' · tout corrigé'}`}
+                  </p>
+                </div>
+                {c.overdueWithMissing > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> {c.overdueWithMissing} en retard</span>
+                )}
+                {isOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+              </div>
+
+              {isOpen && (
+                <div className="border-t border-gray-100 bg-gray-50 p-4">
+                  {c.homeworks.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-2">Cette classe n'a aucun devoir enregistré.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {c.homeworks.map((h) => (
+                        <div key={h._id} className="bg-white rounded-lg p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-semibold text-gray-800">{h.title}</p>
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                  h.fullyGraded ? 'bg-green-100 text-green-700' :
+                                  h.isOverdue && h.notSubmitted > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                                }`}>
+                                  {h.fullyGraded ? 'Tout corrigé' : h.isOverdue && h.notSubmitted > 0 ? 'En retard' : 'Actif'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-0.5">{h.subject} · <span className="capitalize">{h.type}</span> · par <strong className="text-gray-600">{h.teacherName}</strong></p>
+                              <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400 flex-wrap">
+                                <span>Échéance : {new Date(h.dueDate).toLocaleDateString('fr-FR')}</span>
+                                <span className="flex items-center gap-1"><Users size={10} /> {h.submissionCount}/{h.totalStudents} remis</span>
+                                <span className={h.gradedCount === h.submissionCount && h.submissionCount > 0 ? 'text-green-600' : 'text-amber-600'}>{h.gradedCount}/{h.submissionCount} corrigés</span>
+                                {h.isOverdue && h.notSubmitted > 0 && <span className="text-red-500 flex items-center gap-1"><AlertTriangle size={10} /> {h.notSubmitted} manquant(s)</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export default function TeacherHomeworkPage() {
+  const { user } = useAuth()
+  if (user?.role === 'directeur' || user?.role === 'super_admin') return <DirectorHomeworkOverview />
+  return <TeacherHomeworkView />
 }

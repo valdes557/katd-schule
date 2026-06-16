@@ -1,8 +1,34 @@
-import { Outlet } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import DashboardHeader from './DashboardHeader'
 import PublicNavBar from './PublicNavBar'
 import { useAuth } from '../../context/AuthContext'
-import { UnreadProvider } from '../../context/UnreadContext'
+import { UnreadProvider, useUnread } from '../../context/UnreadContext'
+
+// Associe le chemin courant à une rubrique et la marque comme lue (efface le badge).
+const RUBRIC_BY_PATH = {
+  '/dashboard/social': 'social',
+  '/dashboard/annonces': 'annonces',
+  '/dashboard/activites': 'activites',
+  '/dashboard/parent/activites': 'activites',
+  '/dashboard/ressources': 'ressources',
+  '/dashboard/parent/ressources': 'ressources',
+  '/dashboard/documents': 'documents',
+  '/dashboard/parent/documents': 'documents',
+  '/dashboard/infos': 'infos',
+  '/dashboard/devoirs': 'devoirs',
+  '/dashboard/parent/devoirs': 'devoirs',
+}
+
+function RubricSeenWatcher() {
+  const { pathname } = useLocation()
+  const { markSeen } = useUnread()
+  useEffect(() => {
+    const rubric = RUBRIC_BY_PATH[pathname]
+    if (rubric) markSeen(rubric)
+  }, [pathname, markSeen])
+  return null
+}
 
 export default function DashboardLayout() {
   const { user, school } = useAuth()
@@ -11,6 +37,7 @@ export default function DashboardLayout() {
 
   return (
     <UnreadProvider>
+      <RubricSeenWatcher />
       <div className="min-h-screen bg-gray-50">
         <DashboardHeader />
         <PublicNavBar />
