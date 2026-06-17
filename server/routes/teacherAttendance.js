@@ -117,6 +117,126 @@ router.get('/today', protect, authorize('directeur', 'super_admin'), async (req,
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// Dernier jour d'un mois "YYYY-MM"
+function lastDayOfMonth(month) {
+  const [y, m] = month.split('-').map(Number)
+  const d = new Date(y, m, 0).getDate()
+  return `${month}-${String(d).padStart(2, '0')}`
+}
+
+// Résout la période demandée → { from, to } au format YYYY-MM-DD
+function resolvePeriod(query) {
+  if (query.month && /^\d{4}-\d{2}$/.test(query.month)) {
+    return { from: `${query.month}-01`, to: lastDayOfMonth(query.month) }
+  }
+  const to = query.to && /^\d{4}-\d{2}-\d{2}$/.test(query.to) ? query.to : todayKey()
+  let from = query.from && /^\d{4}-\d{2}-\d{2}$/.test(query.from) ? query.from : null
+  if (!from) {
+    const d = new Date(to)
+    d.setDate(d.getDate() - 29)
+    from = todayKey(d)
+  }
+  return { from, to }
+}
+
+// GET /api/teacher-attendance/history — historique des pointages (directeur)
+// Query: from, to (YYYY-MM-DD), teacherId (optionnel)
+router.get('/history', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const sid = schoolId(req)
+    const { from, to } = resolvePeriod(req.query)
+
+    const filter = { school: sid, day: { $gte: from, $lte: to } }
+    if (req.query.teacherId) filter.teacher = req.query.teacherId
+
+    const records = await TeacherAttendance.find(filter)
+      .populate('teacher', 'firstName lastName')
+      .sort({ day: -1, checkInAt: -1 })
+      .limit(1000)
+
+    const data = records.map((r) => ({
+      id: r._id,
+      teacherId: r.teacher?._id || r.teacher,
+      name: r.teacher ? `${r.teacher.lastName} ${r.teacher.firstName}` : '—',
+      day: r.day,
+      checkInAt: r.checkInAt || null,
+      checkOutAt: r.checkOutAt || null,
+      status: r.status,
+      lateMinutes: r.lateMinutes || 0,
+      earlyDeparture: r.earlyDeparture || false,
+      earlyMinutes: r.earlyMinutes || 0,
+    }))
+
+    res.json({ success: true, data, period: { from, to } })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/teacher-attendance/stats — synthèse mensuelle par enseignant (directeur)
+// Query: month=YYYY-MM OU from/to
+router.get('/stats', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const sid = schoolId(req)
+    const { from, to } = resolvePeriod(req.query)
+
+    const teachers = await Teacher.find({ school: sid, status: 'active' })
+      .select('firstName lastName')
+      .sort({ lastName: 1 })
+
+    const records = await TeacherAttendance.find({ school: sid, day: { $gte: from, $lte: to } })
+
+    // Jours d'ouverture (proxy) = jours distincts où au moins un enseignant a pointé
+    const openDays = new Set(records.map((r) => r.day))
+    const workingDays = openDays.size
+
+    const byTeacher = {}
+    for (const r of records) {
+      const key = r.teacher.toString()
+      if (!byTeacher[key]) {
+        byTeacher[key] = { daysPresent: 0, daysLate: 0, lateMinutes: 0, earlyDepartures: 0, earlyMinutes: 0 }
+      }
+      const s = byTeacher[key]
+      s.daysPresent += 1
+      if (r.status === 'late') { s.daysLate += 1; s.lateMinutes += r.lateMinutes || 0 }
+      if (r.earlyDeparture) { s.earlyDepartures += 1; s.earlyMinutes += r.earlyMinutes || 0 }
+    }
+
+    const perTeacher = teachers.map((t) => {
+      const s = byTeacher[t._id.toString()] || { daysPresent: 0, daysLate: 0, lateMinutes: 0, earlyDepartures: 0, earlyMinutes: 0 }
+      const onTime = s.daysPresent - s.daysLate
+      return {
+        teacherId: t._id,
+        name: `${t.lastName} ${t.firstName}`,
+        daysPresent: s.daysPresent,
+        daysLate: s.daysLate,
+        lateMinutes: s.lateMinutes,
+        earlyDepartures: s.earlyDepartures,
+        earlyMinutes: s.earlyMinutes,
+        daysAbsent: Math.max(0, workingDays - s.daysPresent),
+        punctualityRate: s.daysPresent ? Math.round((onTime / s.daysPresent) * 100) : null,
+      }
+    })
+
+    const totals = perTeacher.reduce((acc, t) => ({
+      daysPresent: acc.daysPresent + t.daysPresent,
+      daysLate: acc.daysLate + t.daysLate,
+      lateMinutes: acc.lateMinutes + t.lateMinutes,
+      earlyDepartures: acc.earlyDepartures + t.earlyDepartures,
+      earlyMinutes: acc.earlyMinutes + t.earlyMinutes,
+    }), { daysPresent: 0, daysLate: 0, lateMinutes: 0, earlyDepartures: 0, earlyMinutes: 0 })
+
+    res.json({
+      success: true,
+      data: {
+        period: { from, to },
+        workingDays,
+        teacherCount: teachers.length,
+        totals,
+        teachers: perTeacher,
+      },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // GET /api/teacher-attendance/me — état du jour de l'enseignant connecté
 router.get('/me', protect, async (req, res) => {
   try {

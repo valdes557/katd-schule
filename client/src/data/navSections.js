@@ -65,6 +65,7 @@ export const navSections = [
       { label: 'Parents / Responsables', icon: Users, path: '/dashboard/parents' },
       { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel' },
       { label: 'Pointage du personnel', icon: QrCode, path: '/dashboard/pointage' },
+      { label: 'Rapports de pointage', icon: BarChart2, path: '/dashboard/pointage/rapports' },
     ],
   },
   {

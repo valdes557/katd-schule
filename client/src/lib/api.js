@@ -535,6 +535,8 @@ export const teacherAttendanceApi = {
   regenerate: () => api.post('/teacher-attendance/qr/regenerate'),
   setConfig: (data) => api.put('/teacher-attendance/config', data),
   today: (day = '') => api.get(`/teacher-attendance/today${day ? `?day=${day}` : ''}`),
+  history: (params = {}) => api.get(`/teacher-attendance/history?${new URLSearchParams(params).toString()}`),
+  stats: (params = {}) => api.get(`/teacher-attendance/stats?${new URLSearchParams(params).toString()}`),
   me: () => api.get('/teacher-attendance/me'),
   scan: (token) => api.post('/teacher-attendance/scan', { token }),
 }

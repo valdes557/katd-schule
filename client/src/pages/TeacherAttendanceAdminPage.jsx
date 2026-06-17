@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { QRCodeCanvas } from 'qrcode.react'
 import { teacherAttendanceApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
-import { Loader2, QrCode, Download, RefreshCw, Clock, CheckCircle2, XCircle, Save, Users } from 'lucide-react'
+import { Loader2, QrCode, Download, RefreshCw, Clock, CheckCircle2, XCircle, Save, Users, BarChart3 } from 'lucide-react'
 
 function fmt(d) {
   return d ? new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'
@@ -77,9 +78,12 @@ export default function TeacherAttendanceAdminPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><QrCode size={22} className="text-indigo-600" /> Pointage du personnel (QR Code)</h1>
-        <p className="text-sm text-gray-500">Affichez ce QR code à l'entrée. Les enseignants le scannent à l'arrivée et au départ.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><QrCode size={22} className="text-indigo-600" /> Pointage du personnel (QR Code)</h1>
+          <p className="text-sm text-gray-500">Affichez ce QR code à l'entrée. Les enseignants le scannent à l'arrivée et au départ.</p>
+        </div>
+        <Link to="/dashboard/pointage/rapports" className="btn-ghost border border-gray-200 text-sm justify-center"><BarChart3 size={15} /> Rapports & stats</Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
