@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Globe2, Play, Eye, ThumbsUp, MessageCircle, Share2, Send, ChevronDown,
@@ -26,10 +26,20 @@ export default function SocialTab({ feed, setFeed, user }) {
   const [expandedComments, setExpandedComments] = useState({})
   const [viewer, setViewer] = useState(null) // { type: 'image' | 'video', src, post, index }
   const [viewerZoom, setViewerZoom] = useState(1)
+  // Publications déjà vues durant cette session (évite de compter plusieurs fois la même vue)
+  const viewedRef = useRef(new Set())
 
   useEffect(() => {
     setViewerZoom(1)
   }, [viewer])
+
+  // Compte une vue au clic sur une publication (une seule fois par session)
+  const markViewed = (postId) => {
+    if (!postId || viewedRef.current.has(postId)) return
+    viewedRef.current.add(postId)
+    platformApi.viewPost(postId)
+    setFeed((prev) => prev.map((p) => (p._id === postId ? { ...p, views: (p.views || 0) + 1 } : p)))
+  }
 
   const findNextMediaIndex = (startIndex, direction) => {
     if (!Array.isArray(feed) || !feed.length || startIndex == null || startIndex < 0) return null
@@ -61,6 +71,7 @@ export default function SocialTab({ feed, setFeed, user }) {
     if (!Array.isArray(feed) || index == null || index < 0 || index >= feed.length) return
     const p = feed[index]
     if (!p) return
+    markViewed(p._id)
     if (p.type === 'video' && p.videoUrl) {
       setViewer({ type: 'video', src: p.videoUrl, post: p, index })
     } else {
@@ -124,7 +135,7 @@ export default function SocialTab({ feed, setFeed, user }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3 px-4 sm:px-0">
         <h2 className="text-xl font-bold text-gray-900">Fil d'actualité</h2>
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
           {CATEGORIES.map((c) => (
@@ -146,7 +157,7 @@ export default function SocialTab({ feed, setFeed, user }) {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-y-3 gap-x-0 sm:gap-4">
             {feed.map((post, index) => (
               <PostCard
                 key={post._id} post={post} user={user}
@@ -154,7 +165,8 @@ export default function SocialTab({ feed, setFeed, user }) {
                 commentText={commentText} setCommentText={setCommentText}
                 expandedComments={expandedComments} setExpandedComments={setExpandedComments}
                 onDownload={(id) => setFeed((prev) => prev.map((p) => p._id === id ? { ...p, downloads: (p.downloads || 0) + 1 } : p))}
-                onOpenMedia={(payload) => setViewer({ ...payload, index })}
+                onView={markViewed}
+                onOpenMedia={(payload) => { markViewed(payload.post?._id); setViewer({ ...payload, index }) }}
               />
             ))}
           </div>
@@ -281,7 +293,7 @@ export default function SocialTab({ feed, setFeed, user }) {
   )
 }
 
-function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
+function PostCard({ post, user, onLike, onComment, onShare, onDownload, onView, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
   const navigate = useNavigate()
   const [shareCopied, setShareCopied] = useState(false)
 
@@ -317,7 +329,7 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
   const hasMedia = post.audioUrl || post.videoUrl || post.images?.length > 0
 
   return (
-    <div id={post._id} className="bg-white border border-gray-100 rounded-xl overflow-hidden hover:shadow-lg transition-all">
+    <div id={post._id} className="bg-white border-y sm:border border-gray-100 sm:rounded-xl overflow-hidden hover:shadow-lg transition-all">
       {/* ── Media zone ── */}
       {post.type === 'audio' ? (
         <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-5 text-white">
@@ -331,7 +343,7 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
             </div>
           </div>
           {post.audioUrl && (
-            <audio controls src={post.audioUrl} className="w-full h-8 accent-white" />
+            <audio controls src={post.audioUrl} onPlay={() => onView?.(post._id)} className="w-full h-8 accent-white" />
           )}
         </div>
       ) : post.type === 'video' ? (
@@ -424,7 +436,7 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, commentT
             <ThumbsUp size={12} /> {post.likes?.length || 0}
           </button>
           <button
-            onClick={() => setExpandedComments((p) => ({ ...p, [post._id]: !p[post._id] }))}
+            onClick={() => { onView?.(post._id); setExpandedComments((p) => ({ ...p, [post._id]: !p[post._id] })) }}
             className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium text-gray-500 hover:bg-gray-100 transition-colors flex-1 justify-center"
           >
             <MessageCircle size={12} /> {post.comments?.length || 0}

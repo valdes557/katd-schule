@@ -132,6 +132,13 @@ export const teachersApi = {
   remove: (id) => api.del(`/teachers/${id}`),
 }
 
+export const staffApi = {
+  list: (category = '') => api.get(`/staff${category ? `?category=${category}` : ''}`),
+  create: (data) => api.post('/staff', data),
+  update: (id, data) => api.put(`/staff/${id}`, data),
+  remove: (id) => api.del(`/staff/${id}`),
+}
+
 export const classesApi = {
   list: (params = '') => api.get(`/classes?${params}`),
   get: (id) => api.get(`/classes/${id}`),

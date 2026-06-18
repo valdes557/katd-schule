@@ -183,7 +183,7 @@ export default function MessagingPage() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <MessageSquare size={22} className="text-indigo-600" /> Messagerie
+          <MessageSquare size={22} className="text-indigo-600" /> Messenger
         </h1>
         <div className="flex gap-2 self-start">
           {user?.role === 'directeur' && (

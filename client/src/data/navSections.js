@@ -99,7 +99,7 @@ export const navSections = [
     roles: ['directeur', 'enseignant', 'parent'],
     items: [
       { label: 'Informations générales', icon: Info, path: '/dashboard/infos' },
-      { label: 'Messagerie', icon: MessageSquare, path: '/dashboard/messagerie' },
+      { label: 'Messenger', icon: MessageSquare, path: '/dashboard/messagerie' },
       { label: 'Annonces', icon: Bell, path: '/dashboard/annonces' },
       { label: 'Documents partagés', icon: FolderOpen, path: '/dashboard/documents' },
       { label: 'Social', icon: Globe, path: '/dashboard/social', roles: ['directeur', 'enseignant'] },

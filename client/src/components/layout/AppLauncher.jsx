@@ -3,16 +3,16 @@ import { useAuth } from '../../context/AuthContext'
 import { useUnread } from '../../context/UnreadContext'
 import { getVisibleSections } from '../../data/navSections'
 
-// Palette de couleurs (fond pastel + icône) tournant par bouton, style écran d'accueil.
+// Palette de couleurs foncées (fond saturé + icône blanche) tournant par bouton, style écran d'accueil.
 const PALETTE = [
-  { bg: 'bg-blue-100 group-hover:bg-blue-600', icon: 'text-blue-600 group-hover:text-white' },
-  { bg: 'bg-orange-100 group-hover:bg-orange-500', icon: 'text-orange-500 group-hover:text-white' },
-  { bg: 'bg-green-100 group-hover:bg-green-600', icon: 'text-green-600 group-hover:text-white' },
-  { bg: 'bg-purple-100 group-hover:bg-purple-600', icon: 'text-purple-600 group-hover:text-white' },
-  { bg: 'bg-teal-100 group-hover:bg-teal-600', icon: 'text-teal-600 group-hover:text-white' },
-  { bg: 'bg-pink-100 group-hover:bg-pink-600', icon: 'text-pink-600 group-hover:text-white' },
-  { bg: 'bg-amber-100 group-hover:bg-amber-500', icon: 'text-amber-600 group-hover:text-white' },
-  { bg: 'bg-indigo-100 group-hover:bg-indigo-600', icon: 'text-indigo-600 group-hover:text-white' },
+  { bg: 'bg-blue-600 group-hover:bg-blue-700', icon: 'text-white' },
+  { bg: 'bg-orange-500 group-hover:bg-orange-600', icon: 'text-white' },
+  { bg: 'bg-green-600 group-hover:bg-green-700', icon: 'text-white' },
+  { bg: 'bg-purple-600 group-hover:bg-purple-700', icon: 'text-white' },
+  { bg: 'bg-teal-600 group-hover:bg-teal-700', icon: 'text-white' },
+  { bg: 'bg-pink-600 group-hover:bg-pink-700', icon: 'text-white' },
+  { bg: 'bg-amber-500 group-hover:bg-amber-600', icon: 'text-white' },
+  { bg: 'bg-indigo-600 group-hover:bg-indigo-700', icon: 'text-white' },
 ]
 
 // Associe un chemin de rubrique à sa clé de compteur de nouveautés.

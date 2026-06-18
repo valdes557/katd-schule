@@ -82,8 +82,8 @@ export default function DashboardHeader() {
         {/* Messages non lus */}
         <button
           onClick={() => navigate('/dashboard/messagerie')}
-          aria-label="Messagerie"
-          title={unread > 0 ? `${unread} message(s) non lu(s)` : 'Messagerie'}
+          aria-label="Messenger"
+          title={unread > 0 ? `${unread} message(s) non lu(s)` : 'Messenger'}
           className="relative p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
         >
           <Bell size={19} />

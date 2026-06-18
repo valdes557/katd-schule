@@ -7,6 +7,7 @@ import {
 import {
   Users, UserCheck, BookOpen, TrendingUp, RefreshCw, School,
   ArrowRight, Calendar, CreditCard, AlertCircle, CheckCircle2, Loader2, DollarSign, UserPlus,
+  ClipboardList, FileText,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { dashboardApi, teacherAttendanceApi } from '../lib/api'
@@ -208,7 +209,8 @@ function DirectorDashboard({ user, school }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      {/* En-tête fixe (sticky) : identité du directeur — reste en haut de la page */}
+      <div className="sticky top-24 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-gray-50/95 backdrop-blur-sm border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Bonjour, {user?.name || 'Directeur'} 👋</h1>
           <p className="text-sm text-gray-500">{school?.name || 'Mon école'}</p>
@@ -216,8 +218,11 @@ function DirectorDashboard({ user, school }) {
             <div className="flex gap-1 mt-1">{schoolCycles.map((c) => <span key={c} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-medium">{c}</span>)}</div>
           )}
         </div>
-        <button onClick={refreshStats} className="btn-ghost text-xs border border-gray-200 self-start"><RefreshCw size={13} /> Actualiser</button>
+        <button onClick={refreshStats} className="btn-ghost text-xs border border-gray-200 self-start bg-white"><RefreshCw size={13} /> Actualiser</button>
       </div>
+
+      {/* Accès rapide à toutes les fonctionnalités */}
+      <AppLauncher />
 
       {!school && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
@@ -263,15 +268,22 @@ function DirectorDashboard({ user, school }) {
 
       <TeacherAttendanceWidget />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'Gérer les élèves', path: '/dashboard/eleves', icon: Users, color: 'text-blue-600' },
-          { label: 'Saisir des notes', path: '/dashboard/notes', icon: BookOpen, color: 'text-purple-600' },
-          { label: 'Faire l\'appel', path: '/dashboard/presence', icon: Calendar, color: 'text-green-600' },
-          { label: 'Souscriptions', path: '/dashboard/souscriptions', icon: CreditCard, color: 'text-orange-600' },
+          { label: 'Gérer les élèves', path: '/dashboard/eleves', icon: Users, bg: 'bg-blue-600 hover:bg-blue-700' },
+          { label: 'Saisir des notes', path: '/dashboard/notes', icon: BookOpen, bg: 'bg-purple-600 hover:bg-purple-700' },
+          { label: 'Faire l\'appel', path: '/dashboard/presence', icon: Calendar, bg: 'bg-green-600 hover:bg-green-700' },
+          { label: 'Souscriptions', path: '/dashboard/souscriptions', icon: CreditCard, bg: 'bg-orange-500 hover:bg-orange-600' },
+          { label: 'Devoirs & évaluations', path: '/dashboard/devoirs', icon: ClipboardList, bg: 'bg-teal-600 hover:bg-teal-700' },
+          { label: 'Notes & bulletins', path: '/dashboard/bulletin', icon: FileText, bg: 'bg-indigo-600 hover:bg-indigo-700' },
         ].map((q) => (
-          <Link key={q.path} to={q.path} className="card p-4 flex items-center gap-3 hover:shadow-card-lg transition-shadow group">
-            <q.icon size={18} className={q.color} /><span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">{q.label}</span><ArrowRight size={14} className="ml-auto text-gray-300 group-hover:text-gray-500" />
+          <Link
+            key={q.path}
+            to={q.path}
+            className={`flex flex-col items-center justify-center text-center gap-2 rounded-xl px-3 py-4 text-white font-semibold shadow-sm hover:shadow-md transition-all ${q.bg}`}
+          >
+            <q.icon size={22} />
+            <span className="text-xs leading-tight">{q.label}</span>
           </Link>
         ))}
       </div>
@@ -303,9 +315,9 @@ export default function DashboardPage() {
   else if (user?.role === 'enseignant') content = <TeacherDashboardPage />
   else content = <DirectorDashboard user={user} school={school} />
 
-  // Le tableau de bord enseignant gère lui-même son en-tête fixe puis l'AppLauncher,
-  // afin que l'identité (nom, école, cycle, actualiser) reste en haut de la page.
-  if (user?.role === 'enseignant') return content
+  // Les tableaux de bord enseignant ET directeur gèrent eux-mêmes leur en-tête fixe
+  // puis l'AppLauncher, afin que l'identité (nom, école, cycle) reste en haut de la page.
+  if (user?.role === 'enseignant' || user?.role === 'directeur') return content
 
   return (
     <div className="space-y-8">
