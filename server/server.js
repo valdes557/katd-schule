@@ -64,6 +64,7 @@ app.use('/api/documents', require('./routes/documents'))
 app.use('/api/events', require('./routes/events'))
 app.use('/api/teacher-attendance', require('./routes/teacherAttendance'))
 app.use('/api/notifications', require('./routes/notifications'))
+app.use('/api/presence', require('./routes/presence'))
 
 app.get('/api/health', (req, res) => {
   res.json({

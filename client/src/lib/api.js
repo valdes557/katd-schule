@@ -139,6 +139,13 @@ export const staffApi = {
   remove: (id) => api.del(`/staff/${id}`),
 }
 
+export const presenceApi = {
+  heartbeat: () => api.post('/presence/heartbeat'),
+  logout: () => api.post('/presence/logout'),
+  list: (school = '') => api.get(`/presence${school ? `?school=${school}` : ''}`),
+  reset: (userId) => api.del(`/presence/${userId}`),
+}
+
 export const classesApi = {
   list: (params = '') => api.get(`/classes?${params}`),
   get: (id) => api.get(`/classes/${id}`),

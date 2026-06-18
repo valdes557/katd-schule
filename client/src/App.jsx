@@ -69,6 +69,7 @@ const TeacherAttendanceAdminPage = lazy(() => import('./pages/TeacherAttendanceA
 const TeacherAttendanceDashboardPage = lazy(() => import('./pages/TeacherAttendanceDashboardPage'))
 const TeacherAttendanceScanPage = lazy(() => import('./pages/TeacherAttendanceScanPage'))
 const PersonnelPage = lazy(() => import('./pages/PersonnelPage'))
+const UserPresencePage = lazy(() => import('./pages/UserPresencePage'))
 
 function PageFallback() {
   return (
@@ -148,6 +149,7 @@ export default function App() {
         <Route path="emploi-du-temps" element={<EmploiDuTempsPage />} />
         <Route path="parents" element={<ParentsPage />} />
         <Route path="personnel" element={<PersonnelPage />} />
+        <Route path="suivi-connexions" element={<UserPresencePage />} />
         <Route path="devoirs" element={<TeacherHomeworkPage />} />
         <Route path="activites" element={<TeacherActivitiesPage />} />
         <Route path="ressources" element={<TeacherResourcesPage />} />

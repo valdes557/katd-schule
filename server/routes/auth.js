@@ -71,7 +71,10 @@ router.post(
         return res.status(403).json({ message: 'Votre compte a été désactivé. Contactez l\'administrateur.' })
       }
 
-      user.lastLogin = new Date()
+      const now = new Date()
+      user.lastLogin = now
+      user.lastActivity = now
+      user.isOnline = true
       await user.save({ validateBeforeSave: false })
 
       const token = generateToken(user._id)

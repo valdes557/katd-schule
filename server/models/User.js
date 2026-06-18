@@ -17,6 +17,10 @@ const userSchema = new mongoose.Schema(
     matricule: { type: String, unique: true, sparse: true },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
+    // Suivi de présence (statut en ligne)
+    lastLogout: { type: Date },
+    lastActivity: { type: Date },
+    isOnline: { type: Boolean, default: false },
     twoFactorEnabled: { type: Boolean, default: false },
     // Date de dernière consultation par rubrique (clé → Date) pour les badges de nouveautés
     rubricSeen: { type: Map, of: Date, default: {} },

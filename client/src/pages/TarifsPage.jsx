@@ -85,7 +85,12 @@ export default function TarifsPage() {
                   )}
                   <div className={`bg-gradient-to-r ${plan.color || 'from-blue-600 to-blue-400'} p-6 text-white`}>
                     <div className="text-3xl mb-2">{plan.icon || '📚'}</div>
-                    <div className="text-lg font-bold">{plan.cycle}</div>
+                    <div className="text-lg font-bold flex items-center gap-2">
+                      {plan.cycle}
+                      {plan.cycle === 'Secondaire' && (
+                        <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">Bientôt</span>
+                      )}
+                    </div>
                     {plan.name && <p className="text-white/80 text-sm">{plan.name}</p>}
                   </div>
                   <div className="p-6">
@@ -100,12 +105,23 @@ export default function TarifsPage() {
                         </div>
                       ))}
                     </div>
-                    <Link
-                      to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
-                      className={`w-full flex items-center justify-center gap-2 text-white text-sm font-semibold py-3 rounded-xl ${c.btn} transition-colors`}
-                    >
-                      <GraduationCap size={16} /> S'inscrire
-                    </Link>
+                    {plan.cycle === 'Secondaire' ? (
+                      <button
+                        type="button"
+                        disabled
+                        title="Ce cycle n'est pas encore disponible"
+                        className="w-full flex items-center justify-center gap-2 text-sm font-semibold py-3 rounded-xl bg-gray-100 text-gray-400 cursor-not-allowed"
+                      >
+                        🚧 Disponible très bientôt
+                      </button>
+                    ) : (
+                      <Link
+                        to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
+                        className={`w-full flex items-center justify-center gap-2 text-white text-sm font-semibold py-3 rounded-xl ${c.btn} transition-colors`}
+                      >
+                        <GraduationCap size={16} /> S'inscrire
+                      </Link>
+                    )}
                   </div>
                 </div>
               )

@@ -102,6 +102,7 @@ export const navSections = [
       { label: 'Messenger', icon: MessageSquare, path: '/dashboard/messagerie' },
       { label: 'Annonces', icon: Bell, path: '/dashboard/annonces' },
       { label: 'Documents partagés', icon: FolderOpen, path: '/dashboard/documents' },
+      { label: 'Utilisateurs en ligne', icon: Activity, path: '/dashboard/suivi-connexions', roles: ['directeur', 'enseignant'] },
       { label: 'Social', icon: Globe, path: '/dashboard/social', roles: ['directeur', 'enseignant'] },
     ],
   },
@@ -134,6 +135,7 @@ export const navSections = [
       { label: 'Matières par école', icon: ClipboardList, path: '/dashboard/matieres-ecoles' },
       { label: 'Localités (Pays/Villes)', icon: MapPin, path: '/dashboard/localites' },
       { label: 'Gestion Plateforme', icon: LayoutGrid, path: '/dashboard/plateforme' },
+      { label: 'Suivi des connexions', icon: Activity, path: '/dashboard/suivi-connexions' },
     ],
   },
 ]

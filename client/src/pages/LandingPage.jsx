@@ -294,7 +294,12 @@ export default function LandingPage() {
                   )}
                   <div className={`bg-gradient-to-br ${plan.gradient} p-5 text-white`}>
                     <span className="text-3xl">{plan.icon}</span>
-                    <h3 className="text-lg font-bold mt-1">{plan.cycle}</h3>
+                    <h3 className="text-lg font-bold mt-1 flex items-center gap-2">
+                      {plan.cycle}
+                      {plan.cycle === 'Secondaire' && (
+                        <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">Bientôt</span>
+                      )}
+                    </h3>
                   </div>
                   <div className="p-5">
                     {/* Per-card plan toggle */}
@@ -330,12 +335,23 @@ export default function LandingPage() {
                       ))}
                     </div>
 
-                    <Link
-                      to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
-                      className={`w-full flex items-center justify-center gap-2 font-semibold py-3 rounded-xl text-sm transition-colors ${plan.btnClass}`}
-                    >
-                      <GraduationCap size={15} /> S'inscrire
-                    </Link>
+                    {plan.cycle === 'Secondaire' ? (
+                      <button
+                        type="button"
+                        disabled
+                        title="Ce cycle n'est pas encore disponible"
+                        className="w-full flex items-center justify-center gap-2 font-semibold py-3 rounded-xl text-sm bg-gray-100 text-gray-400 cursor-not-allowed"
+                      >
+                        🚧 Disponible très bientôt
+                      </button>
+                    ) : (
+                      <Link
+                        to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
+                        className={`w-full flex items-center justify-center gap-2 font-semibold py-3 rounded-xl text-sm transition-colors ${plan.btnClass}`}
+                      >
+                        <GraduationCap size={15} /> S'inscrire
+                      </Link>
+                    )}
                   </div>
                 </div>
               )

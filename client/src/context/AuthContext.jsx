@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { authApi } from '../lib/api'
+import { authApi, presenceApi } from '../lib/api'
 import { cache } from '../lib/cache'
 
 const AuthContext = createContext(null)
@@ -39,6 +39,17 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // Heartbeat de présence : tant qu'un utilisateur est connecté, on signale son
+  // activité toutes les 60 s (sert au statut « en ligne » vu par l'admin / le directeur).
+  useEffect(() => {
+    if (!user) return
+    let alive = true
+    const ping = () => { if (alive) presenceApi.heartbeat().catch(() => {}) }
+    ping()
+    const id = setInterval(ping, 60000)
+    return () => { alive = false; clearInterval(id) }
+  }, [user])
+
   // Real backend login (with demo fallback if API unreachable)
   const login = async (email, password) => {
     try {
@@ -57,6 +68,8 @@ export function AuthProvider({ children }) {
   }
 
   const logout = () => {
+    // Marque l'utilisateur hors ligne avant de purger le token (best-effort)
+    presenceApi.logout().catch(() => {})
     setUser(null)
     setSchool(null)
     localStorage.removeItem('token')
