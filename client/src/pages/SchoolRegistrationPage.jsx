@@ -8,6 +8,7 @@ import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { locationsApi, schoolRegistrationApi, platformApi, plansApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
+import { dialCodeFor } from '../data/countryDialCodes'
 
 const CYCLE_META = {
   Maternelle: { icon: '🌸', gradient: 'from-orange-500 to-amber-400', color: 'text-orange-600', ring: 'ring-orange-400', btn: 'bg-orange-500 hover:bg-orange-600' },
@@ -50,6 +51,11 @@ export default function SchoolRegistrationPage() {
   const paymentMethods = paymentMethodsQ.data || []
   const countries = countriesQ.data || []
   const plansLoading = plansQ.loading
+
+  // Indicatif téléphonique du pays sélectionné (ex: +237). form.whatsapp ne contient
+  // que la partie locale ; l'indicatif est ajouté automatiquement à l'envoi.
+  const selectedCountry = countries.find((c) => c._id === form.country)
+  const dialCode = dialCodeFor(selectedCountry)
 
   // Initialise billingMap once plans are loaded
   useEffect(() => {
@@ -116,7 +122,11 @@ export default function SchoolRegistrationPage() {
       fd.append('country', form.country)
       fd.append('city', form.city)
       if (form.neighborhood) fd.append('neighborhood', form.neighborhood)
-      fd.append('whatsapp', form.whatsapp)
+      // Préfixe l'indicatif du pays s'il est connu et pas déjà saisi par l'utilisateur
+      const whatsappFull = dialCode && !form.whatsapp.trim().startsWith('+')
+        ? `${dialCode} ${form.whatsapp.trim()}`
+        : form.whatsapp.trim()
+      fd.append('whatsapp', whatsappFull)
       fd.append('email', form.email)
       fd.append('paymentProof', proofFile)
 
@@ -311,8 +321,32 @@ export default function SchoolRegistrationPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">WhatsApp (avec indicatif) *</label>
-                <input required value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} className="input text-sm" placeholder="+237 6XX XXX XXX" />
+                <label className="text-xs font-medium text-gray-600 mb-1 block">WhatsApp *</label>
+                {dialCode ? (
+                  <div className="flex items-stretch">
+                    <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700 select-none">
+                      {dialCode}
+                    </span>
+                    <input
+                      required
+                      value={form.whatsapp}
+                      onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                      className="input text-sm rounded-l-none"
+                      placeholder="6XX XXX XXX"
+                      inputMode="tel"
+                    />
+                  </div>
+                ) : (
+                  <input
+                    required
+                    value={form.whatsapp}
+                    onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                    className="input text-sm"
+                    placeholder={form.country ? 'Numéro avec indicatif (ex: +237 6XX XXX XXX)' : 'Choisissez d’abord votre pays'}
+                    inputMode="tel"
+                  />
+                )}
+                {dialCode && <p className="text-[11px] text-gray-400 mt-1">Indicatif {dialCode} ajouté automatiquement</p>}
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Email du responsable *</label>

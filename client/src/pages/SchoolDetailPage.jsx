@@ -272,13 +272,13 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
               {/* Thumbnail */}
               <button
                 type="button"
-                className="relative aspect-video bg-gray-100 w-full"
+                className="relative aspect-video bg-gray-900 w-full"
                 onClick={() => openMediaAtIndex(index)}
               >
                 {post.thumbnail ? (
-                  <img src={post.thumbnail} alt="" className="w-full h-full object-cover" />
+                  <img src={post.thumbnail} alt="" className="w-full h-full object-contain" />
                 ) : post.images?.[0] ? (
-                  <img src={post.images[0]} alt="" className="w-full h-full object-cover" />
+                  <img src={post.images[0]} alt="" className="w-full h-full object-contain" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-indigo-100">
                     <Globe size={28} className="text-blue-300" />

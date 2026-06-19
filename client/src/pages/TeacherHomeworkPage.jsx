@@ -2,8 +2,10 @@ import { useState } from 'react'
 import {
   Plus, Loader2, ClipboardList, Trash2, Edit2, X, CheckCircle2, Clock,
   Users, AlertTriangle, ChevronDown, ChevronUp, FileText, Save, Star, Bell,
-  ToggleLeft, ToggleRight,
+  ToggleLeft, ToggleRight, UserCheck,
 } from 'lucide-react'
+
+const TYPE_LABEL = { devoir: 'Devoir', exercice: 'Exercice', projet: 'Projet', expose: 'Exposé' }
 import { teacherApi, dashboardApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
@@ -450,8 +452,9 @@ function DirectorHomeworkOverview() {
     return r.data || { classes: [], summary: {} }
   }, [])
 
-  const data = ovQ.data || { classes: [], summary: {} }
+  const data = ovQ.data || { classes: [], byTeacher: [], summary: {} }
   const classes = data.classes || []
+  const byTeacher = data.byTeacher || []
   const s = data.summary || {}
   const loading = ovQ.loading
 
@@ -485,6 +488,49 @@ function DirectorHomeworkOverview() {
           </div>
         ))}
       </div>
+
+      {/* Par enseignant : qui a donné et corrigé les devoirs, et de quel type */}
+      {byTeacher.length > 0 && (
+        <div className="card p-4 sm:p-5">
+          <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-3">
+            <UserCheck size={16} className="text-teal-600" /> Par enseignant
+          </h2>
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-100">
+                  <th className="py-2 px-2 font-medium">Enseignant</th>
+                  <th className="py-2 px-2 font-medium">Classe(s)</th>
+                  <th className="py-2 px-2 font-medium">Donnés</th>
+                  <th className="py-2 px-2 font-medium">Corrigés</th>
+                  <th className="py-2 px-2 font-medium">À corriger</th>
+                  <th className="py-2 px-2 font-medium">Types de devoir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byTeacher.map((t) => (
+                  <tr key={t.teacherId || t.teacherName} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                    <td className="py-2.5 px-2 font-semibold text-gray-800 whitespace-nowrap">{t.teacherName}</td>
+                    <td className="py-2.5 px-2 text-gray-500">{t.classes.length ? t.classes.join(', ') : '—'}</td>
+                    <td className="py-2.5 px-2 font-medium text-gray-700">{t.totalHomeworks}</td>
+                    <td className="py-2.5 px-2 text-green-600 font-medium">{t.correctedHomeworks}</td>
+                    <td className={`py-2.5 px-2 font-medium ${t.pendingCorrection > 0 ? 'text-amber-600' : 'text-gray-400'}`}>{t.pendingCorrection}</td>
+                    <td className="py-2.5 px-2">
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(t.byType || {}).map(([type, n]) => (
+                          <span key={type} className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-medium">
+                            {TYPE_LABEL[type] || type} : {n}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Par classe */}
       <div className="space-y-3">

@@ -7,7 +7,6 @@ import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import DashboardLayout from './components/layout/DashboardLayout'
 import DashboardPage from './pages/DashboardPage'
-import PlaceholderPage from './pages/PlaceholderPage'
 
 // Lazy: every secondary page is loaded on demand to shrink the initial bundle
 const ExplorerPage = lazy(() => import('./pages/ExplorerPage'))
@@ -51,6 +50,8 @@ const TeacherActivitiesPage = lazy(() => import('./pages/TeacherActivitiesPage')
 const TeacherResourcesPage = lazy(() => import('./pages/TeacherResourcesPage'))
 const TeacherReportsPage = lazy(() => import('./pages/TeacherReportsPage'))
 const DirectorReportsPage = lazy(() => import('./pages/DirectorReportsPage'))
+const DirectorStatisticsPage = lazy(() => import('./pages/DirectorStatisticsPage'))
+const DirectorDetailedReportPage = lazy(() => import('./pages/DirectorDetailedReportPage'))
 const ParentsPage = lazy(() => import('./pages/ParentsPage'))
 const DirectorFeesPage = lazy(() => import('./pages/DirectorFeesPage'))
 const AdminSchoolSubjectsPage = lazy(() => import('./pages/AdminSchoolSubjectsPage'))
@@ -159,8 +160,8 @@ export default function App() {
         <Route path="factures" element={<FacturesPage />} />
         <Route path="salaires" element={<SalariesPage />} />
         <Route path="rapports" element={<DirectorReportsPage />} />
-        <Route path="rapports/detail" element={<PlaceholderPage title="Rapports détaillés" />} />
-        <Route path="statistiques" element={<PlaceholderPage title="Statistiques" />} />
+        <Route path="rapports/detail" element={<DirectorDetailedReportPage />} />
+        <Route path="statistiques" element={<DirectorStatisticsPage />} />
         <Route path="localites" element={<AdminLocationsPage />} />
         <Route path="demandes-ecoles" element={<AdminSchoolRegistrationsPage />} />
         <Route path="ecoles-admin" element={<AdminEcolesPage />} />

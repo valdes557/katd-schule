@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import DashboardHeader from './DashboardHeader'
 import PublicNavBar from './PublicNavBar'
 import { useAuth } from '../../context/AuthContext'
@@ -32,8 +33,12 @@ function RubricSeenWatcher() {
 
 export default function DashboardLayout() {
   const { user, school } = useAuth()
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
   const isDirecteur = user?.role === 'directeur'
   const subscribedCycle = isDirecteur && school?.subscription?.cycle ? school.subscription.cycle : null
+  // Masquer le bouton Retour sur la page d'accueil du dashboard
+  const isDashboardHome = pathname === '/dashboard' || pathname === '/dashboard/'
 
   return (
     <UnreadProvider>
@@ -45,6 +50,14 @@ export default function DashboardLayout() {
         {/* pt-24 = h-14 (header) + h-10 (public nav) ; plus de sidebar, contenu pleine largeur */}
         <main className="pt-24 transition-all">
           <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
+            {!isDashboardHome && (
+              <button
+                onClick={() => navigate(-1)}
+                className="inline-flex items-center gap-1.5 mb-3 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm"
+              >
+                <ArrowLeft size={15} /> Retour
+              </button>
+            )}
             {isDirecteur && subscribedCycle && (
               <div className="mb-3">
                 <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-medium px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">

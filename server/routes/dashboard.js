@@ -216,6 +216,7 @@ router.get('/homework-overview', protect, authorize('directeur', 'super_admin'),
         subject: h.subject,
         type: h.type,
         dueDate: h.dueDate,
+        teacherId: (h.teacher?._id || '').toString(),
         teacherName: h.teacher ? `${h.teacher.firstName || ''} ${h.teacher.lastName || ''}`.trim() : 'Direction',
         className: h.class?.name || '',
         classId: (h.class?._id || h.class || '').toString(),
@@ -247,6 +248,32 @@ router.get('/homework-overview', protect, authorize('directeur', 'super_admin'),
       }
     })
 
+    // Regrouper par enseignant : qui a donné et corrigé les devoirs, et de quel type.
+    const teacherMap = {}
+    for (const h of enriched) {
+      const key = h.teacherId || 'direction'
+      if (!teacherMap[key]) {
+        teacherMap[key] = {
+          teacherId: h.teacherId || null,
+          teacherName: h.teacherName || 'Direction',
+          classes: new Set(),
+          totalHomeworks: 0,
+          correctedHomeworks: 0,
+          pendingCorrection: 0,
+          byType: {},
+        }
+      }
+      const t = teacherMap[key]
+      if (h.className) t.classes.add(h.className)
+      t.totalHomeworks += 1
+      if (h.fullyGraded) t.correctedHomeworks += 1
+      t.pendingCorrection += Math.max(0, h.submissionCount - h.gradedCount)
+      t.byType[h.type] = (t.byType[h.type] || 0) + 1
+    }
+    const byTeacher = Object.values(teacherMap)
+      .map((t) => ({ ...t, classes: Array.from(t.classes).sort() }))
+      .sort((a, b) => b.totalHomeworks - a.totalHomeworks)
+
     const totalHomeworks = enriched.length
     const totalGraded = enriched.filter((h) => h.fullyGraded).length
     const summary = {
@@ -258,7 +285,7 @@ router.get('/homework-overview', protect, authorize('directeur', 'super_admin'),
       gradedRate: totalHomeworks > 0 ? Math.round((totalGraded / totalHomeworks) * 100) : 0,
     }
 
-    res.json({ success: true, data: { classes: byClass, summary } })
+    res.json({ success: true, data: { classes: byClass, byTeacher, summary } })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

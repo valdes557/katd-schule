@@ -357,7 +357,7 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, onView, 
           }}
         >
           {post.thumbnail || post.images?.[0] ? (
-            <img src={post.thumbnail || post.images[0]} alt="" className="w-full h-full object-cover" />
+            <img src={post.thumbnail || post.images[0]} alt="" className="w-full h-full object-contain" />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gray-900">
               <Play size={40} className="text-gray-600" />
@@ -378,13 +378,13 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, onView, 
       ) : post.images?.length > 0 ? (
         <button
           type="button"
-          className="relative aspect-video bg-gray-100 w-full"
+          className="relative aspect-video bg-gray-900 w-full"
           onClick={() => {
             if (!post.images?.[0]) return
             if (onOpenMedia) onOpenMedia({ type: 'image', src: post.images[0], post })
           }}
         >
-          <img src={post.images[0]} alt="" className="w-full h-full object-cover" />
+          <img src={post.images[0]} alt="" className="w-full h-full object-contain" />
           {post.images.length > 1 && (
             <span className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">+{post.images.length - 1}</span>
           )}
