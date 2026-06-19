@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useAuth } from './context/AuthContext'
 
 // Eager: public landing + login + layout (small, needed immediately)
@@ -8,69 +8,94 @@ import LoginPage from './pages/LoginPage'
 import DashboardLayout from './components/layout/DashboardLayout'
 import DashboardPage from './pages/DashboardPage'
 
+// Variante de lazy() qui enregistre aussi le « factory » d'import, afin de pouvoir
+// précharger tous les chunks de page en arrière-plan (navigation instantanée).
+const pagePrefetchers = []
+function lazyPage(factory) {
+  pagePrefetchers.push(factory)
+  return lazy(factory)
+}
+// Déclenche le téléchargement de tous les chunks de page pendant un temps mort,
+// sans bloquer le rendu courant. Best-effort : les échecs sont ignorés.
+function prefetchAllPages() {
+  let i = 0
+  const run = () => {
+    // Petits lots pour ne pas saturer le réseau d'un coup
+    for (let n = 0; n < 4 && i < pagePrefetchers.length; n++, i++) {
+      try { pagePrefetchers[i]() } catch (_) {}
+    }
+    if (i < pagePrefetchers.length) schedule()
+  }
+  const schedule = () => {
+    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 2000 })
+    else setTimeout(run, 200)
+  }
+  schedule()
+}
+
 // Lazy: every secondary page is loaded on demand to shrink the initial bundle
-const ExplorerPage = lazy(() => import('./pages/ExplorerPage'))
-const EcolesPage = lazy(() => import('./pages/EcolesPage'))
-const ElevesPage = lazy(() => import('./pages/ElevesPage'))
-const EnseignantsPage = lazy(() => import('./pages/EnseignantsPage'))
-const NotesPage = lazy(() => import('./pages/NotesPage'))
-const PresencePage = lazy(() => import('./pages/PresencePage'))
-const MessagingPage = lazy(() => import('./pages/MessagingPage'))
-const SouscriptionsPage = lazy(() => import('./pages/SouscriptionsPage'))
-const EnrollmentPage = lazy(() => import('./pages/EnrollmentPage'))
-const InscriptionsPage = lazy(() => import('./pages/InscriptionsPage'))
-const TarifsPage = lazy(() => import('./pages/TarifsPage'))
-const SchoolRegistrationPage = lazy(() => import('./pages/SchoolRegistrationPage'))
-const AdminLocationsPage = lazy(() => import('./pages/AdminLocationsPage'))
-const AdminSchoolRegistrationsPage = lazy(() => import('./pages/AdminSchoolRegistrationsPage'))
-const SchoolDetailPage = lazy(() => import('./pages/SchoolDetailPage'))
-const ManageSchoolPage = lazy(() => import('./pages/ManageSchoolPage'))
-const AdminPlatformPage = lazy(() => import('./pages/AdminPlatformPage'))
-const SocialPage = lazy(() => import('./pages/SocialPage'))
-const AboutPage = lazy(() => import('./pages/AboutPage'))
-const ContactsPage = lazy(() => import('./pages/ContactsPage'))
-const AidePage = lazy(() => import('./pages/AidePage'))
-const ResourcesPage = lazy(() => import('./pages/ResourcesPage'))
-const ExperiencesPage = lazy(() => import('./pages/ExperiencesPage'))
-const SupportPage = lazy(() => import('./pages/SupportPage'))
-const DashboardSchoolProfilePage = lazy(() => import('./pages/DashboardSchoolProfilePage'))
-const ClassesPage = lazy(() => import('./pages/ClassesPage'))
-const MatieresPage = lazy(() => import('./pages/MatieresPage'))
-const EmploiDuTempsPage = lazy(() => import('./pages/EmploiDuTempsPage'))
-const AdminEcolesPage = lazy(() => import('./pages/AdminEcolesPage'))
-const ParentChildDetailPage = lazy(() => import('./pages/ParentChildDetailPage'))
-const ParentFinancesPage = lazy(() => import('./pages/ParentFinancesPage'))
-const ParentControlsPage = lazy(() => import('./pages/ParentControlsPage'))
-const ParentAppointmentsPage = lazy(() => import('./pages/ParentAppointmentsPage'))
-const ParentDocumentsPage = lazy(() => import('./pages/ParentDocumentsPage'))
-const TeacherHomeworkPage = lazy(() => import('./pages/TeacherHomeworkPage'))
-const TeacherAnalyticsPage = lazy(() => import('./pages/TeacherAnalyticsPage'))
-const TeacherStudentsPage = lazy(() => import('./pages/TeacherStudentsPage'))
-const TeacherActivitiesPage = lazy(() => import('./pages/TeacherActivitiesPage'))
-const TeacherResourcesPage = lazy(() => import('./pages/TeacherResourcesPage'))
-const TeacherReportsPage = lazy(() => import('./pages/TeacherReportsPage'))
-const DirectorReportsPage = lazy(() => import('./pages/DirectorReportsPage'))
-const DirectorStatisticsPage = lazy(() => import('./pages/DirectorStatisticsPage'))
-const DirectorDetailedReportPage = lazy(() => import('./pages/DirectorDetailedReportPage'))
-const ParentsPage = lazy(() => import('./pages/ParentsPage'))
-const DirectorFeesPage = lazy(() => import('./pages/DirectorFeesPage'))
-const AdminSchoolSubjectsPage = lazy(() => import('./pages/AdminSchoolSubjectsPage'))
-const ParentSectionPage = lazy(() => import('./pages/ParentSectionPage'))
-const BulletinPage = lazy(() => import('./pages/BulletinPage'))
-const ParentActivitiesPage = lazy(() => import('./pages/ParentActivitiesPage'))
-const DashboardSocialPage = lazy(() => import('./pages/DashboardSocialPage'))
-const AnnoncesPage = lazy(() => import('./pages/AnnoncesPage'))
-const PaymentHistoryPage = lazy(() => import('./pages/PaymentHistoryPage'))
-const FacturesPage = lazy(() => import('./pages/FacturesPage'))
-const SalariesPage = lazy(() => import('./pages/SalariesPage'))
-const TeacherSalaryPage = lazy(() => import('./pages/TeacherSalaryPage'))
-const DocumentsPage = lazy(() => import('./pages/DocumentsPage'))
-const InfosPage = lazy(() => import('./pages/InfosPage'))
-const TeacherAttendanceAdminPage = lazy(() => import('./pages/TeacherAttendanceAdminPage'))
-const TeacherAttendanceDashboardPage = lazy(() => import('./pages/TeacherAttendanceDashboardPage'))
-const TeacherAttendanceScanPage = lazy(() => import('./pages/TeacherAttendanceScanPage'))
-const PersonnelPage = lazy(() => import('./pages/PersonnelPage'))
-const UserPresencePage = lazy(() => import('./pages/UserPresencePage'))
+const ExplorerPage = lazyPage(() => import('./pages/ExplorerPage'))
+const EcolesPage = lazyPage(() => import('./pages/EcolesPage'))
+const ElevesPage = lazyPage(() => import('./pages/ElevesPage'))
+const EnseignantsPage = lazyPage(() => import('./pages/EnseignantsPage'))
+const NotesPage = lazyPage(() => import('./pages/NotesPage'))
+const PresencePage = lazyPage(() => import('./pages/PresencePage'))
+const MessagingPage = lazyPage(() => import('./pages/MessagingPage'))
+const SouscriptionsPage = lazyPage(() => import('./pages/SouscriptionsPage'))
+const EnrollmentPage = lazyPage(() => import('./pages/EnrollmentPage'))
+const InscriptionsPage = lazyPage(() => import('./pages/InscriptionsPage'))
+const TarifsPage = lazyPage(() => import('./pages/TarifsPage'))
+const SchoolRegistrationPage = lazyPage(() => import('./pages/SchoolRegistrationPage'))
+const AdminLocationsPage = lazyPage(() => import('./pages/AdminLocationsPage'))
+const AdminSchoolRegistrationsPage = lazyPage(() => import('./pages/AdminSchoolRegistrationsPage'))
+const SchoolDetailPage = lazyPage(() => import('./pages/SchoolDetailPage'))
+const ManageSchoolPage = lazyPage(() => import('./pages/ManageSchoolPage'))
+const AdminPlatformPage = lazyPage(() => import('./pages/AdminPlatformPage'))
+const SocialPage = lazyPage(() => import('./pages/SocialPage'))
+const AboutPage = lazyPage(() => import('./pages/AboutPage'))
+const ContactsPage = lazyPage(() => import('./pages/ContactsPage'))
+const AidePage = lazyPage(() => import('./pages/AidePage'))
+const ResourcesPage = lazyPage(() => import('./pages/ResourcesPage'))
+const ExperiencesPage = lazyPage(() => import('./pages/ExperiencesPage'))
+const SupportPage = lazyPage(() => import('./pages/SupportPage'))
+const DashboardSchoolProfilePage = lazyPage(() => import('./pages/DashboardSchoolProfilePage'))
+const ClassesPage = lazyPage(() => import('./pages/ClassesPage'))
+const MatieresPage = lazyPage(() => import('./pages/MatieresPage'))
+const EmploiDuTempsPage = lazyPage(() => import('./pages/EmploiDuTempsPage'))
+const AdminEcolesPage = lazyPage(() => import('./pages/AdminEcolesPage'))
+const ParentChildDetailPage = lazyPage(() => import('./pages/ParentChildDetailPage'))
+const ParentFinancesPage = lazyPage(() => import('./pages/ParentFinancesPage'))
+const ParentControlsPage = lazyPage(() => import('./pages/ParentControlsPage'))
+const ParentAppointmentsPage = lazyPage(() => import('./pages/ParentAppointmentsPage'))
+const ParentDocumentsPage = lazyPage(() => import('./pages/ParentDocumentsPage'))
+const TeacherHomeworkPage = lazyPage(() => import('./pages/TeacherHomeworkPage'))
+const TeacherAnalyticsPage = lazyPage(() => import('./pages/TeacherAnalyticsPage'))
+const TeacherStudentsPage = lazyPage(() => import('./pages/TeacherStudentsPage'))
+const TeacherActivitiesPage = lazyPage(() => import('./pages/TeacherActivitiesPage'))
+const TeacherResourcesPage = lazyPage(() => import('./pages/TeacherResourcesPage'))
+const TeacherReportsPage = lazyPage(() => import('./pages/TeacherReportsPage'))
+const DirectorReportsPage = lazyPage(() => import('./pages/DirectorReportsPage'))
+const DirectorStatisticsPage = lazyPage(() => import('./pages/DirectorStatisticsPage'))
+const DirectorDetailedReportPage = lazyPage(() => import('./pages/DirectorDetailedReportPage'))
+const ParentsPage = lazyPage(() => import('./pages/ParentsPage'))
+const DirectorFeesPage = lazyPage(() => import('./pages/DirectorFeesPage'))
+const AdminSchoolSubjectsPage = lazyPage(() => import('./pages/AdminSchoolSubjectsPage'))
+const ParentSectionPage = lazyPage(() => import('./pages/ParentSectionPage'))
+const BulletinPage = lazyPage(() => import('./pages/BulletinPage'))
+const ParentActivitiesPage = lazyPage(() => import('./pages/ParentActivitiesPage'))
+const DashboardSocialPage = lazyPage(() => import('./pages/DashboardSocialPage'))
+const AnnoncesPage = lazyPage(() => import('./pages/AnnoncesPage'))
+const PaymentHistoryPage = lazyPage(() => import('./pages/PaymentHistoryPage'))
+const FacturesPage = lazyPage(() => import('./pages/FacturesPage'))
+const SalariesPage = lazyPage(() => import('./pages/SalariesPage'))
+const TeacherSalaryPage = lazyPage(() => import('./pages/TeacherSalaryPage'))
+const DocumentsPage = lazyPage(() => import('./pages/DocumentsPage'))
+const InfosPage = lazyPage(() => import('./pages/InfosPage'))
+const TeacherAttendanceAdminPage = lazyPage(() => import('./pages/TeacherAttendanceAdminPage'))
+const TeacherAttendanceDashboardPage = lazyPage(() => import('./pages/TeacherAttendanceDashboardPage'))
+const TeacherAttendanceScanPage = lazyPage(() => import('./pages/TeacherAttendanceScanPage'))
+const PersonnelPage = lazyPage(() => import('./pages/PersonnelPage'))
+const UserPresencePage = lazyPage(() => import('./pages/UserPresencePage'))
 
 function PageFallback() {
   return (
@@ -105,6 +130,10 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
+  // Précharge en arrière-plan tous les chunks de page une fois l'app montée :
+  // le clic sur une fonctionnalité affiche alors la page sans temps de chargement.
+  useEffect(() => { prefetchAllPages() }, [])
+
   return (
     <Suspense fallback={<PageFallback />}>
     <Routes>

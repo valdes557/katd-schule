@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 import DashboardHeader from './DashboardHeader'
 import PublicNavBar from './PublicNavBar'
 import { useAuth } from '../../context/AuthContext'
@@ -65,7 +65,15 @@ export default function DashboardLayout() {
                 </span>
               </div>
             )}
-            <Outlet />
+            {/* Suspense local : seul le contenu se recharge, l'en-tête et la nav restent fixes
+                (pas d'effet « page entière qui se recharge »). */}
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-24">
+                <Loader2 size={26} className="animate-spin text-blue-600" />
+              </div>
+            }>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>
