@@ -608,4 +608,48 @@ export const notificationsApi = {
   markSeen: (rubric) => api.post('/notifications/seen', { rubric }),
 }
 
+// Assistant IA : configuration, offres, souscriptions, accès, chat, statistiques
+export const aiApi = {
+  // Config globale (admin)
+  getConfig: () => api.get('/ai/config'),
+  updateConfig: (data) => api.put('/ai/config', data),
+  // Offres (admin: CRUD ; directeur: liste active)
+  listPackages: () => api.get('/ai/packages'),
+  createPackage: (data) => api.post('/ai/packages', data),
+  updatePackage: (id, data) => api.put(`/ai/packages/${id}`, data),
+  removePackage: (id) => api.del(`/ai/packages/${id}`),
+  // Souscriptions
+  requestSubscription: async ({ packageId, paymentScreenshot }) => {
+    const fd = new FormData()
+    fd.append('packageId', packageId)
+    if (paymentScreenshot) fd.append('paymentScreenshot', paymentScreenshot)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/ai/subscription/request`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    return data
+  },
+  subscriptionStatus: () => api.get('/ai/subscription/status'),
+  listSubscriptions: (status = '') => api.get(`/ai/subscriptions${status ? `?status=${status}` : ''}`),
+  approveSubscription: (id) => api.post('/ai/subscription/approve', { id }),
+  rejectSubscription: (id, reason) => api.post('/ai/subscription/reject', { id, reason }),
+  suspendSubscription: (id) => api.put(`/ai/subscription/${id}/suspend`),
+  reactivateSubscription: (id) => api.put(`/ai/subscription/${id}/reactivate`),
+  // Gestion des accès (directeur)
+  listAccess: () => api.get('/ai/access'),
+  grantAccess: (userId) => api.post('/ai/access/grant', { userId }),
+  revokeAccess: (userId) => api.post('/ai/access/revoke', { userId }),
+  // Chat
+  chat: (message, conversationId) => api.post('/ai/chat', { message, conversationId }),
+  history: () => api.get('/ai/history'),
+  getConversation: (id) => api.get(`/ai/conversations/${id}`),
+  deleteConversation: (id) => api.del(`/ai/conversations/${id}`),
+  // Statistiques (admin global / directeur école)
+  stats: () => api.get('/ai/stats'),
+}
+
 export default api

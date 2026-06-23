@@ -22,6 +22,10 @@ const userSchema = new mongoose.Schema(
     lastActivity: { type: Date },
     isOnline: { type: Boolean, default: false },
     twoFactorEnabled: { type: Boolean, default: false },
+    // Accès à l'agent IA accordé par le directeur (enseignants/parents). Les
+    // directeurs disposent de l'accès d'office si l'école a une souscription IA.
+    aiAccess: { type: Boolean, default: false },
+    aiAccessGrantedAt: { type: Date },
     // Date de dernière consultation par rubrique (clé → Date) pour les badges de nouveautés
     rubricSeen: { type: Map, of: Date, default: {} },
   },

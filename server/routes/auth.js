@@ -82,7 +82,7 @@ router.post(
       res.json({
         success: true,
         token,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone, matricule: user.matricule },
+        user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone, matricule: user.matricule, aiAccess: user.aiAccess },
         school: user.school,
       })
     } catch (err) {
@@ -96,7 +96,7 @@ router.get('/me', protect, async (req, res) => {
   const u = req.user
   res.json({
     success: true,
-    user: { id: u._id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, phone: u.phone, matricule: u.matricule },
+    user: { id: u._id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, phone: u.phone, matricule: u.matricule, aiAccess: u.aiAccess },
     school: u.school || null,
   })
 })

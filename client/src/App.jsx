@@ -96,6 +96,9 @@ const TeacherAttendanceDashboardPage = lazyPage(() => import('./pages/TeacherAtt
 const TeacherAttendanceScanPage = lazyPage(() => import('./pages/TeacherAttendanceScanPage'))
 const PersonnelPage = lazyPage(() => import('./pages/PersonnelPage'))
 const UserPresencePage = lazyPage(() => import('./pages/UserPresencePage'))
+const AiChatPage = lazyPage(() => import('./pages/AiChatPage'))
+const DirectorAiPage = lazyPage(() => import('./pages/DirectorAiPage'))
+const AdminAiPage = lazyPage(() => import('./pages/AdminAiPage'))
 
 function PageFallback() {
   return (
@@ -180,6 +183,9 @@ export default function App() {
         <Route path="parents" element={<ParentsPage />} />
         <Route path="personnel" element={<PersonnelPage />} />
         <Route path="suivi-connexions" element={<UserPresencePage />} />
+        <Route path="ia-chat" element={<AiChatPage />} />
+        <Route path="ia" element={<DirectorAiPage />} />
+        <Route path="ia-admin" element={<AdminAiPage />} />
         <Route path="devoirs" element={<TeacherHomeworkPage />} />
         <Route path="activites" element={<TeacherActivitiesPage />} />
         <Route path="ressources" element={<TeacherResourcesPage />} />

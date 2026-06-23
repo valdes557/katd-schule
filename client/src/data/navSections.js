@@ -3,6 +3,7 @@ import {
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
   BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet, QrCode,
+  Bot, Sparkles,
 } from 'lucide-react'
 
 // roles: array of allowed roles. undefined = all roles.
@@ -107,6 +108,14 @@ export const navSections = [
     ],
   },
   {
+    label: 'ASSISTANT IA',
+    roles: ['directeur', 'enseignant', 'parent'],
+    items: [
+      { label: 'Chat IA', icon: Bot, path: '/dashboard/ia-chat' },
+      { label: 'Gestion IA', icon: Sparkles, path: '/dashboard/ia', roles: ['directeur'] },
+    ],
+  },
+  {
     label: 'FINANCES & ABONNEMENTS',
     roles: ['directeur', 'super_admin'],
     items: [
@@ -135,6 +144,7 @@ export const navSections = [
       { label: 'Matières par école', icon: ClipboardList, path: '/dashboard/matieres-ecoles' },
       { label: 'Localités (Pays/Villes)', icon: MapPin, path: '/dashboard/localites' },
       { label: 'Gestion Plateforme', icon: LayoutGrid, path: '/dashboard/plateforme' },
+      { label: 'Assistant IA', icon: Bot, path: '/dashboard/ia-admin' },
       { label: 'Suivi des connexions', icon: Activity, path: '/dashboard/suivi-connexions' },
     ],
   },
