@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { BookOpen, Plus, Search, Edit2, Trash2, X, Loader2, AlertCircle, Users, DoorOpen } from 'lucide-react'
 import { classesApi, teachersApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const CYCLES = ['Maternelle', 'Primaire', 'Secondaire']
 const CYCLE_COLORS = { Maternelle: 'bg-orange-100 text-orange-700', Primaire: 'bg-blue-100 text-blue-700', Secondaire: 'bg-green-100 text-green-700' }
@@ -11,6 +12,7 @@ const CYCLE_COLORS = { Maternelle: 'bg-orange-100 text-orange-700', Primaire: 'b
 const EMPTY = { name: '', level: '', cycle: 'Primaire', room: '', capacity: 40, enrollmentFee: 0, mainTeacher: '', academicYear: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1) }
 
 export default function ClassesPage() {
+  const pdfRef = useRef(null)
   const { user, school } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
   const isEnseignant = user?.role === 'enseignant'
@@ -72,7 +74,7 @@ export default function ClassesPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -80,11 +82,14 @@ export default function ClassesPage() {
           </h1>
           <p className="text-sm text-gray-500">{classes.length} classe(s)</p>
         </div>
-        {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
-            <Plus size={15} /> Créer une classe
-          </button>
-        )}
+        <div className="flex gap-2">
+          <DownloadPdfButton containerRef={pdfRef} filename="classes-salles.pdf" label="Classes PDF" iconOnly={!isDirecteur} />
+          {isDirecteur && (
+            <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
+              <Plus size={15} /> Créer une classe
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">

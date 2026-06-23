@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CalendarCheck, Check, X, Clock, AlertCircle, Loader2, Save } from 'lucide-react'
 import { attendanceApi, classesApi, studentsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { cn } from '../lib/utils'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const statusOptions = [
   { key: 'present', label: 'Présent', icon: Check, color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-300' },
@@ -13,6 +14,7 @@ const statusOptions = [
 ]
 
 export default function PresencePage() {
+  const pdfRef = useRef(null)
   const [selectedClass, setSelectedClass] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
   const [records, setRecords] = useState({})
@@ -94,7 +96,7 @@ export default function PresencePage() {
     : []
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -102,6 +104,7 @@ export default function PresencePage() {
           </h1>
           <p className="text-sm text-gray-500">Appel journalier par classe</p>
         </div>
+        <DownloadPdfButton containerRef={pdfRef} filename="presences.pdf" label="Présences PDF" />
       </div>
 
       {/* Filters */}

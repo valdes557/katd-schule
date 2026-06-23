@@ -1,14 +1,60 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight, BookOpen, GraduationCap, CheckCircle2,
   ChevronRight, Star, Loader2, Zap, Shield, BarChart2,
-  Globe, Users, School,
+  Globe, Users, School, ChevronLeft,
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
-import { schoolsApi, platformApi } from '../lib/api'
+import { schoolsApi, platformApi, bannersApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
+
+// Carrousel des bannières promotionnelles gérées par l'administrateur.
+function BannerCarousel() {
+  const q = useCachedFetch('/banners', async () => (await bannersApi.list()).data || [], [])
+  const banners = q.data || []
+  const [idx, setIdx] = useState(0)
+
+  useEffect(() => {
+    if (banners.length <= 1) return
+    const id = setInterval(() => setIdx((i) => (i + 1) % banners.length), 5000)
+    return () => clearInterval(id)
+  }, [banners.length])
+
+  if (!banners.length) return null
+  const go = (i) => setIdx((i + banners.length) % banners.length)
+  const b = banners[idx]
+
+  const Inner = (
+    <div className="relative aspect-[16/5] sm:aspect-[16/4] bg-gray-900">
+      <img src={b.image} alt={b.title || ''} className="w-full h-full object-cover" />
+      {(b.title || b.subtitle) && (
+        <div className="absolute inset-0 flex flex-col justify-center px-6 sm:px-12 bg-gradient-to-r from-black/50 to-transparent text-white">
+          {b.title && <h2 className="text-xl sm:text-3xl font-extrabold drop-shadow">{b.title}</h2>}
+          {b.subtitle && <p className="text-sm sm:text-lg text-white/90 mt-1 max-w-xl">{b.subtitle}</p>}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <section className="relative max-w-7xl mx-auto">
+      {b.link ? <a href={b.link} target="_blank" rel="noreferrer">{Inner}</a> : Inner}
+      {banners.length > 1 && (
+        <>
+          <button onClick={() => go(idx - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5"><ChevronLeft size={18} /></button>
+          <button onClick={() => go(idx + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5"><ChevronRight size={18} /></button>
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {banners.map((_, i) => (
+              <button key={i} onClick={() => go(i)} className={`w-2 h-2 rounded-full ${i === idx ? 'bg-white' : 'bg-white/40'}`} />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
 
 const FEATURES = [
   { icon: GraduationCap, title: 'Gestion complète', desc: 'Élèves, enseignants, classes, notes — tout centralisé', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -71,6 +117,9 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white">
       <PublicHeader />
+
+      {/* Bannières promotionnelles (carrousel) */}
+      <BannerCarousel />
 
       {/* ═══ HERO ═══ */}
       <section className="relative overflow-hidden bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 text-white">

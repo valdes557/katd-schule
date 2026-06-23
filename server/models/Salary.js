@@ -6,10 +6,25 @@ const salarySchema = new mongoose.Schema(
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
     month: { type: String, required: true }, // format "YYYY-MM" (ex: "2026-06")
-    amount: { type: Number, required: true, min: 0 },
+    // Détail du salaire : brut, déductions (avec motif), net effectivement reçu.
+    grossAmount: { type: Number, min: 0, default: 0 }, // salaire brut / normal
+    deductions: { type: Number, min: 0, default: 0 }, // total des retenues
+    deductionReason: { type: String, trim: true }, // motif(s) des retenues (retard, absence, tontine…)
+    netAmount: { type: Number, min: 0, default: 0 }, // net reçu = brut - déductions
+    amount: { type: Number, required: true, min: 0 }, // = net (conservé pour compatibilité)
     status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
     paidAt: { type: Date },
-    method: { type: String, enum: ['cash', 'mobile_money', 'bank', 'online'], default: 'cash' },
+    method: {
+      type: String,
+      enum: ['cash', 'mtn_momo', 'royalkatd', 'futurra', 'orange_money', 'bank_transfer', 'mobile_money', 'bank', 'online'],
+      default: 'cash',
+    },
+    // Coordonnées bancaires / de virement (si mode = virement)
+    bankDetails: {
+      accountNumber: { type: String, trim: true },
+      accountName: { type: String, trim: true },
+      reference: { type: String, trim: true },
+    },
     reference: { type: String, trim: true },
     note: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

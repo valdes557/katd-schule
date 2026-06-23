@@ -47,6 +47,8 @@ async function processFiles(req, res, multerNext) {
       path: results[i].secure_url,
       filename: results[i].public_id,
       size: results[i].bytes,
+      width: results[i].width,
+      height: results[i].height,
     })
 
     if (isFieldsMode) {
@@ -81,4 +83,16 @@ const upload = {
   },
 }
 
-module.exports = { cloudinary, upload }
+// Construit l'URL d'une miniature image (1re frame) à partir de l'URL Cloudinary d'une vidéo.
+// Ex: .../video/upload/v123/dossier/clip.mp4 → .../video/upload/so_0/v123/dossier/clip.jpg
+// Fonctionne aussi en rétroactif sur les vidéos déjà publiées (transformation à la volée).
+function videoThumbnailUrl(videoUrl) {
+  if (!videoUrl || typeof videoUrl !== 'string') return ''
+  if (!videoUrl.includes('/upload/')) return ''
+  // Insère la transformation so_0 (start offset 0s) juste après /upload/
+  const withTransform = videoUrl.replace('/upload/', '/upload/so_0/')
+  // Remplace l'extension vidéo par .jpg
+  return withTransform.replace(/\.(mp4|mov|webm|avi|mkv|m4v|ogv)(\?.*)?$/i, '.jpg$2')
+}
+
+module.exports = { cloudinary, upload, videoThumbnailUrl }

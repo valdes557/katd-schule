@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { teacherAttendanceApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -7,6 +7,7 @@ import {
   Loader2, BarChart3, Download, Clock, LogOut, CalendarDays,
   CheckCircle2, TrendingUp, QrCode, History,
 } from 'lucide-react'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 function currentMonth() {
   const d = new Date()
@@ -61,6 +62,7 @@ function Kpi({ icon: Icon, label, value, sub, tone = 'indigo' }) {
 }
 
 export default function TeacherAttendanceDashboardPage() {
+  const pdfRef = useRef(null)
   const { school } = useAuth()
   const [month, setMonth] = useState(currentMonth())
   const [teacherFilter, setTeacherFilter] = useState('')
@@ -124,7 +126,7 @@ export default function TeacherAttendanceDashboardPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><BarChart3 size={22} className="text-indigo-600" /> Tableau de bord du pointage</h1>
@@ -132,6 +134,7 @@ export default function TeacherAttendanceDashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="input text-sm" />
+          <DownloadPdfButton containerRef={pdfRef} filename="rapports-pointage.pdf" label="Pointage PDF" />
           <Link to="/dashboard/pointage" className="btn-ghost border border-gray-200 text-sm justify-center"><QrCode size={15} /> QR & jour</Link>
         </div>
       </div>

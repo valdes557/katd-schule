@@ -2,11 +2,25 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Globe2, Play, Eye, ThumbsUp, MessageCircle, Share2, Send, ChevronDown,
-  Download, Music, Lock, Check, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
+  Download, Music, Lock, Check, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Trash2,
 } from 'lucide-react'
 import { platformApi } from '../../lib/api'
 
 const CATEGORIES = ['Tout', 'Éducation', 'Sport', 'Culture', 'Sciences', 'Technologie']
+
+// Déduit l'URL d'une miniature (1re frame) à partir de l'URL Cloudinary d'une vidéo.
+// Couvre rétroactivement les vidéos publiées avant la génération serveur de la miniature.
+function videoThumb(url) {
+  if (!url || typeof url !== 'string' || !url.includes('/upload/')) return ''
+  return url.replace('/upload/', '/upload/so_0/').replace(/\.(mp4|mov|webm|avi|mkv|m4v|ogv)(\?.*)?$/i, '.jpg$2')
+}
+
+// Ratio largeur/hauteur d'affichage du média (respecte l'orientation initiale, borné pour la mise en page).
+function mediaAspect(post) {
+  const ar = post?.aspectRatio || (post?.mediaWidth && post?.mediaHeight ? post.mediaWidth / post.mediaHeight : null)
+  if (!ar || !isFinite(ar) || ar <= 0) return null
+  return Math.max(0.5, Math.min(ar, 2.2)) // borne portrait extrême ↔ paysage large
+}
 
 function timeAgo(date) {
   const diff = Date.now() - new Date(date).getTime()
@@ -97,6 +111,15 @@ export default function SocialTab({ feed, setFeed, user }) {
     } catch (e) {}
   }
 
+  const handleDelete = async (postId) => {
+    if (!window.confirm('Supprimer définitivement cette publication ?')) return
+    try {
+      await platformApi.deletePost(postId)
+      setFeed((prev) => prev.filter((p) => p._id !== postId))
+      if (viewer?.post?._id === postId) setViewer(null)
+    } catch (e) { alert(e.message || 'Suppression impossible') }
+  }
+
   const handleShare = async (postId) => {
     const url = `${window.location.origin}/social#${postId}`
     try {
@@ -161,7 +184,7 @@ export default function SocialTab({ feed, setFeed, user }) {
             {feed.map((post, index) => (
               <PostCard
                 key={post._id} post={post} user={user}
-                onLike={handleLike} onComment={handleComment} onShare={handleShare}
+                onLike={handleLike} onComment={handleComment} onShare={handleShare} onDelete={handleDelete}
                 commentText={commentText} setCommentText={setCommentText}
                 expandedComments={expandedComments} setExpandedComments={setExpandedComments}
                 onDownload={(id) => setFeed((prev) => prev.map((p) => p._id === id ? { ...p, downloads: (p.downloads || 0) + 1 } : p))}
@@ -180,7 +203,7 @@ export default function SocialTab({ feed, setFeed, user }) {
 
       {viewer && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black flex items-center justify-center p-4"
           onClick={() => setViewer(null)}
         >
           <div
@@ -293,9 +316,19 @@ export default function SocialTab({ feed, setFeed, user }) {
   )
 }
 
-function PostCard({ post, user, onLike, onComment, onShare, onDownload, onView, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
+function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload, onView, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
   const navigate = useNavigate()
   const [shareCopied, setShareCopied] = useState(false)
+
+  // L'utilisateur peut supprimer sa propre publication (ou super_admin pour tout).
+  const myId = user?.id || user?._id
+  const authorId = post.author?._id || post.author
+  const canDelete = !!user && (post.isPlatform ? user.role === 'super_admin' : (authorId && myId && authorId.toString() === myId.toString()) || user.role === 'super_admin')
+
+  // Ratio d'affichage respectant l'orientation initiale (portrait reste portrait).
+  const ar = mediaAspect(post)
+  const mediaStyle = ar ? { aspectRatio: String(ar) } : undefined
+  const videoThumbSrc = post.thumbnail || videoThumb(post.videoUrl) || post.images?.[0]
 
   const handleDownload = async () => {
     if (!user) { navigate('/login'); return }
@@ -349,15 +382,16 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, onView, 
       ) : post.type === 'video' ? (
         <button
           type="button"
-          className="relative aspect-video bg-black w-full"
+          className="relative bg-black w-full"
+          style={mediaStyle || { aspectRatio: '16 / 9' }}
           onClick={() => {
             if (!post.videoUrl && !post.thumbnail && !(post.images && post.images[0])) return
             const src = post.videoUrl || post.thumbnail || (post.images && post.images[0])
             if (onOpenMedia) onOpenMedia({ type: 'video', src, post })
           }}
         >
-          {post.thumbnail || post.images?.[0] ? (
-            <img src={post.thumbnail || post.images[0]} alt="" className="w-full h-full object-contain" />
+          {videoThumbSrc ? (
+            <img src={videoThumbSrc} alt="" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gray-900">
               <Play size={40} className="text-gray-600" />
@@ -378,13 +412,14 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, onView, 
       ) : post.images?.length > 0 ? (
         <button
           type="button"
-          className="relative aspect-video bg-gray-900 w-full"
+          className="relative bg-gray-900 w-full"
+          style={mediaStyle || { aspectRatio: '16 / 9' }}
           onClick={() => {
             if (!post.images?.[0]) return
             if (onOpenMedia) onOpenMedia({ type: 'image', src: post.images[0], post })
           }}
         >
-          <img src={post.images[0]} alt="" className="w-full h-full object-contain" />
+          <img src={post.images[0]} alt="" className="w-full h-full object-cover" />
           {post.images.length > 1 && (
             <span className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">+{post.images.length - 1}</span>
           )}
@@ -416,6 +451,16 @@ function PostCard({ post, user, onLike, onComment, onShare, onDownload, onView, 
               <span>·</span><span>{timeAgo(post.createdAt)}</span>
             </div>
           </div>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete?.(post._id)}
+              title="Supprimer ma publication"
+              className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 flex-shrink-0"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
 
         {/* Stats row */}

@@ -22,11 +22,14 @@ router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res)
     const total = salaries.reduce((s, x) => s + (x.amount || 0), 0)
     const totalPaid = salaries.filter((s) => s.status === 'paid').reduce((s, x) => s + (x.amount || 0), 0)
     const totalPending = total - totalPaid
+    const totalGross = salaries.reduce((s, x) => s + (x.grossAmount || x.amount || 0), 0)
+    const totalDeductions = salaries.reduce((s, x) => s + (x.deductions || 0), 0)
+    const totalNet = salaries.reduce((s, x) => s + (x.netAmount || x.amount || 0), 0)
 
     res.json({
       success: true,
       data: salaries,
-      summary: { total, totalPaid, totalPending, count: salaries.length },
+      summary: { total, totalPaid, totalPending, count: salaries.length, totalGross, totalDeductions, totalNet },
     })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
@@ -34,36 +37,45 @@ router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res)
 // POST /api/salaries — Créer/enregistrer un salaire pour un enseignant et un mois
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
-    const { teacherId, month, amount, status, method, reference, note, paidAt } = req.body
-    if (!teacherId || !month || amount === undefined || amount === null) {
-      return res.status(400).json({ message: 'Enseignant, mois et montant requis' })
+    const { teacherId, month, grossAmount, deductions, deductionReason, status, method, reference, bankDetails, note, paidAt } = req.body
+    // Le montant brut (ou, à défaut, amount pour compatibilité) est requis
+    const gross = Number(grossAmount ?? req.body.amount)
+    if (!teacherId || !month || !isFinite(gross)) {
+      return res.status(400).json({ message: 'Enseignant, mois et montant brut requis' })
     }
     // Vérifier que l'enseignant appartient à l'école
     const teacher = await Teacher.findOne({ _id: teacherId, school: schoolId(req) })
     if (!teacher) return res.status(404).json({ message: 'Enseignant non trouvé' })
 
+    const ded = Math.max(0, Number(deductions) || 0)
+    const net = Math.max(0, gross - ded)
     const isPaid = status === 'paid'
     const salary = await Salary.create({
       school: schoolId(req),
       teacher: teacherId,
       month,
-      amount: Number(amount),
+      grossAmount: gross,
+      deductions: ded,
+      deductionReason: deductionReason || '',
+      netAmount: net,
+      amount: net, // compat : amount = net reçu
       status: isPaid ? 'paid' : 'pending',
       paidAt: isPaid ? (paidAt || new Date()) : undefined,
       method: method || 'cash',
+      bankDetails: bankDetails || undefined,
       reference,
       note,
       createdBy: req.user._id,
     })
     await salary.populate('teacher', 'firstName lastName photo speciality')
 
-    // Si payé : enregistrer automatiquement une dépense correspondante (catégorie salaires)
+    // Si payé : enregistrer automatiquement une dépense correspondante (catégorie salaires) au net
     if (isPaid) {
       Expense.create({
         school: schoolId(req),
         label: `Salaire ${teacher.lastName} ${teacher.firstName} — ${month}`,
         category: 'salaires',
-        amount: Number(amount),
+        amount: net,
         date: salary.paidAt,
         method: salary.method,
         reference,
@@ -85,8 +97,14 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
     const salary = await Salary.findOne({ _id: req.params.id, school: schoolId(req) })
     if (!salary) return res.status(404).json({ message: 'Salaire non trouvé' })
 
-    const fields = ['amount', 'month', 'method', 'reference', 'note']
-    fields.forEach((f) => { if (req.body[f] !== undefined) salary[f] = f === 'amount' ? Number(req.body[f]) : req.body[f] })
+    const fields = ['month', 'method', 'reference', 'note', 'deductionReason', 'bankDetails']
+    fields.forEach((f) => { if (req.body[f] !== undefined) salary[f] = req.body[f] })
+
+    // Recalcule brut / déductions / net si fournis
+    if (req.body.grossAmount !== undefined) salary.grossAmount = Math.max(0, Number(req.body.grossAmount) || 0)
+    if (req.body.deductions !== undefined) salary.deductions = Math.max(0, Number(req.body.deductions) || 0)
+    salary.netAmount = Math.max(0, (salary.grossAmount || 0) - (salary.deductions || 0))
+    salary.amount = salary.netAmount
 
     if (req.body.status !== undefined) {
       salary.status = req.body.status === 'paid' ? 'paid' : 'pending'

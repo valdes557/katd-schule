@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { FileText, Plus, Search, TrendingUp, Loader2, AlertCircle, X } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { gradesApi, classesApi, studentsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const TERMS = ['Trimestre 1', 'Trimestre 2', 'Trimestre 3']
 const SEQUENCES = ['Séquence 1', 'Séquence 2', 'Séquence 3', 'Séquence 4', 'Séquence 5', 'Séquence 6']
 
 export default function NotesPage() {
+  const pdfRef = useRef(null)
   const [tab, setTab] = useState('notes')
   const [selectedClass, setSelectedClass] = useState('')
   const [selectedTerm, setSelectedTerm] = useState('Trimestre 1')
@@ -69,7 +71,7 @@ export default function NotesPage() {
   })) || []
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -77,9 +79,12 @@ export default function NotesPage() {
           </h1>
           <p className="text-sm text-gray-500">{grades.length} note(s) enregistrée(s)</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary text-sm self-start">
-          <Plus size={15} /> Ajouter une note
-        </button>
+        <div className="flex gap-2">
+          <DownloadPdfButton containerRef={pdfRef} filename="notes.pdf" label="Notes PDF" />
+          <button onClick={() => setShowModal(true)} className="btn-primary text-sm self-start">
+            <Plus size={15} /> Ajouter une note
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}

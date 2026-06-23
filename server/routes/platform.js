@@ -7,7 +7,7 @@ const PlatformPaymentMethod = require('../models/PlatformPaymentMethod')
 const SubscriptionPlan = require('../models/SubscriptionPlan')
 const Resource = require('../models/Resource')
 const { protect, authorize } = require('../middleware/auth')
-const { upload } = require('../config/cloudinary')
+const { upload, videoThumbnailUrl } = require('../config/cloudinary')
 const http = require('http')
 const https = require('https')
 
@@ -64,9 +64,11 @@ router.get('/feed', async (req, res) => {
 // POST /api/platform/posts — Super Admin, directors and teachers: create social post
 router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'audio', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
-    const images = (req.files?.images || []).map((f) => f.path)
+    const imageFiles = req.files?.images || []
+    const images = imageFiles.map((f) => f.path)
+    const videoFileObj = req.files?.video?.[0]
     const audioFile = req.files?.audio?.[0]?.path || ''
-    const videoFile = req.files?.video?.[0]?.path || ''
+    const videoFile = videoFileObj?.path || ''
     const mediaType = req.body.mediaType || 'text'
 
     let type = 'text'
@@ -75,6 +77,17 @@ router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant
     if (mediaType === 'audio' || audioFile) type = 'audio'
     else if (mediaType === 'video' || videoUrl) type = 'video'
     else if (images.length > 0 || mediaType === 'photo') type = 'photo'
+
+    // Miniature : pour une vidéo, 1re frame Cloudinary ; sinon 1re image
+    let thumbnail = req.body.thumbnail || ''
+    if (type === 'video') thumbnail = videoThumbnailUrl(videoUrl) || thumbnail
+    else if (images.length > 0) thumbnail = images[0]
+
+    // Dimensions réelles du média principal (orientation portrait/paysage)
+    const mainMedia = type === 'video' ? videoFileObj : imageFiles[0]
+    const mediaWidth = mainMedia?.width
+    const mediaHeight = mainMedia?.height
+    const aspectRatio = mediaWidth && mediaHeight ? mediaWidth / mediaHeight : undefined
 
     const isPlatform = req.user.role === 'super_admin'
     const schoolId = !isPlatform && (req.user.school?._id || req.user.school) ? (req.user.school._id || req.user.school) : null
@@ -86,8 +99,11 @@ router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant
       title: req.body.title || '',
       category: req.body.category || '',
       images,
-      thumbnail: images[0] || req.body.thumbnail || '',
+      thumbnail,
       type,
+      mediaWidth,
+      mediaHeight,
+      aspectRatio,
       videoUrl: videoUrl || undefined,
       audioUrl: audioUrl || undefined,
       duration: req.body.duration || '',
@@ -113,10 +129,17 @@ router.put('/posts/:id', protect, authorize('super_admin'), async (req, res) => 
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// DELETE /api/platform/posts/:id — Super Admin
-router.delete('/posts/:id', protect, authorize('super_admin'), async (req, res) => {
+// DELETE /api/platform/posts/:id — Super Admin OU l'auteur de la publication
+router.delete('/posts/:id', protect, async (req, res) => {
   try {
-    await SchoolPost.findByIdAndDelete(req.params.id)
+    const post = await SchoolPost.findById(req.params.id)
+    if (!post) return res.status(404).json({ message: 'Post non trouvé' })
+    const isAuthor = post.author?.toString() === req.user._id.toString()
+    const isAdmin = req.user.role === 'super_admin'
+    if (!isAuthor && !isAdmin) {
+      return res.status(403).json({ message: 'Vous ne pouvez supprimer que vos propres publications.' })
+    }
+    await post.deleteOne()
     res.json({ success: true, message: 'Post supprimé' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

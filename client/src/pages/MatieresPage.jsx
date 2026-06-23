@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { ClipboardList, Plus, Search, Edit2, Trash2, X, Loader2, AlertCircle } from 'lucide-react'
 import { subjectsApi, classesApi, teachersApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const CYCLES = ['Maternelle', 'Primaire', 'Secondaire']
 const CYCLE_COLORS = { Maternelle: 'bg-orange-100 text-orange-700', Primaire: 'bg-blue-100 text-blue-700', Secondaire: 'bg-green-100 text-green-700' }
@@ -11,6 +12,7 @@ const CYCLE_COLORS = { Maternelle: 'bg-orange-100 text-orange-700', Primaire: 'b
 const EMPTY = { name: '', code: '', cycle: 'Primaire', level: '', coefficient: 1, hoursPerWeek: 2, teacher: '', classes: [], description: '', program: '' }
 
 export default function MatieresPage() {
+  const pdfRef = useRef(null)
   const { user, school } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
@@ -80,7 +82,7 @@ export default function MatieresPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -88,11 +90,14 @@ export default function MatieresPage() {
           </h1>
           <p className="text-sm text-gray-500">{subjects.length} matière(s)</p>
         </div>
-        {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
-            <Plus size={15} /> Ajouter une matière
-          </button>
-        )}
+        <div className="flex gap-2">
+          <DownloadPdfButton containerRef={pdfRef} filename="matieres.pdf" label="Matières PDF" iconOnly={!isDirecteur} />
+          {isDirecteur && (
+            <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
+              <Plus size={15} /> Ajouter une matière
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { expensesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { Receipt, Loader2, Plus, Trash2, Pencil, X, Wallet, TrendingDown } from 'lucide-react'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} F CFA`
 
@@ -28,6 +29,7 @@ const METHODS = [
 const emptyForm = () => ({ label: '', category: 'fournitures', amount: '', date: new Date().toISOString().slice(0, 10), supplier: '', method: 'cash', reference: '', note: '' })
 
 export default function FacturesPage() {
+  const pdfRef = useRef(null)
   const [monthFilter, setMonthFilter] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -72,13 +74,16 @@ export default function FacturesPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Receipt size={20} className="text-blue-600" /> Factures & Dépenses</h1>
           <p className="text-sm text-gray-500">Enregistrez et suivez toutes les dépenses de l'école</p>
         </div>
-        <button onClick={openCreate} className="btn-primary text-sm self-start"><Plus size={15} /> Nouvelle dépense</button>
+        <div className="flex gap-2">
+          <DownloadPdfButton containerRef={pdfRef} filename="factures.pdf" label="Factures PDF" />
+          <button onClick={openCreate} className="btn-primary text-sm self-start"><Plus size={15} /> Nouvelle dépense</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">

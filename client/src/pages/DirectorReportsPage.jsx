@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { dashboardApi, classesApi, teachersApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { FileText, Filter, Loader2, CheckCircle2, Clock, Eye, X } from 'lucide-react'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 export default function DirectorReportsPage() {
+  const pdfRef = useRef(null)
   const [filters, setFilters] = useState({ classId: '', teacherId: '', status: '' })
   const [processing, setProcessing] = useState(null)
   const [viewReport, setViewReport] = useState(null)
@@ -50,7 +52,7 @@ export default function DirectorReportsPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -58,6 +60,7 @@ export default function DirectorReportsPage() {
           </h1>
           <p className="text-sm text-gray-500">Vue consolidée des rapports quotidiens envoyés</p>
         </div>
+        <DownloadPdfButton containerRef={pdfRef} filename="rapports-enseignants.pdf" label="Rapports PDF" />
       </div>
 
       {/* Filters */}

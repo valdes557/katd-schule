@@ -6,7 +6,7 @@ const SchoolPost = require('../models/SchoolPost')
 const SchoolReview = require('../models/SchoolReview')
 const PaymentModality = require('../models/PaymentModality')
 const { protect, authorize } = require('../middleware/auth')
-const { upload } = require('../config/cloudinary')
+const { upload, videoThumbnailUrl } = require('../config/cloudinary')
 
 // ===================== SCHOOL PAGE (about, terms, privacy, help, donations, contacts) =====================
 
@@ -98,8 +98,23 @@ router.get('/:schoolId/posts', async (req, res) => {
 // POST /api/school-pages/:schoolId/posts — Director
 router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
-    const images = req.files?.images?.map((f) => f.path) || []
-    const videoUrl = req.files?.video?.[0]?.path || req.body.videoUrl || ''
+    const imageFiles = req.files?.images || []
+    const images = imageFiles.map((f) => f.path)
+    const videoFileObj = req.files?.video?.[0]
+    const videoUrl = videoFileObj?.path || req.body.videoUrl || ''
+    const type = videoUrl ? 'video' : images.length > 0 ? 'photo' : 'text'
+
+    // Miniature : 1re frame Cloudinary pour une vidéo, sinon 1re image
+    let thumbnail = req.body.thumbnail || ''
+    if (type === 'video') thumbnail = videoThumbnailUrl(videoUrl) || thumbnail
+    else if (images.length > 0) thumbnail = images[0]
+
+    // Dimensions réelles du média principal (orientation)
+    const mainMedia = type === 'video' ? videoFileObj : imageFiles[0]
+    const mediaWidth = mainMedia?.width
+    const mediaHeight = mainMedia?.height
+    const aspectRatio = mediaWidth && mediaHeight ? mediaWidth / mediaHeight : undefined
+
     const post = await SchoolPost.create({
       school: req.params.schoolId,
       author: req.user._id,
@@ -107,8 +122,11 @@ router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), 
       title: req.body.title || '',
       category: req.body.category || '',
       images,
-      thumbnail: images[0] || req.body.thumbnail || '',
-      type: videoUrl ? 'video' : images.length > 0 ? 'photo' : 'text',
+      thumbnail,
+      type,
+      mediaWidth,
+      mediaHeight,
+      aspectRatio,
       videoUrl: videoUrl || undefined,
       duration: req.body.duration || '',
     })
@@ -145,10 +163,17 @@ router.post('/posts/:id/comment', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// DELETE /api/school-pages/posts/:id — Director
-router.delete('/posts/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+// DELETE /api/school-pages/posts/:id — Directeur/Admin OU l'auteur de la publication
+router.delete('/posts/:id', protect, async (req, res) => {
   try {
-    await SchoolPost.findByIdAndDelete(req.params.id)
+    const post = await SchoolPost.findById(req.params.id)
+    if (!post) return res.status(404).json({ message: 'Post non trouvé' })
+    const isAuthor = post.author?.toString() === req.user._id.toString()
+    const isAdmin = ['directeur', 'super_admin'].includes(req.user.role)
+    if (!isAuthor && !isAdmin) {
+      return res.status(403).json({ message: 'Vous ne pouvez supprimer que vos propres publications.' })
+    }
+    await post.deleteOne()
     res.json({ success: true, message: 'Post supprimé' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

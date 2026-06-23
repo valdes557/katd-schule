@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { feesApi, parentApi, classesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { History, Loader2, ChevronDown, ChevronRight, Wallet, CheckCircle2, AlertCircle, Download } from 'lucide-react'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} F CFA`
 const METHOD_LABELS = { cash: 'Espèces', mobile_money: 'Mobile Money', bank: 'Virement', online: 'En ligne' }
@@ -19,6 +20,7 @@ function StatCard({ label, value, icon: Icon, color }) {
 
 /* ─── Vue Directeur : paiements de chaque élève / parent ─── */
 function DirectorView() {
+  const pdfRef = useRef(null)
   const [classId, setClassId] = useState('')
   const [expanded, setExpanded] = useState({})
 
@@ -37,10 +39,17 @@ function DirectorView() {
   const toggle = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }))
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div>
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><History size={20} className="text-blue-600" /> Historique des paiements</h1>
         <p className="text-sm text-gray-500">Ce que chaque parent a déjà payé et ce qu'il reste à payer</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <select value={classId} onChange={(e) => setClassId(e.target.value)} className="input text-sm w-auto min-w-[200px]">
+          <option value="">— Toutes les classes —</option>
+          {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+        </select>
+        <DownloadPdfButton containerRef={pdfRef} filename="historique-paiements.pdf" label="Paiements PDF" />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

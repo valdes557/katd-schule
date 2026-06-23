@@ -66,6 +66,7 @@ app.use('/api/teacher-attendance', require('./routes/teacherAttendance'))
 app.use('/api/notifications', require('./routes/notifications'))
 app.use('/api/presence', require('./routes/presence'))
 app.use('/api/ai', require('./routes/ai'))
+app.use('/api/banners', require('./routes/banners'))
 
 app.get('/api/health', (req, res) => {
   res.json({

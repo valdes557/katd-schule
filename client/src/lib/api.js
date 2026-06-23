@@ -608,6 +608,41 @@ export const notificationsApi = {
   markSeen: (rubric) => api.post('/notifications/seen', { rubric }),
 }
 
+// Bannières de la page d'accueil (super_admin)
+export const bannersApi = {
+  list: () => api.get('/banners'),
+  listAll: () => api.get('/banners/all'),
+  create: async (data) => {
+    const fd = new FormData()
+    if (data.image) fd.append('image', data.image)
+    fd.append('title', data.title || '')
+    fd.append('subtitle', data.subtitle || '')
+    fd.append('link', data.link || '')
+    fd.append('isActive', data.isActive !== false)
+    fd.append('sortOrder', data.sortOrder || 0)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/banners`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+  update: async (id, data) => {
+    const fd = new FormData()
+    if (data.image) fd.append('image', data.image)
+    if (data.title !== undefined) fd.append('title', data.title)
+    if (data.subtitle !== undefined) fd.append('subtitle', data.subtitle)
+    if (data.link !== undefined) fd.append('link', data.link)
+    if (data.isActive !== undefined) fd.append('isActive', data.isActive)
+    if (data.sortOrder !== undefined) fd.append('sortOrder', data.sortOrder)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/banners/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+  remove: (id) => api.del(`/banners/${id}`),
+}
+
 // Assistant IA : configuration, offres, souscriptions, accès, chat, statistiques
 export const aiApi = {
   // Config globale (admin)

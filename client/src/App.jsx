@@ -99,6 +99,7 @@ const UserPresencePage = lazyPage(() => import('./pages/UserPresencePage'))
 const AiChatPage = lazyPage(() => import('./pages/AiChatPage'))
 const DirectorAiPage = lazyPage(() => import('./pages/DirectorAiPage'))
 const AdminAiPage = lazyPage(() => import('./pages/AdminAiPage'))
+const AdminBannersPage = lazyPage(() => import('./pages/AdminBannersPage'))
 
 function PageFallback() {
   return (
@@ -186,6 +187,7 @@ export default function App() {
         <Route path="ia-chat" element={<AiChatPage />} />
         <Route path="ia" element={<DirectorAiPage />} />
         <Route path="ia-admin" element={<AdminAiPage />} />
+        <Route path="bannieres" element={<AdminBannersPage />} />
         <Route path="devoirs" element={<TeacherHomeworkPage />} />
         <Route path="activites" element={<TeacherActivitiesPage />} />
         <Route path="ressources" element={<TeacherResourcesPage />} />

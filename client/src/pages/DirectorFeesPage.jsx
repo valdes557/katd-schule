@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import {
   CreditCard, Plus, Trash2, Loader2, CheckCircle2, Bell,
   AlertCircle, X, ChevronDown, ChevronUp, Users, Search,
@@ -6,6 +6,7 @@ import {
 import { feesApi, classesApi, studentsApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const FMT = (n) => Number(n || 0).toLocaleString('fr-FR')
 const STATUS_COLORS = { pending: 'bg-gray-100 text-gray-600', partial: 'bg-amber-100 text-amber-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700' }
@@ -16,6 +17,7 @@ const EMPTY_FEE = { label: 'Frais de scolarité', type: 'scolarite', amount: '',
 const EMPTY_INST = { label: '1ère tranche', amount: '', dueDate: '' }
 
 export default function DirectorFeesPage() {
+  const pdfRef = useRef(null)
   const { user, school } = useAuth()
   // Charge les classes via le même cache que la page « Classes » (clé identique
   // tenant compte du cycle souscrit) pour garantir la parité d'affichage.
@@ -148,13 +150,16 @@ export default function DirectorFeesPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><CreditCard size={22} className="text-blue-600" /> Gestion des Frais & Pensions</h1>
           <p className="text-sm text-gray-500">Suivi des paiements et gestion des tranches par classe</p>
         </div>
-        <button onClick={() => setBulkModal(true)} className="btn-primary text-sm self-start"><Users size={15} /> Assigner les frais en masse</button>
+        <div className="flex gap-2">
+          <DownloadPdfButton containerRef={pdfRef} filename="pensions-frais.pdf" label="Frais PDF" />
+          <button onClick={() => setBulkModal(true)} className="btn-primary text-sm self-start"><Users size={15} /> Assigner les frais en masse</button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
