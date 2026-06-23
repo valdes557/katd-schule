@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Clock, Plus, Trash2, X, Loader2, AlertCircle } from 'lucide-react'
 import { timetablesApi, classesApi, subjectsApi, teachersApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
 const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00']
@@ -13,6 +14,7 @@ const DAY_COLORS = { Lundi: 'bg-blue-50', Mardi: 'bg-green-50', Mercredi: 'bg-ye
 const EMPTY_SLOT = { day: 'Lundi', startTime: '08:00', endTime: '09:00', subject: '', teacher: '', room: '', color: '#3B82F6' }
 
 export default function EmploiDuTempsPage() {
+  const pdfRef = useRef(null)
   const { user } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
 
@@ -71,7 +73,7 @@ export default function EmploiDuTempsPage() {
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" ref={pdfRef}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -83,6 +85,7 @@ export default function EmploiDuTempsPage() {
           <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="input text-sm w-auto">
             {classes.map((c) => <option key={c._id} value={c._id}>{c.name} ({c.cycle})</option>)}
           </select>
+          <DownloadPdfButton containerRef={pdfRef} filename="emploi-du-temps.pdf" label="Emploi du temps PDF" iconOnly />
           {isDirecteur && timetable && (
             <button onClick={() => { setSlotForm(EMPTY_SLOT); setShowModal(true) }} className="btn-primary text-sm">
               <Plus size={15} /> Ajouter
