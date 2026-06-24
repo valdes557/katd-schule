@@ -70,6 +70,11 @@ router.post(
       if (user.isActive === false) {
         return res.status(403).json({ message: 'Votre compte a été désactivé. Contactez l\'administrateur.' })
       }
+      // Souscription de l'établissement désactivée → blocage dès la connexion
+      // (directeur, enseignants, parents, élèves ; super_admin non concerné).
+      if (user.role !== 'super_admin' && user.school?.subscription?.status === 'suspended') {
+        return res.status(403).json({ message: 'La souscription de votre établissement est désactivée. Contactez l\'administrateur.' })
+      }
 
       const now = new Date()
       user.lastLogin = now

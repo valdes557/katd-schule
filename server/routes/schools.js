@@ -2,8 +2,10 @@ const express = require('express')
 const router = express.Router()
 const School = require('../models/School')
 const User = require('../models/User')
+const SchoolRegistration = require('../models/SchoolRegistration')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
+const { sendSubscriptionSuspendedEmail, sendSubscriptionReactivatedEmail } = require('../utils/emailService')
 
 // @route  GET /api/schools  (public)
 router.get('/', async (req, res) => {
@@ -103,14 +105,58 @@ router.get('/:id/stats', protect, async (req, res) => {
   }
 })
 
+// @route  PUT /api/schools/:id/subscription-status  (super_admin) — activer/désactiver la souscription
+// Désactivée → le directeur, les enseignants et les parents de l'école perdent l'accès au dashboard.
+router.put('/:id/subscription-status', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const active = req.body.active === true || req.body.active === 'true'
+    const school = await School.findById(req.params.id).populate('director', 'name email')
+    if (!school) return res.status(404).json({ message: 'École non trouvée' })
+
+    school.subscription = school.subscription || {}
+    school.subscription.status = active ? 'active' : 'suspended'
+    await school.save()
+
+    // Notification email au directeur (best-effort)
+    const director = school.director
+    if (director?.email) {
+      try {
+        if (active) {
+          await sendSubscriptionReactivatedEmail({ to: director.email, directorName: director.name, schoolName: school.name })
+        } else {
+          await sendSubscriptionSuspendedEmail({ to: director.email, directorName: director.name, schoolName: school.name })
+        }
+      } catch (_) {}
+    }
+
+    res.json({
+      success: true,
+      message: active ? 'Souscription réactivée. Le directeur a été notifié par email.' : 'Souscription désactivée. Le directeur a été notifié par email.',
+      data: school,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // @route  DELETE /api/schools/:id  (super_admin)
+// Supprime l'école ET le compte directeur, et libère son email (suppression des
+// demandes de souscription liées) pour qu'il puisse être réutilisé.
 router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
   try {
     const school = await School.findByIdAndDelete(req.params.id)
     if (!school) return res.status(404).json({ message: 'École non trouvée' })
-    // Unlink the director
-    if (school.director) await User.findByIdAndUpdate(school.director, { $unset: { school: 1 } })
-    res.json({ success: true, message: 'École supprimée' })
+
+    // Supprimer définitivement le compte directeur (libère l'email)
+    let directorEmail = school.email
+    if (school.director) {
+      const director = await User.findByIdAndDelete(school.director)
+      if (director?.email) directorEmail = director.email
+    }
+    // Purger toutes les demandes de souscription portant cet email → email réutilisable
+    if (directorEmail) await SchoolRegistration.deleteMany({ email: directorEmail })
+
+    res.json({ success: true, message: 'École et compte directeur supprimés. L\'email est de nouveau disponible pour une nouvelle souscription.' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

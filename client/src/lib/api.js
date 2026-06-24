@@ -222,6 +222,7 @@ export const schoolsApi = {
     return res.json()
   },
   remove: (id) => api.del(`/schools/${id}`),
+  setSubscriptionStatus: (id, active) => api.put(`/schools/${id}/subscription-status`, { active }),
 }
 
 export const locationsApi = {

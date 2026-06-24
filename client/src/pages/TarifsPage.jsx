@@ -8,14 +8,9 @@ import { useCachedFetch } from '../hooks/useCachedFetch'
 
 const FALLBACK_PLANS = [
   {
-    cycle: 'Maternelle', icon: '🌸', color: 'from-orange-500 to-amber-400', accent: 'orange',
-    quarterlyPrice: 10000, annualPrice: 30000,
-    features: ['Gestion des élèves', 'Suivi de présence', 'Messagerie parents', 'Vitrine multimédia', 'Support email'],
-  },
-  {
     cycle: 'Primaire', icon: '📚', color: 'from-blue-600 to-blue-400', accent: 'blue',
     quarterlyPrice: 15000, annualPrice: 40000,
-    features: ['Tout Maternelle +', 'Notes & Bulletins', 'Emploi du temps', 'Export PDF/Excel', 'Support prioritaire'],
+    features: ['Maternelle & Primaire inclus', 'Gestion des élèves & présence', 'Notes & Bulletins', 'Emploi du temps', 'Export PDF/Excel', 'Support prioritaire'],
     popular: true,
   },
   {
@@ -42,7 +37,7 @@ export default function TarifsPage() {
 
   const plansQ = useCachedFetch('/plans', async () => {
     const r = await plansApi.list()
-    const data = r.data || []
+    const data = (r.data || []).filter((p) => p.cycle !== 'Maternelle') // Maternelle fusionnée dans Primaire
     if (data.length > 0) {
       return data.map((p) => ({ ...p, ...(CYCLE_META[p.cycle] || CYCLE_META.Primaire) }))
     }
@@ -72,7 +67,7 @@ export default function TarifsPage() {
         {loading ? (
           <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {plans.map((plan) => {
               const accent = plan.accent || 'blue'
               const c = ACCENTS[accent]
@@ -86,7 +81,7 @@ export default function TarifsPage() {
                   <div className={`bg-gradient-to-r ${plan.color || 'from-blue-600 to-blue-400'} p-6 text-white`}>
                     <div className="text-3xl mb-2">{plan.icon || '📚'}</div>
                     <div className="text-lg font-bold flex items-center gap-2">
-                      {plan.cycle}
+                      {plan.cycle === 'Primaire' ? 'Primaire/Maternelle' : plan.cycle}
                       {plan.cycle === 'Secondaire' && (
                         <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">Bientôt</span>
                       )}

@@ -67,20 +67,12 @@ const FEATURES = [
 
 const PLANS = [
   {
-    cycle: 'Maternelle', icon: '🌸',
-    gradient: 'from-orange-500 to-amber-400',
-    btnClass: 'bg-orange-500 hover:bg-orange-600 text-white',
-    ringClass: 'ring-orange-300',
-    quarterly: 10000, annual: 30000,
-    features: ['Gestion des élèves', 'Suivi de présence', 'Messagerie parents', 'Vitrine multimédia', 'Support email'],
-  },
-  {
-    cycle: 'Primaire', icon: '📚',
+    cycle: 'Primaire', label: 'Primaire/Maternelle', icon: '📚',
     gradient: 'from-blue-600 to-blue-400',
     btnClass: 'bg-blue-600 hover:bg-blue-700 text-white',
     ringClass: 'ring-blue-500',
     quarterly: 15000, annual: 40000, popular: true,
-    features: ['Tout Maternelle +', 'Notes & Bulletins', 'Emploi du temps', 'Export PDF/Excel', 'Support prioritaire'],
+    features: ['Maternelle & Primaire inclus', 'Gestion des élèves & présence', 'Notes & Bulletins', 'Emploi du temps', 'Export PDF/Excel', 'Support prioritaire'],
   },
   {
     cycle: 'Secondaire', icon: '🎓',
@@ -322,7 +314,7 @@ export default function LandingPage() {
             <p className="text-gray-500">Choisissez la période de facturation adaptée à chaque cycle scolaire</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {PLANS.map((plan) => {
               const billing = selectedPlans[plan.cycle]
               const price = billing === 'annual' ? plan.annual : plan.quarterly
@@ -344,7 +336,7 @@ export default function LandingPage() {
                   <div className={`bg-gradient-to-br ${plan.gradient} p-5 text-white`}>
                     <span className="text-3xl">{plan.icon}</span>
                     <h3 className="text-lg font-bold mt-1 flex items-center gap-2">
-                      {plan.cycle}
+                      {plan.label || plan.cycle}
                       {plan.cycle === 'Secondaire' && (
                         <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">Bientôt</span>
                       )}

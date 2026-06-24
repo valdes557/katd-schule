@@ -15,6 +15,11 @@ const protect = async (req, res, next) => {
       if (req.user.isActive === false) {
         return res.status(403).json({ message: 'Votre compte a été bloqué. Contactez l\'administration.' })
       }
+      // Souscription de l'établissement désactivée par l'admin → directeur, enseignants,
+      // parents et élèves de cette école perdent l'accès (le super_admin n'est pas concerné).
+      if (req.user.role !== 'super_admin' && req.user.school?.subscription?.status === 'suspended') {
+        return res.status(403).json({ message: 'La souscription de votre établissement est désactivée. Contactez l\'administrateur.' })
+      }
       next()
     } catch (error) {
       return res.status(401).json({ message: 'Token invalide ou expiré' })

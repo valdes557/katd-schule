@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { School, Search, Trash2, Eye, Loader2, AlertCircle, MapPin } from 'lucide-react'
+import { School, Search, Trash2, Eye, Loader2, AlertCircle, MapPin, Power, PowerOff } from 'lucide-react'
 import { schoolsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
@@ -28,9 +28,25 @@ export default function AdminEcolesPage() {
   const total = schoolsQ.data?.total || 0
   const loading = schoolsQ.loading
 
+  const [toggling, setToggling] = useState(null)
+
   const handleDelete = async (id) => {
-    if (!confirm('Supprimer cette école ? Cette action est irréversible.')) return
+    if (!confirm('Supprimer cette école ? Le compte directeur sera supprimé et son email libéré. Cette action est irréversible.')) return
     try { await schoolsApi.remove(id); cache.invalidate('/schools'); schoolsQ.refetch() } catch (e) { alert(e.message) }
+  }
+
+  const handleToggleSubscription = async (s) => {
+    const isActive = s.subscription?.status === 'active'
+    const next = !isActive
+    const verb = next ? 'réactiver' : 'désactiver'
+    if (!confirm(`Voulez-vous ${verb} la souscription de "${s.name}" ?${next ? '' : '\nLe directeur, les enseignants et les parents perdront l\'accès au tableau de bord.'}\nLe directeur sera notifié par email.`)) return
+    setToggling(s._id)
+    try {
+      await schoolsApi.setSubscriptionStatus(s._id, next)
+      cache.invalidate('/schools')
+      await schoolsQ.refetch()
+    } catch (e) { alert(e.message) }
+    setToggling(null)
   }
 
   return (
@@ -97,8 +113,16 @@ export default function AdminEcolesPage() {
                 </div>
               </div>
               <div className="flex gap-1 flex-shrink-0">
-                <a href={`/ecole/${s._id}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Eye size={14} /></a>
-                <button onClick={() => handleDelete(s._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
+                <a href={`/ecole/${s._id}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded hover:bg-blue-50 text-blue-600" title="Voir l'école"><Eye size={14} /></a>
+                <button
+                  onClick={() => handleToggleSubscription(s)}
+                  disabled={toggling === s._id}
+                  title={s.subscription?.status === 'active' ? 'Désactiver la souscription' : 'Réactiver la souscription'}
+                  className={`p-1.5 rounded disabled:opacity-50 ${s.subscription?.status === 'active' ? 'hover:bg-orange-50 text-orange-500' : 'hover:bg-green-50 text-green-600'}`}
+                >
+                  {toggling === s._id ? <Loader2 size={14} className="animate-spin" /> : (s.subscription?.status === 'active' ? <PowerOff size={14} /> : <Power size={14} />)}
+                </button>
+                <button onClick={() => handleDelete(s._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" title="Supprimer l'école"><Trash2 size={14} /></button>
               </div>
             </div>
           ))}

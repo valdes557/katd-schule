@@ -42,7 +42,7 @@ export default function SchoolRegistrationPage() {
   // Stable on-mount fetches
   const plansQ = useCachedFetch('/plans', async () => {
     const r = await plansApi.list()
-    return r.data || []
+    return (r.data || []).filter((p) => p.cycle !== 'Maternelle') // Maternelle fusionnée dans Primaire
   }, [])
   const paymentMethodsQ = useCachedFetch('/platform/payment-methods', async () => (await platformApi.getPaymentMethods()).data || [], [])
   const countriesQ = useCachedFetch('/locations/countries', async () => (await locationsApi.countries()).data || [], [])
@@ -197,7 +197,7 @@ export default function SchoolRegistrationPage() {
                   <div key={plan._id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all">
                     <div className={`bg-gradient-to-br ${meta.gradient} p-5 text-white`}>
                       <span className="text-3xl">{meta.icon}</span>
-                      <h3 className="text-lg font-bold mt-1">{plan.cycle}</h3>
+                      <h3 className="text-lg font-bold mt-1">{plan.cycle === 'Primaire' ? 'Primaire/Maternelle' : plan.cycle}</h3>
                       <p className="text-white/80 text-sm">{plan.name}</p>
                     </div>
                     <div className="p-5">

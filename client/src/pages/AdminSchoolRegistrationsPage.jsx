@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
-import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, KeyRound, AlertTriangle, MessageCircle } from 'lucide-react'
-import { schoolRegistrationApi } from '../lib/api'
+import { School, Check, X, Loader2, Clock, CheckCircle2, XCircle, Phone, Mail, Download, Image, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, KeyRound, AlertTriangle, MessageCircle, Power, PowerOff } from 'lucide-react'
+import { schoolRegistrationApi, schoolsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { cn } from '../lib/utils'
@@ -94,6 +94,18 @@ export default function AdminSchoolRegistrationsPage() {
     } catch (e) {
       showToast('error', '❌ Erreur : ' + e.message)
     }
+    setProcessing(null)
+  }
+
+  const handleToggleSub = async (reg, active) => {
+    if (!reg.schoolCreated) { showToast('error', 'Aucune école associée à ce dossier.'); return }
+    const verb = active ? 'réactiver' : 'désactiver'
+    if (!confirm(`Voulez-vous ${verb} la souscription de "${reg.schoolName}" ?${active ? '' : '\nLe directeur, les enseignants et les parents perdront l\'accès au tableau de bord.'}\nLe directeur sera notifié par email.`)) return
+    setProcessing(reg._id)
+    try {
+      const r = await schoolsApi.setSubscriptionStatus(reg.schoolCreated, active)
+      showToast('success', r.message || (active ? 'Souscription réactivée.' : 'Souscription désactivée.'))
+    } catch (e) { showToast('error', '❌ Erreur : ' + e.message) }
     setProcessing(null)
   }
 
@@ -283,6 +295,22 @@ export default function AdminSchoolRegistrationsPage() {
                       <div className="space-y-2">
                         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700 flex items-center gap-2">
                           <CheckCircle2 size={14} /> Approuvée le {reg.approvedAt ? new Date(reg.approvedAt).toLocaleDateString('fr-FR') : '—'} — Compte directeur actif.
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleToggleSub(reg, false) }}
+                            disabled={!!processing}
+                            className="flex-1 flex items-center justify-center gap-1.5 bg-orange-50 text-orange-600 border border-orange-200 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-orange-100 transition-colors disabled:opacity-50"
+                          >
+                            <PowerOff size={12} /> Désactiver souscription
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleToggleSub(reg, true) }}
+                            disabled={!!processing}
+                            className="flex-1 flex items-center justify-center gap-1.5 bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-green-100 transition-colors disabled:opacity-50"
+                          >
+                            <Power size={12} /> Réactiver souscription
+                          </button>
                         </div>
                         <div className="flex gap-2">
                           <button

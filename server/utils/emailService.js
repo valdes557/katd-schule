@@ -216,6 +216,53 @@ const sendAiSubscriptionRejectedEmail = async ({ to, directorName, packageName, 
   })
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Emails de souscription de l'établissement (activation / désactivation par l'admin)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// → Directeur : la souscription de son établissement a été désactivée par l'admin.
+const sendSubscriptionSuspendedEmail = async ({ to, directorName, schoolName }) => {
+  const body = `
+    <h2 style="color: #111827; font-size: 18px;">Bonjour ${directorName || ''},</h2>
+    <p style="color: #4B5563; line-height: 1.6;">
+      Nous vous informons que la souscription de votre établissement
+      <strong>${schoolName || ''}</strong> a été <strong style="color: #DC2626;">désactivée</strong> par l'administrateur de la plateforme.
+    </p>
+    <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 16px; margin: 20px 0;">
+      <p style="color: #991B1B; margin: 0; font-size: 14px;">
+        Tant que la souscription reste désactivée, vous ainsi que les enseignants et parents de votre établissement
+        n'auront plus accès au tableau de bord.
+      </p>
+    </div>
+    <p style="color: #6B7280; font-size: 13px;">
+      Pour réactiver votre accès, veuillez contacter l'administration de la plateforme.
+    </p>
+  `
+  return sendEmail({
+    to,
+    subject: 'Souscription désactivée | KATD-SCHÜLE',
+    html: aiEmailLayout({ headerColor: 'linear-gradient(135deg, #DC2626, #B91C1C)', badge: '🔒 Souscription désactivée', body }),
+  })
+}
+
+// → Directeur : la souscription de son établissement a été réactivée par l'admin.
+const sendSubscriptionReactivatedEmail = async ({ to, directorName, schoolName }) => {
+  const body = `
+    <h2 style="color: #111827; font-size: 18px;">Bonjour ${directorName || ''},</h2>
+    <p style="color: #4B5563; line-height: 1.6;">
+      Bonne nouvelle ! La souscription de votre établissement
+      <strong>${schoolName || ''}</strong> a été <strong style="color: #059669;">réactivée</strong>.
+      Vous et les membres de votre établissement (enseignants, parents) pouvez de nouveau accéder au tableau de bord.
+    </p>
+    <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}/login" style="display: inline-block; background: #059669; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-top: 10px;">Accéder à mon espace</a>
+  `
+  return sendEmail({
+    to,
+    subject: 'Souscription réactivée | KATD-SCHÜLE',
+    html: aiEmailLayout({ headerColor: 'linear-gradient(135deg, #059669, #10B981)', badge: '✅ Souscription réactivée', body }),
+  })
+}
+
 module.exports = {
   sendEmail,
   sendEnrollmentApprovalEmail,
@@ -223,4 +270,6 @@ module.exports = {
   sendAiSubscriptionRequestEmail,
   sendAiSubscriptionApprovedEmail,
   sendAiSubscriptionRejectedEmail,
+  sendSubscriptionSuspendedEmail,
+  sendSubscriptionReactivatedEmail,
 }

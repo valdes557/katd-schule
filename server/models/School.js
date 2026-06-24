@@ -50,7 +50,7 @@ const schoolSchema = new mongoose.Schema(
     subscription: {
       cycle: { type: String, enum: ['Maternelle', 'Primaire', 'Secondaire'] },
       plan: { type: String, enum: ['quarterly', 'annual', 'standard', 'premium', 'free'], default: 'annual' },
-      status: { type: String, enum: ['active', 'expired', 'pending'], default: 'pending' },
+      status: { type: String, enum: ['active', 'expired', 'pending', 'suspended'], default: 'pending' },
       startDate: { type: Date },
       endDate: { type: Date },
       amount: { type: Number },

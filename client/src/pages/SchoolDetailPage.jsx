@@ -266,13 +266,13 @@ function SocialTab({ schoolId, posts, setPosts, user }) {
           <p>Aucune publication pour le moment</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-3 gap-x-0 sm:gap-4 -mx-4 sm:mx-0">
           {posts.map((post, index) => (
-            <div key={post._id} className="bg-white border border-gray-100 rounded-xl overflow-hidden hover:shadow-card transition-all">
+            <div key={post._id} className="bg-white border-y sm:border border-gray-100 sm:rounded-xl overflow-hidden hover:shadow-card transition-all">
               {/* Thumbnail */}
               <button
                 type="button"
-                className="relative aspect-video bg-gray-900 w-full"
+                className="relative aspect-video bg-black w-full"
                 onClick={() => openMediaAtIndex(index)}
               >
                 {post.thumbnail ? (
