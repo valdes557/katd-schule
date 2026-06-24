@@ -80,7 +80,7 @@ export default function NotesPage() {
           <p className="text-sm text-gray-500">{grades.length} note(s) enregistrée(s)</p>
         </div>
         <div className="flex gap-2">
-          <DownloadPdfButton containerRef={pdfRef} filename="notes.pdf" label="Notes PDF" />
+          <DownloadPdfButton containerRef={pdfRef} filename="notes.pdf" title="Notes" label="Notes PDF" />
           <button onClick={() => setShowModal(true)} className="btn-primary text-sm self-start">
             <Plus size={15} /> Ajouter une note
           </button>

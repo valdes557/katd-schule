@@ -91,7 +91,7 @@ export default function MatieresPage() {
           <p className="text-sm text-gray-500">{subjects.length} matière(s)</p>
         </div>
         <div className="flex gap-2">
-          <DownloadPdfButton containerRef={pdfRef} filename="matieres.pdf" label="Matières PDF" iconOnly={!isDirecteur} />
+          <DownloadPdfButton containerRef={pdfRef} filename="matieres.pdf" title="Matières" label="Matières PDF" iconOnly={!isDirecteur} />
           {isDirecteur && (
             <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
               <Plus size={15} /> Ajouter une matière

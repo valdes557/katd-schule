@@ -134,7 +134,7 @@ export default function TeacherAttendanceDashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="input text-sm" />
-          <DownloadPdfButton containerRef={pdfRef} filename="rapports-pointage.pdf" label="Pointage PDF" />
+          <DownloadPdfButton containerRef={pdfRef} filename="rapports-pointage.pdf" title="Rapports de pointage" subtitle={month || ''} label="Pointage PDF" />
           <Link to="/dashboard/pointage" className="btn-ghost border border-gray-200 text-sm justify-center"><QrCode size={15} /> QR & jour</Link>
         </div>
       </div>

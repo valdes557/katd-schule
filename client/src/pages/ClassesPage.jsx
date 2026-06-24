@@ -83,7 +83,7 @@ export default function ClassesPage() {
           <p className="text-sm text-gray-500">{classes.length} classe(s)</p>
         </div>
         <div className="flex gap-2">
-          <DownloadPdfButton containerRef={pdfRef} filename="classes-salles.pdf" label="Classes PDF" iconOnly={!isDirecteur} />
+          <DownloadPdfButton containerRef={pdfRef} filename="classes-salles.pdf" title="Classes & salles" label="Classes PDF" iconOnly={!isDirecteur} />
           {isDirecteur && (
             <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
               <Plus size={15} /> Créer une classe

@@ -104,7 +104,7 @@ export default function PresencePage() {
           </h1>
           <p className="text-sm text-gray-500">Appel journalier par classe</p>
         </div>
-        <DownloadPdfButton containerRef={pdfRef} filename="presences.pdf" label="Présences PDF" />
+        <DownloadPdfButton containerRef={pdfRef} filename="presences.pdf" title="Présences" label="Présences PDF" />
       </div>
 
       {/* Filters */}

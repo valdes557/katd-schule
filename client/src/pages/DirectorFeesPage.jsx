@@ -157,7 +157,7 @@ export default function DirectorFeesPage() {
           <p className="text-sm text-gray-500">Suivi des paiements et gestion des tranches par classe</p>
         </div>
         <div className="flex gap-2">
-          <DownloadPdfButton containerRef={pdfRef} filename="pensions-frais.pdf" label="Frais PDF" />
+          <DownloadPdfButton containerRef={pdfRef} filename="pensions-frais.pdf" title="Frais & Pensions" label="Frais PDF" />
           <button onClick={() => setBulkModal(true)} className="btn-primary text-sm self-start"><Users size={15} /> Assigner les frais en masse</button>
         </div>
       </div>

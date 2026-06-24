@@ -81,7 +81,7 @@ export default function FacturesPage() {
           <p className="text-sm text-gray-500">Enregistrez et suivez toutes les dépenses de l'école</p>
         </div>
         <div className="flex gap-2">
-          <DownloadPdfButton containerRef={pdfRef} filename="factures.pdf" label="Factures PDF" />
+          <DownloadPdfButton containerRef={pdfRef} filename="factures.pdf" title="Factures & Dépenses" label="Factures PDF" />
           <button onClick={openCreate} className="btn-primary text-sm self-start"><Plus size={15} /> Nouvelle dépense</button>
         </div>
       </div>

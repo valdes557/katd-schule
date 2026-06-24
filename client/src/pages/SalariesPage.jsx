@@ -108,7 +108,7 @@ export default function SalariesPage() {
           <p className="text-sm text-gray-500">État des salaires par mois et par enseignant</p>
         </div>
         <div className="flex gap-2">
-          <DownloadPdfButton containerRef={pdfRef} filename="salaires.pdf" label="Salaires PDF" />
+          <DownloadPdfButton containerRef={pdfRef} filename="salaires.pdf" title="Salaires des enseignants" label="Salaires PDF" />
           <button onClick={openCreate} className="btn-primary text-sm self-start"><Plus size={15} /> Enregistrer un salaire</button>
         </div>
       </div>

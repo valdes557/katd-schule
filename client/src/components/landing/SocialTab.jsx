@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Globe2, Play, Eye, ThumbsUp, MessageCircle, Share2, Send, ChevronDown,
   Download, Music, Lock, Check, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Trash2,
+  Facebook, Twitter, Linkedin, Mail, Link2,
 } from 'lucide-react'
 import { platformApi } from '../../lib/api'
 
@@ -319,6 +320,47 @@ export default function SocialTab({ feed, setFeed, user }) {
 function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload, onView, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
   const navigate = useNavigate()
   const [shareCopied, setShareCopied] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+
+  // Lien + texte de partage de la publication
+  const shareUrl = `${window.location.origin}/social#${post._id}`
+  const shareTitle = post.title || 'KATD-SCHÜLE'
+  const shareText = `${shareTitle} — Découvrez cette publication sur KATD-SCHÜLE`
+  const enc = encodeURIComponent
+
+  // Cibles de partage (réseaux sociaux + email)
+  const SHARE_TARGETS = [
+    { name: 'WhatsApp', icon: MessageCircle, color: 'bg-green-500', href: `https://wa.me/?text=${enc(`${shareText} ${shareUrl}`)}` },
+    { name: 'Facebook', icon: Facebook, color: 'bg-blue-600', href: `https://www.facebook.com/sharer/sharer.php?u=${enc(shareUrl)}` },
+    { name: 'Twitter / X', icon: Twitter, color: 'bg-sky-500', href: `https://twitter.com/intent/tweet?url=${enc(shareUrl)}&text=${enc(shareText)}` },
+    { name: 'Telegram', icon: Send, color: 'bg-sky-600', href: `https://t.me/share/url?url=${enc(shareUrl)}&text=${enc(shareText)}` },
+    { name: 'LinkedIn', icon: Linkedin, color: 'bg-blue-700', href: `https://www.linkedin.com/sharing/share-offsite/?url=${enc(shareUrl)}` },
+    { name: 'Email', icon: Mail, color: 'bg-gray-600', href: `mailto:?subject=${enc(shareTitle)}&body=${enc(`${shareText}\n${shareUrl}`)}` },
+  ]
+
+  const shareTo = (href) => {
+    window.open(href, '_blank', 'noopener,noreferrer')
+    onShare(post._id)
+    setShareOpen(false)
+  }
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(shareUrl) } catch (_) {}
+    onShare(post._id)
+    setShareCopied(true)
+    setTimeout(() => setShareCopied(false), 2000)
+    setShareOpen(false)
+  }
+
+  const nativeShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl })
+        onShare(post._id)
+      }
+    } catch (_) {}
+    setShareOpen(false)
+  }
 
   // L'utilisateur peut supprimer sa propre publication (ou super_admin pour tout).
   const myId = user?.id || user?._id
@@ -351,12 +393,6 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
       a.target = '_blank'
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
     } catch (e) {}
-  }
-
-  const handleShare = async () => {
-    await onShare(post._id)
-    setShareCopied(true)
-    setTimeout(() => setShareCopied(false), 2000)
   }
 
   const hasMedia = post.audioUrl || post.videoUrl || post.images?.length > 0
@@ -487,11 +523,11 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
             <MessageCircle size={12} /> {post.comments?.length || 0}
           </button>
           <button
-            onClick={handleShare}
+            onClick={() => setShareOpen(true)}
             className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex-1 justify-center ${
               shareCopied ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:bg-gray-100'
             }`}
-            title="Copier le lien"
+            title="Partager"
           >
             {shareCopied ? <><Check size={12} /> Copié</> : <><Share2 size={12} /> Partager</>}
           </button>
@@ -570,6 +606,58 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
           </div>
         )}
       </div>
+
+      {/* Menu de partage — réseaux sociaux + email + copier le lien */}
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setShareOpen(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-xl p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2"><Share2 size={16} className="text-blue-600" /> Partager</h3>
+              <button onClick={() => setShareOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={16} /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {SHARE_TARGETS.map((t) => (
+                <button
+                  key={t.name}
+                  type="button"
+                  onClick={() => shareTo(t.href)}
+                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  <span className={`w-12 h-12 rounded-full ${t.color} flex items-center justify-center text-white`}>
+                    <t.icon size={20} />
+                  </span>
+                  <span className="text-[11px] text-gray-600 text-center">{t.name}</span>
+                </button>
+              ))}
+              {typeof navigator !== 'undefined' && navigator.share && (
+                <button
+                  type="button"
+                  onClick={nativeShare}
+                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  <span className="w-12 h-12 rounded-full bg-indigo-500 flex items-center justify-center text-white">
+                    <Share2 size={20} />
+                  </span>
+                  <span className="text-[11px] text-gray-600 text-center">Plus…</span>
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="mt-4 w-full flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Link2 size={15} /> Copier le lien
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

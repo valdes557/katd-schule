@@ -85,7 +85,7 @@ export default function EmploiDuTempsPage() {
           <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="input text-sm w-auto">
             {classes.map((c) => <option key={c._id} value={c._id}>{c.name} ({c.cycle})</option>)}
           </select>
-          <DownloadPdfButton containerRef={pdfRef} filename="emploi-du-temps.pdf" label="Emploi du temps PDF" iconOnly />
+          <DownloadPdfButton containerRef={pdfRef} filename="emploi-du-temps.pdf" title="Emploi du temps" subtitle={currentClass ? `${currentClass.name} — ${currentClass.cycle}` : ''} label="Emploi du temps PDF" iconOnly />
           {isDirecteur && timetable && (
             <button onClick={() => { setSlotForm(EMPTY_SLOT); setShowModal(true) }} className="btn-primary text-sm">
               <Plus size={15} /> Ajouter

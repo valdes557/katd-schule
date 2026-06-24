@@ -60,7 +60,7 @@ export default function DirectorReportsPage() {
           </h1>
           <p className="text-sm text-gray-500">Vue consolidée des rapports quotidiens envoyés</p>
         </div>
-        <DownloadPdfButton containerRef={pdfRef} filename="rapports-enseignants.pdf" label="Rapports PDF" />
+        <DownloadPdfButton containerRef={pdfRef} filename="rapports-enseignants.pdf" title="Rapports des enseignants" label="Rapports PDF" />
       </div>
 
       {/* Filters */}

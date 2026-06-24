@@ -49,7 +49,7 @@ function DirectorView() {
           <option value="">— Toutes les classes —</option>
           {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
         </select>
-        <DownloadPdfButton containerRef={pdfRef} filename="historique-paiements.pdf" label="Paiements PDF" />
+        <DownloadPdfButton containerRef={pdfRef} filename="historique-paiements.pdf" title="Historique des paiements" label="Paiements PDF" />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
