@@ -27,19 +27,19 @@ function BannerCarousel() {
   const b = banners[idx]
 
   const Inner = (
-    <div className="relative aspect-[16/5] sm:aspect-[16/4] bg-gray-900">
+    <div className="relative w-full h-52 sm:h-72 md:h-80 lg:h-96 bg-gray-900">
       <img src={b.image} alt={b.title || ''} className="w-full h-full object-cover" />
       {(b.title || b.subtitle) && (
-        <div className="absolute inset-0 flex flex-col justify-center px-6 sm:px-12 bg-gradient-to-r from-black/50 to-transparent text-white">
-          {b.title && <h2 className="text-xl sm:text-3xl font-extrabold drop-shadow">{b.title}</h2>}
-          {b.subtitle && <p className="text-sm sm:text-lg text-white/90 mt-1 max-w-xl">{b.subtitle}</p>}
+        <div className="absolute inset-0 flex flex-col justify-center px-6 sm:px-12 lg:px-20 bg-gradient-to-r from-black/50 to-transparent text-white">
+          {b.title && <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold drop-shadow">{b.title}</h2>}
+          {b.subtitle && <p className="text-sm sm:text-lg lg:text-xl text-white/90 mt-2 max-w-2xl">{b.subtitle}</p>}
         </div>
       )}
     </div>
   )
 
   return (
-    <section className="relative max-w-7xl mx-auto">
+    <section className="relative w-full">
       {b.link ? <a href={b.link} target="_blank" rel="noreferrer">{Inner}</a> : Inner}
       {banners.length > 1 && (
         <>
