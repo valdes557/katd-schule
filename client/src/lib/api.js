@@ -174,6 +174,7 @@ export const messagesApi = {
   conversation: (id) => api.get(`/messages/conversation/${id}`),
   send: (data) => api.post('/messages', data),
   contacts: () => api.get('/messages/contacts'),
+  staff: () => api.get('/messages/staff'),
   unreadCount: () => api.get('/messages/unread-count'),
   groups: () => api.get('/messages/groups'),
   createGroup: async (data) => {

@@ -8,6 +8,7 @@ import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 
 export default function MessagingPage() {
+  const ROLE_LABELS = { super_admin: 'Super Admin', directeur: 'Directeur', enseignant: 'Enseignant', parent: 'Parent', eleve: 'Élève' }
   const { user } = useAuth()
   const { refresh: refreshUnread } = useUnread()
   const [activeConv, setActiveConv] = useState(null)
@@ -18,6 +19,7 @@ export default function MessagingPage() {
   const [showCompose, setShowCompose] = useState(false)
   const [composeForm, setComposeForm] = useState({ recipientId: '', subject: '', body: '' })
   const [search, setSearch] = useState('')
+  const [panelTab, setPanelTab] = useState('conversations')
   const [showGroupModal, setShowGroupModal] = useState(false)
   const [groupForm, setGroupForm] = useState({ name: '', memberIds: [], memberRole: 'enseignant', image: null })
   const [groupImagePreview, setGroupImagePreview] = useState('')
@@ -26,11 +28,13 @@ export default function MessagingPage() {
 
   const convsQ = useCachedFetch('/messages/conversations', async () => (await messagesApi.conversations()).data || [], [])
   const contactsQ = useCachedFetch('/messages/contacts', async () => (await messagesApi.contacts()).data || [], [])
+  const staffQ = useCachedFetch('/messages/staff', async () => { try { return (await messagesApi.staff()).data || [] } catch { return [] } }, [])
   const groupsQ = useCachedFetch('/messages/groups', async () => (await messagesApi.groups()).data || [], [])
 
   const conversations = convsQ.data || []
   const contacts = contactsQ.data || []
   const groups = groupsQ.data || []
+  const staff = staffQ.data || []
   const loading = convsQ.loading
 
   const refreshConversations = () => { cache.invalidate('/messages/conversations'); convsQ.refetch() }
@@ -85,6 +89,21 @@ export default function MessagingPage() {
       refreshUnread()
     } catch (e) { console.error(e) }
     setLoadingMsgs(false)
+  }
+
+  const openStaffConversation = (member) => {
+    const ids = [String(user._id), String(member._id)].sort()
+    const conversationId = `conv_${ids[0]}_${ids[1]}`
+    const existing = conversations.find((c) => c.conversationId === conversationId)
+    if (existing) { setPanelTab('conversations'); openConversation(existing); return }
+    setPanelTab('conversations')
+    openConversation({
+      conversationId,
+      contact: { _id: member._id, name: member.name, role: member.role, avatar: member.avatar || null },
+      isGroup: false,
+      lastMessage: null,
+      unread: 0,
+    })
   }
 
   const openConversation = async (conv) => {
@@ -179,6 +198,11 @@ export default function MessagingPage() {
     return `${name} ${subj}`.toLowerCase().includes(search.toLowerCase())
   })
 
+  const filteredStaff = staff.filter((s) => {
+    if (!search) return true
+    return `${s.name || ''} ${s.role || ''} ${s.schoolName || ''}`.toLowerCase().includes(search.toLowerCase())
+  })
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -205,6 +229,12 @@ export default function MessagingPage() {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher..." className="input pl-9 text-sm" />
             </div>
+            {['super_admin', 'directeur', 'enseignant'].includes(user?.role) && (
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                <button onClick={() => setPanelTab('conversations')} className={cn('flex-1 text-xs font-medium py-1.5 rounded-md transition-colors', panelTab === 'conversations' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500')}>Discussions</button>
+                <button onClick={() => setPanelTab('staff')} className={cn('flex-1 text-xs font-medium py-1.5 rounded-md transition-colors', panelTab === 'staff' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500')}>Personnel</button>
+              </div>
+            )}
             {groups.length > 0 && (
               <div className="flex flex-wrap gap-1.5 text-[11px]">
                 {groups.map((g) => (
@@ -223,7 +253,31 @@ export default function MessagingPage() {
             )}
           </div>
           <div className="flex-1 overflow-y-auto">
-            {loading ? (
+            {panelTab === 'staff' ? (
+              staffQ.loading ? (
+                <div className="text-center py-12"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></div>
+              ) : filteredStaff.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-12">Aucun personnel trouvé</p>
+              ) : (
+                filteredStaff.map((s) => (
+                  <button key={s._id} onClick={() => openStaffConversation(s)} className="w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      {s.avatar ? (
+                        <img src={s.avatar} alt={s.name} className="w-10 h-10 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-semibold">{(s.name || '?').charAt(0).toUpperCase()}</div>
+                      )}
+                      <span className={cn('absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white', s.online ? 'bg-green-500' : 'bg-gray-300')} title={s.online ? 'En ligne' : 'Hors ligne'} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{ROLE_LABELS[s.role] || s.role}{s.schoolName ? ` · ${s.schoolName}` : ''}</p>
+                    </div>
+                    <span className={cn('text-[10px] font-medium shrink-0', s.online ? 'text-green-600' : 'text-gray-400')}>{s.online ? 'En ligne' : 'Hors ligne'}</span>
+                  </button>
+                ))
+              )
+            ) : loading ? (
               <div className="text-center py-12"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></div>
             ) : filteredConvs.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-12">Aucune conversation</p>

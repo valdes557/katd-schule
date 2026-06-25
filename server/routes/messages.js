@@ -195,8 +195,15 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ message: 'Destinataire et contenu requis' })
     }
 
-    const allowed = await getAllowedContacts(req.user)
-    const isAllowed = allowed.some((u) => u._id.toString() === String(recipientId))
+    let isAllowed = false
+    if (STAFF_ROLES.includes(req.user.role)) {
+      const recipient = await User.findById(recipientId).select('role isActive')
+      isAllowed = !!(recipient && recipient.isActive && STAFF_ROLES.includes(recipient.role))
+    }
+    if (!isAllowed) {
+      const allowed = await getAllowedContacts(req.user)
+      isAllowed = allowed.some((u) => u._id.toString() === String(recipientId))
+    }
     if (!isAllowed) {
       return res.status(403).json({ message: 'Vous ne pouvez pas envoyer de message à cet utilisateur' })
     }
@@ -229,6 +236,46 @@ router.get('/contacts', protect, async (req, res) => {
   try {
     const users = await getAllowedContacts(req.user)
     res.json({ success: true, data: users })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// ===== Messagerie inter-établissements : annuaire du personnel =====
+const STAFF_ROLES = ['super_admin', 'directeur', 'enseignant']
+const ONLINE_WINDOW_MS = 3 * 60 * 1000
+
+async function getAllStaff(user) {
+  const staff = await User.find({
+    role: { $in: STAFF_ROLES },
+    _id: { $ne: user._id },
+    isActive: true,
+  })
+    .select('name email role avatar isOnline lastActivity school')
+    .populate('school', 'name')
+    .sort({ name: 1 })
+    .lean()
+
+  return staff.map((u) => ({
+    _id: u._id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    avatar: u.avatar || null,
+    schoolName: (u.school && u.school.name) ? u.school.name : 'Plateforme',
+    online: !!(u.isOnline && u.lastActivity && (Date.now() - new Date(u.lastActivity).getTime()) < ONLINE_WINDOW_MS),
+    lastActivity: u.lastActivity || null,
+  }))
+}
+
+// GET /api/messages/staff — tout le personnel de tous les établissements (réservé au personnel)
+router.get('/staff', protect, async (req, res) => {
+  try {
+    if (!STAFF_ROLES.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Accès réservé au personnel' })
+    }
+    const staff = await getAllStaff(req.user)
+    res.json({ success: true, data: staff })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

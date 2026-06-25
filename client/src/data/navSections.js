@@ -104,7 +104,7 @@ export const navSections = [
       { label: 'Annonces', icon: Bell, path: '/dashboard/annonces' },
       { label: 'Documents partagés', icon: FolderOpen, path: '/dashboard/documents' },
       { label: 'Utilisateurs en ligne', icon: Activity, path: '/dashboard/suivi-connexions', roles: ['directeur', 'enseignant'] },
-      { label: 'Social', icon: Globe, path: '/dashboard/social', roles: ['directeur', 'enseignant'] },
+      { label: 'Social', icon: Globe, path: '/dashboard/social', roles: ['directeur', 'enseignant', 'parent'] },
     ],
   },
   {

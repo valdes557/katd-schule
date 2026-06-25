@@ -62,7 +62,7 @@ router.get('/feed', async (req, res) => {
 })
 
 // POST /api/platform/posts — Super Admin, directors and teachers: create social post
-router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'audio', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
+router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant', 'parent'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'audio', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const imageFiles = req.files?.images || []
     const images = imageFiles.map((f) => f.path)
