@@ -355,3 +355,348 @@ export default function SocialTab({ feed, setFeed, user }) {
     </div>
   )
 }
+
+function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload, onView, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
+  const navigate = useNavigate()
+  const [shareCopied, setShareCopied] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+
+  // Lien + texte de partage de la publication
+  const shareUrl = `${window.location.origin}/social#${post._id}`
+  const shareTitle = post.title || 'KATD-SCHÜLE'
+  const shareText = `${shareTitle} — Découvrez cette publication sur KATD-SCHÜLE`
+  const enc = encodeURIComponent
+
+  // Cibles de partage (réseaux sociaux + email)
+  const SHARE_TARGETS = [
+    { name: 'WhatsApp', icon: MessageCircle, color: 'bg-green-500', href: `https://wa.me/?text=${enc(`${shareText} ${shareUrl}`)}` },
+    { name: 'Facebook', icon: Facebook, color: 'bg-blue-600', href: `https://www.facebook.com/sharer/sharer.php?u=${enc(shareUrl)}` },
+    { name: 'Twitter / X', icon: Twitter, color: 'bg-sky-500', href: `https://twitter.com/intent/tweet?url=${enc(shareUrl)}&text=${enc(shareText)}` },
+    { name: 'Telegram', icon: Send, color: 'bg-sky-600', href: `https://t.me/share/url?url=${enc(shareUrl)}&text=${enc(shareText)}` },
+    { name: 'LinkedIn', icon: Linkedin, color: 'bg-blue-700', href: `https://www.linkedin.com/sharing/share-offsite/?url=${enc(shareUrl)}` },
+    { name: 'Email', icon: Mail, color: 'bg-gray-600', href: `mailto:?subject=${enc(shareTitle)}&body=${enc(`${shareText}\n${shareUrl}`)}` },
+  ]
+
+  const shareTo = (href) => {
+    window.open(href, '_blank', 'noopener,noreferrer')
+    onShare(post._id)
+    setShareOpen(false)
+  }
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(shareUrl) } catch (_) {}
+    onShare(post._id)
+    setShareCopied(true)
+    setTimeout(() => setShareCopied(false), 2000)
+    setShareOpen(false)
+  }
+
+  const nativeShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl })
+        onShare(post._id)
+      }
+    } catch (_) {}
+    setShareOpen(false)
+  }
+
+  // L'utilisateur peut supprimer sa propre publication (ou super_admin pour tout).
+  const myId = user?.id || user?._id
+  const authorId = post.author?._id || post.author
+  const canDelete = !!user && (post.isPlatform ? user.role === 'super_admin' : (authorId && myId && authorId.toString() === myId.toString()) || user.role === 'super_admin')
+
+  // Ratio d'affichage respectant l'orientation initiale (portrait reste portrait).
+  const ar = mediaAspect(post)
+  const mediaStyle = ar ? { aspectRatio: String(ar) } : undefined
+  const videoThumbSrc = post.thumbnail || videoThumb(post.videoUrl) || post.images?.[0]
+
+  const handleDownload = async () => {
+    if (!user) { navigate('/login'); return }
+    const url = post.audioUrl || post.videoUrl || post.images?.[0]
+    if (!url) return
+    try {
+      await platformApi.downloadPost(post._id)
+      onDownload(post._id)
+      let href = url
+      const isCloudinary = /https?:\/\/res\.cloudinary\.com\//.test(url) && url.includes('/upload/')
+      if (isCloudinary) {
+        const i = url.indexOf('/upload/') + 8
+        const base = (post.title || 'media').toString().toLowerCase().replace(/[^a-z0-9-_]+/g, '-') || 'media'
+        const transform = `fl_attachment:${base}`
+        href = url.slice(0, i) + transform + '/' + url.slice(i)
+      }
+      const a = document.createElement('a')
+      a.href = href
+      a.download = (post.title || 'media').toString().replace(/\s+/g, '-')
+      a.target = '_blank'
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    } catch (e) {}
+  }
+
+  const hasMedia = post.audioUrl || post.videoUrl || post.images?.length > 0
+
+  return (
+    <div id={post._id} className="bg-white border-y sm:border border-gray-100 sm:rounded-xl overflow-hidden hover:shadow-lg transition-all">
+      {/* ── Media zone ── */}
+      {post.type === 'audio' ? (
+        <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-5 text-white">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+              <Music size={20} className="text-white" />
+            </div>
+            <div className="min-w-0">
+              {post.title && <p className="text-sm font-bold truncate">{post.title}</p>}
+              {post.duration && <p className="text-xs text-purple-200">{post.duration}</p>}
+            </div>
+          </div>
+          {post.audioUrl && (
+            <audio controls src={post.audioUrl} onPlay={() => onView?.(post._id)} className="w-full h-8 accent-white" />
+          )}
+        </div>
+      ) : post.type === 'video' ? (
+        <button
+          type="button"
+          className="relative bg-black w-full"
+          style={mediaStyle || { aspectRatio: '16 / 9' }}
+          onClick={() => {
+            if (!post.videoUrl && !post.thumbnail && !(post.images && post.images[0])) return
+            const src = post.videoUrl || post.thumbnail || (post.images && post.images[0])
+            if (onOpenMedia) onOpenMedia({ type: 'video', src, post })
+          }}
+        >
+          {videoThumbSrc ? (
+            <img src={videoThumbSrc} alt="" className="w-full h-full object-contain" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-900">
+              <Play size={40} className="text-gray-600" />
+            </div>
+          )}
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors">
+            <div className="w-14 h-14 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
+              <Play size={22} className="text-gray-900 fill-gray-900 ml-1" />
+            </div>
+          </div>
+          {post.duration && (
+            <span className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{post.duration}</span>
+          )}
+          {post.category && (
+            <span className="absolute top-2 left-2 bg-black/50 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full">{post.category}</span>
+          )}
+        </button>
+      ) : post.images?.length > 0 ? (
+        <button
+          type="button"
+          className="relative bg-black w-full"
+          style={mediaStyle || { aspectRatio: '16 / 9' }}
+          onClick={() => {
+            if (!post.images?.[0]) return
+            if (onOpenMedia) onOpenMedia({ type: 'image', src: post.images[0], post })
+          }}
+        >
+          <img src={post.images[0]} alt="" className="w-full h-full object-contain" />
+          {post.images.length > 1 && (
+            <span className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">+{post.images.length - 1}</span>
+          )}
+          {post.category && (
+            <span className="absolute top-2 left-2 bg-black/40 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full">{post.category}</span>
+          )}
+        </button>
+      ) : (
+        <div className="h-16 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-center">
+          <Globe2 size={24} className="text-blue-200" />
+        </div>
+      )}
+
+      {/* ── Content ── */}
+      <div className="p-3">
+        <div className="flex items-start gap-2 mb-2">
+          {post.author?.avatar ? (
+            <img src={post.author.avatar} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+              {(post.author?.name || 'K')[0].toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            {post.title && <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">{post.title}</h3>}
+            <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{post.content}</p>
+            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-400">
+              <span>{post.author?.name || 'KATD-SCHÜLE'}</span>
+              <span>·</span><span>{timeAgo(post.createdAt)}</span>
+            </div>
+          </div>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete?.(post._id)}
+              title="Supprimer ma publication"
+              className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 flex-shrink-0"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Stats row */}
+        <div className="flex items-center gap-3 text-[10px] text-gray-400 pb-2 border-b border-gray-50">
+          <span className="flex items-center gap-0.5"><Eye size={10} /> {post.views || 0}</span>
+          <span className="flex items-center gap-0.5"><Download size={10} /> {post.downloads || 0}</span>
+          <span className="flex items-center gap-0.5"><Share2 size={10} /> {post.shares || 0}</span>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-0.5 mt-2">
+          <button
+            onClick={() => onLike(post._id)}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex-1 justify-center ${
+              user && post.likes?.includes(user.id || user._id) ? 'text-blue-600 bg-blue-50' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            <ThumbsUp size={12} /> {post.likes?.length || 0}
+          </button>
+          <button
+            onClick={() => { onView?.(post._id); setExpandedComments((p) => ({ ...p, [post._id]: !p[post._id] })) }}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium text-gray-500 hover:bg-gray-100 transition-colors flex-1 justify-center"
+          >
+            <MessageCircle size={12} /> {post.comments?.length || 0}
+          </button>
+          <button
+            onClick={() => setShareOpen(true)}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex-1 justify-center ${
+              shareCopied ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+            title="Partager"
+          >
+            {shareCopied ? <><Check size={12} /> Copié</> : <><Share2 size={12} /> Partager</>}
+          </button>
+          {hasMedia && (
+            <button
+              onClick={handleDownload}
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex-1 justify-center ${
+                user ? 'text-gray-500 hover:bg-gray-100' : 'text-orange-500 hover:bg-orange-50'
+              }`}
+              title={user ? 'Télécharger' : 'Connexion requise'}
+            >
+              {user ? <Download size={12} /> : <Lock size={12} />}
+              {user ? 'DL' : 'Login'}
+            </button>
+          )}
+        </div>
+
+        {/* Login prompt if not logged in */}
+        {!user && (
+          <p className="text-[10px] text-center text-gray-400 mt-1">
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="text-blue-500 hover:underline"
+            >
+              Connectez-vous
+            </button>{' '}
+            pour télécharger
+          </p>
+        )}
+
+        {/* Comments section */}
+        {expandedComments[post._id] && (
+          <div className="mt-2 pt-2 border-t border-gray-50 space-y-2">
+            {post.comments?.length === 0 && <p className="text-xs text-gray-400 text-center py-1">Aucun commentaire</p>}
+            {post.comments?.slice(0, 5).map((c, i) => (
+              <div key={i} className="flex gap-1.5">
+                {c.authorId?.avatar ? (
+                  <img src={c.authorId.avatar} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                    {(c.author || c.authorId?.name)?.[0]?.toUpperCase()}
+                  </div>
+                )}
+                <div className="bg-gray-50 rounded-lg px-2 py-1 text-xs flex-1">
+                  <span className="font-semibold text-gray-700">{c.author || c.authorId?.name}</span>
+                  <p className="text-gray-600">{c.content}</p>
+                </div>
+              </div>
+            ))}
+            {user ? (
+              <div className="flex gap-1.5">
+                <input
+                  value={commentText[post._id] || ''}
+                  onChange={(e) => setCommentText((p) => ({ ...p, [post._id]: e.target.value }))}
+                  onKeyDown={(e) => e.key === 'Enter' && onComment(post._id)}
+                  placeholder="Ajouter un commentaire..."
+                  className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-400"
+                />
+                <button onClick={() => onComment(post._id)} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg">
+                  <Send size={12} />
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-center text-gray-400">
+                <button
+                  type="button"
+                  onClick={() => navigate('/login')}
+                  className="text-blue-500 hover:underline"
+                >
+                  Connectez-vous
+                </button>{' '}
+                pour commenter
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Menu de partage — réseaux sociaux + email + copier le lien */}
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setShareOpen(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-xl p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2"><Share2 size={16} className="text-blue-600" /> Partager</h3>
+              <button onClick={() => setShareOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={16} /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {SHARE_TARGETS.map((t) => (
+                <button
+                  key={t.name}
+                  type="button"
+                  onClick={() => shareTo(t.href)}
+                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  <span className={`w-12 h-12 rounded-full ${t.color} flex items-center justify-center text-white`}>
+                    <t.icon size={20} />
+                  </span>
+                  <span className="text-[11px] text-gray-600 text-center">{t.name}</span>
+                </button>
+              ))}
+              {typeof navigator !== 'undefined' && navigator.share && (
+                <button
+                  type="button"
+                  onClick={nativeShare}
+                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  <span className="w-12 h-12 rounded-full bg-indigo-500 flex items-center justify-center text-white">
+                    <Share2 size={20} />
+                  </span>
+                  <span className="text-[11px] text-gray-600 text-center">Plus…</span>
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="mt-4 w-full flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Link2 size={15} /> Copier le lien
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
