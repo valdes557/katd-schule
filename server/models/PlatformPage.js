@@ -2,6 +2,10 @@ const mongoose = require('mongoose')
 
 const platformPageSchema = new mongoose.Schema(
   {
+    // Identité plateforme (navbar accueil)
+    siteName: { type: String, default: 'KATD-SCHÜLE' },
+    logo: { type: String, default: '' },
+
     // À propos
     about: {
       content: { type: String, default: '' },

@@ -242,7 +242,7 @@ router.get('/contacts', protect, async (req, res) => {
 })
 
 // ===== Messagerie inter-établissements : annuaire du personnel =====
-const STAFF_ROLES = ['super_admin', 'directeur', 'enseignant']
+const STAFF_ROLES = ['super_admin', 'directeur', 'enseignant', 'parent']
 const ONLINE_WINDOW_MS = 3 * 60 * 1000
 
 async function getAllStaff(user) {

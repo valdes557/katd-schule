@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import {
   Search, BookOpen, Menu, X, Globe2, Users, Phone, HelpCircle,
   BookMarked, School, GraduationCap, Star, Heart,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { platformApi } from '../../lib/api'
 
 const NAV_TABS = [
   { label: 'Social', path: '/social', icon: Globe2 },
@@ -22,6 +23,18 @@ export default function PublicHeader() {
   const [searchQuery, setSearchQuery] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
   const { user } = useAuth()
+  const [brand, setBrand] = useState({ siteName: 'KATD-SCHÜLE', logo: '' })
+
+  useEffect(() => {
+    let active = true
+    platformApi.get()
+      .then((res) => {
+        const d = res?.data || {}
+        if (active) setBrand({ siteName: d.siteName || 'KATD-SCHÜLE', logo: d.logo || '' })
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [])
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
@@ -30,11 +43,15 @@ export default function PublicHeader() {
         <div className="flex items-center h-14 gap-4">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <BookOpen size={16} className="text-white" />
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center overflow-hidden">
+              {brand.logo ? (
+                <img src={brand.logo} alt={brand.siteName} className="w-full h-full object-cover" />
+              ) : (
+                <BookOpen size={16} className="text-white" />
+              )}
             </div>
             <div className="hidden sm:block">
-              <div className="text-[14px] font-bold text-gray-900 leading-tight">KATD-SCHÜLE</div>
+              <div className="text-[14px] font-bold text-gray-900 leading-tight">{brand.siteName}</div>
               <div className="text-[9px] text-gray-400 leading-tight">Apprendre · Partager · Grandir</div>
             </div>
           </Link>

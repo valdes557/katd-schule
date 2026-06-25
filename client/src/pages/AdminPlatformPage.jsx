@@ -11,6 +11,7 @@ import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 
 const TABS = [
+  { id: 'identity', label: 'Identité', icon: Pencil },
   { id: 'posts', label: 'Social', icon: Globe2 },
   { id: 'resources', label: 'Ressources', icon: FileText },
   { id: 'about', label: 'À propos', icon: Info },
@@ -20,6 +21,86 @@ const TABS = [
   { id: 'payments', label: 'Paiements', icon: CreditCard },
   { id: 'plans', label: 'Plans tarifaires', icon: Star },
 ]
+
+// ─── Identity Panel ──────────────────────────────────────────────────────────
+function IdentityPanel({ platformData, refresh }) {
+  const [siteName, setSiteName] = useState(platformData?.siteName || 'KATD-SCHÜLE')
+  const [logo, setLogo] = useState(platformData?.logo || '')
+  const [logoFile, setLogoFile] = useState(null)
+  const [preview, setPreview] = useState('')
+  const [saving, setSaving] = useState(false)
+  const logoRef = useRef()
+
+  useEffect(() => {
+    setSiteName(platformData?.siteName || 'KATD-SCHÜLE')
+    setLogo(platformData?.logo || '')
+  }, [platformData?.siteName, platformData?.logo])
+
+  const handleLogo = (e) => {
+    const f = e.target.files?.[0] || null
+    setLogoFile(f)
+    setPreview(f ? URL.createObjectURL(f) : '')
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      let logoUrl = logo
+      if (logoFile) {
+        const r = await platformApi.uploadImages([logoFile])
+        if (Array.isArray(r.data) && r.data[0]) logoUrl = r.data[0]
+      }
+      await platformApi.update({ siteName: siteName.trim() || 'KATD-SCHÜLE', logo: logoUrl })
+      setLogo(logoUrl); setLogoFile(null); setPreview('')
+      cache.invalidate('/platform')
+      refresh()
+      alert('Identité de la plateforme enregistrée ✅')
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  const currentLogo = preview || logo
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-5 max-w-xl">
+      <div>
+        <h3 className="text-sm font-bold text-gray-900">Identité de la plateforme</h3>
+        <p className="text-xs text-gray-500 mt-0.5">Nom et logo affichés dans la barre de navigation de la page d'accueil.</p>
+      </div>
+
+      <div>
+        <label className="text-xs font-medium text-gray-600 block mb-1">Nom de la plateforme</label>
+        <input value={siteName} onChange={(e) => setSiteName(e.target.value)} className="input text-sm w-full" placeholder="KATD-SCHÜLE" />
+      </div>
+
+      <div>
+        <label className="text-xs font-medium text-gray-600 block mb-2">Logo</label>
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-xl bg-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
+            {currentLogo ? (
+              <img src={currentLogo} alt="logo" className="w-full h-full object-cover" />
+            ) : (
+              <Globe2 size={24} className="text-white" />
+            )}
+          </div>
+          <div className="space-y-1">
+            <button type="button" onClick={() => logoRef.current?.click()} className="btn-ghost text-sm border border-dashed border-gray-300 justify-center py-2 px-4 hover:border-blue-400">
+              <Image size={14} className="text-blue-500" /> {logoFile ? logoFile.name : 'Choisir une image'}
+            </button>
+            <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogo} />
+            <p className="text-[11px] text-gray-400">PNG/JPG recommandé, format carré.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <button onClick={handleSave} disabled={saving} className="btn-primary text-sm">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ─── Posts Panel ─────────────────────────────────────────────────────────────
 const MEDIA_TYPES = [
@@ -1045,6 +1126,7 @@ export default function AdminPlatformPage() {
         <div className="text-center py-10"><Loader2 size={28} className="animate-spin text-blue-600 mx-auto" /></div>
       ) : (
         <>
+          {tab === 'identity' && <IdentityPanel platformData={platformData} refresh={refresh} />}
           {tab === 'posts' && <PostsPanel />}
           {tab === 'resources' && <ResourcesPanel />}
           {tab === 'about' && <AboutPanel platformData={platformData} refresh={refresh} />}

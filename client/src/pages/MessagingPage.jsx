@@ -229,10 +229,10 @@ export default function MessagingPage() {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher..." className="input pl-9 text-sm" />
             </div>
-            {['super_admin', 'directeur', 'enseignant'].includes(user?.role) && (
+            {['super_admin', 'directeur', 'enseignant', 'parent'].includes(user?.role) && (
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
                 <button onClick={() => setPanelTab('conversations')} className={cn('flex-1 text-xs font-medium py-1.5 rounded-md transition-colors', panelTab === 'conversations' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500')}>Discussions</button>
-                <button onClick={() => setPanelTab('staff')} className={cn('flex-1 text-xs font-medium py-1.5 rounded-md transition-colors', panelTab === 'staff' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500')}>Personnel</button>
+                <button onClick={() => setPanelTab('staff')} className={cn('flex-1 text-xs font-medium py-1.5 rounded-md transition-colors', panelTab === 'staff' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500')}>Membres</button>
               </div>
             )}
             {groups.length > 0 && (
@@ -257,7 +257,7 @@ export default function MessagingPage() {
               staffQ.loading ? (
                 <div className="text-center py-12"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></div>
               ) : filteredStaff.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-12">Aucun personnel trouvé</p>
+                <p className="text-sm text-gray-400 text-center py-12">Aucun membre trouvé</p>
               ) : (
                 filteredStaff.map((s) => (
                   <button key={s._id} onClick={() => openStaffConversation(s)} className="w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors flex items-center gap-3">
