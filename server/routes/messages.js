@@ -6,7 +6,7 @@ const Student = require('../models/Student')
 const Teacher = require('../models/Teacher')
 const MessageGroup = require('../models/MessageGroup')
 const { protect, authorize } = require('../middleware/auth')
-const { upload } = require('../config/cloudinary')
+const { upload, cloudinary } = require('../config/cloudinary')
 
 // Helper: compute allowed contacts for the current user based on role & school
 async function getAllowedContacts(user) {
@@ -188,11 +188,19 @@ router.get('/conversation/:conversationId', protect, async (req, res) => {
 // POST /api/messages — direct (1-1) messages only
 router.post('/', protect, async (req, res) => {
   try {
-    const { recipientId, subject, body } = req.body
+    const { recipientId, subject, body, type, mediaUrl, mediaDuration } = req.body
     const senderId = req.user._id
 
-    if (!recipientId || !body) {
-      return res.status(400).json({ message: 'Destinataire et contenu requis' })
+    const msgType = type || 'text'
+    if (!recipientId) {
+      return res.status(400).json({ message: 'Destinataire requis' })
+    }
+    // Pour un message texte, le contenu est requis ; pour un média, mediaUrl suffit
+    if (msgType === 'text' && !body) {
+      return res.status(400).json({ message: 'Contenu requis' })
+    }
+    if (msgType !== 'text' && msgType !== 'sticker' && !mediaUrl) {
+      return res.status(400).json({ message: 'Média requis' })
     }
 
     let isAllowed = false
@@ -218,13 +226,24 @@ router.post('/', protect, async (req, res) => {
     const ids = [senderId.toString(), recipientId].sort()
     const conversationId = `conv_${ids[0]}_${ids[1]}`
 
+    // Upload du média si fourni en data URL (image, vidéo, vocal). Les stickers restent une URL/emoji directe.
+    let finalMediaUrl = mediaUrl || ''
+    if (mediaUrl && /^data:/.test(mediaUrl) && msgType !== 'sticker') {
+      const resourceType = msgType === 'image' ? 'image' : 'video' // cloudinary traite l'audio comme 'video'
+      const up = await cloudinary.uploader.upload(mediaUrl, { resource_type: resourceType, folder: 'katd/messages' })
+      finalMediaUrl = up.secure_url
+    }
+
     const message = await Message.create({
       conversationId,
       sender: senderId,
       recipient: recipientId,
       school: req.user.school,
       subject,
-      body,
+      body: body || '',
+      type: msgType,
+      mediaUrl: finalMediaUrl,
+      mediaDuration: Number(mediaDuration) || 0,
     })
 
     const populated = await message.populate([

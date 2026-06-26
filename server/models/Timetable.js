@@ -2,6 +2,7 @@ const mongoose = require('mongoose')
 
 const slotSchema = new mongoose.Schema({
   day: { type: String, enum: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'], required: true },
+  date: { type: String, default: '' }, // date précise optionnelle (YYYY-MM-DD) pour un cours/événement ponctuel
   startTime: { type: String, required: true },
   endTime: { type: String, required: true },
   subject: { type: String },

@@ -7,7 +7,11 @@ const messageSchema = new mongoose.Schema(
     recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School' },
     subject: { type: String, trim: true },
-    body: { type: String, required: true },
+    body: { type: String, default: '' },
+    // Type de message : texte, vocal, image, vidéo ou sticker
+    type: { type: String, enum: ['text', 'voice', 'image', 'video', 'sticker'], default: 'text' },
+    mediaUrl: { type: String, default: '' },
+    mediaDuration: { type: Number, default: 0 }, // durée d'un vocal en secondes
     read: { type: Boolean, default: false },
     readAt: { type: Date },
     isGroup: { type: Boolean, default: false },

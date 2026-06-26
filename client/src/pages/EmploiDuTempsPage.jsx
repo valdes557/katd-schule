@@ -11,7 +11,7 @@ const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','
 const SLOT_COLORS = ['#3B82F6','#10B981','#F59E0B','#8B5CF6','#EF4444','#06B6D4','#EC4899','#14B8A6','#F97316','#6366F1']
 const DAY_COLORS = { Lundi: 'bg-blue-50', Mardi: 'bg-green-50', Mercredi: 'bg-yellow-50', Jeudi: 'bg-purple-50', Vendredi: 'bg-red-50', Samedi: 'bg-cyan-50' }
 
-const EMPTY_SLOT = { day: 'Lundi', startTime: '08:00', endTime: '09:00', subject: '', teacher: '', room: '', color: '#3B82F6' }
+const EMPTY_SLOT = { day: 'Lundi', date: '', startTime: '08:00', endTime: '09:00', subject: '', teacher: '', room: '', color: '#3B82F6' }
 
 export default function EmploiDuTempsPage() {
   const pdfRef = useRef(null)
@@ -130,6 +130,7 @@ export default function EmploiDuTempsPage() {
                             >
                               <div className="font-bold">{s.subject || '—'}</div>
                               <div className="opacity-80">{s.startTime}-{s.endTime}</div>
+                              {s.date && <div className="opacity-70">📅 {new Date(s.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</div>}
                               {s.teacher && <div className="opacity-70">{s.teacher}</div>}
                               {s.room && <div className="opacity-70">📍 {s.room}</div>}
                               {isDirecteur && (
@@ -183,6 +184,11 @@ export default function EmploiDuTempsPage() {
                     ))}
                   </div>
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Date précise (optionnel)</label>
+                <input type="date" value={slotForm.date} onChange={(e) => setSlotForm({ ...slotForm, date: e.target.value })} className="input text-sm mt-1" />
+                <p className="text-[10px] text-gray-400 mt-1">Laissez vide pour un cours hebdomadaire récurrent.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
