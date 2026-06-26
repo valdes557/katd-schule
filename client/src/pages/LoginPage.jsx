@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, X } from 'lucide-react'
+import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, X, GraduationCap, Users, User, UserPlus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../lib/api'
 
@@ -10,13 +10,18 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { login, register } = useAuth()
+  const { login, register, verifyEmail } = useAuth()
   const navigate = useNavigate()
 
   // Mode d'authentification : 'ecole' (personnel) ou 'user' (grand public)
   const [mode, setMode] = useState('ecole')
   const [userMode, setUserMode] = useState('login') // 'login' | 'signup'
   const [name, setName] = useState('')
+  // Vérification email après inscription
+  const [verifyMode, setVerifyMode] = useState(false)
+  const [verifyCode, setVerifyCode] = useState('')
+  const [verifyLoading, setVerifyLoading] = useState(false)
+  const [verifyInfo, setVerifyInfo] = useState('')
 
   // Mot de passe oublié (code par email, 2 étapes)
   const [showForgot, setShowForgot] = useState(false)
@@ -48,10 +53,39 @@ export default function LoginPage() {
         ? await register(name, email, password)
         : await login(email, password)
     setLoading(false)
+    if (result.success && result.requiresVerification) {
+      setVerifyMode(true)
+      setVerifyInfo('Un code de vérification a été envoyé à ' + (result.email || email))
+      return
+    }
     if (result.success) {
       navigate('/u')
     } else {
       setError(result.message || "Une erreur est survenue.")
+    }
+  }
+
+  const handleVerify = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!verifyCode.trim()) { setError('Veuillez saisir le code reçu par email.'); return }
+    setVerifyLoading(true)
+    const result = await verifyEmail(email, verifyCode.trim())
+    setVerifyLoading(false)
+    if (result.success) {
+      navigate('/u')
+    } else {
+      setError(result.message || 'Code incorrect.')
+    }
+  }
+
+  const handleResendVerify = async () => {
+    setError('')
+    try {
+      await authApi.resendVerification(email)
+      setVerifyInfo('Un nouveau code a été envoyé à ' + email)
+    } catch (err) {
+      setError(err.message || "Impossible de renvoyer le code.")
     }
   }
 
@@ -237,7 +271,22 @@ export default function LoginPage() {
             </form>
             )}
 
-            {mode === 'user' && (
+            {mode === 'user' && verifyMode && (
+            <form onSubmit={handleVerify} className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 text-blue-700 text-xs rounded-lg px-3 py-2">{verifyInfo}</div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Code de vérification</label>
+                <input type="text" inputMode="numeric" maxLength={6} value={verifyCode} onChange={(e) => setVerifyCode(e.target.value.replace(/[^0-9]/g, ''))} placeholder="------" className="input text-center tracking-[0.5em] font-bold text-lg" required />
+              </div>
+              <button type="submit" disabled={verifyLoading} className="btn-primary w-full justify-center">{verifyLoading ? 'Vérification...' : 'Valider mon compte'}</button>
+              <div className="flex items-center justify-between text-xs">
+                <button type="button" onClick={() => { setVerifyMode(false); setError('') }} className="text-gray-500 hover:underline">Retour</button>
+                <button type="button" onClick={handleResendVerify} className="text-blue-600 font-medium hover:underline">Renvoyer le code</button>
+              </div>
+            </form>
+            )}
+
+            {mode === 'user' && !verifyMode && (
             <form onSubmit={handleUserSubmit} className="space-y-4">
               {userMode === 'signup' && (
                 <div>

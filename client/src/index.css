@@ -87,3 +87,6 @@
     overflow: hidden;
   }
 }
+/* Anti-zoom global */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: pan-x pan-y; }
+body { touch-action: pan-x pan-y; overscroll-behavior: none; }

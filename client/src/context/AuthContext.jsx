@@ -71,6 +71,10 @@ export function AuthProvider({ children }) {
   const register = async (name, email, password) => {
     try {
       const res = await authApi.registerUser({ name, email, password })
+      // Vérification email obligatoire : pas de token tant que non confirmé
+      if (res.requiresVerification) {
+        return { success: true, requiresVerification: true, email: res.email || email }
+      }
       const u = res.user
       localStorage.setItem('token', res.token)
       localStorage.setItem('katd_user', JSON.stringify(u))
@@ -80,6 +84,23 @@ export function AuthProvider({ children }) {
       return { success: true, user: u }
     } catch (err) {
       return { success: false, message: err.message || "Échec de l'inscription" }
+    }
+  }
+
+  // Confirme le code de vérification reçu par email puis connecte l'utilisateur
+  const verifyEmail = async (email, code) => {
+    try {
+      const res = await authApi.verifyEmail(email, code)
+      const u = res.user
+      const s = res.school || null
+      localStorage.setItem('token', res.token)
+      localStorage.setItem('katd_user', JSON.stringify(u))
+      if (s) localStorage.setItem('katd_school', JSON.stringify(s)); else localStorage.removeItem('katd_school')
+      setUser(u)
+      setSchool(s)
+      return { success: true, user: u }
+    } catch (err) {
+      return { success: false, message: err.message || 'Code invalide' }
     }
   }
 
@@ -100,7 +121,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, setUser, school, setSchool, cycle, login, register, logout, loading, changeCycle }}>
+    <AuthContext.Provider value={{ user, setUser, school, setSchool, cycle, login, register, verifyEmail, logout, loading, changeCycle }}>
       {children}
     </AuthContext.Provider>
   )

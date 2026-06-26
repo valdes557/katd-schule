@@ -72,13 +72,22 @@ router.post(
       if (existing) {
         return res.status(400).json({ message: 'Cet email est déjà utilisé' })
       }
-      // Rôle forcé à 'utilisateur', aucun rattachement à une école
-      const user = await User.create({ name, email, password, role: 'utilisateur', isOnline: true, lastSeen: new Date() })
-      const token = generateToken(user._id)
+      // Rôle forcé à 'utilisateur'. Compte créé NON vérifié : code envoyé par email.
+      const code = gen6()
+      const bcrypt = require('bcryptjs')
+      const user = await User.create({ name, email, password, role: 'utilisateur', emailVerified: false, emailVerifyCode: await bcrypt.hash(code, 10), emailVerifyExpires: new Date(Date.now() + 30 * 60000) })
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: '✅ Vérifiez votre email — KATD-SCHÜLE',
+          html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px"><h2 style="color:#111827">Bienvenue sur KATD-SCHÜLE !</h2><p style="color:#374151">Bonjour ${user.name}, voici votre code de vérification (valable 30 minutes) :</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;color:#2563EB;background:#EFF6FF;border-radius:12px;padding:18px;margin:16px 0">${code}</div><p style="color:#6B7280;font-size:12px">Saisissez ce code dans l'application pour activer votre compte.</p></div>`,
+        })
+      } catch (e) { console.error('email verif:', e.message) }
       res.status(201).json({
         success: true,
-        token,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar || '' },
+        requiresVerification: true,
+        email: user.email,
+        message: 'Un code de vérification a été envoyé à votre email.',
       })
     } catch (err) {
       res.status(500).json({ message: err.message })
@@ -279,6 +288,54 @@ router.post('/avatar', protect, upload.single('avatar'), async (req, res) => {
     if (!req.file?.path) return res.status(400).json({ message: 'Aucun fichier reçu' })
     const user = await User.findByIdAndUpdate(req.user._id, { avatar: req.file.path }, { new: true })
     res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone, matricule: user.matricule } })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// @route  POST /api/auth/verify-email — valide le code et connecte l'utilisateur
+router.post('/verify-email', async (req, res) => {
+  try {
+    const email = (req.body.email || '').trim().toLowerCase()
+    const { code } = req.body
+    if (!email || !code) return res.status(400).json({ message: 'Email et code requis' })
+    const user = await User.findOne({ email }).select('+emailVerifyCode +emailVerifyExpires').populate('school')
+    if (!user) return res.status(404).json({ message: 'Compte introuvable' })
+    if (user.emailVerified) {
+      const token = generateToken(user._id)
+      return res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar || '' }, school: user.school || null })
+    }
+    if (!user.emailVerifyCode || !user.emailVerifyExpires) return res.status(400).json({ message: 'Aucun code en attente. Demandez un renvoi.' })
+    if (user.emailVerifyExpires < Date.now()) return res.status(400).json({ message: 'Code expiré. Demandez un renvoi.' })
+    const bcrypt = require('bcryptjs')
+    const ok = await bcrypt.compare(String(code), user.emailVerifyCode)
+    if (!ok) return res.status(400).json({ message: 'Code incorrect' })
+    user.emailVerified = true
+    user.emailVerifyCode = null
+    user.emailVerifyExpires = null
+    user.isOnline = true
+    user.lastSeen = new Date()
+    await user.save({ validateBeforeSave: false })
+    const token = generateToken(user._id)
+    res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar || '' }, school: user.school || null })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// @route  POST /api/auth/resend-verification — renvoie un code de vérification
+router.post('/resend-verification', async (req, res) => {
+  try {
+    const email = (req.body.email || '').trim().toLowerCase()
+    if (!email) return res.status(400).json({ message: 'Email requis' })
+    const user = await User.findOne({ email })
+    if (!user) return res.json({ success: true, message: 'Si un compte existe, un code a été envoyé.' })
+    if (user.emailVerified) return res.status(400).json({ message: 'Ce compte est déjà vérifié.' })
+    const code = gen6()
+    const bcrypt = require('bcryptjs')
+    user.emailVerifyCode = await bcrypt.hash(code, 10)
+    user.emailVerifyExpires = new Date(Date.now() + 30 * 60000)
+    await user.save({ validateBeforeSave: false })
+    try {
+      await sendEmail({ to: user.email, subject: '✅ Votre code de vérification — KATD-SCHÜLE', html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px"><h2 style="color:#111827">Code de vérification</h2><p style="color:#374151">Bonjour ${user.name}, votre nouveau code (valable 30 minutes) :</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;color:#2563EB;background:#EFF6FF;border-radius:12px;padding:18px;margin:16px 0">${code}</div></div>` })
+    } catch (e) { console.error('email resend:', e.message) }
+    res.json({ success: true, message: 'Un nouveau code a été envoyé.' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
