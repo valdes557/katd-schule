@@ -30,12 +30,13 @@ app.use(cors({
 }))
 // Handle CORS preflight globally
 app.options('*', cors())
-app.use(express.json())
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf && buf.toString('utf8') } }))
 app.use(express.urlencoded({ extended: true }))
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 app.use('/api/auth', require('./routes/auth'))
+app.use('/api/payments', require('./routes/payments'))
 app.use('/api/schools', require('./routes/schools'))
 app.use('/api/students', require('./routes/students'))
 app.use('/api/parents', require('./routes/parents'))

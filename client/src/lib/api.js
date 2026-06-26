@@ -707,4 +707,9 @@ export const aiApi = {
   stats: () => api.get('/ai/stats'),
 }
 
+export const paymentsApi = {
+  initiateSubscription: (payload) => api.post('/payments/subscription/initiate', payload),
+  status: (reference) => api.get(`/payments/status/${reference}`),
+}
+
 export default api

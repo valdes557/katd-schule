@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
-import { locationsApi, schoolRegistrationApi, platformApi, plansApi } from '../lib/api'
+import { locationsApi, schoolRegistrationApi, platformApi, plansApi, paymentsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { dialCodeFor } from '../data/countryDialCodes'
 
@@ -31,12 +31,14 @@ export default function SchoolRegistrationPage() {
   const [error, setError] = useState('')
   const [proofFile, setProofFile] = useState(null)
   const [proofPreview, setProofPreview] = useState(null)
+  const [statusMsg, setStatusMsg] = useState('')
   const [billingMap, setBillingMap] = useState({}) // planId -> 'annual'|'trimestrial'
 
   const [form, setForm] = useState({
     schoolName: '', directorName: '',
     country: '', city: '', neighborhood: '',
     whatsapp: '', email: '',
+    phone: '', operator: 'mtn',
   })
 
   // Stable on-mount fetches
@@ -109,29 +111,53 @@ export default function SchoolRegistrationPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    if (!proofFile) { setError('Veuillez joindre la preuve de paiement (image)'); return }
+    if (!form.phone.trim()) { setError('Veuillez saisir votre numéro Mobile Money'); return }
+    if (!form.operator) { setError('Veuillez choisir votre opérateur Mobile Money'); return }
 
     setSubmitting(true)
+    setStatusMsg('Initialisation du paiement...')
     try {
-      const fd = new FormData()
-      fd.append('cycle', selected.cycle)
-      fd.append('plan', selected.billing)
-      fd.append('amount', selected.amount)
-      fd.append('schoolName', form.schoolName)
-      fd.append('directorName', form.directorName)
-      fd.append('country', form.country)
-      fd.append('city', form.city)
-      if (form.neighborhood) fd.append('neighborhood', form.neighborhood)
-      // Préfixe l'indicatif du pays s'il est connu et pas déjà saisi par l'utilisateur
       const whatsappFull = dialCode && !form.whatsapp.trim().startsWith('+')
         ? `${dialCode} ${form.whatsapp.trim()}`
         : form.whatsapp.trim()
-      fd.append('whatsapp', whatsappFull)
-      fd.append('email', form.email)
-      fd.append('paymentProof', proofFile)
+      const phoneFull = dialCode && !form.phone.trim().startsWith('+')
+        ? `${dialCode} ${form.phone.trim()}`
+        : form.phone.trim()
 
-      await schoolRegistrationApi.submit(fd)
-      setSubmitted(true)
+      const initRes = await paymentsApi.initiateSubscription({
+        schoolName: form.schoolName,
+        directorName: form.directorName,
+        email: form.email,
+        whatsapp: whatsappFull,
+        cycle: selected.cycle,
+        plan: selected.billing,
+        countryName: form.country,
+        cityName: form.city,
+        neighborhoodName: form.neighborhood,
+        phone: phoneFull,
+        operator: form.operator,
+      })
+      const reference = initRes.reference
+      setStatusMsg('Validez le paiement sur votre téléphone Mobile Money, puis patientez...')
+
+      // Polling du statut (jusqu'à ~3 min)
+      let done = false
+      for (let i = 0; i < 45 && !done; i++) {
+        await new Promise((r) => setTimeout(r, 4000))
+        try {
+          const st = await paymentsApi.status(reference)
+          if (st.status === 'approved') {
+            done = true
+            setSubmitted(true)
+          } else if (st.status === 'rejected') {
+            done = true
+            setError('Le paiement a été rejeté ou annulé. Veuillez réessayer.')
+          }
+        } catch (e) { /* continue polling */ }
+      }
+      if (!done) {
+        setError("Le paiement n'a pas été confirmé à temps. Si vous avez payé, vos identifiants arriveront par email dès confirmation.")
+      }
     } catch (err) {
       setError(err.message)
     }
@@ -148,13 +174,13 @@ export default function SchoolRegistrationPage() {
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
               <CheckCircle2 size={32} className="text-green-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">Demande envoyée avec succès !</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3">Paiement réussi — Compte créé !</h2>
             <p className="text-sm text-gray-600 leading-relaxed mb-4">
-              Votre demande pour le cycle <strong>{selected?.cycle}</strong> ({selected?.billing === 'annual' ? 'Annuel' : 'Trimestriel'}) a bien été transmise à l'administrateur.
+              Votre demande pour le cycle <strong>{selected?.cycle}</strong> ({selected?.billing === 'annual' ? 'Annuel' : 'Trimestriel'}) a été réglée avec succès. Votre compte directeur a été créé automatiquement.
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-sm mb-6">
               <p className="text-blue-800 font-medium mb-1">📧 Prochaines étapes</p>
-              <p className="text-blue-600 text-xs">L'administrateur examinera votre dossier et vous enverra vos identifiants de connexion par email une fois la demande approuvée.</p>
+              <p className="text-blue-600 text-xs">Vos identifiants de connexion (email + mot de passe) viennent d'être envoyés à votre adresse email. Pensez à vérifier vos spams, puis connectez-vous et changez votre mot de passe.</p>
             </div>
             <Link to="/" className="btn-primary inline-flex items-center gap-2 text-sm">
               <ArrowLeft size={14} /> Retour à l'accueil
@@ -387,33 +413,44 @@ export default function SchoolRegistrationPage() {
               </div>
             )}
 
-            {/* Payment proof upload */}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">
-                Preuve de paiement * <span className="text-gray-400 font-normal">(capture d'écran ou photo du reçu)</span>
-              </label>
-              <div
-                onClick={() => fileRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${proofFile ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/30'}`}
-              >
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleProof} />
-                {proofPreview ? (
-                  <div className="space-y-2">
-                    <img src={proofPreview} alt="Preuve" className="max-h-40 mx-auto rounded-lg object-contain" />
-                    <p className="text-xs text-green-600 font-medium">✅ {proofFile?.name}</p>
-                    <p className="text-xs text-gray-400">Cliquez pour changer</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto">
-                      <ImageIcon size={22} className="text-gray-400" />
-                    </div>
-                    <p className="text-sm text-gray-600 font-medium">Cliquez pour uploader</p>
-                    <p className="text-xs text-gray-400">JPG, PNG, WEBP — max 5 MB</p>
-                  </div>
-                )}
+            {/* Paiement Mobile Money (SEBPay) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur Mobile Money *</label>
+                <select
+                  value={form.operator}
+                  onChange={(e) => setForm({ ...form, operator: e.target.value })}
+                  className="input w-full"
+                >
+                  <option value="mtn">MTN Mobile Money</option>
+                  <option value="moov">Moov Money</option>
+                  <option value="celtiis">Celtiis Cash</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money *</label>
+                <input
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="Ex: 01 97 00 00 00"
+                  className="input w-full"
+                />
               </div>
             </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start gap-2">
+              <CreditCard size={16} className="text-blue-600 mt-0.5" />
+              <p className="text-xs text-blue-800 leading-relaxed">
+                Vous serez débité de <b>{selected?.amount?.toLocaleString('fr-FR')} FCFA</b> via Mobile Money.
+                Validez la demande de paiement sur votre téléphone. Dès confirmation, votre compte directeur
+                est créé automatiquement et vos identifiants vous sont envoyés par email.
+              </p>
+            </div>
+            {statusMsg && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin" /> {statusMsg}
+              </div>
+            )}
 
             <button type="submit" disabled={submitting} className="btn-primary w-full justify-center py-3.5 text-sm">
               {submitting ? (
@@ -424,7 +461,7 @@ export default function SchoolRegistrationPage() {
             </button>
 
             <p className="text-xs text-center text-gray-400">
-              Votre demande sera examinée par l'administrateur sous 24h. Vos identifiants vous seront envoyés par email.
+              Le paiement est traité automatiquement. Dès confirmation, votre compte directeur est créé et vos identifiants envoyés par email.
             </p>
           </form>
         </div>
