@@ -60,7 +60,7 @@ export default function DownloadPdfButton({ containerRef, filename = 'document.p
       `
 
       wrapper = document.createElement('div')
-      wrapper.style.cssText = `background:#ffffff;padding:4px;position:fixed;left:-99999px;top:0;width:${source.offsetWidth || 800}px`
+      wrapper.style.cssText = `background:#ffffff;padding:4px;position:fixed;left:0;top:0;z-index:-1;pointer-events:none;width:${source.offsetWidth || 800}px`
       wrapper.appendChild(header)
       wrapper.appendChild(clone)
       document.body.appendChild(wrapper)
@@ -69,7 +69,7 @@ export default function DownloadPdfButton({ containerRef, filename = 'document.p
         margin: [10, 10, 10, 10],
         filename,
         image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true, backgroundColor: '#ffffff' },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: document.documentElement.scrollWidth },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pageBreak: { mode: ['avoid-all', 'css', 'legacy'] },
       }

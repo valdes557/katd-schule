@@ -11,9 +11,62 @@ import DashboardPage from './pages/DashboardPage'
 // Variante de lazy() qui enregistre aussi le « factory » d'import, afin de pouvoir
 // précharger tous les chunks de page en arrière-plan (navigation instantanée).
 const pagePrefetchers = []
+// Recharge la page UNE seule fois si un chunk JS est introuvable.
+// Cas typique : apres un nouveau deploiement, les anciens chunks (ancien hash)
+// n'existent plus -> l'import() dynamique echoue et l'ecran reste blanc tant
+// que l'utilisateur ne rafraichit pas manuellement.
+const CHUNK_RELOAD_KEY = 'katd_chunk_reloaded'
+function isChunkLoadError(err) {
+  const msg = (err && (err.message || err.toString())) || ''
+  return /Loading chunk|dynamically imported module|Importing a module script failed|Failed to fetch|error loading dynamically/i.test(msg)
+}
+function importWithRetry(factory) {
+  return factory().catch((err) => {
+    if (isChunkLoadError(err) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+      sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
+      window.location.reload()
+      return new Promise(() => {})
+    }
+    throw err
+  })
+}
+
 function lazyPage(factory) {
   pagePrefetchers.push(factory)
-  return lazy(factory)
+  return lazy(() => importWithRetry(factory))
+}
+
+// Empeche tout ecran totalement blanc en cas d'erreur de chargement de route.
+class RouteErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+  componentDidCatch(error) {
+    if (isChunkLoadError(error) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+      sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
+      window.location.reload()
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 text-center px-6">
+          <p className="text-gray-700 font-medium">Impossible de charger cette page.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+          >
+            Recharger la page
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 // Déclenche le téléchargement de tous les chunks de page pendant un temps mort,
 // sans bloquer le rendu courant. Best-effort : les échecs sont ignorés.
@@ -136,9 +189,10 @@ function ProtectedRoute({ children }) {
 export default function App() {
   // Précharge en arrière-plan tous les chunks de page une fois l'app montée :
   // le clic sur une fonctionnalité affiche alors la page sans temps de chargement.
-  useEffect(() => { prefetchAllPages() }, [])
+  useEffect(() => { sessionStorage.removeItem(CHUNK_RELOAD_KEY); prefetchAllPages() }, [])
 
   return (
+    <RouteErrorBoundary>
     <Suspense fallback={<PageFallback />}>
     <Routes>
       {/* Public routes */}
@@ -244,5 +298,6 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>
+    </RouteErrorBoundary>
   )
 }
