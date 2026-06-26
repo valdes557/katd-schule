@@ -67,6 +67,22 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // Inscription publique en tant qu'utilisateur (grand public)
+  const register = async (name, email, password) => {
+    try {
+      const res = await authApi.registerUser({ name, email, password })
+      const u = res.user
+      localStorage.setItem('token', res.token)
+      localStorage.setItem('katd_user', JSON.stringify(u))
+      localStorage.removeItem('katd_school')
+      setUser(u)
+      setSchool(null)
+      return { success: true, user: u }
+    } catch (err) {
+      return { success: false, message: err.message || "Échec de l'inscription" }
+    }
+  }
+
   const logout = () => {
     // Marque l'utilisateur hors ligne avant de purger le token (best-effort)
     presenceApi.logout().catch(() => {})
@@ -84,7 +100,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, setUser, school, setSchool, cycle, login, logout, loading, changeCycle }}>
+    <AuthContext.Provider value={{ user, setUser, school, setSchool, cycle, login, register, logout, loading, changeCycle }}>
       {children}
     </AuthContext.Provider>
   )

@@ -8,7 +8,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6 },
     role: {
       type: String,
-      enum: ['super_admin', 'directeur', 'enseignant', 'parent', 'eleve'],
+      enum: ['super_admin', 'directeur', 'enseignant', 'parent', 'eleve', 'utilisateur'],
       default: 'directeur',
     },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School' },
@@ -21,6 +21,9 @@ const userSchema = new mongoose.Schema(
     lastLogout: { type: Date },
     lastActivity: { type: Date },
     isOnline: { type: Boolean, default: false },
+    lastSeen: { type: Date, default: Date.now },
+    bio: { type: String, default: '' },
+    cover: { type: String, default: '' },
     twoFactorEnabled: { type: Boolean, default: false },
     // Accès à l'agent IA accordé par le directeur (enseignants/parents). Les
     // directeurs disposent de l'accès d'office si l'école a une souscription IA.

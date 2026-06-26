@@ -10,8 +10,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { login } = useAuth()
+  const { login, register } = useAuth()
   const navigate = useNavigate()
+
+  // Mode d'authentification : 'ecole' (personnel) ou 'user' (grand public)
+  const [mode, setMode] = useState('ecole')
+  const [userMode, setUserMode] = useState('login') // 'login' | 'signup'
+  const [name, setName] = useState('')
 
   // Mot de passe oublié (réinitialisation directe)
   const [showForgot, setShowForgot] = useState(false)
@@ -30,6 +35,22 @@ export default function LoginPage() {
       navigate('/dashboard')
     } else {
       setError(result.message || 'Email ou mot de passe incorrect.')
+    }
+  }
+
+  const handleUserSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    const result =
+      userMode === 'signup'
+        ? await register(name, email, password)
+        : await login(email, password)
+    setLoading(false)
+    if (result.success) {
+      navigate('/u')
+    } else {
+      setError(result.message || "Une erreur est survenue.")
     }
   }
 
@@ -117,8 +138,17 @@ export default function LoginPage() {
           </div>
 
           <div className="bg-white rounded-2xl shadow-card-lg border border-gray-100 p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Connexion</h2>
-            <p className="text-sm text-gray-500 mb-6">Accédez à votre espace école</p>
+            <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl">
+              <button type="button" onClick={() => { setMode('ecole'); setError('') }} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'ecole' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>
+                <GraduationCap size={16} /> École
+              </button>
+              <button type="button" onClick={() => { setMode('user'); setError('') }} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'user' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>
+                <Users size={16} /> Utilisateur
+              </button>
+            </div>
+
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">{mode === 'user' && userMode === 'signup' ? 'Créer un compte' : 'Connexion'}</h2>
+            <p className="text-sm text-gray-500 mb-6">{mode === 'user' ? 'Espace utilisateur KATD-SCHÜLE' : 'Accédez à votre espace école'}</p>
 
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">
@@ -126,6 +156,7 @@ export default function LoginPage() {
               </div>
             )}
 
+            {mode === 'ecole' && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -187,13 +218,55 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+            )}
 
+            {mode === 'user' && (
+            <form onSubmit={handleUserSubmit} className="space-y-4">
+              {userMode === 'signup' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Nom complet</label>
+                  <div className="relative">
+                    <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Votre nom" className="input pl-9" required />
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Adresse email</label>
+                <div className="relative">
+                  <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="votre@email.com" className="input pl-9" required />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Mot de passe</label>
+                <div className="relative">
+                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="input pl-9 pr-10" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+                </div>
+              </div>
+              <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2">
+                {userMode === 'signup' ? <UserPlus size={16} /> : null}
+                {loading ? 'Veuillez patienter...' : userMode === 'signup' ? 'Créer mon compte' : 'Se connecter'}
+              </button>
+              <p className="text-center text-xs text-gray-500">
+                {userMode === 'signup' ? 'Déjà un compte ?' : 'Pas encore de compte ?'}{' '}
+                <button type="button" onClick={() => { setUserMode(userMode === 'signup' ? 'login' : 'signup'); setError('') }} className="text-blue-600 font-medium hover:underline">
+                  {userMode === 'signup' ? 'Se connecter' : 'Créer un compte'}
+                </button>
+              </p>
+            </form>
+            )}
+
+            {mode === 'ecole' && (
             <p className="text-center text-xs text-gray-500 mt-5">
               Votre école n'est pas encore inscrite ?{' '}
               <Link to="/ecoles" className="text-blue-600 font-medium hover:underline">
                 Inscrire mon école
               </Link>
             </p>
+            )}
           </div>
         </div>
       </div>

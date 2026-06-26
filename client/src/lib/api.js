@@ -53,6 +53,9 @@ export const api = {
 export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (payload) => api.post('/auth/register', payload),
+  registerUser: (payload) => api.post('/auth/register-user', payload),
+  heartbeat: () => api.post('/auth/heartbeat').catch(() => {}),
+  goOffline: () => api.post('/auth/offline').catch(() => {}),
   me: () => api.get('/auth/me'),
   forgotPassword: (email, newPassword) => api.post('/auth/forgot-password', { email, newPassword }),
   updateProfile: (data) => api.put('/auth/profile', data),
@@ -170,6 +173,7 @@ export const attendanceApi = {
 }
 
 export const messagesApi = {
+  allUsers: () => api.get('/messages/all-users'),
   conversations: () => api.get('/messages/conversations'),
   conversation: (id) => api.get(`/messages/conversation/${id}`),
   send: (data) => api.post('/messages', data),
@@ -199,6 +203,20 @@ export const messagesApi = {
 
 export const mediaApi = {
   list: (params = '') => api.get(`/media?${params}`),
+  create: async ({ title, description = '', type, category = '', files = [], isPublic = true }) => {
+    const fd = new FormData()
+    fd.append('title', title)
+    fd.append('description', description)
+    fd.append('type', type)
+    if (category) fd.append('category', category)
+    fd.append('isPublic', String(isPublic))
+    for (const f of files) fd.append('files', f)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/media`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    return data
+  },
   get: (id) => api.get(`/media/${id}`),
   like: (id) => api.put(`/media/${id}/like`),
   comment: (id, text) => api.post(`/media/${id}/comments`, { text }),

@@ -153,6 +153,12 @@ const AiChatPage = lazyPage(() => import('./pages/AiChatPage'))
 const DirectorAiPage = lazyPage(() => import('./pages/DirectorAiPage'))
 const AdminAiPage = lazyPage(() => import('./pages/AdminAiPage'))
 const AdminBannersPage = lazyPage(() => import('./pages/AdminBannersPage'))
+// Espace utilisateur grand public
+const UserLayout = lazyPage(() => import('./pages/user/UserLayout'))
+const UserSocialPage = lazyPage(() => import('./pages/user/UserSocialPage'))
+const UserPublishPage = lazyPage(() => import('./pages/user/UserPublishPage'))
+const UserMessengerPage = lazyPage(() => import('./pages/user/UserMessengerPage'))
+const UserProfilePage = lazyPage(() => import('./pages/user/UserProfilePage'))
 
 function PageFallback() {
   return (
@@ -292,6 +298,21 @@ export default function App() {
         <Route path="parent/activites" element={<ParentActivitiesPage section="activities" />} />
         <Route path="parent/ressources" element={<ParentActivitiesPage section="resources" />} />
         <Route path="social" element={<DashboardSocialPage />} />
+      </Route>
+
+      {/* Espace utilisateur (grand public) — atterrissage direct sur le social */}
+      <Route
+        path="/u"
+        element={
+          <ProtectedRoute>
+            <UserLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<UserSocialPage />} />
+        <Route path="publier" element={<UserPublishPage />} />
+        <Route path="messages" element={<UserMessengerPage />} />
+        <Route path="profil" element={<UserProfilePage />} />
       </Route>
 
       {/* 404 fallback */}

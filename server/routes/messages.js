@@ -205,6 +205,13 @@ router.post('/', protect, async (req, res) => {
       isAllowed = allowed.some((u) => u._id.toString() === String(recipientId))
     }
     if (!isAllowed) {
+      // Espace utilisateur public : tous les utilisateurs KATD peuvent échanger
+      const rcpt = await User.findById(recipientId).select('isActive role')
+      if (rcpt && rcpt.isActive !== false && (req.user.role === 'utilisateur' || rcpt.role === 'utilisateur')) {
+        isAllowed = true
+      }
+    }
+    if (!isAllowed) {
       return res.status(403).json({ message: 'Vous ne pouvez pas envoyer de message à cet utilisateur' })
     }
 
@@ -457,6 +464,24 @@ router.delete('/:id', protect, async (req, res) => {
     }
 
     res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/messages/all-users — tous les utilisateurs KATD (espace utilisateur)
+router.get('/all-users', protect, async (req, res) => {
+  try {
+    const users = await User.find({ _id: { $ne: req.user._id }, isActive: { $ne: false } })
+      .select('name email role avatar isOnline lastActivity')
+      .sort({ name: 1 })
+    const now = Date.now()
+    const data = users.map((u) => {
+      const seen = u.lastActivity ? new Date(u.lastActivity).getTime() : 0
+      const online = !!u.isOnline && now - seen < 3 * 60 * 1000
+      return { _id: u._id, name: u.name, email: u.email, role: u.role, avatar: u.avatar || '', online, lastActivity: u.lastActivity }
+    })
+    res.json({ success: true, data })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

@@ -78,7 +78,8 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
 
     const media = await Media.create({
       ...req.body,
-      school: req.user.school,
+      isPublic: req.body.isPublic !== undefined ? req.body.isPublic : true,
+      school: req.user.school || undefined,
       uploadedBy: req.user._id,
       files,
     })
@@ -187,7 +188,9 @@ router.delete('/:id', protect, async (req, res) => {
   try {
     const media = await Media.findById(req.params.id)
     if (!media) return res.status(404).json({ message: 'Contenu non trouvé' })
-    if (media.school.toString() !== req.user.school.toString()) {
+    const isOwner = media.uploadedBy && media.uploadedBy.toString() === req.user._id.toString()
+    const sameSchool = media.school && req.user.school && media.school.toString() === req.user.school.toString()
+    if (!isOwner && !sameSchool) {
       return res.status(403).json({ message: 'Non autorisé' })
     }
     await media.deleteOne()
