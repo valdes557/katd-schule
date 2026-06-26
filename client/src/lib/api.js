@@ -713,4 +713,26 @@ export const paymentsApi = {
   status: (reference) => api.get(`/payments/status/${reference}`),
 }
 
+export const walletApi = {
+  me: () => api.get('/wallet/me'),
+  withdrawals: () => api.get('/wallet/withdrawals'),
+  teachers: () => api.get('/wallet/teachers'),
+  initiateDeposit: (payload) => api.post('/wallet/deposit/initiate', payload),
+  setPin: (payload) => api.post('/wallet/pin/set', payload),
+  forgotPin: () => api.post('/wallet/pin/forgot', {}),
+  resetPin: (payload) => api.post('/wallet/pin/reset', payload),
+  transfer: (payload) => api.post('/wallet/transfer', payload),
+  withdraw: (payload) => api.post('/wallet/withdraw', payload),
+}
+
+export const walletAdminApi = {
+  withdrawals: (status) => api.get('/admin/withdrawals' + (status ? '?status=' + status : '')),
+  payWithdrawal: (id, note) => api.put('/admin/withdrawals/' + id + '/pay', { note }),
+  rejectWithdrawal: (id, reason) => api.put('/admin/withdrawals/' + id + '/reject', { reason }),
+  getSebpay: () => api.get('/admin/sebpay'),
+  requestSebpayCode: () => api.post('/admin/sebpay/request-code', {}),
+  revealSebpay: (code) => api.post('/admin/sebpay/reveal', { code }),
+  updateSebpay: (payload) => api.put('/admin/sebpay', payload),
+}
+
 export default api

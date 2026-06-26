@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema(
     aiAccessGrantedAt: { type: Date },
     // Date de dernière consultation par rubrique (clé → Date) pour les badges de nouveautés
     rubricSeen: { type: Map, of: Date, default: {} },
+    // Code PIN portefeuille (haché) pour transferts/retraits
+    walletPin: { type: String, default: null, select: false },
+    pinResetCode: { type: String, default: null, select: false },
+    pinResetExpires: { type: Date, default: null, select: false },
   },
   { timestamps: true }
 )
@@ -46,9 +50,17 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password)
 }
 
+userSchema.methods.matchPin = async function (enteredPin) {
+  if (!this.walletPin) return false
+  return await bcrypt.compare(String(enteredPin), this.walletPin)
+}
+
 userSchema.methods.toJSON = function () {
   const obj = this.toObject()
   delete obj.password
+  delete obj.walletPin
+  delete obj.pinResetCode
+  delete obj.pinResetExpires
   return obj
 }
 

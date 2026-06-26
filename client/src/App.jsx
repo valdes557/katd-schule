@@ -95,6 +95,7 @@ const NotesPage = lazyPage(() => import('./pages/NotesPage'))
 const PresencePage = lazyPage(() => import('./pages/PresencePage'))
 const MessagingPage = lazyPage(() => import('./pages/MessagingPage'))
 const SouscriptionsPage = lazyPage(() => import('./pages/SouscriptionsPage'))
+const PortefeuillePage = lazyPage(() => import('./pages/PortefeuillePage'))
 const EnrollmentPage = lazyPage(() => import('./pages/EnrollmentPage'))
 const InscriptionsPage = lazyPage(() => import('./pages/InscriptionsPage'))
 const TarifsPage = lazyPage(() => import('./pages/TarifsPage'))
@@ -234,6 +235,7 @@ export default function App() {
         <Route path="presence" element={<PresencePage />} />
         <Route path="messagerie" element={<MessagingPage />} />
         <Route path="souscriptions" element={<SouscriptionsPage />} />
+        <Route path="portefeuille" element={<PortefeuillePage />} />
         <Route path="inscriptions" element={<InscriptionsPage />} />
 
         <Route path="profil" element={<DashboardSchoolProfilePage />} />

@@ -80,6 +80,7 @@ export const navSections = [
       { label: 'Rapports quotidiens', icon: FileText, path: '/dashboard/teacher/rapports' },
       { label: 'Mon pointage', icon: QrCode, path: '/dashboard/teacher/pointage' },
       { label: 'Mes salaires', icon: Wallet, path: '/dashboard/teacher/salaires' },
+      { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
   {
@@ -124,6 +125,7 @@ export const navSections = [
       { label: 'Salaires', icon: Wallet, path: '/dashboard/salaires', roles: ['directeur'] },
       { label: 'Factures', icon: Receipt, path: '/dashboard/factures' },
       { label: 'Souscriptions', icon: CreditCard, path: '/dashboard/souscriptions' },
+      { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille', roles: ['directeur'] },
     ],
   },
   {
