@@ -24,8 +24,11 @@ export default function EnrollmentPage() {
     motherName: '',
     fatherPhone: '',
     classId: '',
+    momoPhone: '',
+    momoOperator: 'mtn',
   })
   const [paymentFile, setPaymentFile] = useState(null)
+  const [statusMsg, setStatusMsg] = useState('')
   const [photoFile, setPhotoFile] = useState(null)
 
   // Bundle school + classes into one cache entry (single spinner, same schoolId key)
@@ -46,24 +49,59 @@ export default function EnrollmentPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-
-    if (!paymentFile) {
-      setError('Veuillez uploader la preuve de paiement')
-      return
-    }
+    const fee = selectedClass?.enrollmentFee || school?.enrollmentFee || 0
+    if (fee <= 0) { setError("Le montant des frais d'inscription n'est pas défini pour cette classe"); return }
+    if (!form.classId) { setError('Veuillez choisir une classe'); return }
+    if (!form.momoPhone.trim()) { setError('Veuillez saisir votre numéro Mobile Money'); return }
+    if (!form.momoOperator) { setError('Veuillez choisir votre opérateur Mobile Money'); return }
 
     setSubmitting(true)
+    setStatusMsg('Initialisation du paiement...')
     try {
-      const formData = new FormData()
-      Object.entries(form).forEach(([key, val]) => {
-        if (key === 'classId') formData.append('classId', val)
-        else formData.append(key, val)
+      // 1) Paiement SEBPay (crédite le portefeuille du directeur)
+      const initRes = await paymentsApi.initiateEnrollment({
+        schoolId: school?._id,
+        classId: form.classId,
+        amount: fee,
+        studentName: (form.firstName + ' ' + form.lastName).trim(),
+        payerName: form.fatherName || form.motherName || '',
+        payerEmail: form.email,
+        phone: form.momoPhone.trim(),
+        operator: form.momoOperator,
       })
-      formData.append('schoolId', schoolId)
-      formData.append('paymentProof', paymentFile)
-      if (photoFile) formData.append('photo', photoFile)
+      const reference = initRes.reference
+      setStatusMsg('Validez le paiement sur votre téléphone Mobile Money, puis patientez...')
 
+      let approved = false
+      for (let i = 0; i < 45 && !approved; i++) {
+        await new Promise((r) => setTimeout(r, 4000))
+        try {
+          const st = await paymentsApi.status(reference)
+          if (st.status === 'approved') approved = true
+          else if (st.status === 'rejected') { setError('Paiement rejeté ou annulé. Réessayez.'); setSubmitting(false); setStatusMsg(''); return }
+        } catch (e2) { /* continue */ }
+      }
+      if (!approved) { setError("Paiement non confirmé à temps. Si vous avez payé, contactez l'école."); setSubmitting(false); setStatusMsg(''); return }
+
+      // 2) Création de la demande d'inscription avec la référence de paiement
+      setStatusMsg("Enregistrement de l'inscription...")
+      const formData = new FormData()
+      formData.append('firstName', form.firstName)
+      formData.append('lastName', form.lastName)
+      formData.append('dateOfBirth', form.dateOfBirth)
+      formData.append('placeOfBirth', form.placeOfBirth)
+      formData.append('gender', form.gender)
+      formData.append('email', form.email)
+      formData.append('phone', form.phone)
+      formData.append('fatherName', form.fatherName)
+      formData.append('motherName', form.motherName)
+      formData.append('fatherPhone', form.fatherPhone)
+      formData.append('schoolId', school?._id)
+      formData.append('classId', form.classId)
+      formData.append('paymentReference', reference)
+      if (photoFile) formData.append('photo', photoFile)
       await enrollmentApi.submit(formData)
+      setStatusMsg('')
       setSubmitted(true)
     } catch (err) {
       setError(err.message)
@@ -91,9 +129,9 @@ export default function EnrollmentPage() {
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
               <CheckCircle2 size={32} className="text-green-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">Demande envoyée avec succès !</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3">Paiement réussi — Inscription enregistrée !</h2>
             <p className="text-sm text-gray-600 leading-relaxed mb-6">
-              Votre demande d'inscription est <strong className="text-orange-600">en attente d'approbation</strong> par le directeur de l'établissement.
+              Votre paiement a été confirmé et votre demande d'inscription est <strong className="text-orange-600">en attente d'approbation</strong> par le directeur.
               Vous recevrez un email de confirmation avec vos identifiants de connexion dès que votre inscription sera approuvée.
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-sm">
@@ -295,38 +333,40 @@ export default function EnrollmentPage() {
               </div>
             )}
 
-            {/* Payment proof */}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Preuve de paiement *</label>
-              <p className="text-xs text-gray-400 mb-2">Uploadez une capture d'écran ou photo du reçu de paiement (PDF, JPG, PNG)</p>
-              <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center hover:border-blue-300 transition-colors cursor-pointer relative">
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => setPaymentFile(e.target.files[0])}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-                {paymentFile ? (
-                  <div className="flex items-center justify-center gap-2 text-green-600">
-                    <CheckCircle2 size={16} />
-                    <span className="text-sm font-medium">{paymentFile.name}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-400">
-                    <Upload size={24} className="mx-auto mb-2" />
-                    <p className="text-sm">Cliquez pour sélectionner un fichier</p>
-                    <p className="text-xs mt-1">Max 5 Mo</p>
-                  </div>
-                )}
+            {/* Paiement Mobile Money (SEBPay) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur Mobile Money *</label>
+                <select value={form.momoOperator} onChange={(e) => setForm({ ...form, momoOperator: e.target.value })} className="input text-sm">
+                  <option value="mtn">MTN Mobile Money</option>
+                  <option value="moov">Moov Money</option>
+                  <option value="celtiis">Celtiis Cash</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money *</label>
+                <input type="tel" value={form.momoPhone} onChange={(e) => setForm({ ...form, momoPhone: e.target.value })} className="input text-sm" placeholder="Ex: 01 97 00 00 00" />
               </div>
             </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
+              <Banknote size={16} className="text-blue-600 mt-0.5" />
+              <p className="text-xs text-blue-800 leading-relaxed">
+                Le paiement est automatique : validez la demande sur votre téléphone. Dès confirmation,
+                votre inscription est enregistrée et les frais sont versés au directeur de l'école.
+              </p>
+            </div>
+            {statusMsg && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin" /> {statusMsg}
+              </div>
+            )}
 
             {/* Submit */}
             <button type="submit" disabled={submitting} className="btn-primary w-full justify-center py-3 text-sm mt-4">
               {submitting ? (
                 <><Loader2 size={16} className="animate-spin" /> Envoi en cours...</>
               ) : (
-                <><GraduationCap size={16} /> Confirmer l'inscription</>
+                <><GraduationCap size={16} /> Payer et confirmer l'inscription</>
               )}
             </button>
 

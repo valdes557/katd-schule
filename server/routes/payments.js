@@ -5,6 +5,9 @@ const crypto = require('crypto')
 const PaymentIntent = require('../models/PaymentIntent')
 const sebpay = require('../services/sebpayService')
 const { provisionDirector } = require('../services/directorProvisioning')
+const wallet = require('../services/walletService')
+const School = require('../models/School')
+const User = require('../models/User')
 
 const SUBSCRIPTION_FEE_DIRECTOR = Number(process.env.SUBSCRIPTION_FEE_DIRECTOR || 40000)
 
@@ -48,6 +51,38 @@ router.post('/subscription/initiate', async (req, res) => {
     })
   } catch (err) {
     console.error('initiate subscription error:', err.message)
+    return res.status(err.status || 500).json({ message: err.message, data: err.data })
+  }
+})
+
+// POST /api/payments/enrollment/initiate — frais d'inscription élève -> portefeuille directeur
+router.post('/enrollment/initiate', async (req, res) => {
+  try {
+    const { schoolId, studentName, studentId, classId, amount,
+            payerName, payerEmail, phone, operator } = req.body
+    if (!schoolId || !phone || !operator) {
+      return res.status(400).json({ message: 'École, numéro et opérateur Mobile Money requis' })
+    }
+    const school = await School.findById(schoolId)
+    if (!school) return res.status(404).json({ message: 'École introuvable' })
+    if (!school.director) return res.status(400).json({ message: "Cette école n'a pas de directeur associé" })
+    const fee = Number(amount) || Number(school.enrollmentFee) || 0
+    if (fee <= 0) return res.status(400).json({ message: "Le montant des frais d'inscription n'est pas défini" })
+
+    const reference = genRef('enr')
+    const { mode } = await sebpay.resolveConfig()
+    const intent = await PaymentIntent.create({
+      reference, purpose: 'enrollment', amount: fee, currency: 'XOF',
+      payerPhone: phone, payerOperator: operator, payerName: payerName || studentName || '',
+      payerEmail: payerEmail || '', school: school._id, beneficiary: school.director, mode,
+      meta: { studentName, studentId, classId, schoolName: school.name },
+    })
+    const result = await sebpay.createCollection({ amount: fee, phone, operator, reference, callbackUrl: callbackUrl() })
+    if (result.transaction_id) { intent.sebpayTransactionId = result.transaction_id; await intent.save() }
+    return res.json({ success: true, reference, amount: fee, mode, transaction: result,
+      message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money.' })
+  } catch (err) {
+    console.error('initiate enrollment error:', err.message)
     return res.status(err.status || 500).json({ message: err.message, data: err.data })
   }
 })
@@ -116,7 +151,28 @@ async function applyOutcome(intent, status, raw) {
         cityName: m.cityName, neighborhoodName: m.neighborhoodName, countryName: m.countryName,
       })
     }
-    // (enrollment / deposit seront gérés aux Lots 3-4)
+    else if (intent.purpose === 'enrollment') {
+      // Crédite le portefeuille du directeur de l'école concernée
+      if (intent.beneficiary) {
+        const m = intent.meta || {}
+        await wallet.credit(intent.beneficiary, {
+          amount: intent.amount, type: 'enrollment', role: 'directeur', school: intent.school,
+          paymentIntent: intent._id, sebpayTransactionId: intent.sebpayTransactionId,
+          counterparty: intent.initiatedBy || null,
+          description: "Frais d'inscription" + (m.studentName ? ' - ' + m.studentName : ''),
+          meta: m,
+        })
+      }
+    } else if (intent.purpose === 'deposit') {
+      // Dépôt directeur sur son propre portefeuille
+      if (intent.initiatedBy) {
+        await wallet.credit(intent.initiatedBy, {
+          amount: intent.amount, type: 'deposit', role: 'directeur', school: intent.school,
+          paymentIntent: intent._id, sebpayTransactionId: intent.sebpayTransactionId,
+          description: 'Dépôt sur le portefeuille',
+        })
+      }
+    }
     intent.fulfilled = true
     await intent.save()
   } else if (status === 'rejected') {

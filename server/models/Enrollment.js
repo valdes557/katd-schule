@@ -17,7 +17,9 @@ const enrollmentSchema = new mongoose.Schema(
     class: { type: mongoose.Schema.Types.ObjectId, ref: 'Class', required: true },
     className: { type: String },
     amount: { type: Number, required: true },
-    paymentProof: { type: String, required: true },
+    paymentProof: { type: String, default: '' },
+    paymentReference: { type: String, default: '' },
+    paid: { type: Boolean, default: false },
     status: {
       type: String,
       enum: ['pending', 'approved', 'rejected'],

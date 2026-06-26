@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcryptjs')
 const Enrollment = require('../models/Enrollment')
+const PaymentIntent = require('../models/PaymentIntent')
 const Class = require('../models/Class')
 const School = require('../models/School')
 const Student = require('../models/Student')
@@ -26,15 +27,19 @@ router.get('/school/:schoolId/classes', async (req, res) => {
 // POST /api/enrollments — Public: submit enrollment request
 router.post('/', upload.fields([{ name: 'paymentProof', maxCount: 1 }, { name: 'photo', maxCount: 1 }]), async (req, res) => {
   try {
-    const { firstName, lastName, dateOfBirth, placeOfBirth, gender, email, phone, schoolId, classId, fatherName, motherName, fatherPhone } = req.body
+    const { firstName, lastName, dateOfBirth, placeOfBirth, gender, email, phone, schoolId, classId, fatherName, motherName, fatherPhone, paymentReference } = req.body
 
     if (!firstName || !lastName || !dateOfBirth || !placeOfBirth || !gender || !email || !schoolId || !classId) {
       return res.status(400).json({ message: 'Tous les champs obligatoires doivent être remplis' })
     }
 
     const proofFile = req.files?.paymentProof?.[0]
-    if (!proofFile) {
-      return res.status(400).json({ message: 'La preuve de paiement est obligatoire' })
+    let paidIntent = null
+    if (paymentReference) {
+      paidIntent = await PaymentIntent.findOne({ reference: paymentReference, purpose: 'enrollment', fulfilled: true })
+      if (!paidIntent) return res.status(400).json({ message: 'Paiement non confirmé. Réessayez ou contactez le support.' })
+    } else if (!proofFile) {
+      return res.status(400).json({ message: 'Le paiement des frais est obligatoire' })
     }
     const photoUrl = req.files?.photo?.[0]?.path || ''
 
@@ -65,9 +70,11 @@ router.post('/', upload.fields([{ name: 'paymentProof', maxCount: 1 }, { name: '
       photo: photoUrl,
       school: schoolId,
       class: classId,
+      paymentReference: paymentReference || '',
+      paid: !!paidIntent,
       className: `${cls.name} (${cls.level})`,
       amount: cls.enrollmentFee || school.enrollmentFee || 0,
-      paymentProof: proofFile.path,
+      paymentProof: proofFile ? proofFile.path : '',
     })
 
     res.status(201).json({
