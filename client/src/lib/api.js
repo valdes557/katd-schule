@@ -57,7 +57,8 @@ export const authApi = {
   heartbeat: () => api.post('/auth/heartbeat').catch(() => {}),
   goOffline: () => api.post('/auth/offline').catch(() => {}),
   me: () => api.get('/auth/me'),
-  forgotPassword: (email, newPassword) => api.post('/auth/forgot-password', { email, newPassword }),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (email, code, newPassword) => api.post('/auth/reset-password', { email, code, newPassword }),
   updateProfile: (data) => api.put('/auth/profile', data),
   uploadAvatar: async (file) => {
     const fd = new FormData()

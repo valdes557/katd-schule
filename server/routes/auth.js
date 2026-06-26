@@ -13,6 +13,11 @@ const generateToken = (id) => {
   })
 }
 
+// Code à 6 chiffres pour vérification email / réinitialisation mot de passe
+const gen6 = () => String(Math.floor(100000 + Math.random() * 900000))
+const MAX_ATTEMPTS = 5
+const LOCK_MINUTES = 15
+
 // @route  POST /api/auth/register
 router.post(
   '/register',
@@ -116,10 +121,29 @@ router.post(
 
     try {
       const { email, password } = req.body
-      const user = await User.findOne({ email }).populate('school')
-      if (!user || !(await user.matchPassword(password))) {
+      const user = await User.findOne({ email }).select('+loginAttempts +lockUntil +password').populate('school')
+      if (!user) {
         return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
       }
+      // Compte verrouillé après trop de tentatives
+      if (user.isLocked()) {
+        const mins = Math.ceil((user.lockUntil - Date.now()) / 60000)
+        return res.status(429).json({ message: `Trop de tentatives. Réessayez dans ${mins} minute(s).` })
+      }
+      if (!(await user.matchPassword(password))) {
+        user.loginAttempts = (user.loginAttempts || 0) + 1
+        if (user.loginAttempts >= MAX_ATTEMPTS) {
+          user.lockUntil = new Date(Date.now() + LOCK_MINUTES * 60000)
+          user.loginAttempts = 0
+          await user.save({ validateBeforeSave: false })
+          return res.status(429).json({ message: `Trop de tentatives. Compte bloqué pendant ${LOCK_MINUTES} minutes.` })
+        }
+        await user.save({ validateBeforeSave: false })
+        return res.status(401).json({ message: `Email ou mot de passe incorrect (${MAX_ATTEMPTS - user.loginAttempts} essai(s) restant(s))` })
+      }
+      // Connexion réussie : on remet le compteur à zéro
+      user.loginAttempts = 0
+      user.lockUntil = null
       if (user.isActive === false) {
         return res.status(403).json({ message: 'Votre compte a été désactivé. Contactez l\'administrateur.' })
       }
@@ -176,26 +200,57 @@ router.put('/password', protect, async (req, res) => {
   }
 })
 
-// @route  POST /api/auth/forgot-password — public: réinitialise le mot de passe
-// directement à partir de l'email (l'utilisateur saisit uniquement le nouveau mot de passe).
+// @route  POST /api/auth/forgot-password — étape 1 : envoi d'un code à 6 chiffres par email
 router.post('/forgot-password', async (req, res) => {
   try {
     const email = (req.body.email || '').trim().toLowerCase()
-    const { newPassword } = req.body
-    if (!email || !newPassword) {
-      return res.status(400).json({ message: 'Email et nouveau mot de passe requis' })
-    }
-    if (String(newPassword).length < 6) {
-      return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' })
-    }
+    if (!email) return res.status(400).json({ message: 'Email requis' })
     const user = await User.findOne({ email })
-    if (!user) {
-      return res.status(404).json({ message: 'Aucun compte associé à cet email' })
+    // Réponse identique que le compte existe ou non (anti-énumération)
+    const genericMsg = 'Si un compte existe pour cet email, un code de réinitialisation a été envoyé.'
+    if (!user || user.isActive === false) {
+      return res.json({ success: true, message: genericMsg })
     }
-    if (user.isActive === false) {
-      return res.status(403).json({ message: 'Ce compte est désactivé. Contactez l\'administrateur.' })
+    const code = gen6()
+    const bcrypt = require('bcryptjs')
+    user.resetPasswordCode = await bcrypt.hash(code, 10)
+    user.resetPasswordExpires = new Date(Date.now() + 15 * 60000)
+    await user.save({ validateBeforeSave: false })
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: '🔑 Code de réinitialisation — KATD-SCHÜLE',
+        html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px"><h2 style="color:#111827">Réinitialisation du mot de passe</h2><p style="color:#374151">Bonjour ${user.name || ''}, voici votre code (valable 15 minutes) :</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;color:#2563EB;background:#EFF6FF;border-radius:12px;padding:18px;margin:16px 0">${code}</div><p style="color:#6B7280;font-size:12px">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p></div>`,
+      })
+    } catch (e) { console.error('email reset:', e.message) }
+    res.json({ success: true, message: genericMsg })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// @route  POST /api/auth/reset-password — étape 2 : vérifie le code et définit le nouveau mot de passe
+router.post('/reset-password', async (req, res) => {
+  try {
+    const email = (req.body.email || '').trim().toLowerCase()
+    const { code, newPassword } = req.body
+    if (!email || !code || !newPassword) return res.status(400).json({ message: 'Email, code et nouveau mot de passe requis' })
+    if (String(newPassword).length < 6) return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' })
+    const user = await User.findOne({ email }).select('+resetPasswordCode +resetPasswordExpires')
+    if (!user || !user.resetPasswordCode || !user.resetPasswordExpires) {
+      return res.status(400).json({ message: 'Aucune demande de réinitialisation en cours' })
     }
+    if (user.resetPasswordExpires < Date.now()) {
+      return res.status(400).json({ message: 'Code expiré. Veuillez recommencer.' })
+    }
+    const bcrypt = require('bcryptjs')
+    const ok = await bcrypt.compare(String(code), user.resetPasswordCode)
+    if (!ok) return res.status(400).json({ message: 'Code incorrect' })
     user.password = newPassword
+    user.resetPasswordCode = null
+    user.resetPasswordExpires = null
+    user.loginAttempts = 0
+    user.lockUntil = null
     await user.save()
     res.json({ success: true, message: 'Mot de passe réinitialisé. Vous pouvez vous connecter.' })
   } catch (err) {

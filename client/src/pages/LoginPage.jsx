@@ -18,9 +18,10 @@ export default function LoginPage() {
   const [userMode, setUserMode] = useState('login') // 'login' | 'signup'
   const [name, setName] = useState('')
 
-  // Mot de passe oublié (réinitialisation directe)
+  // Mot de passe oublié (code par email, 2 étapes)
   const [showForgot, setShowForgot] = useState(false)
-  const [forgot, setForgot] = useState({ email: '', newPassword: '', confirm: '' })
+  const [forgotStep, setForgotStep] = useState(1) // 1: email -> code ; 2: code + nouveau mdp
+  const [forgot, setForgot] = useState({ email: '', code: '', newPassword: '', confirm: '' })
   const [forgotLoading, setForgotLoading] = useState(false)
   const [forgotError, setForgotError] = useState('')
   const [forgotDone, setForgotDone] = useState(false)
@@ -55,15 +56,31 @@ export default function LoginPage() {
   }
 
   const openForgot = () => {
-    setForgot({ email, newPassword: '', confirm: '' })
+    setForgot({ email, code: '', newPassword: '', confirm: '' })
+    setForgotStep(1)
     setForgotError('')
     setForgotDone(false)
     setShowForgot(true)
   }
 
-  const handleForgot = async (e) => {
+  const handleSendCode = async (e) => {
     e.preventDefault()
     setForgotError('')
+    if (!forgot.email) { setForgotError('Veuillez saisir votre email.'); return }
+    setForgotLoading(true)
+    try {
+      await authApi.forgotPassword(forgot.email)
+      setForgotStep(2)
+    } catch (err) {
+      setForgotError(err.message || "Impossible d'envoyer le code.")
+    }
+    setForgotLoading(false)
+  }
+
+  const handleResetWithCode = async (e) => {
+    e.preventDefault()
+    setForgotError('')
+    if (!forgot.code.trim()) { setForgotError('Veuillez saisir le code reçu par email.'); return }
     if (forgot.newPassword.length < 6) {
       setForgotError('Le mot de passe doit contenir au moins 6 caractères.')
       return
@@ -74,7 +91,7 @@ export default function LoginPage() {
     }
     setForgotLoading(true)
     try {
-      await authApi.forgotPassword(forgot.email, forgot.newPassword)
+      await authApi.resetPassword(forgot.email, forgot.code.trim(), forgot.newPassword)
       setForgotDone(true)
       setEmail(forgot.email)
     } catch (err) {
@@ -290,45 +307,42 @@ export default function LoginPage() {
                 <button onClick={() => setShowForgot(false)} className="btn-primary mt-4 justify-center w-full text-sm">Retour à la connexion</button>
               </div>
             ) : (
-              <form onSubmit={handleForgot} className="space-y-3">
-                <p className="text-xs text-gray-500">Saisissez votre email et le nouveau mot de passe souhaité.</p>
-                {forgotError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{forgotError}</div>
-                )}
+              forgotStep === 1 ? (
+              <form onSubmit={handleSendCode} className="space-y-3">
+                <p className="text-xs text-gray-500">Saisissez votre email. Nous vous enverrons un code de vérification à 6 chiffres.</p>
+                {forgotError && (<div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{forgotError}</div>)}
                 <div>
                   <label className="text-xs font-medium text-gray-600">Adresse email</label>
-                  <input
-                    type="email" required
-                    value={forgot.email}
-                    onChange={(e) => setForgot({ ...forgot, email: e.target.value })}
-                    className="input text-sm mt-1" placeholder="votre@email.com"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Nouveau mot de passe</label>
-                  <input
-                    type="password" required
-                    value={forgot.newPassword}
-                    onChange={(e) => setForgot({ ...forgot, newPassword: e.target.value })}
-                    className="input text-sm mt-1" placeholder="Au moins 6 caractères"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Confirmer le mot de passe</label>
-                  <input
-                    type="password" required
-                    value={forgot.confirm}
-                    onChange={(e) => setForgot({ ...forgot, confirm: e.target.value })}
-                    className="input text-sm mt-1" placeholder="Retapez le mot de passe"
-                  />
+                  <input type="email" required value={forgot.email} onChange={(e) => setForgot({ ...forgot, email: e.target.value })} className="input text-sm mt-1" placeholder="votre@email.com" />
                 </div>
                 <div className="flex gap-3 pt-1">
                   <button type="button" onClick={() => setShowForgot(false)} className="btn-ghost flex-1 justify-center border border-gray-200 text-sm">Annuler</button>
-                  <button type="submit" disabled={forgotLoading} className="btn-primary flex-1 justify-center text-sm">
-                    {forgotLoading ? 'Réinitialisation...' : 'Réinitialiser'}
-                  </button>
+                  <button type="submit" disabled={forgotLoading} className="btn-primary flex-1 justify-center text-sm">{forgotLoading ? 'Envoi...' : 'Envoyer le code'}</button>
                 </div>
               </form>
+              ) : (
+              <form onSubmit={handleResetWithCode} className="space-y-3">
+                <p className="text-xs text-gray-500">Un code a été envoyé à <span className="font-medium">{forgot.email}</span>. Saisissez-le ci-dessous avec votre nouveau mot de passe.</p>
+                {forgotError && (<div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{forgotError}</div>)}
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Code de vérification</label>
+                  <input type="text" inputMode="numeric" maxLength={6} required value={forgot.code} onChange={(e) => setForgot({ ...forgot, code: e.target.value.replace(/[^0-9]/g, '') })} className="input text-sm mt-1 tracking-[0.5em] text-center font-bold" placeholder="------" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Nouveau mot de passe</label>
+                  <input type="password" required value={forgot.newPassword} onChange={(e) => setForgot({ ...forgot, newPassword: e.target.value })} className="input text-sm mt-1" placeholder="Au moins 6 caractères" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Confirmer le mot de passe</label>
+                  <input type="password" required value={forgot.confirm} onChange={(e) => setForgot({ ...forgot, confirm: e.target.value })} className="input text-sm mt-1" placeholder="Retapez le mot de passe" />
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setForgotStep(1)} className="btn-ghost flex-1 justify-center border border-gray-200 text-sm">Retour</button>
+                  <button type="submit" disabled={forgotLoading} className="btn-primary flex-1 justify-center text-sm">{forgotLoading ? 'Réinitialisation...' : 'Réinitialiser'}</button>
+                </div>
+                <button type="button" onClick={handleSendCode} className="text-xs text-blue-600 hover:underline w-full text-center">Renvoyer le code</button>
+              </form>
+              )
             )}
           </div>
         </div>
