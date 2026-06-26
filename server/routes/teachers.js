@@ -5,6 +5,7 @@ const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
 const { generateUserMatricule } = require('../utils/matricule')
+const wallet = require('../services/walletService')
 
 // GET /api/teachers
 router.get('/', protect, async (req, res) => {
@@ -77,6 +78,8 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
         matricule,
       })
       userId = user._id
+      // Crée le portefeuille de l'enseignant dès l'enregistrement
+      try { await wallet.getOrCreateWallet(userId, { role: 'enseignant', school: schoolId }) } catch (e) { console.error('wallet enseignant:', e.message) }
     }
 
     const teacher = await Teacher.create({

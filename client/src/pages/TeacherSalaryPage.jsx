@@ -1,6 +1,7 @@
+import { Link } from 'react-router-dom'
 import { teacherApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
-import { Wallet, Loader2, CheckCircle2, Clock, Banknote } from 'lucide-react'
+import { Wallet, Loader2, CheckCircle2, Clock, Banknote, ArrowUpFromLine } from 'lucide-react'
 
 const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} F CFA`
 const METHOD_LABELS = {
@@ -31,6 +32,17 @@ export default function TeacherSalaryPage() {
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Wallet size={20} className="text-blue-600" /> Mes salaires</h1>
         <p className="text-sm text-gray-500">État détaillé de vos salaires : brut, déductions et net reçu</p>
       </div>
+
+      <Link to="/dashboard/portefeuille" className="card p-4 flex items-center justify-between hover:shadow-md transition group">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center"><Wallet size={18} className="text-emerald-600" /></div>
+          <div>
+            <div className="text-sm font-semibold text-gray-900">Mon portefeuille</div>
+            <div className="text-xs text-gray-500">Consultez votre solde et demandez un retrait (traité sous 24h)</div>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 group-hover:gap-2 transition-all"><ArrowUpFromLine size={16} /> Retirer</span>
+      </Link>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="card p-4"><div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 bg-green-100"><Banknote size={18} className="text-green-600" /></div><div className="text-lg sm:text-2xl font-bold text-gray-900">{fmt(summary.totalPaid)}</div><div className="text-xs text-gray-500 mt-0.5">Total accumulé (reçu)</div></div>
