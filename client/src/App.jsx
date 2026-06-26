@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, Component } from 'react'
 import { useAuth } from './context/AuthContext'
 
 // Eager: public landing + login + layout (small, needed immediately)
