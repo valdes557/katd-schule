@@ -3,7 +3,7 @@ import { cache } from './cache'
 const rawUrl = import.meta.env.VITE_API_URL || '/api'
 const API_URL = rawUrl.endsWith('/api') ? rawUrl : rawUrl === '/api' ? '/api' : rawUrl + '/api'
 
-async function request(path, options = {}, retries = 2) {
+async function request(path, options = {}, retries = 5) {
   const token = localStorage.getItem('token')
   const headers = {
     'Content-Type': 'application/json',
@@ -18,10 +18,11 @@ async function request(path, options = {}, retries = 2) {
       res = await fetch(url, { ...options, headers })
     } catch (e) {
       if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)))
+        // Le serveur (Render gratuit) peut être en veille : on patiente progressivement (jusqu'à ~60s)
+        await new Promise((r) => setTimeout(r, Math.min(8000, 1500 * Math.pow(2, attempt))))
         continue
       }
-      throw new Error(`Impossible de joindre le serveur (${url}). Vérifiez votre connexion Internet ou que le backend est en ligne.`)
+      throw new Error(`Le serveur met trop de temps à répondre. Il démarrait peut-être (cela peut prendre jusqu'à 1 minute). Réessayez dans un instant.`)
     }
 
     const data = await res.json().catch(() => ({}))
@@ -29,7 +30,7 @@ async function request(path, options = {}, retries = 2) {
     if (!res.ok) {
       // Retry transient gateway errors (Render cold start, etc.)
       if ([502, 503, 504].includes(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)))
+        await new Promise((r) => setTimeout(r, Math.min(8000, 1500 * Math.pow(2, attempt))))
         continue
       }
       if (res.status === 401) {
