@@ -196,7 +196,14 @@ function ProtectedRoute({ children }) {
 export default function App() {
   // Précharge en arrière-plan tous les chunks de page une fois l'app montée :
   // le clic sur une fonctionnalité affiche alors la page sans temps de chargement.
-  useEffect(() => { sessionStorage.removeItem(CHUNK_RELOAD_KEY); prefetchAllPages() }, [])
+  useEffect(() => {
+    // On efface le drapeau anti-boucle UNIQUEMENT après un rendu stable (5s).
+    // Sinon, un cache périmé provoquerait une boucle de rechargement infinie :
+    // reload -> drapeau effacé -> chunk échoue -> reload -> ...
+    const t = setTimeout(() => { try { sessionStorage.removeItem(CHUNK_RELOAD_KEY) } catch (_) {} }, 5000)
+    prefetchAllPages()
+    return () => clearTimeout(t)
+  }, [])
 
   return (
     <RouteErrorBoundary>
