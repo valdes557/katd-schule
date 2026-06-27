@@ -352,46 +352,6 @@ router.post('/resend-verification', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// @route  DELETE /api/auth/account — l'utilisateur supprime DÉFINITIVEMENT son compte
-router.delete('/account', protect, async (req, res) => {
-  try {
-    const userId = req.user._id
-    try {
-      const Media = require('../models/Media')
-      const Message = require('../models/Message')
-      await Media.deleteMany({ uploadedBy: userId })
-      await Message.deleteMany({ $or: [{ sender: userId }, { recipient: userId }] })
-    } catch (e) { console.error('cascade delete:', e.message) }
-    await User.deleteOne({ _id: userId })
-    res.json({ success: true, message: "Compte supprimé définitivement. L'email est de nouveau disponible." })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
-
-// @route  DELETE /api/auth/account-by-email — suppression admin d'un compte par email
-router.delete('/account-by-email', protect, async (req, res) => {
-  try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({ message: 'Accès refusé' })
-    }
-    const email = (req.body.email || '').trim().toLowerCase()
-    if (!email) return res.status(400).json({ message: 'Email requis' })
-    const user = await User.findOne({ email })
-    if (!user) return res.status(404).json({ message: 'Aucun compte pour cet email' })
-    try {
-      const Media = require('../models/Media')
-      const Message = require('../models/Message')
-      await Media.deleteMany({ uploadedBy: user._id })
-      await Message.deleteMany({ $or: [{ sender: user._id }, { recipient: user._id }] })
-    } catch (e) { console.error('cascade delete:', e.message) }
-    await User.deleteOne({ _id: user._id })
-    res.json({ success: true, message: `Compte ${email} supprimé. Email libéré.` })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
-
 module.exports = router
 
 // Admin/director password reset for a user account (e.g., students created before hashing fix)
