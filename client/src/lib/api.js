@@ -62,6 +62,9 @@ export const authApi = {
   resetPassword: (email, code, newPassword) => api.post('/auth/reset-password', { email, code, newPassword }),
   verifyEmail: (email, code) => api.post('/auth/verify-email', { email, code }),
   resendVerification: (email) => api.post('/auth/resend-verification', { email }),
+  deleteAccount: () => api.del('/auth/account'),
+  deleteAccountByEmail: (email) =>
+    request('/auth/account-by-email', { method: 'DELETE', body: JSON.stringify({ email }) }),
   updateProfile: (data) => api.put('/auth/profile', data),
   uploadAvatar: async (file) => {
     const fd = new FormData()

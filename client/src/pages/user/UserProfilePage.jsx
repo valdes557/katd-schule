@@ -9,6 +9,7 @@ export default function UserProfilePage() {
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const persist = (u) => {
     setUser(u)
@@ -35,6 +36,17 @@ export default function UserProfilePage() {
       setDone(true); setTimeout(() => setDone(false), 2000)
     } catch (err) { setError(err.message) }
     finally { setSaving(false) }
+  }
+
+  const deleteMyAccount = async () => {
+    if (!window.confirm('Supprimer DÉFINITIVEMENT votre compte ? Cette action est irréversible. Votre email sera de nouveau disponible.')) return
+    setDeleting(true); setError('')
+    try {
+      await authApi.deleteAccount()
+      try { localStorage.removeItem('katd_user'); localStorage.removeItem('katd_token') } catch { /* ignore */ }
+      setUser(null)
+      window.location.href = '/login'
+    } catch (err) { setError(err.message); setDeleting(false) }
   }
 
   return (
@@ -71,6 +83,14 @@ export default function UserProfilePage() {
           <Save size={18} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
         </button>
       </form>
+
+      <div className="mt-8 pt-6 border-t border-gray-200">
+        <h2 className="text-sm font-semibold text-red-600 mb-2">Zone de danger</h2>
+        <p className="text-xs text-gray-500 mb-3">La suppression efface définitivement votre compte et toutes vos données. Votre adresse email pourra être réutilisée pour une nouvelle inscription.</p>
+        <button type="button" onClick={deleteMyAccount} disabled={deleting} className="w-full border border-red-300 text-red-600 hover:bg-red-50 rounded-lg px-4 py-2.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors">
+          <Trash2 size={16} /> {deleting ? 'Suppression...' : 'Supprimer mon compte'}
+        </button>
+      </div>
     </div>
   )
 }

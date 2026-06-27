@@ -68,9 +68,22 @@ router.post(
     }
     try {
       const { name, email, password } = req.body
-      const existing = await User.findOne({ email })
+      let existing = await User.findOne({ email })
       if (existing) {
-        return res.status(400).json({ message: 'Cet email est déjà utilisé' })
+        // Compte JAMAIS vérifié => suppression complète (et données liées) pour
+        // libérer l'email et permettre une nouvelle inscription. Compte vérifié protégé.
+        if (existing.emailVerified === false) {
+          try {
+            const Media = require('../models/Media')
+            const Message = require('../models/Message')
+            await Media.deleteMany({ uploadedBy: existing._id })
+            await Message.deleteMany({ $or: [{ sender: existing._id }, { recipient: existing._id }] })
+          } catch (e) { console.error('cleanup non-verifie:', e.message) }
+          await User.deleteOne({ _id: existing._id })
+          existing = null
+        } else {
+          return res.status(400).json({ message: 'Cet email est déjà utilisé' })
+        }
       }
       // Rôle forcé à 'utilisateur'. Compte créé NON vérifié : code envoyé par email.
       const code = gen6()
@@ -337,6 +350,46 @@ router.post('/resend-verification', async (req, res) => {
     } catch (e) { console.error('email resend:', e.message) }
     res.json({ success: true, message: 'Un nouveau code a été envoyé.' })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// @route  DELETE /api/auth/account — l'utilisateur supprime DÉFINITIVEMENT son compte
+router.delete('/account', protect, async (req, res) => {
+  try {
+    const userId = req.user._id
+    try {
+      const Media = require('../models/Media')
+      const Message = require('../models/Message')
+      await Media.deleteMany({ uploadedBy: userId })
+      await Message.deleteMany({ $or: [{ sender: userId }, { recipient: userId }] })
+    } catch (e) { console.error('cascade delete:', e.message) }
+    await User.deleteOne({ _id: userId })
+    res.json({ success: true, message: "Compte supprimé définitivement. L'email est de nouveau disponible." })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// @route  DELETE /api/auth/account-by-email — suppression admin d'un compte par email
+router.delete('/account-by-email', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Accès refusé' })
+    }
+    const email = (req.body.email || '').trim().toLowerCase()
+    if (!email) return res.status(400).json({ message: 'Email requis' })
+    const user = await User.findOne({ email })
+    if (!user) return res.status(404).json({ message: 'Aucun compte pour cet email' })
+    try {
+      const Media = require('../models/Media')
+      const Message = require('../models/Message')
+      await Media.deleteMany({ uploadedBy: user._id })
+      await Message.deleteMany({ $or: [{ sender: user._id }, { recipient: user._id }] })
+    } catch (e) { console.error('cascade delete:', e.message) }
+    await User.deleteOne({ _id: user._id })
+    res.json({ success: true, message: `Compte ${email} supprimé. Email libéré.` })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 module.exports = router
