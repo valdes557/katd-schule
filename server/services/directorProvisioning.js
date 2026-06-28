@@ -9,6 +9,12 @@ const { sendEmail } = require('../utils/emailService')
 //         cityName, neighborhoodName, countryName }
 async function provisionDirector(data) {
   // 1) École
+  // Abonnement: essai gratuit de 1 mois par défaut, ou actif (1 an) si déjà payé
+  const _now = new Date()
+  const _isPaid = data.paid === true
+  const _endDate = new Date(_now)
+  if (_isPaid) _endDate.setFullYear(_endDate.getFullYear() + 1)
+  else _endDate.setMonth(_endDate.getMonth() + 1) // essai = 1 mois
   const school = await School.create({
     name: data.schoolName,
     cycles: [data.cycle || 'primaire'],
@@ -20,6 +26,14 @@ async function provisionDirector(data) {
     contactEmail: data.email,
     contactPhone: data.whatsapp || '',
     isActive: true,
+    subscription: {
+      plan: data.plan || 'annual',
+      cycle: data.cycle || undefined,
+      status: _isPaid ? 'active' : 'trial',
+      startDate: _now,
+      endDate: _endDate,
+      amount: _isPaid ? (data.amount || 0) : 0,
+    },
   })
 
   // 2) Compte directeur (mot de passe aléatoire, hashé par le hook pre-save)

@@ -452,4 +452,54 @@ router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
   }
 })
 
+// POST /api/school-registrations/free-trial — Public: inscription self-service avec ESSAI GRATUIT 1 mois
+// Crée immédiatement l'école + le directeur (sans paiement). Accès complet pendant 30 jours.
+router.post('/free-trial', async (req, res) => {
+  try {
+    const { schoolName, directorName, email, whatsapp, cycle, plan } = req.body
+    let { countryName, cityName, neighborhoodName, country, city, neighborhood } = req.body
+
+    if (!schoolName || !directorName || !email || !whatsapp || !cycle || !plan) {
+      return res.status(400).json({ message: 'Tous les champs obligatoires doivent être remplis' })
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Veuillez fournir un email valide' })
+    }
+
+    // Résoudre les localisations si des IDs sont fournis
+    try {
+      if (country && !countryName) { const d = await Location.findById(country); countryName = d?.name || '' }
+      if (city && !cityName) { const d = await Location.findById(city); cityName = d?.name || '' }
+      if (neighborhood && !neighborhoodName) { const d = await Location.findById(neighborhood); neighborhoodName = d?.name || '' }
+    } catch (_) {}
+
+    // L'email ne doit pas déjà appartenir à un compte
+    const existingUser = await User.findOne({ email })
+    if (existingUser) {
+      return res.status(400).json({ message: 'Cet email est déjà utilisé pour un compte existant.' })
+    }
+
+    const { provisionDirector } = require('../services/directorProvisioning')
+    const result = await provisionDirector({
+      schoolName, directorName, email,
+      whatsapp: whatsapp || '',
+      cycle, plan,
+      cityName: cityName || '', neighborhoodName: neighborhoodName || '', countryName: countryName || 'Bénin',
+      paid: false, // ESSAI GRATUIT
+      sendCredentialsEmail: true,
+    })
+
+    const trialEnd = result.school?.subscription?.endDate
+    res.status(201).json({
+      success: true,
+      message: "🎉 Essai gratuit activé ! Votre école est créée pour 1 mois. Vos identifiants ont été envoyés par email.",
+      trialEndsAt: trialEnd,
+      emailSent: result.emailSent,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

@@ -18,6 +18,7 @@ const CYCLE_META = {
 
 export default function SchoolRegistrationPage() {
   const [params] = useSearchParams()
+  const isTrial = params.get('trial') === '1' || params.get('plan') === 'trial'
   const fileRef = useRef()
 
   const [selected, setSelected] = useState(null) // { plan, billing: 'annual'|'trimestrial' }
@@ -111,6 +112,31 @@ export default function SchoolRegistrationPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (isTrial) {
+      setSubmitting(true)
+      setStatusMsg("Création de votre espace d'essai gratuit...")
+      try {
+        const whatsappFull = dialCode && !form.whatsapp.trim().startsWith('+')
+          ? `${dialCode} ${form.whatsapp.trim()}`
+          : form.whatsapp.trim()
+        await schoolRegistrationApi.freeTrial({
+          schoolName: form.schoolName,
+          directorName: form.directorName,
+          email: form.email,
+          whatsapp: whatsappFull,
+          cycle: selected.cycle,
+          plan: selected.billing,
+          countryName: form.country,
+          cityName: form.city,
+          neighborhoodName: form.neighborhood,
+        })
+        setSubmitted(true)
+      } catch (err) {
+        setError(err.message)
+      }
+      setSubmitting(false)
+      return
+    }
     if (!form.phone.trim()) { setError('Veuillez saisir votre numéro Mobile Money'); return }
     if (!form.operator) { setError('Veuillez choisir votre opérateur Mobile Money'); return }
 
@@ -174,9 +200,11 @@ export default function SchoolRegistrationPage() {
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
               <CheckCircle2 size={32} className="text-green-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">Paiement réussi — Compte créé !</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3">{isTrial ? "Essai gratuit activé — Compte créé !" : "Paiement réussi — Compte créé !"}</h2>
             <p className="text-sm text-gray-600 leading-relaxed mb-4">
-              Votre demande pour le cycle <strong>{selected?.cycle}</strong> ({selected?.billing === 'annual' ? 'Annuel' : 'Trimestriel'}) a été réglée avec succès. Votre compte directeur a été créé automatiquement.
+              {isTrial
+                ? <>Votre établissement (cycle <strong>{selected?.cycle}</strong>) profite de <strong>1 mois d'essai gratuit</strong>. Votre compte directeur a été créé automatiquement. À la fin de l'essai, réglez votre souscription pour conserver l'accès.</>
+                : <>Votre demande pour le cycle <strong>{selected?.cycle}</strong> ({selected?.billing === 'annual' ? 'Annuel' : 'Trimestriel'}) a été réglée avec succès. Votre compte directeur a été créé automatiquement.</>}
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-sm mb-6">
               <p className="text-blue-800 font-medium mb-1">📧 Prochaines étapes</p>
@@ -289,8 +317,17 @@ export default function SchoolRegistrationPage() {
             <h2 className="text-lg font-bold mt-0.5">Cycle {selected?.cycle} — {planLabel}</h2>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold">{selected?.amount?.toLocaleString()}</p>
-            <p className="text-blue-200 text-xs">F CFA {selected?.billing === 'annual' ? '/ an' : '/ trimestre'}</p>
+            {isTrial ? (
+              <>
+                <p className="text-2xl font-bold">Gratuit</p>
+                <p className="text-blue-200 text-xs">1 mois d'essai</p>
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-bold">{selected?.amount?.toLocaleString()}</p>
+                <p className="text-blue-200 text-xs">F CFA {selected?.billing === 'annual' ? '/ an' : '/ trimestre'}</p>
+              </>
+            )}
           </div>
         </div>
 
@@ -381,7 +418,7 @@ export default function SchoolRegistrationPage() {
             </div>
 
             {/* Platform payment methods info */}
-            {paymentMethods.length > 0 && (
+            {!isTrial && paymentMethods.length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <CreditCard size={15} className="text-amber-600" />
@@ -414,6 +451,7 @@ export default function SchoolRegistrationPage() {
             )}
 
             {/* Paiement Mobile Money (SEBPay) */}
+            {!isTrial && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur Mobile Money *</label>
@@ -438,10 +476,13 @@ export default function SchoolRegistrationPage() {
                 />
               </div>
             </div>
+            )}
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start gap-2">
               <CreditCard size={16} className="text-blue-600 mt-0.5" />
               <p className="text-xs text-blue-800 leading-relaxed">
-                Vous serez débité de <b>{selected?.amount?.toLocaleString('fr-FR')} FCFA</b> via Mobile Money.
+                {isTrial
+                ? <>Votre établissement bénéficie de <b>1 mois d'essai gratuit</b>. Aucun paiement requis aujourd'hui. À la fin de l'essai, l'accès sera suspendu jusqu'au règlement de votre souscription.</>
+                : <>Vous serez débité de <b>{selected?.amount?.toLocaleString('fr-FR')} FCFA</b> via Mobile Money.</>}
                 Validez la demande de paiement sur votre téléphone. Dès confirmation, votre compte directeur
                 est créé automatiquement et vos identifiants vous sont envoyés par email.
               </p>
@@ -456,7 +497,7 @@ export default function SchoolRegistrationPage() {
               {submitting ? (
                 <><Loader2 size={16} className="animate-spin" /> Envoi en cours...</>
               ) : (
-                <><Upload size={16} /> Envoyer ma demande de souscription</>
+                <><Upload size={16} /> {isTrial ? "Démarrer mon essai gratuit" : "Envoyer ma demande de souscription"}</>
               )}
             </button>
 

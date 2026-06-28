@@ -11,6 +11,7 @@ function MediaCard({ item, me, onDeleted }) {
   const [comments, setComments] = useState([])
   const [commentText, setCommentText] = useState('')
   const [commentCount, setCommentCount] = useState(item.stats?.comments ?? 0)
+  const [expanded, setExpanded] = useState(false)
 
   const author = item.uploadedBy && typeof item.uploadedBy === 'object' ? item.uploadedBy : null
   const file = (item.files && item.files[0]) || {}
@@ -73,7 +74,21 @@ function MediaCard({ item, me, onDeleted }) {
       {(item.title || item.description) && (
         <div className="px-4 pb-3">
           {item.title && <p className="font-medium text-gray-900">{item.title}</p>}
-          {item.description && <p className="text-sm text-gray-600 mt-0.5">{item.description}</p>}
+          {item.description && (
+            <div className="text-sm text-gray-600 mt-0.5">
+              <p className={expanded ? 'whitespace-pre-wrap break-words' : 'whitespace-pre-wrap break-words line-clamp-3'}>
+                {item.description}
+              </p>
+              {item.description.length > 140 && (
+                <button
+                  onClick={() => setExpanded((v) => !v)}
+                  className="mt-1 text-blue-600 font-medium text-xs hover:underline"
+                >
+                  {expanded ? 'Lire moins' : 'Lire plus'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

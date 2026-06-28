@@ -259,6 +259,7 @@ export const locationsApi = {
 }
 
 export const schoolRegistrationApi = {
+  freeTrial: (data) => api.post('/school-registrations/free-trial', data),
   submit: async (formData) => {
     const token = localStorage.getItem('token')
     const headers = token ? { Authorization: `Bearer ${token}` } : {}

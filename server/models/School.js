@@ -50,7 +50,7 @@ const schoolSchema = new mongoose.Schema(
     subscription: {
       cycle: { type: String, enum: ['Maternelle', 'Primaire', 'Secondaire'] },
       plan: { type: String, enum: ['quarterly', 'annual', 'standard', 'premium', 'free'], default: 'annual' },
-      status: { type: String, enum: ['active', 'expired', 'pending', 'suspended'], default: 'pending' },
+      status: { type: String, enum: ['active', 'expired', 'pending', 'suspended', 'trial'], default: 'trial' },
       startDate: { type: Date },
       endDate: { type: Date },
       amount: { type: Number },
@@ -79,5 +79,20 @@ schoolSchema.pre('save', function (next) {
   }
   next()
 })
+
+// Retourne true si l'école a un accès valide (essai en cours OU abonnement actif)
+schoolSchema.methods.hasActiveAccess = function () {
+  const sub = this.subscription || {}
+  const now = new Date()
+  if (sub.status === 'active') {
+    // abonnement payé : valide tant que endDate non dépassée (ou pas d'endDate)
+    return !sub.endDate || new Date(sub.endDate) > now
+  }
+  if (sub.status === 'trial') {
+    return sub.endDate ? new Date(sub.endDate) > now : true
+  }
+  // expired / pending / suspended => pas d'accès
+  return false
+}
 
 module.exports = mongoose.model('School', schoolSchema)

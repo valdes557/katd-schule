@@ -1,6 +1,3 @@
-import { Link } from 'react-router-dom'
-import { CheckCircle2 } from 'lucide-react'
-
 const PLANS = [
   { cycle: 'Maternelle', icon: '🧒', annual: 50000, monthly: 15000, featured: false },
   { cycle: 'Primaire', icon: '📚', annual: 75000, monthly: 22000, featured: true },
@@ -22,6 +19,14 @@ export default function PricingTab() {
         Souscription par cycle, paiement annuel ou trimestriel
       </p>
 
+      <div className="flex items-center justify-center gap-2 bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 text-sm font-medium max-w-2xl mx-auto">
+        <Gift size={18} className="flex-shrink-0" />
+        <span>
+          <strong>1 mois d'essai gratuit</strong> — inscrivez votre établissement sans payer.
+          Après 1 mois, l'accès est suspendu jusqu'au paiement de votre souscription.
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {PLANS.map((p) => (
           <div
@@ -37,7 +42,7 @@ export default function PricingTab() {
             )}
             <div className="text-3xl mb-2">{p.icon}</div>
             <div className="text-lg font-bold text-gray-900 mb-1">Cycle {p.cycle}</div>
-            <div className="mt-5 mb-5">
+            <div className="mt-5 mb-1">
               <div className="flex items-baseline gap-1">
                 <span className="text-3xl font-bold text-gray-900">
                   {p.annual.toLocaleString()}
@@ -48,6 +53,9 @@ export default function PricingTab() {
                 ou {p.monthly.toLocaleString()} F CFA / trimestre
               </div>
             </div>
+            <div className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 rounded-full px-2.5 py-1 mb-4">
+              <Gift size={12} /> 1er mois gratuit
+            </div>
             <ul className="space-y-2.5 mb-6">
               {FEATURES.map((f) => (
                 <li key={f} className="flex items-start gap-2 text-sm text-gray-600">
@@ -56,14 +64,20 @@ export default function PricingTab() {
               ))}
             </ul>
             <Link
-              to={`/souscrire?cycle=${p.cycle}&plan=annual&amount=${p.annual}`}
+              to={`/souscrire?cycle=${p.cycle}&plan=trial&amount=${p.annual}&trial=1`}
               className={`block w-full text-center py-2.5 rounded-lg text-sm font-semibold transition-colors ${
                 p.featured
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
               }`}
             >
-              S'inscrire
+              Démarrer l'essai gratuit
+            </Link>
+            <Link
+              to={`/souscrire?cycle=${p.cycle}&plan=annual&amount=${p.annual}`}
+              className="block w-full text-center py-2 mt-2 text-xs text-gray-500 hover:text-gray-700"
+            >
+              ou payer maintenant
             </Link>
           </div>
         ))}

@@ -20,6 +20,23 @@ const protect = async (req, res, next) => {
       if (req.user.role !== 'super_admin' && req.user.school?.subscription?.status === 'suspended') {
         return res.status(403).json({ message: 'La souscription de votre établissement est désactivée. Contactez l\'administrateur.' })
       }
+      // Essai gratuit expiré OU abonnement non payé → blocage du directeur, du personnel et des parents
+      // (jusqu'au paiement par le directeur). On exempte les routes paiement/auth pour permettre le déblocage.
+      if (req.user.role !== 'super_admin' && req.user.school && typeof req.user.school.hasActiveAccess === 'function') {
+        const _url = req.originalUrl || ''
+        const _exempt = _url.includes('/api/payments') || _url.includes('/api/auth') || _url.includes('/api/schools/access-status')
+        if (!_exempt && !req.user.school.hasActiveAccess()) {
+          const _sub = req.user.school.subscription || {}
+          return res.status(403).json({
+            code: 'SUBSCRIPTION_EXPIRED',
+            role: req.user.role,
+            plan: _sub.plan || null,
+            message: req.user.role === 'directeur'
+              ? "Votre periode d'essai est terminee. Veuillez payer votre souscription pour reactiver l'acces."
+              : "L'acces est temporairement bloque. La souscription de votre etablissement doit etre renouvelee par le directeur."
+          })
+        }
+      }
       next()
     } catch (error) {
       return res.status(401).json({ message: 'Token invalide ou expiré' })
