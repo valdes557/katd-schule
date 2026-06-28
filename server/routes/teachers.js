@@ -109,10 +109,10 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
 
     const teacher = await Teacher.findById(req.params.id)
     if (!teacher) return res.status(404).json({ message: 'Enseignant non trouvé' })
-    // Un directeur ne peut supprimer que les enseignants de SA propre école
+    // Un directeur ne peut modifier que les enseignants de SA propre école
     if (req.user.role === 'directeur') {
       if (!req.user.school || String(teacher.school) !== String(req.user.school)) {
-        return res.status(403).json({ message: "Vous ne pouvez supprimer que les enseignants de votre école" })
+        return res.status(403).json({ message: "Vous ne pouvez modifier que les enseignants de votre école" })
       }
     }
 
@@ -140,6 +140,12 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
   try {
     const teacher = await Teacher.findById(req.params.id)
     if (!teacher) return res.status(404).json({ message: 'Enseignant non trouvé' })
+    // Un directeur ne peut supprimer que les enseignants de SA propre école
+    if (req.user.role === 'directeur') {
+      if (!req.user.school || String(teacher.school) !== String(req.user.school)) {
+        return res.status(403).json({ message: "Vous ne pouvez supprimer que les enseignants de votre école" })
+      }
+    }
 
     await Teacher.findByIdAndDelete(teacher._id)
 
