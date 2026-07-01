@@ -8,8 +8,12 @@ set -e  # stoppe au premier échec
 APP_DIR="/var/www/katd-schule"
 cd "$APP_DIR"
 
-echo "==> 1/5  Récupération du code (git pull)"
-git pull origin main
+echo "==> 1/5  Récupération du code"
+# Synchronisation stricte sur origin/main (évite tout conflit de merge lors
+# d'un déploiement automatique). Le workflow GitHub Actions fait déjà ce reset,
+# on le refait ici pour que le script reste correct s'il est lancé à la main.
+git fetch --all --prune
+git reset --hard origin/main
 
 echo "==> 2/5  Backend : dépendances"
 cd "$APP_DIR/server"
@@ -28,7 +32,18 @@ pm2 startOrReload ecosystem.config.js
 pm2 save
 
 echo "==> 5/5  Rechargement de Nginx"
-sudo nginx -t && sudo systemctl reload nginx
+# Best-effort : le rechargement n'est vraiment utile que si la conf Nginx a
+# changé. On utilise `sudo -n` (non-interactif) pour ne JAMAIS bloquer un
+# déploiement automatique en attendant un mot de passe. Si sudo exige un mot
+# de passe (voir AUTO-DEPLOY.md, section « sudo sans mot de passe »), on affiche
+# un avertissement sans faire échouer le déploiement.
+if sudo -n nginx -t 2>/dev/null; then
+  sudo -n systemctl reload nginx && echo "   Nginx rechargé."
+else
+  echo "   ⚠️  Nginx non rechargé (sudo indisponible en non-interactif)."
+  echo "      Ce n'est nécessaire que si nginx-katdschool.conf a changé."
+  echo "      Voir AUTO-DEPLOY.md pour activer sudo sans mot de passe."
+fi
 
 echo ""
 echo "✅ Déploiement terminé — https://katdschool.com"

@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# Déploiement automatique KATD-SCHÜLE sur le VPS Hostinger
+#
+# À chaque push sur la branche `main`, GitHub se connecte en SSH au VPS
+# et exécute le script deploy.sh (git pull → build → PM2 reload → nginx).
+#
+# Secrets à définir dans GitHub (Settings ▸ Secrets and variables ▸ Actions) :
+#   VPS_HOST     → IP publique ou domaine du VPS   (ex. 82.180.xxx.xxx)
+#   VPS_USER     → utilisateur SSH                  (ex. root ou deploy)
+#   VPS_SSH_KEY  → clé privée SSH (contenu complet, format OpenSSH)
+#   VPS_PORT     → port SSH                         (généralement 22)
+#
+# Voir AUTO-DEPLOY.md pour la procédure de mise en place détaillée.
+# ---------------------------------------------------------------------------
+name: Deploy to Hostinger VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # permet aussi de lancer le déploiement à la main
+
+# Un seul déploiement à la fois ; annule un déploiement en cours si un nouveau
+# push arrive, pour toujours déployer le dernier commit.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Déploiement SSH
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connexion SSH et exécution de deploy.sh
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          command_timeout: 20m
+          script_stop: true          # arrête au premier échec de commande
+          script: |
+            set -e
+            cd /var/www/katd-schule
+            git fetch --all --prune
+            git reset --hard origin/main
+            chmod +x deploy.sh
+            ./deploy.sh

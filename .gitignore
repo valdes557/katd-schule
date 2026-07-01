@@ -40,3 +40,7 @@ coverage/
 # Misc
 *.pem
 .cache/
+
+# Secrets de sauvegarde (surcharge locale du VPS, jamais versionnée)
+backup-mongo.conf
+backup-mongo.sh.save*
