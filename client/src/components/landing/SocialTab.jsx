@@ -358,6 +358,7 @@ export default function SocialTab({ feed, setFeed, user }) {
 
 function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload, onView, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
   const navigate = useNavigate()
+  const [expanded, setExpanded] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
 
@@ -520,7 +521,16 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
           )}
           <div className="min-w-0 flex-1">
             {post.title && <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">{post.title}</h3>}
-            <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{post.content}</p>
+            {post.content && (
+              <>
+                <p className={`text-xs text-gray-500 mt-0.5 ${expanded ? '' : 'line-clamp-2'}`}>{post.content}</p>
+                {post.content.length > 100 && (
+                  <button type="button" onClick={() => setExpanded(!expanded)} className="text-[11px] text-blue-600 hover:underline mt-0.5">
+                    {expanded ? 'Lire moins' : 'Lire plus'}
+                  </button>
+                )}
+              </>
+            )}
             <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-400">
               <span>{post.author?.name || 'KATD-SCHÜLE'}</span>
               <span>·</span><span>{timeAgo(post.createdAt)}</span>
