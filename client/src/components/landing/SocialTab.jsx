@@ -361,6 +361,15 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
   const [expanded, setExpanded] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  // Détecte si la description dépasse la hauteur affichée (2 lignes) pour n'afficher
+  // « Lire plus » que quand c'est réellement nécessaire — plus fiable qu'un seuil de
+  // caractères (une description courte peut déborder dans une carte étroite).
+  const contentRef = useRef(null)
+  const [clampable, setClampable] = useState(false)
+  useEffect(() => {
+    const el = contentRef.current
+    if (el && !expanded) setClampable(el.scrollHeight > el.clientHeight + 1)
+  }, [post.content, expanded])
 
   // Lien + texte de partage de la publication
   const shareUrl = `${window.location.origin}/social#${post._id}`
@@ -523,9 +532,9 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
             {post.title && <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">{post.title}</h3>}
             {post.content && (
               <>
-                <p className={`text-xs text-gray-500 mt-0.5 ${expanded ? '' : 'line-clamp-2'}`}>{post.content}</p>
-                {post.content.length > 100 && (
-                  <button type="button" onClick={() => setExpanded(!expanded)} className="text-[11px] text-blue-600 hover:underline mt-0.5">
+                <p ref={contentRef} className={`text-xs text-gray-500 mt-0.5 whitespace-pre-wrap break-words ${expanded ? '' : 'line-clamp-2'}`}>{post.content}</p>
+                {(clampable || expanded) && (
+                  <button type="button" onClick={() => setExpanded(!expanded)} className="text-[11px] text-blue-600 font-medium hover:underline mt-0.5">
                     {expanded ? 'Lire moins' : 'Lire plus'}
                   </button>
                 )}

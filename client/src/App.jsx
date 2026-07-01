@@ -20,11 +20,25 @@ function isChunkLoadError(err) {
   const msg = (err && (err.message || err.toString())) || ''
   return /Loading chunk|dynamically imported module|Importing a module script failed|Failed to fetch|error loading dynamically/i.test(msg)
 }
+// Recharge la page en CONTOURNANT le cache : on ajoute un parametre unique a l'URL
+// pour que le navigateur redemande un index.html FRAIS (l'ancien, mis en cache,
+// reference des chunks au hash perime qui n'existent plus apres un deploiement).
+// Sans ce contournement, un simple reload resservait le meme index.html perime
+// et l'ecran « Impossible de charger cette page » restait bloque.
+function reloadBustingCache() {
+  try {
+    const url = new URL(window.location.href)
+    url.searchParams.set('_v', Date.now().toString())
+    window.location.replace(url.toString())
+  } catch (_) {
+    window.location.reload()
+  }
+}
 function importWithRetry(factory) {
   return factory().catch((err) => {
     if (isChunkLoadError(err) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
       sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
-      window.location.reload()
+      reloadBustingCache()
       return new Promise(() => {})
     }
     throw err
@@ -48,7 +62,7 @@ class RouteErrorBoundary extends Component {
   componentDidCatch(error) {
     if (isChunkLoadError(error) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
       sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
-      window.location.reload()
+      reloadBustingCache()
     }
   }
   render() {
@@ -200,7 +214,18 @@ export default function App() {
     // On efface le drapeau anti-boucle UNIQUEMENT après un rendu stable (5s).
     // Sinon, un cache périmé provoquerait une boucle de rechargement infinie :
     // reload -> drapeau effacé -> chunk échoue -> reload -> ...
-    const t = setTimeout(() => { try { sessionStorage.removeItem(CHUNK_RELOAD_KEY) } catch (_) {} }, 5000)
+    const t = setTimeout(() => {
+      try { sessionStorage.removeItem(CHUNK_RELOAD_KEY) } catch (_) {}
+      // Nettoie le paramètre anti-cache « _v » ajouté par reloadBustingCache()
+      // pour garder une URL propre une fois la page chargée correctement.
+      try {
+        const url = new URL(window.location.href)
+        if (url.searchParams.has('_v')) {
+          url.searchParams.delete('_v')
+          window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+        }
+      } catch (_) {}
+    }, 5000)
     prefetchAllPages()
     return () => clearTimeout(t)
   }, [])
