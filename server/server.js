@@ -17,8 +17,6 @@ app.use(cors({
     if (!origin) return cb(null, true)
     // Allow all localhost / 127.0.0.1 origins in development
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true)
-    // Allow Vercel preview deployments
-    if (/\.vercel\.app$/.test(origin)) return cb(null, true)
     // Allow configured CLIENT_URL
     const allowed = (process.env.CLIENT_URL || '').split(',').map((o) => o.trim()).filter(Boolean)
     if (allowed.includes(origin)) return cb(null, true)

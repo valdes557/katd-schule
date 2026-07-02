@@ -1,3 +1,8 @@
+import { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Image, Video, Music, UploadCloud, X, CheckCircle2 } from 'lucide-react'
+import { mediaApi } from '../../lib/api'
+
 const TYPES = [
   { key: 'photo', label: 'Photo', Icon: Image, accept: 'image/*' },
   { key: 'video', label: 'Vidéo', Icon: Video, accept: 'video/*' },

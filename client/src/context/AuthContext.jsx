@@ -16,7 +16,13 @@ export function AuthProvider({ children }) {
     if (storedCycle) setCycle(storedCycle)
 
     if (token) {
-      // Rehydrate from /me to get fresh user + school
+      // Fallback immédiat depuis le localStorage pour ne pas bloquer l'UI
+      const storedUser = localStorage.getItem('katd_user')
+      const storedSchool = localStorage.getItem('katd_school')
+      if (storedUser) { setUser(JSON.parse(storedUser)); setLoading(false) }
+      if (storedSchool) setSchool(JSON.parse(storedSchool))
+      if (!storedUser) setLoading(true)
+      // Rehydrate from /me to get fresh user + school (en arrière-plan)
       authApi.me()
         .then((res) => {
           const u = res.user
@@ -27,11 +33,12 @@ export function AuthProvider({ children }) {
           if (s) localStorage.setItem('katd_school', JSON.stringify(s))
         })
         .catch(() => {
-          // Fallback to stored data if /me fails
-          const storedUser = localStorage.getItem('katd_user')
-          const storedSchool = localStorage.getItem('katd_school')
-          if (storedUser) setUser(JSON.parse(storedUser))
-          if (storedSchool) setSchool(JSON.parse(storedSchool))
+          if (!storedUser) {
+            const u2 = localStorage.getItem('katd_user')
+            const s2 = localStorage.getItem('katd_school')
+            if (u2) setUser(JSON.parse(u2))
+            if (s2) setSchool(JSON.parse(s2))
+          }
         })
         .finally(() => setLoading(false))
     } else {
