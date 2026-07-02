@@ -71,7 +71,10 @@ class RouteErrorBoundary extends Component {
         <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 text-center px-6">
           <p className="text-gray-700 font-medium">Impossible de charger cette page.</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              try { sessionStorage.removeItem(CHUNK_RELOAD_KEY) } catch (_) {}
+              window.location.reload()
+            }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
           >
             Recharger la page

@@ -59,6 +59,7 @@ export default function LoginPage() {
       return
     }
     if (result.success) {
+      try { sessionStorage.removeItem('katd_chunk_reloaded') } catch (_) {}
       navigate('/u')
     } else {
       setError(result.message || "Une erreur est survenue.")
@@ -73,6 +74,8 @@ export default function LoginPage() {
     const result = await verifyEmail(email, verifyCode.trim())
     setVerifyLoading(false)
     if (result.success) {
+      // Vide le flag anti-boucle pour que les chunks lazy se chargent correctement
+      try { sessionStorage.removeItem('katd_chunk_reloaded') } catch (_) {}
       navigate('/u')
     } else {
       setError(result.message || 'Code incorrect.')
