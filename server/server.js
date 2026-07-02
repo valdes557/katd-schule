@@ -79,6 +79,32 @@ app.get('/api/health', (req, res) => {
   })
 })
 
+// GET /api/smtp-test?secret=<JWT_SECRET_4_premiers_chars> — diagnostic SMTP (super_admin uniquement)
+// Exemple : /api/smtp-test?secret=f34a&to=admin@gmail.com
+app.get('/api/smtp-test', async (req, res) => {
+  const { secret, to } = req.query
+  // Protection minimale : les 8 premiers caractères du JWT_SECRET
+  const expected = (process.env.JWT_SECRET || '').slice(0, 8)
+  if (!secret || secret !== expected) {
+    return res.status(403).json({ message: 'Accès refusé' })
+  }
+  const { sendEmail } = require('./utils/emailService')
+  const dest = to || process.env.SMTP_USER
+  const result = await sendEmail({
+    to: dest,
+    subject: '✅ Test SMTP — KATD-SCHÜLE',
+    html: `<p>Si vous recevez cet email, le SMTP fonctionne correctement sur le VPS.</p><p>Heure : ${new Date().toISOString()}</p>`,
+  })
+  res.json({
+    smtp_user: process.env.SMTP_USER || '(non défini)',
+    smtp_host: process.env.SMTP_HOST || '(non défini)',
+    smtp_port: process.env.SMTP_PORT || '(non défini)',
+    smtp_pass_length: (process.env.SMTP_PASS || '').replace(/\s/g, '').length,
+    destination: dest,
+    result,
+  })
+})
+
 app.use((err, req, res, next) => {
   console.error(err.stack)
   res.status(500).json({ message: err.message || 'Erreur serveur interne' })
