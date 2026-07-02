@@ -1,3 +1,9 @@
+import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import { Trash2, Heart, MessageCircle, Share2, Download, Send, PlusCircle, Image as ImageIcon } from 'lucide-react'
+import { mediaApi } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
+
 const ASSET = import.meta.env.VITE_API_URL || ''
 const asset = (u) => (!u ? '' : u.startsWith('http') ? u : ASSET + u)
 

@@ -1,3 +1,8 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { ArrowLeft, Circle, Send, Search } from 'lucide-react'
+import { messagesApi } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
+
 const ASSET = import.meta.env.VITE_API_URL || ''
 const asset = (u) => (!u ? '' : u.startsWith('http') ? u : ASSET + u)
 

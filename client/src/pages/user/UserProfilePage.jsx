@@ -1,3 +1,8 @@
+import { useState } from 'react'
+import { Camera, CheckCircle2, Save } from 'lucide-react'
+import { authApi } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
+
 const ASSET = import.meta.env.VITE_API_URL || ''
 const asset = (u) => (!u ? '' : u.startsWith('http') ? u : ASSET + u)
 
