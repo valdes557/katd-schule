@@ -42,6 +42,32 @@ router.get('/mine', protect, async (req, res) => {
   }
 })
 
+// @route  GET /api/schools/access-status  (directeur connecté — exempté du blocage subscription)
+// Retourne l'état de l'abonnement de l'école du directeur connecté sans être bloqué
+// par le middleware d'expiration (utilisé par le frontend pour afficher les bannières).
+router.get('/access-status', protect, async (req, res) => {
+  try {
+    const school = await School.findOne({ director: req.user._id }).select('subscription name')
+    if (!school) return res.json({ hasAccess: false, status: null, daysLeft: null })
+    const sub = school.subscription || {}
+    const now = new Date()
+    const endDate = sub.endDate ? new Date(sub.endDate) : null
+    const daysLeft = endDate ? Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)) : null
+    const hasAccess = school.hasActiveAccess()
+    res.json({
+      hasAccess,
+      status: sub.status || null,
+      plan: sub.plan || null,
+      cycle: sub.cycle || null,
+      endDate: sub.endDate || null,
+      daysLeft,
+      schoolName: school.name,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // @route  GET /api/schools/:id  (public)
 router.get('/:id', async (req, res) => {
   try {

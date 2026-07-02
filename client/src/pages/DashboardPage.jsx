@@ -192,6 +192,33 @@ function DirectorDashboard({ user, school }) {
 
   const refreshStats = () => { cache.invalidate('/dashboard/stats'); statsQ.refetch() }
 
+  // Calcul de l'alerte d'essai / expiration
+  const sub = school?.subscription
+  const now = new Date()
+  const trialBanner = (() => {
+    if (!sub) return null
+    const endDate = sub.endDate ? new Date(sub.endDate) : null
+    const daysLeft = endDate ? Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)) : null
+    if (sub.status === 'trial') {
+      if (daysLeft !== null && daysLeft <= 0) {
+        return { type: 'expired', msg: "Votre essai gratuit est terminé. L'accès de votre école est bloqué jusqu'au paiement de votre abonnement.", urgent: true }
+      }
+      if (daysLeft !== null && daysLeft <= 7) {
+        return { type: 'warning', msg: `Votre essai gratuit expire dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}. Souscrivez maintenant pour ne pas perdre l'accès.`, urgent: false }
+      }
+      if (daysLeft !== null) {
+        return { type: 'info', msg: `Essai gratuit en cours — ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''}. Souscrivez avant la fin pour conserver l'accès.`, urgent: false }
+      }
+    }
+    if (sub.status === 'expired') {
+      return { type: 'expired', msg: "Votre abonnement a expiré. L'accès est bloqué jusqu'au renouvellement.", urgent: true }
+    }
+    if (sub.status === 'active' && endDate && daysLeft !== null && daysLeft <= 7) {
+      return { type: 'warning', msg: `Votre abonnement expire dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}. Renouvelez maintenant pour éviter toute interruption.`, urgent: false }
+    }
+    return null
+  })()
+
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (error) return <div className="text-center py-16"><AlertCircle size={36} className="mx-auto text-red-400 mb-3" /><p className="text-sm text-gray-600">{error.message}</p><button onClick={refreshStats} className="btn-primary text-sm mt-4">Réessayer</button></div>
 
@@ -220,6 +247,33 @@ function DirectorDashboard({ user, school }) {
         </div>
         <button onClick={refreshStats} className="btn-ghost text-xs border border-gray-200 self-start bg-white"><RefreshCw size={13} /> Actualiser</button>
       </div>
+
+      {/* Bannière essai gratuit / expiration */}
+      {trialBanner && (
+        <div className={`rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 ${
+          trialBanner.type === 'expired' ? 'bg-red-50 border border-red-300' :
+          trialBanner.type === 'warning' ? 'bg-amber-50 border border-amber-300' :
+          'bg-blue-50 border border-blue-200'
+        }`}>
+          <AlertCircle size={20} className={`flex-shrink-0 ${
+            trialBanner.type === 'expired' ? 'text-red-600' :
+            trialBanner.type === 'warning' ? 'text-amber-600' : 'text-blue-600'
+          }`} />
+          <p className={`text-sm flex-1 ${
+            trialBanner.type === 'expired' ? 'text-red-800 font-semibold' :
+            trialBanner.type === 'warning' ? 'text-amber-800 font-medium' : 'text-blue-800'
+          }`}>{trialBanner.msg}</p>
+          <Link
+            to="/dashboard/souscriptions"
+            className={`flex-shrink-0 text-xs font-bold px-4 py-2 rounded-lg text-white transition-colors ${
+              trialBanner.type === 'expired' ? 'bg-red-600 hover:bg-red-700' :
+              trialBanner.type === 'warning' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {trialBanner.type === 'expired' ? 'Payer maintenant' : 'Souscrire'}
+          </Link>
+        </div>
+      )}
 
       {/* Accès rapide à toutes les fonctionnalités */}
       <AppLauncher />
@@ -298,8 +352,26 @@ function DirectorDashboard({ user, school }) {
           </div>
         </div>
         <div className="card p-5 bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
-          <div className="flex items-center gap-2 mb-2"><CheckCircle2 size={16} /><span className="text-sm font-semibold">Abonnement Actif</span></div>
-          <p className="text-blue-100 text-xs mb-3">Votre abonnement est en cours de validité.</p>
+          {sub?.status === 'trial' ? (
+            <>
+              <div className="flex items-center gap-2 mb-2"><CheckCircle2 size={16} /><span className="text-sm font-semibold">Essai gratuit en cours</span></div>
+              <p className="text-blue-100 text-xs mb-3">
+                {sub.endDate ? `Expire le ${new Date(sub.endDate).toLocaleDateString('fr-FR')}` : 'Accès complet pendant 30 jours.'}
+              </p>
+            </>
+          ) : sub?.status === 'active' ? (
+            <>
+              <div className="flex items-center gap-2 mb-2"><CheckCircle2 size={16} /><span className="text-sm font-semibold">Abonnement Actif</span></div>
+              <p className="text-blue-100 text-xs mb-3">
+                {sub.endDate ? `Valable jusqu'au ${new Date(sub.endDate).toLocaleDateString('fr-FR')}` : 'Votre abonnement est en cours de validité.'}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 mb-2"><AlertCircle size={16} /><span className="text-sm font-semibold">Abonnement inactif</span></div>
+              <p className="text-blue-100 text-xs mb-3">Souscrivez pour réactiver l'accès complet.</p>
+            </>
+          )}
           <Link to="/dashboard/souscriptions" className="text-xs font-medium text-white underline underline-offset-2">Voir les détails →</Link>
         </div>
       </div>

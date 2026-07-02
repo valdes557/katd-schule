@@ -386,12 +386,20 @@ export default function LandingPage() {
                         🚧 Disponible très bientôt
                       </button>
                     ) : (
-                      <Link
-                        to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
-                        className={`w-full flex items-center justify-center gap-2 font-semibold py-3 rounded-xl text-sm transition-colors ${plan.btnClass}`}
-                      >
-                        <GraduationCap size={15} /> S'inscrire
-                      </Link>
+                      <div className="space-y-2">
+                        <Link
+                          to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
+                          className={`w-full flex items-center justify-center gap-2 font-semibold py-3 rounded-xl text-sm transition-colors ${plan.btnClass}`}
+                        >
+                          <GraduationCap size={15} /> S'inscrire
+                        </Link>
+                        <Link
+                          to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}&trial=1`}
+                          className="w-full flex items-center justify-center gap-2 font-semibold py-2.5 rounded-xl text-sm border-2 border-dashed border-green-400 text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                        >
+                          🎁 Essai gratuit 30 jours
+                        </Link>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -400,7 +408,7 @@ export default function LandingPage() {
           </div>
 
           <p className="text-center text-xs text-gray-400 mt-6">
-            ✅ Accès complet · 🔒 Paiement sécurisé · 📞 Support inclus · 🎁 Essai 30 jours
+            ✅ Accès complet · 🔒 Paiement sécurisé · 📞 Support inclus · 🎁 Essai gratuit 30 jours sans carte bancaire
           </p>
         </div>
       </section>

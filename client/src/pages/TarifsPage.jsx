@@ -110,12 +110,20 @@ export default function TarifsPage() {
                         🚧 Disponible très bientôt
                       </button>
                     ) : (
-                      <Link
-                        to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
-                        className={`w-full flex items-center justify-center gap-2 text-white text-sm font-semibold py-3 rounded-xl ${c.btn} transition-colors`}
-                      >
-                        <GraduationCap size={16} /> S'inscrire
-                      </Link>
+                      <div className="space-y-2">
+                        <Link
+                          to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
+                          className={`w-full flex items-center justify-center gap-2 text-white text-sm font-semibold py-3 rounded-xl ${c.btn} transition-colors`}
+                        >
+                          <GraduationCap size={16} /> S'inscrire
+                        </Link>
+                        <Link
+                          to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}&trial=1`}
+                          className="w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded-xl border-2 border-dashed border-green-400 text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                        >
+                          🎁 Essai gratuit 30 jours
+                        </Link>
+                      </div>
                     )}
                   </div>
                 </div>

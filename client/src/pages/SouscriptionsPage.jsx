@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { CreditCard, CheckCircle2, Loader2, Search, Trash2, Eye, Edit2, AlertCircle, History, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { CreditCard, CheckCircle2, Loader2, Search, Trash2, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { registrationsApi } from '../lib/api'
 import { subscriptionPlans } from '../data/mockData'
@@ -114,6 +115,11 @@ function AdminSouscriptions() {
 function DirectorSouscriptions() {
   const { school } = useAuth()
   const sub = school?.subscription
+  const now = new Date()
+  const endDate = sub?.endDate ? new Date(sub.endDate) : null
+  const daysLeft = endDate ? Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)) : null
+  const isTrial = sub?.status === 'trial'
+  const isExpired = sub?.status === 'expired' || (endDate && endDate <= now && sub?.status !== 'active')
   const planColors = {
     orange: { gradient: 'from-orange-500 to-amber-400', light: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600', btn: 'bg-orange-500 hover:bg-orange-600' },
     blue: { gradient: 'from-blue-600 to-blue-400', light: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', btn: 'bg-blue-600 hover:bg-blue-700' },
@@ -127,21 +133,56 @@ function DirectorSouscriptions() {
         <p className="text-sm text-gray-500 mt-0.5">{school?.name || 'Mon école'}</p>
       </div>
 
+      {/* Bannière essai / expiration */}
+      {isTrial && !isExpired && daysLeft !== null && daysLeft <= 7 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <AlertCircle size={18} className="text-amber-600 flex-shrink-0" />
+          <p className="text-sm text-amber-800 font-medium flex-1">
+            Votre essai gratuit expire dans <strong>{daysLeft} jour{daysLeft > 1 ? 's' : ''}</strong>. Souscrivez maintenant pour ne pas perdre l'accès.
+          </p>
+          <a href={`/souscrire?cycle=${sub?.cycle || 'Primaire'}&plan=annual`} className="flex-shrink-0 text-xs font-bold px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors">
+            Souscrire maintenant
+          </a>
+        </div>
+      )}
+      {(isExpired || (isTrial && daysLeft !== null && daysLeft <= 0)) && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <AlertCircle size={18} className="text-red-600 flex-shrink-0" />
+          <p className="text-sm text-red-800 font-semibold flex-1">
+            {isTrial ? "Votre essai gratuit est terminé." : "Votre abonnement a expiré."} L'accès de votre école est bloqué jusqu'au paiement.
+          </p>
+          <a href={`/souscrire?cycle=${sub?.cycle || 'Primaire'}&plan=annual`} className="flex-shrink-0 text-xs font-bold px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors">
+            Payer maintenant
+          </a>
+        </div>
+      )}
+
       {sub ? (
-        <div className="card p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+        <div className={`card p-6 text-white ${
+          isTrial ? 'bg-gradient-to-r from-green-600 to-emerald-500' : 'bg-gradient-to-r from-blue-600 to-indigo-600'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 size={18} />
-                <span className="font-semibold text-lg">Abonnement {sub.status === 'active' ? 'Actif' : 'Inactif'}</span>
-                <span className="bg-white/20 text-xs px-2 py-0.5 rounded-full capitalize">{sub.plan === 'annual' ? 'Annuel' : 'Trimestriel'}</span>
+                <span className="font-semibold text-lg">
+                  {isTrial ? 'Essai gratuit' : `Abonnement ${sub.status === 'active' ? 'Actif' : 'Inactif'}`}
+                </span>
+                {isTrial && <span className="bg-white/20 text-xs px-2 py-0.5 rounded-full">30 jours</span>}
+                {!isTrial && <span className="bg-white/20 text-xs px-2 py-0.5 rounded-full capitalize">{sub.plan === 'annual' ? 'Annuel' : 'Trimestriel'}</span>}
               </div>
-              <div className="text-blue-100 text-sm mb-1">Cycle {sub.cycle} · {school?.name}</div>
-              {sub.endDate && <div className="text-blue-100 text-sm">Valable jusqu'au <strong className="text-white">{new Date(sub.endDate).toLocaleDateString('fr-FR')}</strong></div>}
+              <div className="text-white/80 text-sm mb-1">Cycle {sub.cycle} · {school?.name}</div>
+              {endDate && (
+                <div className="text-white/80 text-sm">
+                  {isTrial ? 'Essai valable jusqu\'au' : 'Valable jusqu\'au'}{' '}
+                  <strong className="text-white">{endDate.toLocaleDateString('fr-FR')}</strong>
+                  {daysLeft !== null && daysLeft > 0 && <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">{daysLeft}j restants</span>}
+                </div>
+              )}
             </div>
             <div className="text-right">
-              <div className="text-2xl font-bold">{(sub.amount || 0).toLocaleString()}</div>
-              <div className="text-blue-200 text-sm">F CFA</div>
+              <div className="text-2xl font-bold">{isTrial ? 'Gratuit' : (sub.amount || 0).toLocaleString()}</div>
+              {!isTrial && <div className="text-white/70 text-sm">F CFA</div>}
             </div>
           </div>
         </div>
@@ -175,6 +216,12 @@ function DirectorSouscriptions() {
                       <div key={f} className="flex items-center gap-2 text-xs text-gray-600"><CheckCircle2 size={12} className="text-green-500 flex-shrink-0" />{f}</div>
                     ))}
                   </div>
+                  <Link
+                    to={`/souscrire?cycle=${plan.cycle}&plan=annual`}
+                    className={`w-full flex items-center justify-center gap-2 text-white text-xs font-bold py-2.5 rounded-xl ${c.btn} transition-colors`}
+                  >
+                    <CreditCard size={13} /> Souscrire maintenant
+                  </Link>
                 </div>
               </div>
             )

@@ -234,6 +234,7 @@ export const schoolsApi = {
   list: (params = '') => api.get(`/schools?${params}`),
   get: (id) => api.get(`/schools/${id}`),
   mine: () => api.get('/schools/mine'),
+  accessStatus: () => api.get('/schools/access-status'),
   create: async (formData) => {
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/schools`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
