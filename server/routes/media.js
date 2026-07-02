@@ -189,7 +189,8 @@ router.delete('/:id', protect, async (req, res) => {
     const media = await Media.findById(req.params.id)
     if (!media) return res.status(404).json({ message: 'Contenu non trouvé' })
     const isOwner = media.uploadedBy && media.uploadedBy.toString() === req.user._id.toString()
-    const sameSchool = media.school && req.user.school && media.school.toString() === req.user.school.toString()
+    const mySchool = req.user.school?._id || req.user.school
+    const sameSchool = media.school && mySchool && media.school.toString() === mySchool.toString()
     if (!isOwner && !sameSchool) {
       return res.status(403).json({ message: 'Non autorisé' })
     }
