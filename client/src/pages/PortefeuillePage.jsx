@@ -1,3 +1,8 @@
+import { useState, useEffect } from 'react'
+import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, RefreshCw, X, Loader2 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { walletApi } from '../lib/api'
+
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 const OPERATORS = [
   { value: 'mtn', label: 'MTN Mobile Money' },
