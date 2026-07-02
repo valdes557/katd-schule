@@ -97,6 +97,7 @@ app.get('/api/smtp-test', async (req, res) => {
   })
   res.json({
     smtp_user: process.env.SMTP_USER || '(non défini)',
+    smtp_from: process.env.SMTP_FROM || 'contact@katdschool.com',
     smtp_host: process.env.SMTP_HOST || '(non défini)',
     smtp_port: process.env.SMTP_PORT || '(non défini)',
     smtp_pass_length: (process.env.SMTP_PASS || '').replace(/\s/g, '').length,

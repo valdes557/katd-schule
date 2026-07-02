@@ -1,52 +1,50 @@
 const nodemailer = require('nodemailer')
 
-const SMTP_USER = (process.env.SMTP_USER || '').trim()
-const SMTP_PASS = (process.env.SMTP_PASS || '').replace(/\s/g, '') // supprime espaces (App Password Gmail)
-const SMTP_HOST = (process.env.SMTP_HOST || 'smtp.gmail.com').trim()
-const SMTP_PORT = Number(process.env.SMTP_PORT) || 587
+const SMTP_USER = (process.env.SMTP_USER || 'contact@katdschool.com').trim()
+const SMTP_PASS = (process.env.SMTP_PASS || '').replace(/\s/g, '')
+const SMTP_HOST = (process.env.SMTP_HOST || 'mail.katdschool.com').trim()
+const SMTP_PORT = Number(process.env.SMTP_PORT) || 465
+const SMTP_FROM = process.env.SMTP_FROM || 'contact@katdschool.com'
 
-if (!SMTP_USER || !SMTP_PASS) {
-  console.warn('⚠️  SMTP_USER / SMTP_PASS non configurés — les emails ne seront PAS envoyés.')
+if (!SMTP_PASS) {
+  console.warn('⚠️  SMTP_PASS non configuré — les emails ne seront PAS envoyés.')
   console.warn('   → Sur le VPS : vérifiez /var/www/katd-schule/server/.env')
 } else {
-  console.log(`📧 SMTP configuré : ${SMTP_HOST}:${SMTP_PORT} — compte : ${SMTP_USER}`)
+  console.log(`📧 SMTP configuré : ${SMTP_HOST}:${SMTP_PORT} — expéditeur : ${SMTP_FROM}`)
 }
 
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: SMTP_PORT,
-  secure: SMTP_PORT === 465,
+  secure: SMTP_PORT === 465, // SSL sur 465, STARTTLS sur 587
   auth: { user: SMTP_USER, pass: SMTP_PASS },
   tls: { rejectUnauthorized: false },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 20000,
 })
 
 // Vérification SMTP au démarrage
-if (SMTP_USER && SMTP_PASS) {
+if (SMTP_PASS) {
   transporter.verify((err) => {
     if (err) {
       console.error('❌ SMTP connexion échouée:', err.message)
-      console.error('   → Causes fréquentes :')
-      console.error('     1. App Password Gmail invalide ou révoqué (générez-en un nouveau sur https://myaccount.google.com/apppasswords)')
-      console.error('     2. La 2FA Gmail n\'est pas activée (obligatoire pour les App Passwords)')
-      console.error('     3. Le port 587 est bloqué par le pare-feu du VPS (essayez le port 465)')
-      console.error('     4. SMTP_PASS contient des espaces résiduels (valeur actuelle longueur:', SMTP_PASS.length, ')')
+      console.error(`   → Host: ${SMTP_HOST} | Port: ${SMTP_PORT} | User: ${SMTP_USER}`)
+      console.error('   → Vérifiez SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS dans .env')
     } else {
-      console.log('✅ SMTP prêt — emails activés pour:', SMTP_USER)
+      console.log(`✅ SMTP prêt — emails activés (${SMTP_HOST}:${SMTP_PORT}) pour: ${SMTP_USER}`)
     }
   })
 }
 
 const sendEmail = async ({ to, subject, html }) => {
-  if (!SMTP_USER || !SMTP_PASS) {
-    console.error('❌ Email non envoyé — SMTP_USER ou SMTP_PASS manquant dans .env')
+  if (!SMTP_PASS) {
+    console.error('❌ Email non envoyé — SMTP_PASS manquant dans .env')
     return { success: false, error: 'SMTP non configuré' }
   }
   try {
     const info = await transporter.sendMail({
-      from: `"KATD-SCHÜLE" <${SMTP_USER}>`,
+      from: `"KATD-SCHÜLE" <${SMTP_FROM}>`,
       to,
       subject,
       html,
