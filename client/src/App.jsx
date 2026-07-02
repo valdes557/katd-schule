@@ -2,11 +2,16 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense, useEffect, Component } from 'react'
 import { useAuth } from './context/AuthContext'
 
-// Eager: public landing + login + layout (small, needed immediately)
+// Eager: public landing + login + layout + espace utilisateur (small, needed immediately)
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import DashboardLayout from './components/layout/DashboardLayout'
 import DashboardPage from './pages/DashboardPage'
+import UserLayout from './pages/user/UserLayout'
+import UserSocialPage from './pages/user/UserSocialPage'
+import UserPublishPage from './pages/user/UserPublishPage'
+import UserMessengerPage from './pages/user/UserMessengerPage'
+import UserProfilePage from './pages/user/UserProfilePage'
 
 // Variante de lazy() qui enregistre aussi le « factory » d'import, afin de pouvoir
 // précharger tous les chunks de page en arrière-plan (navigation instantanée).
@@ -171,12 +176,6 @@ const AiChatPage = lazyPage(() => import('./pages/AiChatPage'))
 const DirectorAiPage = lazyPage(() => import('./pages/DirectorAiPage'))
 const AdminAiPage = lazyPage(() => import('./pages/AdminAiPage'))
 const AdminBannersPage = lazyPage(() => import('./pages/AdminBannersPage'))
-// Espace utilisateur grand public
-const UserLayout = lazyPage(() => import('./pages/user/UserLayout'))
-const UserSocialPage = lazyPage(() => import('./pages/user/UserSocialPage'))
-const UserPublishPage = lazyPage(() => import('./pages/user/UserPublishPage'))
-const UserMessengerPage = lazyPage(() => import('./pages/user/UserMessengerPage'))
-const UserProfilePage = lazyPage(() => import('./pages/user/UserProfilePage'))
 
 function PageFallback() {
   return (
