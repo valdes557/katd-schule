@@ -12,6 +12,7 @@ import UserSocialPage from './pages/user/UserSocialPage'
 import UserPublishPage from './pages/user/UserPublishPage'
 import UserMessengerPage from './pages/user/UserMessengerPage'
 import UserProfilePage from './pages/user/UserProfilePage'
+import UserNotificationsPage from './pages/user/UserNotificationsPage'
 
 // Variante de lazy() qui enregistre aussi le « factory » d'import, afin de pouvoir
 // précharger tous les chunks de page en arrière-plan (navigation instantanée).
@@ -348,6 +349,7 @@ export default function App() {
         <Route index element={<UserSocialPage />} />
         <Route path="publier" element={<UserPublishPage />} />
         <Route path="messages" element={<UserMessengerPage />} />
+        <Route path="notifications" element={<UserNotificationsPage />} />
         <Route path="profil" element={<UserProfilePage />} />
       </Route>
 

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Image, Video, Music, UploadCloud, X, CheckCircle2 } from 'lucide-react'
-import { mediaApi } from '../../lib/api'
+import { Image, Video, Music, UploadCloud, X, CheckCircle2, Loader2 } from 'lucide-react'
+import { platformApi } from '../../lib/api'
 
 const TYPES = [
   { key: 'photo', label: 'Photo', Icon: Image, accept: 'image/*' },
@@ -9,6 +9,8 @@ const TYPES = [
   { key: 'audio', label: 'Audio', Icon: Music, accept: 'audio/*' },
 ]
 
+// Publication dans le fil social commun (platformApi) — les publications
+// apparaissent dans le même fil que la page d'accueil et les autres dashboards.
 export default function UserPublishPage() {
   const navigate = useNavigate()
   const fileRef = useRef(null)
@@ -18,6 +20,7 @@ export default function UserPublishPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
 
@@ -37,12 +40,26 @@ export default function UserPublishPage() {
     if (!file) return setError('Veuillez sélectionner un fichier.')
     if (!title.trim()) return setError('Veuillez ajouter un titre.')
     setLoading(true)
+    setProgress(0)
     try {
-      await mediaApi.create({ title: title.trim(), description: description.trim(), type, files: [file], isPublic: true })
-      setDone(true)
-      setTimeout(() => navigate('/u'), 900)
+      const fd = new FormData()
+      fd.append('mediaType', type)
+      fd.append('title', title.trim())
+      // Le fil commun exige un contenu texte : on retombe sur le titre si vide.
+      fd.append('content', description.trim() || title.trim())
+      if (type === 'photo') fd.append('images', file)
+      else if (type === 'video') fd.append('video', file)
+      else if (type === 'audio') fd.append('audio', file)
+
+      const r = await platformApi.createPostWithProgress(fd, setProgress)
+      if (r.success && r.data) {
+        setDone(true)
+        setTimeout(() => navigate('/u'), 900)
+      } else {
+        setError(r.message || 'Échec de la publication.')
+      }
     } catch (err) {
-      setError(err.message || "Échec de la publication.")
+      setError(err.message || 'Échec de la publication.')
     } finally {
       setLoading(false)
     }
@@ -60,7 +77,7 @@ export default function UserPublishPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-4">Publier dans la galerie</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-4">Publier dans le fil social</h1>
 
       <div className="grid grid-cols-3 gap-2 mb-5">
         {TYPES.map(({ key, label, Icon }) => (
@@ -103,8 +120,14 @@ export default function UserPublishPage() {
 
         {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
-        <button type="submit" disabled={loading} className="btn-primary w-full">
-          {loading ? 'Publication...' : 'Publier'}
+        {loading && progress > 0 && (
+          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+            <div className="bg-blue-600 h-full transition-all duration-200" style={{ width: `${progress}%` }} />
+          </div>
+        )}
+
+        <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
+          {loading ? <><Loader2 size={16} className="animate-spin" /> {progress > 0 && progress < 100 ? `Envoi… ${progress}%` : 'Publication...'}</> : 'Publier'}
         </button>
       </form>
     </div>

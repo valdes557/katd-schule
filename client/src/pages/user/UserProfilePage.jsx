@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Camera, CheckCircle2, Save } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Camera, CheckCircle2, Save, LogOut } from 'lucide-react'
 import { authApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 
@@ -7,7 +8,8 @@ const ASSET = import.meta.env.VITE_API_URL || ''
 const asset = (u) => (!u ? '' : u.startsWith('http') ? u : ASSET + u)
 
 export default function UserProfilePage() {
-  const { user, setUser } = useAuth()
+  const { user, setUser, logout } = useAuth()
+  const navigate = useNavigate()
   const [name, setName] = useState(user?.name || '')
   const [bio, setBio] = useState(user?.bio || '')
   const [avatar, setAvatar] = useState(user?.avatar || '')
@@ -77,6 +79,12 @@ export default function UserProfilePage() {
         </button>
       </form>
 
+      <button
+        onClick={() => { logout(); navigate('/login') }}
+        className="mt-6 w-full flex items-center justify-center gap-2 border border-red-200 text-red-600 rounded-xl py-2.5 text-sm font-medium hover:bg-red-50 transition-colors"
+      >
+        <LogOut size={16} /> Se déconnecter
+      </button>
     </div>
   )
 }

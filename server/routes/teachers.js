@@ -14,19 +14,31 @@ router.get('/', protect, async (req, res) => {
     const schoolId = req.user.role === 'super_admin' ? (req.query.schoolId || userSchool) : userSchool
     if (!schoolId) return res.json({ success: true, total: 0, data: [] })
     const { search, status, page = 1, limit = 50 } = req.query
-    const query = { school: schoolId }
-    // Directors and other roles are scoped to the school's subscribed cycle by default
+    const and = []
+    // Le directeur voit les enseignants de son cycle abonné, MAIS aussi ceux dont
+    // le cycle n'est pas défini (legacy / créés autrement) afin de toujours pouvoir
+    // les gérer (modifier les identifiants, supprimer). Sinon un enseignant « invisible »
+    // devient ingérable.
     if (req.user.role !== 'super_admin') {
       const school = await School.findById(schoolId).select('subscription.cycle')
-      if (school?.subscription?.cycle) query.cycle = school.subscription.cycle
+      if (school?.subscription?.cycle) {
+        and.push({ $or: [
+          { cycle: school.subscription.cycle },
+          { cycle: { $exists: false } },
+          { cycle: null },
+          { cycle: '' },
+        ] })
+      }
     }
     if (search) {
-      query.$or = [
+      and.push({ $or: [
         { firstName: { $regex: search, $options: 'i' } },
         { lastName: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
-      ]
+      ] })
     }
+    const query = { school: schoolId }
+    if (and.length) query.$and = and
     if (status) query.status = status
     const total = await Teacher.countDocuments(query)
     const teachers = await Teacher.find(query)
@@ -122,7 +134,11 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
       if (u) { u.password = password; await u.save() }
     }
     if (teacher.user && email) {
-      await User.findByIdAndUpdate(teacher.user, { email })
+      const normalized = String(email).trim().toLowerCase()
+      // Refuse si l'email est déjà pris par un AUTRE compte (message clair au lieu d'un 500).
+      const taken = await User.findOne({ email: normalized, _id: { $ne: teacher.user } })
+      if (taken) return res.status(400).json({ message: 'Cet email est déjà utilisé par un autre compte' })
+      await User.findByIdAndUpdate(teacher.user, { email: normalized })
     }
 
     Object.assign(teacher, rest)
