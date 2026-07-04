@@ -403,9 +403,14 @@ router.post('/groups', protect, authorize('directeur', 'super_admin'), upload.si
 // POST /api/messages/groups/:groupId — send a message in a group conversation
 router.post('/groups/:groupId', protect, async (req, res) => {
   try {
-    const { subject, body } = req.body
-    if (!body || String(body).trim().length === 0) {
+    const { subject, body, type, mediaUrl, mediaDuration } = req.body
+    const msgType = type || 'text'
+    // Un message texte exige un contenu ; un média (vocal/image/vidéo) exige mediaUrl.
+    if (msgType === 'text' && (!body || String(body).trim().length === 0)) {
       return res.status(400).json({ message: 'Le contenu du message est requis' })
+    }
+    if (msgType !== 'text' && msgType !== 'sticker' && !mediaUrl) {
+      return res.status(400).json({ message: 'Média requis' })
     }
 
     const group = await MessageGroup.findById(req.params.groupId)
@@ -426,6 +431,16 @@ router.post('/groups/:groupId', protect, async (req, res) => {
     const conversationId = `group_${group._id.toString()}`
     const broadcastKey = new Message()._id.toString()
 
+    // Upload du média si fourni en data URL (image, vidéo, vocal). Fait UNE
+    // seule fois puis partagé par toutes les copies du message de groupe.
+    // Les stickers restent un emoji direct (pas d'upload).
+    let finalMediaUrl = mediaUrl || ''
+    if (mediaUrl && /^data:/.test(mediaUrl) && msgType !== 'sticker') {
+      const resourceType = msgType === 'image' ? 'image' : 'video' // cloudinary traite l'audio comme 'video'
+      const up = await cloudinary.uploader.upload(mediaUrl, { resource_type: resourceType, folder: 'katd/messages' })
+      finalMediaUrl = up.secure_url
+    }
+
     const docs = []
     for (const memberId of group.members) {
       const memberStr = memberId.toString()
@@ -435,7 +450,10 @@ router.post('/groups/:groupId', protect, async (req, res) => {
         recipient: memberId,
         school: schoolId,
         subject,
-        body,
+        body: body || '',
+        type: msgType,
+        mediaUrl: finalMediaUrl,
+        mediaDuration: Number(mediaDuration) || 0,
         isGroup: true,
         group: group._id,
         broadcastKey,

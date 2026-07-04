@@ -28,8 +28,11 @@ app.use(cors({
 }))
 // Handle CORS preflight globally
 app.options('*', cors())
-app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf && buf.toString('utf8') } }))
-app.use(express.urlencoded({ extended: true }))
+// Limite relevée à 60 Mo : les messages vocaux/images/vidéos sont envoyés en
+// data URL (base64) via JSON. La limite Express par défaut (100 Ko) bloquait
+// tout vocal de plus de ~30 s. 60 Mo couvre plusieurs minutes d'audio.
+app.use(express.json({ limit: '60mb', verify: (req, res, buf) => { req.rawBody = buf && buf.toString('utf8') } }))
+app.use(express.urlencoded({ extended: true, limit: '60mb' }))
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 

@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon, Trash2, Check, CheckCheck } from 'lucide-react'
+import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon, Trash2, Check, CheckCheck, Mic, Paperclip, Smile } from 'lucide-react'
 import { messagesApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useUnread } from '../context/UnreadContext'
 import { cn } from '../lib/utils'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+
+const ASSET = import.meta.env.VITE_API_URL || ''
+const asset = (u) => (!u ? '' : u.startsWith('http') ? u : ASSET + u)
+const STICKERS = ['😀', '😂', '😍', '👍', '🙏', '🎉', '❤️', '😎', '😢', '🔥', '👏', '🤔', '😴', '🥳', '💯', '✅']
 
 export default function MessagingPage() {
   const ROLE_LABELS = { super_admin: 'Super Admin', directeur: 'Directeur', enseignant: 'Enseignant', parent: 'Parent', eleve: 'Élève' }
@@ -23,8 +27,15 @@ export default function MessagingPage() {
   const [showGroupModal, setShowGroupModal] = useState(false)
   const [groupForm, setGroupForm] = useState({ name: '', memberIds: [], memberRole: 'enseignant', image: null })
   const [groupImagePreview, setGroupImagePreview] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [recSeconds, setRecSeconds] = useState(0)
+  const [showStickers, setShowStickers] = useState(false)
   const messagesEndRef = useRef(null)
   const prevCountRef = useRef(0)
+  const fileRef = useRef(null)
+  const mediaRef = useRef(null)
+  const chunksRef = useRef([])
+  const recTimerRef = useRef(null)
 
   const convsQ = useCachedFetch('/messages/conversations', async () => (await messagesApi.conversations()).data || [], [])
   const contactsQ = useCachedFetch('/messages/contacts', async () => (await messagesApi.contacts()).data || [], [])
@@ -152,6 +163,70 @@ export default function MessagingPage() {
     } catch (e) { alert(e.message) }
     setSending(false)
   }
+
+  // Envoi d'un média (image, vidéo, vocal) ou sticker — vers un groupe ou en 1-1.
+  const sendMedia = async ({ type, mediaUrl, mediaDuration }) => {
+    if (!activeConv) return
+    setSending(true)
+    try {
+      const payload = { subject: activeConv.lastMessage?.subject || '', body: '', type, mediaUrl, mediaDuration: mediaDuration || 0 }
+      if (activeConv.isGroup && activeConv.groupId) {
+        await messagesApi.sendGroup(activeConv.groupId, payload)
+      } else {
+        await messagesApi.send({ recipientId: activeConv.contact?._id, ...payload })
+      }
+      const res = await messagesApi.conversation(activeConv.conversationId)
+      setMessages(res.data || [])
+      refreshConversations()
+    } catch (e) { alert(e.message) }
+    setSending(false)
+  }
+
+  const onPickFile = (e) => {
+    const file = e.target.files && e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    const isVideo = file.type.startsWith('video')
+    const isImage = file.type.startsWith('image')
+    if (!isVideo && !isImage) { alert('Seules les images et vidéos sont acceptées.'); return }
+    if (file.size > 25 * 1024 * 1024) { alert('Fichier trop volumineux (max 25 Mo).'); return }
+    const reader = new FileReader()
+    reader.onload = () => sendMedia({ type: isVideo ? 'video' : 'image', mediaUrl: reader.result })
+    reader.readAsDataURL(file)
+  }
+
+  const startRec = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      chunksRef.current = []
+      mr.ondataavailable = (ev) => { if (ev.data.size > 0) chunksRef.current.push(ev.data) }
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        const dur = recSeconds
+        const reader = new FileReader()
+        reader.onload = () => sendMedia({ type: 'voice', mediaUrl: reader.result, mediaDuration: dur })
+        reader.readAsDataURL(blob)
+        stream.getTracks().forEach((t) => t.stop())
+      }
+      mediaRef.current = mr
+      mr.start()
+      setRecording(true)
+      setRecSeconds(0)
+      recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000)
+    } catch (err) { alert('Micro inaccessible : ' + err.message) }
+  }
+
+  const stopRec = (cancel) => {
+    clearInterval(recTimerRef.current)
+    setRecording(false)
+    const mr = mediaRef.current
+    if (!mr) return
+    if (cancel) { mr.onstop = () => mr.stream && mr.stream.getTracks().forEach((t) => t.stop()) }
+    mr.stop()
+  }
+
+  const sendSticker = (emoji) => { setShowStickers(false); sendMedia({ type: 'sticker', mediaUrl: emoji }) }
 
   const handleCompose = async (e) => {
     e.preventDefault()
@@ -354,6 +429,15 @@ export default function MessagingPage() {
                             <Trash2 size={14} />
                           </button>
                         )}
+                        {m.type === 'sticker' ? (
+                          <div className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
+                            {activeConv.isGroup && !mine && m.sender?.name && (
+                              <div className="text-[11px] font-semibold mb-0.5 text-blue-700">{m.sender.name}</div>
+                            )}
+                            <div className="text-5xl select-none leading-none">{m.mediaUrl}</div>
+                            <span className="text-[10px] text-gray-400 mt-1">{new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        ) : (
                         <div className={cn(
                           'max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm',
                           mine
@@ -364,7 +448,19 @@ export default function MessagingPage() {
                             <div className="text-[11px] font-semibold mb-0.5 text-blue-700">{m.sender.name}</div>
                           )}
                           {m.subject && <div className={cn('text-xs font-semibold mb-1', mine ? 'text-blue-50' : 'text-gray-500')}>{m.subject}</div>}
-                          <p className="whitespace-pre-line">{m.body}</p>
+                          {m.type === 'image' && m.mediaUrl && (
+                            <img src={asset(m.mediaUrl)} alt="" className="rounded-lg max-w-full max-h-60 object-cover" />
+                          )}
+                          {m.type === 'video' && m.mediaUrl && (
+                            <video src={asset(m.mediaUrl)} controls className="rounded-lg max-w-full max-h-60" />
+                          )}
+                          {m.type === 'voice' && m.mediaUrl && (
+                            <div className="flex items-center gap-2">
+                              <audio src={asset(m.mediaUrl)} controls className="h-9 max-w-[200px]" />
+                              {m.mediaDuration > 0 && <span className="text-xs opacity-70">{m.mediaDuration}s</span>}
+                            </div>
+                          )}
+                          {m.body && <p className={cn('whitespace-pre-line', m.type && m.type !== 'text' && 'mt-1')}>{m.body}</p>}
                           <div className={cn('text-[10px] mt-1 flex items-center justify-end gap-1', mine ? 'text-blue-100' : 'text-gray-400')}>
                             <span>{new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
                             {mine && !activeConv.isGroup && (
@@ -374,6 +470,7 @@ export default function MessagingPage() {
                             )}
                           </div>
                         </div>
+                        )}
                         {canDelete && !mine && (
                           <button
                             onClick={() => handleDeleteMessage(m)}
@@ -389,18 +486,42 @@ export default function MessagingPage() {
                 )}
                 <div ref={messagesEndRef} />
               </div>
-              <div className="p-3 border-t border-gray-100 flex gap-2 flex-shrink-0 bg-white">
-                <input
-                  value={reply}
-                  onChange={(e) => setReply(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendReply()}
-                  placeholder="Écrire un message..."
-                  className="input flex-1 text-sm"
-                />
-                <button onClick={handleSendReply} disabled={sending || !reply.trim()} className="btn-primary px-4">
-                  <Send size={15} />
-                </button>
-              </div>
+              {showStickers && (
+                <div className="grid grid-cols-8 gap-1 p-2 border-t border-gray-100 bg-gray-50 flex-shrink-0">
+                  {STICKERS.map((s) => (
+                    <button key={s} type="button" onClick={() => sendSticker(s)} className="text-2xl hover:scale-125 transition">{s}</button>
+                  ))}
+                </div>
+              )}
+              <input ref={fileRef} type="file" accept="image/*,video/*" onChange={onPickFile} className="hidden" />
+              {recording ? (
+                <div className="p-3 border-t border-gray-100 flex items-center gap-3 flex-shrink-0 bg-white">
+                  <span className="flex items-center gap-2 text-red-600 text-sm font-medium">
+                    <span className="w-3 h-3 rounded-full bg-red-600 animate-pulse" /> Enregistrement… {recSeconds}s
+                  </span>
+                  <div className="flex-1" />
+                  <button type="button" onClick={() => stopRec(true)} className="btn-ghost border border-gray-200 px-3 text-sm">Annuler</button>
+                  <button type="button" onClick={() => stopRec(false)} className="btn-primary px-4 text-sm">Envoyer</button>
+                </div>
+              ) : (
+                <div className="p-3 border-t border-gray-100 flex items-center gap-1.5 flex-shrink-0 bg-white">
+                  <button type="button" onClick={() => setShowStickers((v) => !v)} className="p-2 text-gray-500 hover:text-indigo-600" title="Stickers"><Smile size={18} /></button>
+                  <button type="button" onClick={() => fileRef.current?.click()} className="p-2 text-gray-500 hover:text-indigo-600" title="Photo ou vidéo"><Paperclip size={18} /></button>
+                  <input
+                    value={reply}
+                    onChange={(e) => setReply(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendReply()}
+                    placeholder="Écrire un message..."
+                    className="input flex-1 text-sm"
+                    disabled={sending}
+                  />
+                  {reply.trim() ? (
+                    <button onClick={handleSendReply} disabled={sending} className="btn-primary px-4"><Send size={15} /></button>
+                  ) : (
+                    <button type="button" onClick={startRec} disabled={sending} className="btn-primary px-3" title="Message vocal"><Mic size={16} /></button>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
