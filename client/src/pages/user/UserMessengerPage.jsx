@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { ArrowLeft, Circle, Send, Search } from 'lucide-react'
 import { messagesApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
@@ -11,10 +12,36 @@ const ROLE_LABEL = {
   enseignant: 'Enseignant', parent: 'Parent', eleve: 'Élève',
 }
 
+// Aperçu du dernier message d'une conversation (style Messenger).
+function preview(m) {
+  if (!m) return ''
+  if (m.type === 'voice') return '🎤 Message vocal'
+  if (m.type === 'image') return '📷 Photo'
+  if (m.type === 'video') return '🎬 Vidéo'
+  if (m.type === 'sticker') return m.mediaUrl
+  return m.body || ''
+}
+
+// Heure relative courte.
+function timeShort(date) {
+  if (!date) return ''
+  const diff = Date.now() - new Date(date).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'à l’instant'
+  if (mins < 60) return `${mins} min`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs} h`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days} j`
+  return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+}
+
 export default function UserMessengerPage() {
   const { user } = useAuth()
+  const { refreshBadges } = useOutletContext() || {}
   const myId = String(user?.id || user?._id || '')
   const [users, setUsers] = useState([])
+  const [conversations, setConversations] = useState([])
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(null)
   const [messages, setMessages] = useState([])
@@ -35,21 +62,44 @@ export default function UserMessengerPage() {
     return `conv_${ids[0]}_${ids[1]}`
   }, [myId])
 
+  // Table des utilisateurs par id (pour enrichir avatar / statut en ligne).
+  const usersById = {}
+  for (const u of users) usersById[String(u._id)] = u
+
   const loadUsers = useCallback(async () => {
-    try { const r = await messagesApi.allUsers(); setUsers(r.data || r || []) } catch { setUsers([]) }
-    setLoading(false)
+    try { const r = await messagesApi.allUsers(); setUsers(r.data || r || []) } catch { /* garde l'existant */ }
+  }, [])
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const r = await messagesApi.conversations()
+      // On ne garde que les discussions 1-1 (les utilisateurs n'ont pas de groupes).
+      setConversations((r.data || []).filter((c) => !c.isGroup))
+    } catch { /* garde l'existant */ }
   }, [])
 
   const loadThread = useCallback(async (other) => {
     if (!other) return
     try { const r = await messagesApi.conversation(convId(other._id)); setMessages(r.data || r.messages || r || []) }
     catch { setMessages([]) }
-  }, [convId])
+    // L'ouverture marque les messages comme lus côté serveur -> on rafraîchit compteurs + liste.
+    refreshBadges?.()
+    loadConversations()
+  }, [convId, refreshBadges, loadConversations])
 
-  useEffect(() => { loadUsers() }, [loadUsers])
-  // Rafraîchit la liste (présence) régulièrement
-  useEffect(() => { const t = setInterval(loadUsers, 20000); return () => clearInterval(t) }, [loadUsers])
-  // Rafraîchit le fil de discussion ouvert
+  // Chargement initial.
+  useEffect(() => {
+    (async () => { await Promise.all([loadUsers(), loadConversations()]); setLoading(false) })()
+  }, [loadUsers, loadConversations])
+
+  // Rafraîchit la liste des conversations + présence régulièrement (fait remonter
+  // toute nouvelle conversation en tête, façon Messenger).
+  useEffect(() => {
+    const t = setInterval(() => { loadUsers(); loadConversations() }, 5000)
+    return () => clearInterval(t)
+  }, [loadUsers, loadConversations])
+
+  // Rafraîchit le fil de discussion ouvert.
   useEffect(() => {
     if (!active) return
     loadThread(active)
@@ -67,6 +117,7 @@ export default function UserMessengerPage() {
     setMessages((m) => [...m, { _id: 'tmp' + Date.now(), body, type: 'text', sender: myId, createdAt: new Date().toISOString(), _optimistic: true }])
     try { await messagesApi.send({ recipientId: active._id, body, type: 'text' }) } catch (err) { alert(err.message) }
     loadThread(active)
+    loadConversations()
   }
 
   // Envoi d'un média (image, vidéo, vocal) ou d'un sticker
@@ -77,6 +128,7 @@ export default function UserMessengerPage() {
     try { await messagesApi.send({ recipientId: active._id, type, mediaUrl, mediaDuration: mediaDuration || 0, body: body || '' }) } catch (err) { alert(err.message) }
     setSending(false)
     loadThread(active)
+    loadConversations()
   }
 
   const onPickFile = (e) => {
@@ -127,7 +179,18 @@ export default function UserMessengerPage() {
   const sendSticker = (emoji) => { setShowStickers(false); sendMedia({ type: 'sticker', mediaUrl: emoji }) }
 
   const senderId = (m) => String((m.sender && m.sender._id) || m.sender || '')
-  const filtered = users.filter((u) => u.name?.toLowerCase().includes(query.toLowerCase()))
+
+  // Ouvre un fil : on enrichit le contact avec avatar / statut depuis la liste des users.
+  const openThread = (contact) => {
+    const u = usersById[String(contact._id)]
+    setActive({ ...contact, avatar: contact.avatar || u?.avatar || '', online: u?.online ?? contact.online ?? false })
+    setMessages([])
+    setQuery('')
+  }
+
+  // Liste affichée : soit résultats de recherche (utilisateurs), soit conversations récentes.
+  const searching = query.trim().length > 0
+  const filteredUsers = users.filter((u) => u.name?.toLowerCase().includes(query.toLowerCase()))
 
   // Vue conversation (mobile : remplace la liste)
   if (active) {
@@ -208,7 +271,7 @@ export default function UserMessengerPage() {
     )
   }
 
-  // Liste des utilisateurs
+  // Liste : conversations récentes (façon Messenger) + recherche pour démarrer une discussion.
   return (
     <div>
       <h1 className="text-xl font-bold text-gray-900 mb-4">Messagerie</h1>
@@ -219,25 +282,67 @@ export default function UserMessengerPage() {
 
       {loading ? (
         <p className="text-center text-gray-400 py-10">Chargement...</p>
-      ) : filtered.length === 0 ? (
-        <p className="text-center text-gray-400 py-10">Aucun utilisateur trouvé.</p>
+      ) : searching ? (
+        filteredUsers.length === 0 ? (
+          <p className="text-center text-gray-400 py-10">Aucun utilisateur trouvé.</p>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-50">
+            {filteredUsers.map((u) => (
+              <button key={u._id} onClick={() => openThread(u)} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left">
+                <div className="relative">
+                  <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold overflow-hidden">
+                    {u.avatar ? <img src={asset(u.avatar)} alt="" className="w-full h-full object-cover" /> : u.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${u.online ? 'bg-green-500' : 'bg-gray-300'}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900 text-sm truncate">{u.name}</p>
+                  <p className="text-xs text-gray-400">{ROLE_LABEL[u.role] || u.role}</p>
+                </div>
+                <span className={`text-xs ${u.online ? 'text-green-600' : 'text-gray-400'}`}>{u.online ? 'En ligne' : 'Hors ligne'}</span>
+              </button>
+            ))}
+          </div>
+        )
+      ) : conversations.length === 0 ? (
+        <div className="text-center text-gray-400 py-16">
+          <p>Aucune discussion pour le moment.</p>
+          <p className="text-xs mt-1">Recherchez un utilisateur ci-dessus pour démarrer une conversation.</p>
+        </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-50">
-          {filtered.map((u) => (
-            <button key={u._id} onClick={() => setActive(u)} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left">
-              <div className="relative">
-                <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold overflow-hidden">
-                  {u.avatar ? <img src={asset(u.avatar)} alt="" className="w-full h-full object-cover" /> : u.name.charAt(0).toUpperCase()}
+          {conversations.map((c) => {
+            const contact = c.contact || {}
+            const u = usersById[String(contact._id)]
+            const avatar = contact.avatar || u?.avatar || ''
+            const online = u?.online || false
+            const last = c.lastMessage
+            const unreadInc = c.unread > 0
+            return (
+              <button key={c.conversationId} onClick={() => openThread(contact)} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left">
+                <div className="relative">
+                  <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold overflow-hidden">
+                    {avatar ? <img src={asset(avatar)} alt="" className="w-full h-full object-cover" /> : (contact.name || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${online ? 'bg-green-500' : 'bg-gray-300'}`} />
                 </div>
-                <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${u.online ? 'bg-green-500' : 'bg-gray-300'}`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 text-sm truncate">{u.name}</p>
-                <p className="text-xs text-gray-400">{ROLE_LABEL[u.role] || u.role}</p>
-              </div>
-              <span className={`text-xs ${u.online ? 'text-green-600' : 'text-gray-400'}`}>{u.online ? 'En ligne' : 'Hors ligne'}</span>
-            </button>
-          ))}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={`text-sm truncate ${unreadInc ? 'font-bold text-gray-900' : 'font-medium text-gray-900'}`}>{contact.name || 'Utilisateur'}</p>
+                    <span className="text-[11px] text-gray-400 flex-shrink-0">{timeShort(last?.createdAt)}</span>
+                  </div>
+                  <p className={`text-xs truncate ${unreadInc ? 'text-gray-800 font-semibold' : 'text-gray-400'}`}>
+                    {senderId(last) === myId ? 'Vous : ' : ''}{preview(last)}
+                  </p>
+                </div>
+                {unreadInc && (
+                  <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">
+                    {c.unread > 9 ? '9+' : c.unread}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

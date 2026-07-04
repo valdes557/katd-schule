@@ -34,7 +34,7 @@ function timeAgo(date) {
   return new Date(date).toLocaleDateString('fr-FR')
 }
 
-export default function SocialTab({ feed, setFeed, user }) {
+export default function SocialTab({ feed, setFeed, user, hideHeading = false }) {
   const [feedPage, setFeedPage] = useState(1)
   const [feedCategory, setFeedCategory] = useState('')
   const [commentText, setCommentText] = useState({})
@@ -160,7 +160,7 @@ export default function SocialTab({ feed, setFeed, user }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3 px-4 sm:px-0">
-        <h2 className="text-xl font-bold text-gray-900">Fil d'actualité</h2>
+        {!hideHeading && <h2 className="text-xl font-bold text-gray-900">Fil d'actualité</h2>}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
           {CATEGORIES.map((c) => (
             <button

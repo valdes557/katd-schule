@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { Bell, MessageCircle, ThumbsUp, Loader2 } from 'lucide-react'
 import { platformApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
@@ -20,8 +21,12 @@ function timeAgo(date) {
 // publications du fil social (commentaires et j'aime).
 export default function UserNotificationsPage() {
   const { user } = useAuth()
+  const { markNotifsSeen } = useOutletContext() || {}
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // À l'ouverture de la page, on marque les notifications comme vues (badge -> 0).
+  useEffect(() => { markNotifsSeen?.() }, [markNotifsSeen])
 
   useEffect(() => {
     let alive = true
