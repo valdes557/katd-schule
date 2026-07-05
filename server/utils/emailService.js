@@ -276,6 +276,51 @@ const sendSubscriptionReactivatedEmail = async ({ to, directorName, schoolName }
   })
 }
 
+// → Directeur : une nouvelle candidature a été reçue pour une annonce de recrutement.
+const sendRecruitmentApplicationEmail = async ({ to, schoolName, postTitle, fullName, email, whatsapp, message, cvUrl }) => {
+  const body = `
+    <h2 style="color: #111827; font-size: 18px;">Nouvelle candidature reçue</h2>
+    <p style="color: #4B5563; line-height: 1.6;">
+      Une candidature vient d'être envoyée pour votre annonce <strong>${postTitle}</strong>${schoolName ? ` (${schoolName})` : ''}.
+    </p>
+    <div style="background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin: 20px 0;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <tr><td style="padding: 8px 0; color: #6B7280;">Candidat</td><td style="padding: 8px 0; color: #111827; font-weight: 600; text-align: right;">${fullName}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6B7280;">Email</td><td style="padding: 8px 0; color: #111827; text-align: right;">${email}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6B7280;">WhatsApp</td><td style="padding: 8px 0; color: #111827; text-align: right;">${whatsapp || '—'}</td></tr>
+      </table>
+      ${message ? `<p style="color: #4B5563; margin-top: 12px; font-size: 13px;"><strong>Message :</strong> ${message}</p>` : ''}
+      ${cvUrl ? `<a href="${cvUrl}" style="display:inline-block; background:#2563EB; color:white; text-decoration:none; padding:10px 20px; border-radius:8px; font-size:13px; font-weight:600; margin-top:14px;">📄 Télécharger le CV</a>` : ''}
+    </div>
+    <p style="color: #6B7280; font-size: 12px;">Connectez-vous à votre espace pour approuver ou rejeter cette candidature.</p>
+  `
+  return sendEmail({
+    to,
+    subject: `📨 Nouvelle candidature — ${postTitle} | KATD-SCHÜLE`,
+    html: aiEmailLayout({ headerColor: 'linear-gradient(135deg, #2563EB, #4F46E5)', badge: '📨 Nouvelle candidature', body }),
+  })
+}
+
+// → Candidat : sa candidature a été approuvée ✅ ou rejetée ❌.
+const sendRecruitmentDecisionEmail = async ({ to, fullName, postTitle, schoolName, approved, reason }) => {
+  const body = `
+    <h2 style="color: #111827; font-size: 18px;">Bonjour ${fullName},</h2>
+    <p style="color: #4B5563; line-height: 1.6;">
+      Votre candidature pour le poste <strong>${postTitle}</strong>${schoolName ? ` (${schoolName})` : ''} a été
+      <strong style="color: ${approved ? '#059669' : '#DC2626'};">${approved ? 'APPROUVÉE ✅' : 'REJETÉE ❌'}</strong>.
+    </p>
+    ${approved
+      ? `<p style="color: #4B5563; line-height: 1.6;">Félicitations ! L'établissement vous contactera prochainement via WhatsApp ou email pour la suite du processus.</p>`
+      : `<p style="color: #4B5563; line-height: 1.6;">Nous vous remercions pour votre intérêt. Nous vous souhaitons plein succès dans vos recherches.</p>`}
+    ${reason ? `<div style="background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; margin: 16px 0; color: #4B5563; font-size: 13px;"><strong>Message de l'établissement :</strong><br/>${reason}</div>` : ''}
+  `
+  return sendEmail({
+    to,
+    subject: `${approved ? '✅ Candidature approuvée' : '❌ Candidature rejetée'} — ${postTitle} | KATD-SCHÜLE`,
+    html: aiEmailLayout({ headerColor: approved ? 'linear-gradient(135deg, #059669, #10B981)' : 'linear-gradient(135deg, #DC2626, #EF4444)', badge: approved ? '✅ Candidature approuvée' : '❌ Candidature rejetée', body }),
+  })
+}
+
 module.exports = {
   sendEmail,
   sendEnrollmentApprovalEmail,
@@ -285,4 +330,6 @@ module.exports = {
   sendAiSubscriptionRejectedEmail,
   sendSubscriptionSuspendedEmail,
   sendSubscriptionReactivatedEmail,
+  sendRecruitmentApplicationEmail,
+  sendRecruitmentDecisionEmail,
 }

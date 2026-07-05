@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clock, Plus, Trash2, X, Loader2, AlertCircle } from 'lucide-react'
+import { Clock, Plus, Trash2, X, Loader2, AlertCircle, Copy, CheckCircle2 } from 'lucide-react'
 import { timetablesApi, classesApi, subjectsApi, teachersApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -21,6 +21,9 @@ export default function EmploiDuTempsPage() {
   const [selectedClass, setSelectedClass] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [slotForm, setSlotForm] = useState(EMPTY_SLOT)
+  const [showAssign, setShowAssign] = useState(false)
+  const [assignTargets, setAssignTargets] = useState([])
+  const [assigning, setAssigning] = useState(false)
 
   const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
   const subjectsQ = useCachedFetch('/subjects?', async () => (await subjectsApi.list()).data || [], [])
@@ -67,6 +70,24 @@ export default function EmploiDuTempsPage() {
     } catch (e) { alert(e.message) }
   }
 
+  const toggleTarget = (id) =>
+    setAssignTargets((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+
+  const handleAssign = async () => {
+    if (!timetable || assignTargets.length === 0) return
+    setAssigning(true)
+    try {
+      const r = await timetablesApi.assignTo(timetable._id, assignTargets)
+      if (r.success) {
+        cache.invalidate('/timetables')
+        alert(`Emploi du temps appliqué à ${r.data.updated} salle(s)/classe(s).`)
+        setShowAssign(false)
+        setAssignTargets([])
+      } else alert(r.message || 'Erreur')
+    } catch (e) { alert(e.message) }
+    setAssigning(false)
+  }
+
   const slots = timetable?.slots || []
   const currentClass = classes.find((c) => c._id === selectedClass)
 
@@ -89,6 +110,11 @@ export default function EmploiDuTempsPage() {
           {isDirecteur && timetable && (
             <button onClick={() => { setSlotForm(EMPTY_SLOT); setShowModal(true) }} className="btn-primary text-sm">
               <Plus size={15} /> Ajouter
+            </button>
+          )}
+          {isDirecteur && timetable && (
+            <button onClick={() => { setAssignTargets([]); setShowAssign(true) }} className="btn-ghost text-sm border border-gray-200" title="Appliquer cet emploi du temps à d'autres salles">
+              <Copy size={15} /> Dupliquer vers d'autres salles
             </button>
           )}
         </div>
@@ -156,6 +182,38 @@ export default function EmploiDuTempsPage() {
               Aucun créneau défini.{isDirecteur && ' Cliquez sur "Ajouter" pour commencer.'}
             </div>
           )}
+        </div>
+      )}
+
+      {showAssign && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Copy size={18} className="text-indigo-600" /> Dupliquer l'emploi du temps</h3>
+              <button onClick={() => setShowAssign(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Les créneaux de <strong>{currentClass?.name}</strong> seront copiés vers les salles/classes cochées.
+              <span className="text-amber-600"> L'emploi du temps existant de ces classes sera remplacé.</span>
+            </p>
+            <div className="space-y-1.5 mb-4">
+              {classes.filter((c) => c._id !== selectedClass).map((c) => (
+                <label key={c._id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox" checked={assignTargets.includes(c._id)} onChange={() => toggleTarget(c._id)} className="w-4 h-4 accent-indigo-600" />
+                  <span className="text-sm text-gray-700">{c.name} <span className="text-gray-400">({c.cycle})</span></span>
+                </label>
+              ))}
+              {classes.filter((c) => c._id !== selectedClass).length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-3">Aucune autre classe disponible.</p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setShowAssign(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
+              <button type="button" disabled={assigning || assignTargets.length === 0} onClick={handleAssign} className="btn-primary flex-1 justify-center">
+                {assigning ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Appliquer ({assignTargets.length})
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

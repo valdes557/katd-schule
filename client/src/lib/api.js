@@ -52,7 +52,7 @@ export const api = {
 }
 
 export const authApi = {
-  login: (email, password) => api.post('/auth/login', { email, password }),
+  login: (email, password, space) => api.post('/auth/login', { email, password, space }),
   register: (payload) => api.post('/auth/register', payload),
   registerUser: (payload) => api.post('/auth/register-user', payload),
   heartbeat: () => api.post('/auth/heartbeat').catch(() => {}),
@@ -373,6 +373,40 @@ export const timetablesApi = {
   update: (id, data) => api.put(`/timetables/${id}`, data),
   addSlot: (id, data) => api.post(`/timetables/${id}/slots`, data),
   removeSlot: (id, slotId) => api.del(`/timetables/${id}/slots/${slotId}`),
+  assignTo: (id, classIds) => api.post(`/timetables/${id}/assign-to`, { classIds }),
+}
+
+// Recrutement : annonces (directeur) + job board public « News » + candidatures
+export const recruitmentApi = {
+  // Directeur
+  list: () => api.get('/recruitment'),
+  create: (data) => api.post('/recruitment', data),
+  update: (id, data) => api.put(`/recruitment/${id}`, data),
+  remove: (id) => api.del(`/recruitment/${id}`),
+  applications: (postId) => api.get(`/recruitment/applications${postId ? `?postId=${postId}` : ''}`),
+  approve: (id, reason) => api.post(`/recruitment/applications/${id}/approve`, { reason }),
+  reject: (id, reason) => api.post(`/recruitment/applications/${id}/reject`, { reason }),
+  // Public (job board / News)
+  publicList: () => api.get('/recruitment/public'),
+  publicCount: (since) => api.get(`/recruitment/public/count${since ? `?since=${encodeURIComponent(since)}` : ''}`),
+  publicGet: (id) => api.get(`/recruitment/public/${id}`),
+  apply: async (id, data) => {
+    const fd = new FormData()
+    fd.append('fullName', data.fullName || '')
+    fd.append('email', data.email || '')
+    fd.append('whatsapp', data.whatsapp || '')
+    fd.append('message', data.message || '')
+    if (data.cv) fd.append('cv', data.cv)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/recruitment/public/${id}/apply`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
 }
 
 export const schoolPagesApi = {

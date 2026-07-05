@@ -35,7 +35,7 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const result = await login(email, password)
+    const result = await login(email, password, 'ecole')
     setLoading(false)
     if (result.success) {
       navigate('/dashboard')
@@ -51,7 +51,7 @@ export default function LoginPage() {
     const result =
       userMode === 'signup'
         ? await register(name, email, password)
-        : await login(email, password)
+        : await login(email, password, 'user')
     setLoading(false)
     if (result.success && result.requiresVerification) {
       setVerifyMode(true)

@@ -73,7 +73,7 @@ export default function DirectorFeesPage() {
     try {
       const payload = {
         ...feeForm,
-        studentId: showFeeModal._id,
+        studentId: showFeeModal.studentId || showFeeModal._id,
         amount: Number(feeForm.amount),
         installments: feeForm.paymentMode === 'tranches' ? installments.map((inst) => ({ ...inst, amount: Number(inst.amount) })) : [],
       }

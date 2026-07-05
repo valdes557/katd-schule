@@ -11,9 +11,10 @@ const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
 const Homework = require('../models/Homework')
 const SchoolPost = require('../models/SchoolPost')
+const RecruitmentPost = require('../models/RecruitmentPost')
 
 // Rubriques publiables suivies par les badges de nouveautés.
-const RUBRICS = ['social', 'annonces', 'activites', 'ressources', 'documents', 'infos', 'devoirs']
+const RUBRICS = ['social', 'annonces', 'activites', 'ressources', 'documents', 'infos', 'devoirs', 'recrutement']
 
 const audienceFor = (role) =>
   role === 'parent' ? ['all', 'parents']
@@ -52,7 +53,7 @@ router.get('/counts', protect, async (req, res) => {
       : role === 'enseignant' ? teacherClassIds
       : null // directeur/admin : toute l'école
 
-    const [annonces, infos, documents, activites, ressources, devoirs, social] = await Promise.all([
+    const [annonces, infos, documents, activites, ressources, devoirs, social, recrutement] = await Promise.all([
       // Annonces (école + audience)
       Announcement.countDocuments({ school: schoolId, audience: { $in: aud }, createdAt: since('annonces') }),
       // Informations générales (Event, école + audience)
@@ -86,9 +87,11 @@ router.get('/counts', protect, async (req, res) => {
       }),
       // Social (fil de l'école ; pas mes propres posts)
       SchoolPost.countDocuments({ school: schoolId, createdAt: since('social'), author: { $ne: userId } }),
+      // Recrutement / News (job board GLOBAL toutes écoles ; annonces publiées)
+      RecruitmentPost.countDocuments({ status: 'published', createdAt: since('recrutement') }),
     ])
 
-    res.json({ success: true, data: { annonces, infos, documents, activites, ressources, devoirs, social } })
+    res.json({ success: true, data: { annonces, infos, documents, activites, ressources, devoirs, social, recrutement } })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

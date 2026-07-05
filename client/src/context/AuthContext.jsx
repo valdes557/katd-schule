@@ -58,9 +58,9 @@ export function AuthProvider({ children }) {
   }, [user])
 
   // Real backend login (with demo fallback if API unreachable)
-  const login = async (email, password) => {
+  const login = async (email, password, space) => {
     try {
-      const res = await authApi.login(email, password)
+      const res = await authApi.login(email, password, space)
       const u = res.user
       const s = res.school || null
       localStorage.setItem('token', res.token)

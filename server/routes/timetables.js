@@ -68,6 +68,47 @@ router.post('/:id/slots', protect, authorize('directeur', 'super_admin', 'enseig
   }
 })
 
+// POST assign/duplicate a timetable's slots to one OR several other classes/rooms
+// Body: { classIds: [<classId>, ...] } — copie les créneaux de l'emploi source vers
+// chaque classe cible (création si l'emploi n'existe pas encore). Le directeur peut
+// ainsi appliquer le même emploi du temps à plusieurs salles de son école.
+router.post('/:id/assign-to', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+
+    const source = await Timetable.findOne({ _id: req.params.id, school: schoolId })
+    if (!source) return res.status(404).json({ message: 'Emploi du temps source non trouvé' })
+
+    const { classIds } = req.body
+    if (!Array.isArray(classIds) || classIds.length === 0) {
+      return res.status(400).json({ message: 'Sélectionnez au moins une classe cible' })
+    }
+
+    // Copie profonde des créneaux (sans les _id de sous-documents pour en régénérer)
+    const clonedSlots = (source.slots || []).map((s) => {
+      const o = s.toObject ? s.toObject() : { ...s }
+      delete o._id
+      return o
+    })
+
+    let updated = 0
+    for (const classId of classIds) {
+      if (String(classId) === String(source.class)) continue // on saute la classe source
+      await Timetable.findOneAndUpdate(
+        { school: schoolId, class: classId },
+        { $set: { slots: clonedSlots, academicYear: source.academicYear } },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      )
+      updated++
+    }
+
+    res.json({ success: true, data: { updated } })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // DELETE a slot from a timetable
 router.delete('/:id/slots/:slotId', protect, authorize('directeur', 'super_admin', 'enseignant'), async (req, res) => {
   try {

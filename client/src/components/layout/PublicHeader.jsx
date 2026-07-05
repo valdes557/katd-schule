@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import {
   Search, BookOpen, Menu, X, Globe2, Users, Phone, HelpCircle,
-  BookMarked, School, GraduationCap, Star, Heart,
+  BookMarked, School, GraduationCap, Star, Heart, Newspaper,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { platformApi } from '../../lib/api'
+import { platformApi, recruitmentApi } from '../../lib/api'
+
+const NEWS_SEEN_KEY = 'home_news_seen'
 
 const NAV_TABS = [
   { label: 'Social', path: '/social', icon: Globe2 },
@@ -24,6 +26,7 @@ export default function PublicHeader() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { user } = useAuth()
   const [brand, setBrand] = useState({ siteName: 'KATD-SCHÜLE', logo: '' })
+  const [newsCount, setNewsCount] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -32,6 +35,12 @@ export default function PublicHeader() {
         const d = res?.data || {}
         if (active) setBrand({ siteName: d.siteName || 'KATD-SCHÜLE', logo: d.logo || '' })
       })
+      .catch(() => {})
+    // Compteur News (annonces de recrutement publiées depuis la dernière visite)
+    const seen = Number(localStorage.getItem(NEWS_SEEN_KEY) || 0)
+    const since = seen ? new Date(seen).toISOString() : ''
+    recruitmentApi.publicCount(since)
+      .then((r) => { if (active) setNewsCount(r?.data?.count || 0) })
       .catch(() => {})
     return () => { active = false }
   }, [])
@@ -73,6 +82,15 @@ export default function PublicHeader() {
 
           {/* Auth */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            <Link to="/news" title="Actualités & recrutement" className="relative inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-amber-600 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-colors">
+              <Newspaper size={17} />
+              <span className="hidden sm:inline">News</span>
+              {newsCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
+                  {newsCount > 9 ? '9+' : newsCount}
+                </span>
+              )}
+            </Link>
             {user ? (
               <Link to="/dashboard" className="btn-primary text-sm py-1.5 px-4">
                 Mon école

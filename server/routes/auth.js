@@ -142,9 +142,18 @@ router.post(
     }
 
     try {
-      const { email, password } = req.body
+      const { email, password, space } = req.body
       const user = await User.findOne({ email }).select('+loginAttempts +lockUntil +password').populate('school')
       if (!user) {
+        return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
+      }
+      // Séparation des espaces : les identifiants « utilisateur » (grand public) ne
+      // fonctionnent que sur l'onglet Utilisateur, et vice-versa pour l'espace École.
+      // Message générique pour ne pas divulguer l'existence/type du compte.
+      if (space === 'ecole' && user.role === 'utilisateur') {
+        return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
+      }
+      if (space === 'user' && user.role !== 'utilisateur') {
         return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
       }
       // Compte verrouillé après trop de tentatives

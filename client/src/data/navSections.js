@@ -3,7 +3,7 @@ import {
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
   BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet, QrCode,
-  Bot, Sparkles, Image as ImageIcon,
+  Bot, Sparkles, Image as ImageIcon, Briefcase, Newspaper,
 } from 'lucide-react'
 
 // roles: array of allowed roles. undefined = all roles.
@@ -67,6 +67,7 @@ export const navSections = [
       { label: 'Personnel', icon: UserCog, path: '/dashboard/personnel' },
       { label: 'Pointage du personnel', icon: QrCode, path: '/dashboard/pointage' },
       { label: 'Rapports de pointage', icon: BarChart2, path: '/dashboard/pointage/rapports' },
+      { label: 'Gestion recrutement', icon: Briefcase, path: '/dashboard/recrutement' },
     ],
   },
   {
@@ -101,6 +102,7 @@ export const navSections = [
     roles: ['directeur', 'enseignant', 'parent'],
     items: [
       { label: 'Informations générales', icon: Info, path: '/dashboard/infos' },
+      { label: 'News & recrutement', icon: Newspaper, path: '/dashboard/news' },
       { label: 'Messenger', icon: MessageSquare, path: '/dashboard/messagerie' },
       { label: 'Annonces', icon: Bell, path: '/dashboard/annonces' },
       { label: 'Documents partagés', icon: FolderOpen, path: '/dashboard/documents' },

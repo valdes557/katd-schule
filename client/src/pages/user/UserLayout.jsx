@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { BookOpen, Home, User, Bell, Users, Plus } from 'lucide-react'
+import { BookOpen, Home, User, Bell, Users, Plus, Newspaper } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { messagesApi, platformApi } from '../../lib/api'
+import { messagesApi, platformApi, recruitmentApi } from '../../lib/api'
 
 // Clé localStorage : date de dernière consultation des notifications (pour le badge).
 const NOTIF_SEEN_KEY = 'u_notif_seen'
+// Clé localStorage : date de dernière consultation des News (annonces de recrutement).
+const NEWS_SEEN_KEY = 'u_news_seen'
 
 // Petite pastille rouge de comptage (style Messenger) affichée en haut-droite d'un bouton.
 function Badge({ count }) {
@@ -29,9 +31,11 @@ export default function UserLayout() {
   const isMessages = pathname.startsWith('/u/messages')
   const isProfil = pathname.startsWith('/u/profil')
   const isNotif = pathname.startsWith('/u/notifications')
+  const isNews = pathname.startsWith('/u/news')
 
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
+  const [unreadNews, setUnreadNews] = useState(0)
   const myId = String(user?.id || user?._id || '')
 
   // Rafraîchit les deux compteurs (messages non lus + notifications non lues).
@@ -55,12 +59,25 @@ export default function UserLayout() {
       }
       setUnreadNotifs(n)
     } catch { /* silencieux */ }
+    // Compteur News (annonces de recrutement publiées depuis la dernière consultation)
+    try {
+      const seen = Number(localStorage.getItem(NEWS_SEEN_KEY) || 0)
+      const since = seen ? new Date(seen).toISOString() : ''
+      const r = await recruitmentApi.publicCount(since)
+      setUnreadNews(r?.data?.count || 0)
+    } catch { /* silencieux */ }
   }, [myId])
 
   // Marque les notifications comme vues (badge -> 0). Appelé par UserNotificationsPage.
   const markNotifsSeen = useCallback(() => {
     localStorage.setItem(NOTIF_SEEN_KEY, String(Date.now()))
     setUnreadNotifs(0)
+  }, [])
+
+  // Marque les News comme vues (badge -> 0). Appelé par NewsPage.
+  const markNewsSeen = useCallback(() => {
+    localStorage.setItem(NEWS_SEEN_KEY, String(Date.now()))
+    setUnreadNews(0)
   }, [])
 
   // Polling toutes les 15 s + à chaque changement de route.
@@ -134,31 +151,30 @@ export default function UserLayout() {
       </header>
 
       {/* ── Contenu ── */}
-      <main className={`flex-1 w-full max-w-2xl mx-auto px-4 py-5 ${isMessages ? '' : 'pb-28'}`}>
-        <Outlet context={{ refreshBadges, markNotifsSeen }} />
+      <main className={`flex-1 w-full max-w-2xl mx-auto px-4 py-5 ${isMessages ? '' : 'pr-16 sm:pr-20'}`}>
+        <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen }} />
       </main>
 
-      {/* ── Barre de navigation flottante (4 boutons, fond transparent) — masquée en messagerie ── */}
+      {/* ── Barre de navigation flottante VERTICALE ancrée à droite — masquée en messagerie ── */}
       {!isMessages && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pb-2 pointer-events-none">
-          <div className="flex items-end gap-4 px-4 py-1 pointer-events-auto">
-            <NavButton active={onHome} onClick={() => navigate('/u')} icon={Home} label="Accueil" gradient="from-blue-500 to-indigo-600" />
-            <NavButton active={isMessages} onClick={() => navigate('/u/messages')} icon={Users} label="Amis" gradient="from-teal-500 to-emerald-600" badge={unreadMessages} />
+        <div className="fixed right-2 sm:right-3 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-3 pointer-events-auto">
+          <NavButton active={onHome} onClick={() => navigate('/u')} icon={Home} label="Accueil" gradient="from-blue-500 to-indigo-600" />
+          <NavButton active={isNews} onClick={() => navigate('/u/news')} icon={Newspaper} label="News" gradient="from-amber-500 to-orange-600" badge={unreadNews} />
+          <NavButton active={isMessages} onClick={() => navigate('/u/messages')} icon={Users} label="Amis" gradient="from-teal-500 to-emerald-600" badge={unreadMessages} />
 
-            {/* Bouton central Publier (surélevé) */}
-            <button
-              onClick={() => navigate('/u/publier')}
-              className="flex flex-col items-center gap-0.5 px-2 text-[10px] font-semibold text-gray-600"
-              title="Publier"
-            >
-              <span className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg -mt-5 border-4 border-white text-white">
-                <Plus size={24} strokeWidth={3} />
-              </span>
-              <span className="mt-0.5">Publier</span>
-            </button>
+          {/* Bouton Publier (mis en avant) */}
+          <button
+            onClick={() => navigate('/u/publier')}
+            className="flex flex-col items-center gap-0.5 text-[10px] font-semibold text-gray-600"
+            title="Publier"
+          >
+            <span className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg border-4 border-white text-white">
+              <Plus size={24} strokeWidth={3} />
+            </span>
+            <span className="mt-0.5">Publier</span>
+          </button>
 
-            <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-purple-500 to-pink-500" badge={unreadNotifs} />
-          </div>
+          <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-purple-500 to-pink-500" badge={unreadNotifs} />
         </div>
       )}
     </div>

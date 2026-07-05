@@ -177,6 +177,8 @@ const AiChatPage = lazyPage(() => import('./pages/AiChatPage'))
 const DirectorAiPage = lazyPage(() => import('./pages/DirectorAiPage'))
 const AdminAiPage = lazyPage(() => import('./pages/AdminAiPage'))
 const AdminBannersPage = lazyPage(() => import('./pages/AdminBannersPage'))
+const RecruitmentPage = lazyPage(() => import('./pages/RecruitmentPage'))
+const NewsPage = lazyPage(() => import('./pages/NewsPage'))
 
 function PageFallback() {
   return (
@@ -253,6 +255,7 @@ export default function App() {
       <Route path="/tarifs" element={<TarifsPage />} />
       <Route path="/souscrire" element={<SchoolRegistrationPage />} />
       <Route path="/ecole/:schoolId" element={<SchoolDetailPage />} />
+      <Route path="/news" element={<NewsPage />} />
 
       {/* Protected dashboard routes */}
       <Route
@@ -300,6 +303,8 @@ export default function App() {
         <Route path="demandes-ecoles" element={<AdminSchoolRegistrationsPage />} />
         <Route path="ecoles-admin" element={<AdminEcolesPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
+        <Route path="recrutement" element={<RecruitmentPage />} />
+        <Route path="news" element={<NewsPage />} />
         <Route path="plateforme" element={<AdminPlatformPage />} />
         <Route path="matieres-ecoles" element={<AdminSchoolSubjectsPage />} />
 
@@ -350,6 +355,7 @@ export default function App() {
         <Route path="publier" element={<UserPublishPage />} />
         <Route path="messages" element={<UserMessengerPage />} />
         <Route path="notifications" element={<UserNotificationsPage />} />
+        <Route path="news" element={<NewsPage />} />
         <Route path="profil" element={<UserProfilePage />} />
       </Route>
 
