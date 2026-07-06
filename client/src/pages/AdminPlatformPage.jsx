@@ -4,7 +4,8 @@ import {
   Image, Film, Save, Loader2, Star,
   MessageCircle, CreditCard, Phone, Info, Pencil, X, FileText, Link, Music,
 } from 'lucide-react'
-import { platformApi, plansApi } from '../lib/api'
+import { platformApi, plansApi, newsApi } from '../lib/api'
+import { assertVideoWithinLimit } from '../lib/videoValidation'
 import { useAuth } from '../context/AuthContext'
 import RichTextEditor from '../components/ui/RichTextEditor'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -20,6 +21,8 @@ const TABS = [
   { id: 'experiences', label: 'Témoignages', icon: Star },
   { id: 'payments', label: 'Paiements', icon: CreditCard },
   { id: 'plans', label: 'Plans tarifaires', icon: Star },
+  { id: 'news', label: 'News / Démos', icon: Film },
+  { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
 ]
 
 // ─── Identity Panel ──────────────────────────────────────────────────────────
@@ -242,7 +245,7 @@ function PostsPanel() {
               <button type="button" onClick={() => videoRef.current?.click()} className="btn-ghost text-sm border border-dashed border-gray-300 w-full justify-center py-3 hover:border-blue-400">
                 <Film size={15} className="text-purple-500" /> {videoFile ? videoFile.name : 'Sélectionner une vidéo (MP4, MOV…)'}
               </button>
-              <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
+              <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0] || null; if (!f) return setVideoFile(null); try { await assertVideoWithinLimit(f); setVideoFile(f) } catch (err) { alert(err.message) } }} />
             </div>
           )}
 
@@ -1071,6 +1074,166 @@ function PlansPanel() {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── WhatsApp Panel ──────────────────────────────────────────────────────────
+const WA_FIELDS = [
+  { key: 'directeur', label: 'Dashboard Directeur' },
+  { key: 'enseignant', label: 'Dashboard Enseignant' },
+  { key: 'parent', label: 'Dashboard Parent' },
+  { key: 'eleve', label: 'Dashboard Élève' },
+  { key: 'utilisateur', label: 'Dashboard Utilisateur (/u)' },
+  { key: 'accueil', label: "Page d'accueil (public)" },
+]
+
+function WhatsAppPanel({ platformData, refresh }) {
+  const [links, setLinks] = useState(platformData?.whatsappLinks || {})
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { setLinks(platformData?.whatsappLinks || {}) }, [platformData?.whatsappLinks])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await platformApi.update({ whatsappLinks: links })
+      cache.invalidate('/platform')
+      refresh()
+      alert('Liens WhatsApp enregistrés ✅')
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-4 max-w-xl">
+      <div>
+        <h3 className="text-sm font-bold text-gray-900">Boutons WhatsApp</h3>
+        <p className="text-xs text-gray-500 mt-0.5">Un lien par dashboard + un pour la page d'accueil. Numéro (ex. 237690000000) ou lien wa.me complet. Laissez vide pour masquer le bouton.</p>
+      </div>
+      {WA_FIELDS.map((f) => (
+        <div key={f.key}>
+          <label className="text-xs font-medium text-gray-600 block mb-1">{f.label}</label>
+          <div className="relative">
+            <MessageCircle size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500" />
+            <input
+              value={links[f.key] || ''}
+              onChange={(e) => setLinks({ ...links, [f.key]: e.target.value })}
+              className="input text-sm w-full pl-9"
+              placeholder="237690000000 ou https://wa.me/237690000000"
+            />
+          </div>
+        </div>
+      ))}
+      <div className="pt-2">
+        <button onClick={save} disabled={saving} className="btn-primary text-sm">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── News / Démos Panel (vidéos de démonstration + PDF) ──────────────────────
+const NEWS_TYPES = [
+  { id: 'video', label: 'Vidéo', accept: 'video/*' },
+  { id: 'pdf', label: 'PDF', accept: '.pdf' },
+  { id: 'image', label: 'Image', accept: 'image/*' },
+  { id: 'link', label: 'Lien', accept: '' },
+]
+
+function NewsDemoPanel() {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [type, setType] = useState('video')
+  const [form, setForm] = useState({ title: '', description: '', link: '' })
+  const [media, setMedia] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const fileRef = useRef()
+
+  const load = async () => {
+    setLoading(true)
+    try { const r = await newsApi.adminList(); setItems(r.data || []) } catch (_) {}
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const pickMedia = async (e) => {
+    const f = e.target.files?.[0] || null
+    if (f && type === 'video') {
+      try { await assertVideoWithinLimit(f) } catch (err) { alert(err.message); e.target.value = ''; return }
+    }
+    setMedia(f)
+  }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!form.title.trim()) return alert('Le titre est requis.')
+    if (type !== 'link' && !media) return alert('Veuillez sélectionner un fichier.')
+    setSaving(true)
+    try {
+      await newsApi.adminCreate({ title: form.title, description: form.description, type, link: form.link, media })
+      setForm({ title: '', description: '', link: '' }); setMedia(null)
+      if (fileRef.current) fileRef.current.value = ''
+      load()
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  const remove = async (id) => {
+    if (!confirm('Supprimer ce contenu ?')) return
+    try { await newsApi.adminRemove(id); load() } catch (err) { alert(err.message) }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <form onSubmit={submit} className="bg-white border border-gray-100 rounded-xl p-5 space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">Publier une démo / news</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Vidéos de démonstration de l'application, PDF ou images — visibles dans le bouton News de tous les dashboards et de l'accueil.</p>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {NEWS_TYPES.map((t) => (
+            <button key={t.id} type="button" onClick={() => { setType(t.id); setMedia(null) }}
+              className={`text-xs py-2 rounded-lg border transition-colors ${type === t.id ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Titre" className="input text-sm w-full" />
+        <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description (optionnel)" rows={2} className="input text-sm w-full" />
+        {type === 'link' ? (
+          <input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="https://..." className="input text-sm w-full" />
+        ) : (
+          <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500">
+            <Film size={15} /> <span className="truncate">{media ? media.name : `Choisir un fichier (${type})`}</span>
+            <input ref={fileRef} type="file" accept={NEWS_TYPES.find((t) => t.id === type)?.accept} className="hidden" onChange={pickMedia} />
+          </label>
+        )}
+        {type === 'video' && <p className="text-[11px] text-gray-400">Vidéo de 30 minutes maximum.</p>}
+        <button type="submit" disabled={saving} className="btn-primary text-sm w-full justify-center">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Publier
+        </button>
+      </form>
+
+      <div className="space-y-2">
+        {loading ? (
+          <div className="text-center py-8"><Loader2 size={22} className="animate-spin text-blue-600 mx-auto" /></div>
+        ) : items.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">Aucun contenu publié.</p>
+        ) : items.map((it) => (
+          <div key={it._id} className="bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-3">
+            <span className="w-10 h-10 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600 flex-shrink-0">
+              {it.type === 'pdf' ? <FileText size={18} /> : it.type === 'image' ? <Image size={18} /> : it.type === 'link' ? <Link size={18} /> : <Film size={18} />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-800 truncate">{it.title}</p>
+              <p className="text-xs text-gray-400 capitalize">{it.type}</p>
+            </div>
+            <button onClick={() => remove(it._id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPlatformPage() {
   const { user } = useAuth()
   const [tab, setTab] = useState('posts')
@@ -1135,6 +1298,8 @@ export default function AdminPlatformPage() {
           {tab === 'experiences' && <ExperiencesPanel />}
           {tab === 'payments' && <PaymentsPanel />}
           {tab === 'plans' && <PlansPanel />}
+          {tab === 'news' && <NewsDemoPanel />}
+          {tab === 'whatsapp' && <WhatsAppPanel platformData={platformData} refresh={refresh} />}
         </>
       )}
     </div>

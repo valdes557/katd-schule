@@ -94,6 +94,7 @@ export const navSections = [
       { label: 'Présence', icon: CalendarCheck, path: '/dashboard/presence' },
       { label: 'Activités scolaires', icon: Activity, path: '/dashboard/activites' },
       { label: 'Ressources pédagogiques', icon: Library, path: '/dashboard/ressources' },
+      { label: 'Gestion des répétitions', icon: GraduationCap, path: '/dashboard/repetitions', roles: ['enseignant'] },
       { label: 'Statistiques & Analytics', icon: BarChart2, path: '/dashboard/teacher/analytics', roles: ['enseignant'] },
     ],
   },

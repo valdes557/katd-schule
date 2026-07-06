@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { BookOpen, Home, User, Bell, Users, Plus, Newspaper } from 'lucide-react'
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { messagesApi, platformApi, recruitmentApi } from '../../lib/api'
+import { messagesApi, platformApi, newsApi } from '../../lib/api'
+import WhatsAppFab from '../../components/WhatsAppFab'
 
 // Clé localStorage : date de dernière consultation des notifications (pour le badge).
 const NOTIF_SEEN_KEY = 'u_notif_seen'
@@ -36,7 +37,16 @@ export default function UserLayout() {
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
   const [unreadNews, setUnreadNews] = useState(0)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [waLink, setWaLink] = useState('')
   const myId = String(user?.id || user?._id || '')
+
+  // Lien WhatsApp de l'espace utilisateur (configuré par l'admin)
+  useEffect(() => {
+    let active = true
+    platformApi.get().then((res) => { if (active) setWaLink(res?.data?.whatsappLinks?.utilisateur || '') }).catch(() => {})
+    return () => { active = false }
+  }, [])
 
   // Rafraîchit les deux compteurs (messages non lus + notifications non lues).
   const refreshBadges = useCallback(async () => {
@@ -63,7 +73,7 @@ export default function UserLayout() {
     try {
       const seen = Number(localStorage.getItem(NEWS_SEEN_KEY) || 0)
       const since = seen ? new Date(seen).toISOString() : ''
-      const r = await recruitmentApi.publicCount(since)
+      const r = await newsApi.publicCount(since)
       setUnreadNews(r?.data?.count || 0)
     } catch { /* silencieux */ }
   }, [myId])
@@ -129,20 +139,31 @@ export default function UserLayout() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* ── En-tête « Fil social » ── */}
+      {/* ── En-tête : bouton retour + barre de recherche ── */}
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
-        <div className="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/u" className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm flex-shrink-0">
-              <BookOpen size={20} />
-            </div>
-            <div className="leading-tight min-w-0">
-              <p className="font-bold text-gray-900 text-base truncate">Fil social</p>
-              <p className="text-[11px] text-gray-400 hidden sm:block">Partagez, échangez, informez</p>
-            </div>
-          </Link>
+        <div className="max-w-2xl mx-auto px-4 h-16 flex items-center gap-2">
+          {!onHome && (
+            <button
+              onClick={() => navigate(-1)}
+              title="Retour"
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-800 flex-shrink-0"
+            >
+              <ArrowLeft size={22} />
+            </button>
+          )}
 
-          <div className="flex items-center gap-1">
+          {/* Barre de recherche (remplace l'ancienne zone « Fil social ») */}
+          <div className="relative flex-1 min-w-0">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Rechercher une publication, une vidéo..."
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+            />
+          </div>
+
+          <div className="flex items-center gap-1 flex-shrink-0">
             <HeaderIcon active={onHome} onClick={() => navigate('/u')} icon={Home} />
             <HeaderIcon active={isProfil} onClick={() => navigate('/u/profil')} icon={User} avatar={user?.avatar} />
             <HeaderIcon active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} badge={unreadNotifs} />
@@ -152,7 +173,7 @@ export default function UserLayout() {
 
       {/* ── Contenu ── */}
       <main className={`flex-1 w-full max-w-2xl mx-auto px-4 py-5 ${isMessages ? '' : 'pr-16 sm:pr-20'}`}>
-        <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen }} />
+        <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen, searchTerm }} />
       </main>
 
       {/* ── Barre de navigation flottante VERTICALE ancrée à droite — masquée en messagerie ── */}
@@ -177,6 +198,8 @@ export default function UserLayout() {
           <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-purple-500 to-pink-500" badge={unreadNotifs} />
         </div>
       )}
+
+      <WhatsAppFab link={waLink} position="bottom-left" />
     </div>
   )
 }

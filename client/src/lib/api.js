@@ -409,6 +409,50 @@ export const recruitmentApi = {
   },
 }
 
+// Cours de répétition (enseignant) — annonces avec photo, visibles dans le feed News
+export const tutoringApi = {
+  list: () => api.get('/tutoring'),
+  create: (data) => tutoringUpload('/tutoring', 'POST', data),
+  update: (id, data) => tutoringUpload(`/tutoring/${id}`, 'PUT', data),
+  remove: (id) => api.del(`/tutoring/${id}`),
+  publicList: () => api.get('/tutoring/public'),
+  publicGet: (id) => api.get(`/tutoring/public/${id}`),
+}
+
+// Helper interne : envoi multipart (photo) pour les annonces de répétition
+async function tutoringUpload(path, method, data) {
+  const fd = new FormData()
+  const fields = ['title', 'description', 'subjects', 'price', 'contactWhatsapp', 'contactEmail', 'location', 'schedule', 'status']
+  fields.forEach((f) => { if (data[f] !== undefined && data[f] !== null) fd.append(f, data[f]) })
+  if (data.photo instanceof File) fd.append('photo', data.photo)
+  const token = localStorage.getItem('token')
+  const res = await fetch(`${API_URL}${path}`, { method, headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+  return json
+}
+
+// News : feed public unifié (recrutement + répétitions + démos admin) + gestion démos admin
+export const newsApi = {
+  publicFeed: () => api.get('/news/public'),
+  publicCount: (since) => api.get(`/news/public/count${since ? `?since=${encodeURIComponent(since)}` : ''}`),
+  adminList: () => api.get('/news/admin'),
+  adminRemove: (id) => api.del(`/news/admin/${id}`),
+  adminCreate: async (data) => {
+    const fd = new FormData()
+    fd.append('title', data.title || '')
+    fd.append('description', data.description || '')
+    fd.append('type', data.type || 'video')
+    if (data.link) fd.append('link', data.link)
+    if (data.media instanceof File) fd.append('media', data.media)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/news/admin`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+}
+
 export const schoolPagesApi = {
   get: (schoolId) => api.get(`/school-pages/${schoolId}`),
   update: (schoolId, data) => api.put(`/school-pages/${schoolId}`, data),

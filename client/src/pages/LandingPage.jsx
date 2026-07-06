@@ -7,7 +7,8 @@ import {
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
-import { schoolsApi, platformApi, bannersApi, recruitmentApi } from '../lib/api'
+import WhatsAppFab from '../components/WhatsAppFab'
+import { schoolsApi, platformApi, bannersApi, newsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 
 // Carrousel des bannières promotionnelles gérées par l'administrateur.
@@ -104,8 +105,12 @@ export default function LandingPage() {
   const loadingSchools = landingQ.loading
 
   // Dernières annonces de recrutement (job board public)
-  const newsQ = useCachedFetch('/recruitment/public', async () => (await recruitmentApi.publicList()).data || [], [])
+  const newsQ = useCachedFetch('/news/public', async () => (await newsApi.publicFeed()).data || [], [])
   const news = (newsQ.data || []).slice(0, 3)
+
+  // Lien WhatsApp de la page d'accueil (configuré par l'admin)
+  const platformQ = useCachedFetch('/platform', async () => (await platformApi.get()).data || {}, [])
+  const whatsappLink = platformQ.data?.whatsappLinks?.accueil || ''
 
   const togglePlan = (cycle, value) =>
     setSelectedPlans((prev) => ({ ...prev, [cycle]: value }))
@@ -243,31 +248,38 @@ export default function LandingPage() {
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <div className="flex items-end justify-between mb-10">
               <div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-2"><Newspaper size={26} className="text-amber-600" /> Actualités & recrutement</h2>
-                <p className="text-gray-500">Les dernières offres publiées par les établissements</p>
+                <h2 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-2"><Newspaper size={26} className="text-amber-600" /> Actualités & News</h2>
+                <p className="text-gray-500">Recrutements, cours de répétition et démonstrations de l'application</p>
               </div>
               <Link to="/news" className="hidden sm:inline-flex items-center gap-1.5 text-amber-600 font-semibold text-sm hover:gap-2.5 transition-all">
                 Voir toutes <ChevronRight size={16} />
               </Link>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {news.map((p) => (
-                <Link key={p._id} to="/news" className="border border-gray-100 rounded-2xl p-5 hover:shadow-md hover:border-amber-200 transition-all">
-                  <div className="flex items-center gap-2 mb-3">
-                    {p.school?.logo
-                      ? <img src={p.school.logo} alt="" className="w-9 h-9 rounded-lg object-cover" />
-                      : <span className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600"><School size={18} /></span>}
-                    <span className="text-xs font-medium text-gray-500 truncate">{p.school?.name || 'Établissement'}</span>
-                  </div>
-                  <p className="font-bold text-gray-900 leading-tight">{p.title}</p>
-                  <p className="text-xs text-gray-500 mt-1">{[p.poste, p.contractType].filter(Boolean).join(' · ')}</p>
-                  <p className="text-sm text-gray-600 mt-2 line-clamp-2">{p.description}</p>
-                  <span className="inline-block mt-3 text-xs font-semibold text-amber-600">Postuler →</span>
-                </Link>
-              ))}
+              {news.map((p) => {
+                const label = p.kind === 'repetition' ? 'Répétition' : p.kind === 'demo' ? 'Démo' : 'Recrutement'
+                const author = p.school?.name || p.teacherName || 'KATD-SCHÜLE'
+                const sub = p.kind === 'repetition' ? [p.subjects, p.price].filter(Boolean).join(' · ')
+                  : p.kind === 'demo' ? 'Démonstration' : [p.poste, p.contractType].filter(Boolean).join(' · ')
+                return (
+                  <Link key={`${p.kind}-${p._id}`} to="/news" className="border border-gray-100 rounded-2xl p-5 hover:shadow-md hover:border-amber-200 transition-all">
+                    <div className="flex items-center gap-2 mb-3">
+                      {p.school?.logo
+                        ? <img src={p.school.logo} alt="" className="w-9 h-9 rounded-lg object-cover" />
+                        : <span className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600"><School size={18} /></span>}
+                      <span className="text-xs font-medium text-gray-500 truncate">{author}</span>
+                      <span className="ml-auto text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{label}</span>
+                    </div>
+                    <p className="font-bold text-gray-900 leading-tight">{p.title}</p>
+                    {sub && <p className="text-xs text-gray-500 mt-1">{sub}</p>}
+                    <p className="text-sm text-gray-600 mt-2 line-clamp-2">{p.description}</p>
+                    <span className="inline-block mt-3 text-xs font-semibold text-amber-600">Voir →</span>
+                  </Link>
+                )
+              })}
             </div>
             <div className="text-center mt-8 sm:hidden">
-              <Link to="/news" className="btn-primary text-sm">Voir toutes les offres</Link>
+              <Link to="/news" className="btn-primary text-sm">Voir toutes les actualités</Link>
             </div>
           </div>
         </section>
@@ -518,6 +530,7 @@ export default function LandingPage() {
       </section>
 
       <Footer />
+      <WhatsAppFab link={whatsappLink} position="bottom-center" />
     </div>
   )
 }

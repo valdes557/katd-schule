@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { schoolPagesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import { assertVideoWithinLimit } from '../lib/videoValidation'
 
 const TABS = [
   { id: 'about', label: 'À propos', icon: Users },
@@ -261,7 +262,7 @@ function PostsEditor({ schoolId }) {
           {files && <span className="text-xs text-gray-400">{files.length} image(s)</span>}
           <label className="text-xs text-purple-600 cursor-pointer flex items-center gap-1 hover:underline">
             <Video size={12} /> Ajouter une vidéo
-            <input type="file" accept="video/*" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} className="hidden" />
+            <input type="file" accept="video/*" onChange={async (e) => { const f = e.target.files?.[0] || null; if (!f) return setVideoFile(null); try { await assertVideoWithinLimit(f); setVideoFile(f) } catch (err) { alert(err.message) } }} className="hidden" />
           </label>
           {videoFile && <span className="text-xs text-gray-400 truncate max-w-[140px]">{videoFile.name}</span>}
           <button type="submit" disabled={posting} className="btn-primary text-sm ml-auto">

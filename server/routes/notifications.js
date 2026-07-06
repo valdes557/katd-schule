@@ -12,9 +12,11 @@ const Resource = require('../models/Resource')
 const Homework = require('../models/Homework')
 const SchoolPost = require('../models/SchoolPost')
 const RecruitmentPost = require('../models/RecruitmentPost')
+const TutoringPost = require('../models/TutoringPost')
+const PlatformNews = require('../models/PlatformNews')
 
 // Rubriques publiables suivies par les badges de nouveautés.
-const RUBRICS = ['social', 'annonces', 'activites', 'ressources', 'documents', 'infos', 'devoirs', 'recrutement']
+const RUBRICS = ['social', 'annonces', 'activites', 'ressources', 'documents', 'infos', 'devoirs', 'news']
 
 const audienceFor = (role) =>
   role === 'parent' ? ['all', 'parents']
@@ -53,7 +55,7 @@ router.get('/counts', protect, async (req, res) => {
       : role === 'enseignant' ? teacherClassIds
       : null // directeur/admin : toute l'école
 
-    const [annonces, infos, documents, activites, ressources, devoirs, social, recrutement] = await Promise.all([
+    const [annonces, infos, documents, activites, ressources, devoirs, social, news] = await Promise.all([
       // Annonces (école + audience)
       Announcement.countDocuments({ school: schoolId, audience: { $in: aud }, createdAt: since('annonces') }),
       // Informations générales (Event, école + audience)
@@ -87,11 +89,15 @@ router.get('/counts', protect, async (req, res) => {
       }),
       // Social (fil de l'école ; pas mes propres posts)
       SchoolPost.countDocuments({ school: schoolId, createdAt: since('social'), author: { $ne: userId } }),
-      // Recrutement / News (job board GLOBAL toutes écoles ; annonces publiées)
-      RecruitmentPost.countDocuments({ status: 'published', createdAt: since('recrutement') }),
+      // News (feed GLOBAL toutes écoles : recrutement + répétitions + démos admin)
+      Promise.all([
+        RecruitmentPost.countDocuments({ status: 'published', createdAt: since('news') }),
+        TutoringPost.countDocuments({ status: 'published', createdAt: since('news') }),
+        PlatformNews.countDocuments({ createdAt: since('news') }),
+      ]).then(([r, t, d]) => r + t + d),
     ])
 
-    res.json({ success: true, data: { annonces, infos, documents, activites, ressources, devoirs, social, recrutement } })
+    res.json({ success: true, data: { annonces, infos, documents, activites, ressources, devoirs, social, news } })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

@@ -5,7 +5,7 @@ import {
   BookMarked, School, GraduationCap, Star, Heart, Newspaper,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { platformApi, recruitmentApi } from '../../lib/api'
+import { platformApi, newsApi } from '../../lib/api'
 
 const NEWS_SEEN_KEY = 'home_news_seen'
 
@@ -39,7 +39,7 @@ export default function PublicHeader() {
     // Compteur News (annonces de recrutement publiées depuis la dernière visite)
     const seen = Number(localStorage.getItem(NEWS_SEEN_KEY) || 0)
     const since = seen ? new Date(seen).toISOString() : ''
-    recruitmentApi.publicCount(since)
+    newsApi.publicCount(since)
       .then((r) => { if (active) setNewsCount(r?.data?.count || 0) })
       .catch(() => {})
     return () => { active = false }

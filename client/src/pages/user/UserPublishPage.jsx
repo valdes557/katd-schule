@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Image, Video, Music, UploadCloud, X, CheckCircle2, Loader2 } from 'lucide-react'
 import { platformApi } from '../../lib/api'
+import { assertVideoWithinLimit } from '../../lib/videoValidation'
 
 const TYPES = [
   { key: 'photo', label: 'Photo', Icon: Image, accept: 'image/*' },
@@ -26,10 +27,14 @@ export default function UserPublishPage() {
 
   const accept = TYPES.find((t) => t.key === type)?.accept
 
-  const pickFile = (f) => {
+  const pickFile = async (f) => {
     if (!f) return
-    setFile(f)
     setError('')
+    if (type === 'video') {
+      try { await assertVideoWithinLimit(f) }
+      catch (err) { setError(err.message); return }
+    }
+    setFile(f)
     if (type === 'photo' || type === 'video') setPreview(URL.createObjectURL(f))
     else setPreview('')
   }

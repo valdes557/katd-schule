@@ -72,6 +72,8 @@ app.use('/api/presence', require('./routes/presence'))
 app.use('/api/ai', require('./routes/ai'))
 app.use('/api/banners', require('./routes/banners'))
 app.use('/api/recruitment', require('./routes/recruitment'))
+app.use('/api/tutoring', require('./routes/tutoring'))
+app.use('/api/news', require('./routes/news'))
 
 app.get('/api/health', (req, res) => {
   res.json({

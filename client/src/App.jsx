@@ -179,6 +179,7 @@ const AdminAiPage = lazyPage(() => import('./pages/AdminAiPage'))
 const AdminBannersPage = lazyPage(() => import('./pages/AdminBannersPage'))
 const RecruitmentPage = lazyPage(() => import('./pages/RecruitmentPage'))
 const NewsPage = lazyPage(() => import('./pages/NewsPage'))
+const TutoringPage = lazyPage(() => import('./pages/TutoringPage'))
 
 function PageFallback() {
   return (
@@ -304,6 +305,7 @@ export default function App() {
         <Route path="ecoles-admin" element={<AdminEcolesPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
         <Route path="recrutement" element={<RecruitmentPage />} />
+        <Route path="repetitions" element={<TutoringPage />} />
         <Route path="news" element={<NewsPage />} />
         <Route path="plateforme" element={<AdminPlatformPage />} />
         <Route path="matieres-ecoles" element={<AdminSchoolSubjectsPage />} />

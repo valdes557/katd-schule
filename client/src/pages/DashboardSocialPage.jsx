@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Image as ImageIcon, Film, Music, Plus, Loader2 } from 'lucide-react'
 import { platformApi } from '../lib/api'
+import { assertVideoWithinLimit } from '../lib/videoValidation'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import SocialTab from '../components/landing/SocialTab'
@@ -47,6 +48,12 @@ export default function DashboardSocialPage() {
     setAudioFile(null)
     setVideoFile(null)
     setPreviews([])
+  }
+
+  const pickVideo = async (f) => {
+    if (!f) { setVideoFile(null); return }
+    try { await assertVideoWithinLimit(f); setVideoFile(f) }
+    catch (err) { alert(err.message) }
   }
 
   // setFeed kept for SocialTab compatibility — wraps feedQ.setData so the
@@ -196,7 +203,7 @@ export default function DashboardSocialPage() {
                 type="file"
                 accept="video/*"
                 className="hidden"
-                onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
+                onChange={(e) => pickVideo(e.target.files?.[0] || null)}
               />
             </div>
           )}

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { ArrowLeft, Circle, Send, Search } from 'lucide-react'
+import { ArrowLeft, Circle, Send, Search, Smile, Paperclip, Mic } from 'lucide-react'
 import { messagesApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
+import { assertVideoWithinLimit } from '../../lib/videoValidation'
 
 const ASSET = import.meta.env.VITE_API_URL || ''
 const asset = (u) => (!u ? '' : u.startsWith('http') ? u : ASSET + u)
@@ -131,7 +132,7 @@ export default function UserMessengerPage() {
     loadConversations()
   }
 
-  const onPickFile = (e) => {
+  const onPickFile = async (e) => {
     const file = e.target.files && e.target.files[0]
     e.target.value = ''
     if (!file) return
@@ -139,6 +140,7 @@ export default function UserMessengerPage() {
     const isImage = file.type.startsWith('image')
     if (!isVideo && !isImage) { alert('Seules les images et vidéos sont acceptées.'); return }
     if (file.size > 25 * 1024 * 1024) { alert('Fichier trop volumineux (max 25 Mo).'); return }
+    if (isVideo) { try { await assertVideoWithinLimit(file) } catch (err) { alert(err.message); return } }
     const reader = new FileReader()
     reader.onload = () => sendMedia({ type: isVideo ? 'video' : 'image', mediaUrl: reader.result })
     reader.readAsDataURL(file)
@@ -257,13 +259,13 @@ export default function UserMessengerPage() {
           </div>
         ) : (
         <form onSubmit={send} className="flex items-center gap-1.5 pt-2 border-t border-gray-100">
-          <button type="button" onClick={() => setShowStickers((v) => !v)} className="text-2xl px-1 hover:scale-110 transition" title="Stickers">😀</button>
-          <button type="button" onClick={() => fileRef.current?.click()} className="text-xl px-1 hover:scale-110 transition" title="Photo ou vidéo">📎</button>
+          <button type="button" onClick={() => setShowStickers((v) => !v)} className="p-2 text-gray-500 hover:text-indigo-600" title="Stickers"><Smile size={18} /></button>
+          <button type="button" onClick={() => fileRef.current?.click()} className="p-2 text-gray-500 hover:text-indigo-600" title="Photo ou vidéo"><Paperclip size={18} /></button>
           <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Votre message..." className="input flex-1" disabled={sending} />
           {text.trim() ? (
-            <button type="submit" className="btn-primary px-4"><Send size={18} /></button>
+            <button type="submit" className="btn-primary px-4"><Send size={16} /></button>
           ) : (
-            <button type="button" onClick={startRec} className="btn-primary px-3" title="Message vocal">🎤</button>
+            <button type="button" onClick={startRec} className="btn-primary px-3" title="Message vocal"><Mic size={16} /></button>
           )}
         </form>
         )}

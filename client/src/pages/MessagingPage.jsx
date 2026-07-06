@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon, Trash2, Check, CheckCheck, Mic, Paperclip, Smile } from 'lucide-react'
 import { messagesApi } from '../lib/api'
+import { assertVideoWithinLimit } from '../lib/videoValidation'
 import { useAuth } from '../context/AuthContext'
 import { useUnread } from '../context/UnreadContext'
 import { cn } from '../lib/utils'
@@ -182,7 +183,7 @@ export default function MessagingPage() {
     setSending(false)
   }
 
-  const onPickFile = (e) => {
+  const onPickFile = async (e) => {
     const file = e.target.files && e.target.files[0]
     e.target.value = ''
     if (!file) return
@@ -190,6 +191,7 @@ export default function MessagingPage() {
     const isImage = file.type.startsWith('image')
     if (!isVideo && !isImage) { alert('Seules les images et vidéos sont acceptées.'); return }
     if (file.size > 25 * 1024 * 1024) { alert('Fichier trop volumineux (max 25 Mo).'); return }
+    if (isVideo) { try { await assertVideoWithinLimit(file) } catch (err) { alert(err.message); return } }
     const reader = new FileReader()
     reader.onload = () => sendMedia({ type: isVideo ? 'video' : 'image', mediaUrl: reader.result })
     reader.readAsDataURL(file)

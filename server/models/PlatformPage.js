@@ -46,6 +46,16 @@ const platformPageSchema = new mongoose.Schema(
     ],
     donationMinAmount: { type: Number, default: 100 },
     donationDescription: { type: String, default: '' },
+
+    // Liens WhatsApp configurables : un bouton flottant par type de dashboard + accueil
+    whatsappLinks: {
+      directeur: { type: String, default: '' },
+      enseignant: { type: String, default: '' },
+      parent: { type: String, default: '' },
+      eleve: { type: String, default: '' },
+      utilisateur: { type: String, default: '' },
+      accueil: { type: String, default: '' },
+    },
   },
   { timestamps: true }
 )

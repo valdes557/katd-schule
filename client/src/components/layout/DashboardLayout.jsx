@@ -1,10 +1,12 @@
-import { useEffect, Suspense } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import DashboardHeader from './DashboardHeader'
 import PublicNavBar from './PublicNavBar'
 import { useAuth } from '../../context/AuthContext'
 import { UnreadProvider, useUnread } from '../../context/UnreadContext'
+import { platformApi } from '../../lib/api'
+import WhatsAppFab from '../WhatsAppFab'
 
 // Associe le chemin courant à une rubrique et la marque comme lue (efface le badge).
 const RUBRIC_BY_PATH = {
@@ -19,7 +21,7 @@ const RUBRIC_BY_PATH = {
   '/dashboard/infos': 'infos',
   '/dashboard/devoirs': 'devoirs',
   '/dashboard/parent/devoirs': 'devoirs',
-  '/dashboard/news': 'recrutement',
+  '/dashboard/news': 'news',
 }
 
 function RubricSeenWatcher() {
@@ -40,6 +42,15 @@ export default function DashboardLayout() {
   const subscribedCycle = isDirecteur && school?.subscription?.cycle ? school.subscription.cycle : null
   // Masquer le bouton Retour sur la page d'accueil du dashboard
   const isDashboardHome = pathname === '/dashboard' || pathname === '/dashboard/'
+
+  // Lien WhatsApp propre au type de dashboard (configuré par l'admin)
+  const [waLinks, setWaLinks] = useState(null)
+  useEffect(() => {
+    let active = true
+    platformApi.get().then((res) => { if (active) setWaLinks(res?.data?.whatsappLinks || {}) }).catch(() => {})
+    return () => { active = false }
+  }, [])
+  const waLink = waLinks?.[user?.role] || ''
 
   return (
     <UnreadProvider>
@@ -77,6 +88,7 @@ export default function DashboardLayout() {
             </Suspense>
           </div>
         </main>
+        <WhatsAppFab link={waLink} position="bottom-right" />
       </div>
     </UnreadProvider>
   )

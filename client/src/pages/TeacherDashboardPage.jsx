@@ -194,6 +194,7 @@ export default function TeacherDashboardPage() {
           { label: 'Devoirs & Évaluations', path: '/dashboard/devoirs', icon: ClipboardList, color: 'text-purple-600' },
           { label: 'Notes & Bulletins', path: '/dashboard/notes', icon: FileText, color: 'text-blue-600' },
           { label: 'Présence', path: '/dashboard/presence', icon: CalendarCheck, color: 'text-green-600' },
+          { label: 'Gestion des répétitions', path: '/dashboard/repetitions', icon: GraduationCap, color: 'text-indigo-600' },
           { label: 'Statistiques', path: '/dashboard/teacher/analytics', icon: BarChart2, color: 'text-amber-600' },
         ].map((q) => (
           <Link key={q.path} to={q.path} className="card p-4 flex items-center gap-3 hover:shadow-card-lg transition-shadow group">
