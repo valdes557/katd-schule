@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   CreditCard, CheckCircle2, Clock, Loader2, DollarSign,
-  FileText, Download,
+  FileText, Download, Wallet, X,
 } from 'lucide-react'
 import { parentApi, feesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -15,6 +15,7 @@ const STATUS_LABELS = {
 
 export default function ParentFinancesPage() {
   const [downloading, setDownloading] = useState(null) // feeId:paymentIndex
+  const [payFee, setPayFee] = useState(null) // frais en cours de paiement portefeuille
 
   const feesQ = useCachedFetch(
     '/parent/fees',
@@ -40,6 +41,15 @@ export default function ParentFinancesPage() {
       window.URL.revokeObjectURL(url)
     } catch (e) { alert(e.message) }
     setDownloading(null)
+  }
+
+  // Paiement effectué depuis le portefeuille -> rafraîchit la liste + télécharge le reçu
+  const onPaid = async (feeId, paymentIndex) => {
+    setPayFee(null)
+    feesQ.refetch?.()
+    if (paymentIndex !== undefined && paymentIndex !== null) {
+      await downloadReceipt(feeId, paymentIndex)
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
@@ -113,6 +123,12 @@ export default function ParentFinancesPage() {
                         ))}
                       </div>
                     )}
+
+                    {remaining > 0 && (
+                      <button onClick={() => setPayFee(f)} className="mt-3 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors">
+                        <Wallet size={14} /> Payer avec mon portefeuille
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -120,6 +136,57 @@ export default function ParentFinancesPage() {
           })}
         </div>
       )}
+
+      {payFee && <PayWalletModal fee={payFee} onClose={() => setPayFee(null)} onPaid={onPaid} />}
+    </div>
+  )
+}
+
+// Modale de paiement d'un frais depuis le portefeuille du parent (montant + code PIN)
+function PayWalletModal({ fee, onClose, onPaid }) {
+  const remaining = Math.max(0, (fee.amount || 0) - (fee.paid || 0))
+  const [amount, setAmount] = useState(String(remaining))
+  const [pin, setPin] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const submit = async () => {
+    setErr('')
+    const amt = Number(amount)
+    if (!amt || amt <= 0) return setErr('Montant invalide')
+    if (amt > remaining) return setErr(`Le montant dépasse le reste à payer (${remaining.toLocaleString('fr-FR')} F)`)
+    if (!pin) return setErr('Code PIN requis')
+    setBusy(true)
+    try {
+      const r = await feesApi.payWallet(fee._id, { amount: amt, pin })
+      await onPaid(fee._id, r.paymentIndex)
+    } catch (e) { setErr(e.message); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && onClose()}>
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><Wallet size={18} className="text-blue-600" /> Payer avec mon portefeuille</h3>
+          <button onClick={() => !busy && onClose()} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="text-sm text-gray-600">
+          <p className="font-medium text-gray-900">{fee.label}</p>
+          <p className="text-xs">{fee.student?.firstName} {fee.student?.lastName} — reste à payer : <b>{remaining.toLocaleString('fr-FR')} F</b></p>
+        </div>
+        {err && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-2 text-xs">{err}</div>}
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Montant (FCFA)</label>
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="input w-full" placeholder="Montant" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN du portefeuille</label>
+          <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} className="input w-full" placeholder="••••" />
+        </div>
+        <button onClick={submit} disabled={busy} className="btn-primary w-full justify-center">
+          {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : 'Confirmer le paiement'}
+        </button>
+      </div>
     </div>
   )
 }

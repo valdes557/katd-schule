@@ -2,8 +2,13 @@ const express = require('express')
 const router = express.Router()
 const Fee = require('../models/Fee')
 const Student = require('../models/Student')
+const School = require('../models/School')
+const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
+const wallet = require('../services/walletService')
+const bcrypt = require('bcryptjs')
+const crypto = require('crypto')
 const PDFDocument = require('pdfkit')
 
 // Helper: ensure school match
@@ -314,6 +319,78 @@ router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin'
 
     res.json({ success: true, data: fee })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/fees/:id/pay-wallet — Le parent paie un frais depuis son portefeuille (PIN requis)
+// Débite le parent, crédite le portefeuille du directeur de l'école, enregistre le paiement
+// (method 'wallet') et renvoie l'index du paiement pour télécharger le reçu PDF.
+router.post('/:id/pay-wallet', protect, authorize('parent'), async (req, res) => {
+  try {
+    const { amount, pin } = req.body
+    const amt = Number(amount)
+    if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
+    if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
+
+    const fee = await Fee.findById(req.params.id)
+      .populate('student', 'firstName lastName parentUser school')
+    if (!fee) return res.status(404).json({ message: 'Frais non trouvé' })
+
+    // Le parent doit être le parent de l'élève concerné
+    const student = fee.student
+    if (!student || String(student.parentUser || '') !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Accès refusé : cet élève ne vous est pas rattaché' })
+    }
+
+    // Ne pas payer plus que le reste dû
+    const remaining = Math.max(0, (fee.amount || 0) - (fee.paid || 0))
+    if (remaining <= 0) return res.status(400).json({ message: 'Ce frais est déjà entièrement payé' })
+    if (amt > remaining) return res.status(400).json({ message: `Le montant dépasse le reste à payer (${remaining.toLocaleString('fr-FR')} F CFA)` })
+
+    // Vérifie le PIN du parent
+    const u = await User.findById(req.user._id).select('+walletPin')
+    if (!u.walletPin) return res.status(400).json({ message: "Veuillez d'abord créer votre code PIN dans votre portefeuille" })
+    const pinOk = await bcrypt.compare(String(pin), u.walletPin)
+    if (!pinOk) return res.status(401).json({ message: 'Code PIN incorrect' })
+
+    // Vérifie le solde
+    const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
+    if (w.balance < amt) return res.status(400).json({ message: 'Solde insuffisant sur votre portefeuille' })
+
+    // Destinataire = directeur de l'école du frais
+    const school = await School.findById(fee.school).select('director name')
+    if (!school || !school.director) return res.status(400).json({ message: "L'école n'a pas de directeur associé pour recevoir le paiement" })
+
+    const fullName = `${student.lastName || ''} ${student.firstName || ''}`.trim()
+    const label = `${fee.label}${fullName ? ' - ' + fullName : ''}`
+
+    // Débit parent
+    await wallet.debit(req.user._id, {
+      amount: amt, type: 'pension_payment', counterparty: school.director,
+      description: 'Paiement pension : ' + label, meta: { feeId: String(fee._id), schoolId: String(fee.school) },
+    })
+    // Crédit directeur
+    await wallet.credit(school.director, {
+      amount: amt, type: 'pension_received', role: 'directeur', school: fee.school,
+      counterparty: req.user._id, description: 'Pension reçue : ' + label,
+      meta: { feeId: String(fee._id), studentName: fullName },
+    })
+
+    // Enregistre le paiement + met à jour l'état du frais
+    fee.payments.push({ amount: amt, method: 'wallet', reference: 'WALLET-' + crypto.randomBytes(3).toString('hex').toUpperCase(), note: 'Payé depuis le portefeuille' })
+    fee.paid = (fee.paid || 0) + amt
+    fee.status = fee.paid >= fee.amount ? 'paid' : fee.paid > 0 ? 'partial' : 'pending'
+    await fee.save()
+    const paymentIndex = fee.payments.length - 1
+
+    // Notifie le directeur (best-effort)
+    try {
+      const dir = await User.findById(school.director).select('email name')
+      if (dir?.email) await sendEmail({ to: dir.email, subject: 'Pension reçue — KATD-SCHÜLE',
+        html: '<p>Bonjour ' + (dir.name || '') + ', un paiement de pension de <b>' + amt.toLocaleString('fr-FR') + ' F CFA</b> a été reçu sur votre portefeuille pour <b>' + label + '</b>.</p>' })
+    } catch (e) {}
+
+    res.json({ success: true, message: 'Paiement effectué depuis votre portefeuille', paymentIndex, balance: w.balance - amt, fee })
+  } catch (err) { res.status(400).json({ message: err.message }) }
 })
 
 // POST /api/fees/:id/notify-installment — Send reminder to parent for overdue installment

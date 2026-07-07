@@ -264,7 +264,7 @@ function DirectorDashboard({ user, school }) {
             trialBanner.type === 'warning' ? 'text-amber-800 font-medium' : 'text-blue-800'
           }`}>{trialBanner.msg}</p>
           <Link
-            to="/dashboard/souscriptions"
+            to="/dashboard/souscriptions/payer"
             className={`flex-shrink-0 text-xs font-bold px-4 py-2 rounded-lg text-white transition-colors ${
               trialBanner.type === 'expired' ? 'bg-red-600 hover:bg-red-700' :
               trialBanner.type === 'warning' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'

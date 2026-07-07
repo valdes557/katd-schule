@@ -15,7 +15,7 @@ const feeSchema = new mongoose.Schema(
     payments: [
       {
         amount: { type: Number, required: true },
-        method: { type: String, enum: ['cash', 'mobile_money', 'bank', 'online'], default: 'cash' },
+        method: { type: String, enum: ['cash', 'mobile_money', 'bank', 'online', 'wallet'], default: 'cash' },
         reference: { type: String },
         date: { type: Date, default: Date.now },
         note: { type: String },

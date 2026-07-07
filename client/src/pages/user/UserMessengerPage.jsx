@@ -53,6 +53,9 @@ export default function UserMessengerPage() {
   const [showStickers, setShowStickers] = useState(false)
   const [sending, setSending] = useState(false)
   const endRef = useRef(null)
+  const scrollRef = useRef(null)
+  const atBottomRef = useRef(true)
+  const lastCountRef = useRef(0)
   const fileRef = useRef(null)
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
@@ -108,7 +111,26 @@ export default function UserMessengerPage() {
     return () => clearInterval(t)
   }, [active, loadThread])
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // (3) Auto-scroll uniquement au 1er chargement du fil, ou quand un nouveau message
+  // arrive alors qu'on est déjà en bas. Évite que l'inbox « refuie » vers le bas à chaque
+  // rechargement (polling 5s) pendant qu'on lit d'anciens messages.
+  useEffect(() => {
+    const count = messages.length
+    const isFirst = lastCountRef.current === 0 && count > 0
+    const grew = count > lastCountRef.current
+    lastCountRef.current = count
+    if (isFirst) { endRef.current?.scrollIntoView(); return }
+    if (grew && atBottomRef.current) { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }
+  }, [messages])
+
+  // Réinitialise le suivi de scroll à l'ouverture d'un fil.
+  useEffect(() => { lastCountRef.current = 0; atBottomRef.current = true }, [active])
+
+  const onScrollThread = () => {
+    const el = scrollRef.current
+    if (!el) return
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
 
   const send = async (e) => {
     e.preventDefault()
@@ -148,8 +170,13 @@ export default function UserMessengerPage() {
 
   const startRec = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream)
+      // (4) Qualité audio : réduction d'écho/bruit + gain auto, mono, 128 kbps opus.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      })
+      let mr
+      try { mr = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 }) }
+      catch { mr = new MediaRecorder(stream) }
       chunksRef.current = []
       mr.ondataavailable = (ev) => { if (ev.data.size > 0) chunksRef.current.push(ev.data) }
       mr.onstop = () => {
@@ -211,14 +238,22 @@ export default function UserMessengerPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-4 space-y-2">
+        <div ref={scrollRef} onScroll={onScrollThread} className="flex-1 overflow-y-auto py-4 space-y-2">
           {messages.length === 0 && <p className="text-center text-gray-400 text-sm mt-8">Démarrez la conversation 👋</p>}
           {messages.map((m) => {
             const mine = senderId(m) === myId
             return (
-              <div key={m._id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+              <div key={m._id} className={`flex ${mine ? 'justify-end' : 'justify-start'} ${m._optimistic ? 'opacity-60' : ''}`}>
                 {m.type === 'sticker' ? (
                   <div className="text-5xl select-none">{m.mediaUrl}</div>
+                ) : m.type === 'voice' && m.mediaUrl ? (
+                  // (2)(8) Bulle vocale compacte, dégradé indigo/violet dédié (plus clair côté reçu).
+                  <div className={`max-w-[80%] p-1 rounded-2xl flex items-center gap-2 ${mine
+                    ? 'bg-gradient-to-br from-indigo-600 to-violet-600 rounded-br-sm'
+                    : 'bg-gradient-to-br from-indigo-100 to-violet-100 rounded-bl-sm'}`}>
+                    <audio src={asset(m.mediaUrl)} controls className="h-8 max-w-[190px]" />
+                    {m.mediaDuration > 0 && <span className={`text-[11px] pr-1.5 ${mine ? 'text-white/80' : 'text-indigo-700/70'}`}>{m.mediaDuration}s</span>}
+                  </div>
                 ) : (
                 <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${mine ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'}`}>
                   {m.type === 'image' && m.mediaUrl && (
@@ -226,12 +261,6 @@ export default function UserMessengerPage() {
                   )}
                   {m.type === 'video' && m.mediaUrl && (
                     <video src={asset(m.mediaUrl)} controls className="rounded-lg max-w-full max-h-60" />
-                  )}
-                  {m.type === 'voice' && m.mediaUrl && (
-                    <div className="flex items-center gap-2">
-                      <audio src={asset(m.mediaUrl)} controls className="h-9 max-w-[200px]" />
-                      {m.mediaDuration > 0 && <span className="text-xs opacity-70">{m.mediaDuration}s</span>}
-                    </div>
                   )}
                   {m.body && <div className={m.type && m.type !== 'text' ? 'mt-1' : ''}>{m.body}</div>}
                 </div>

@@ -690,6 +690,7 @@ export const feesApi = {
   update: (id, data) => api.put(`/fees/${id}`, data),
   remove: (id) => api.del(`/fees/${id}`),
   recordPayment: (id, data) => api.post(`/fees/${id}/record-payment`, data),
+  payWallet: (id, data) => api.post(`/fees/${id}/pay-wallet`, data),
   notifyInstallment: (id, installmentIndex) => api.post(`/fees/${id}/notify-installment`, { installmentIndex }),
   downloadReceipt: async (id, paymentIndex) => {
     const token = localStorage.getItem('token')
@@ -807,6 +808,9 @@ export const walletApi = {
   resetPin: (payload) => api.post('/wallet/pin/reset', payload),
   transfer: (payload) => api.post('/wallet/transfer', payload),
   withdraw: (payload) => api.post('/wallet/withdraw', payload),
+  // Transfert entre utilisateurs (frais 0,25%)
+  lookup: (accountNo) => api.get('/wallet/lookup/' + encodeURIComponent(accountNo)),
+  transferUser: (payload) => api.post('/wallet/transfer-user', payload),
 }
 
 export const walletAdminApi = {

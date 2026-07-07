@@ -4,7 +4,7 @@ const router = express.Router()
 const crypto = require('crypto')
 const PaymentIntent = require('../models/PaymentIntent')
 const sebpay = require('../services/sebpayService')
-const { provisionDirector } = require('../services/directorProvisioning')
+const { provisionDirector, activateExistingSchool } = require('../services/directorProvisioning')
 const wallet = require('../services/walletService')
 const School = require('../models/School')
 const User = require('../models/User')
@@ -22,20 +22,35 @@ function callbackUrl() {
 // POST /api/payments/subscription/initiate — démarre la collecte de souscription directeur
 router.post('/subscription/initiate', async (req, res) => {
   try {
-    const { schoolName, directorName, email, whatsapp, cycle, plan,
+    const { schoolId, schoolName, directorName, email, whatsapp, cycle, plan,
             cityName, neighborhoodName, countryName, phone, operator } = req.body
-    if (!schoolName || !directorName || !email || !phone || !operator) {
-      return res.status(400).json({ message: 'Champs requis manquants (école, directeur, email, numéro, opérateur)' })
+    if (!phone || !operator) {
+      return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
     }
     const amount = SUBSCRIPTION_FEE_DIRECTOR
     const reference = genRef('sub')
     const { mode } = await sebpay.resolveConfig()
+
+    // Cas 1 : renouvellement d'une école existante (paiement après essai, sans re-remplir le formulaire)
+    let meta
+    if (schoolId) {
+      const school = await School.findById(schoolId).select('name subscription contactEmail director')
+      if (!school) return res.status(404).json({ message: 'École introuvable' })
+      meta = { schoolId: String(school._id), schoolName: school.name,
+               plan: plan || school.subscription?.plan || 'annual' }
+    } else {
+      // Cas 2 : nouvelle souscription (création école + directeur au paiement)
+      if (!schoolName || !directorName || !email) {
+        return res.status(400).json({ message: 'Champs requis manquants (école, directeur, email)' })
+      }
+      meta = { schoolName, directorName, email, whatsapp, cycle: cycle || 'primaire',
+               plan: plan || 'annual', cityName, neighborhoodName, countryName }
+    }
+
     const intent = await PaymentIntent.create({
       reference, purpose: 'subscription', amount, currency: 'XOF',
-      payerPhone: phone, payerOperator: operator, payerName: directorName, payerEmail: email,
-      mode,
-      meta: { schoolName, directorName, email, whatsapp, cycle: cycle || 'primaire',
-              plan: plan || 'annual', cityName, neighborhoodName, countryName },
+      payerPhone: phone, payerOperator: operator, payerName: directorName || meta.schoolName,
+      payerEmail: email || '', mode, meta,
     })
     const result = await sebpay.createCollection({
       amount, phone, operator, reference, callbackUrl: callbackUrl(),
@@ -145,11 +160,17 @@ async function applyOutcome(intent, status, raw) {
     // Traitement selon la finalité
     if (intent.purpose === 'subscription') {
       const m = intent.meta || {}
-      await provisionDirector({
-        schoolName: m.schoolName, directorName: m.directorName, email: m.email,
-        whatsapp: m.whatsapp, cycle: m.cycle, plan: m.plan, amount: intent.amount,
-        cityName: m.cityName, neighborhoodName: m.neighborhoodName, countryName: m.countryName,
-      })
+      if (m.schoolId) {
+        // Renouvellement d'une école existante (paiement après essai)
+        await activateExistingSchool({ schoolId: m.schoolId, plan: m.plan, amount: intent.amount })
+      } else {
+        // Nouvelle souscription : création école + directeur
+        await provisionDirector({
+          schoolName: m.schoolName, directorName: m.directorName, email: m.email,
+          whatsapp: m.whatsapp, cycle: m.cycle, plan: m.plan, amount: intent.amount,
+          cityName: m.cityName, neighborhoodName: m.neighborhoodName, countryName: m.countryName,
+        })
+      }
     }
     else if (intent.purpose === 'enrollment') {
       // Crédite le portefeuille du directeur de l'école concernée
@@ -164,10 +185,10 @@ async function applyOutcome(intent, status, raw) {
         })
       }
     } else if (intent.purpose === 'deposit') {
-      // Dépôt directeur sur son propre portefeuille
+      // Dépôt sur son propre portefeuille (directeur OU utilisateur /u)
       if (intent.initiatedBy) {
         await wallet.credit(intent.initiatedBy, {
-          amount: intent.amount, type: 'deposit', role: 'directeur', school: intent.school,
+          amount: intent.amount, type: 'deposit', school: intent.school,
           paymentIntent: intent._id, sebpayTransactionId: intent.sebpayTransactionId,
           description: 'Dépôt sur le portefeuille',
         })

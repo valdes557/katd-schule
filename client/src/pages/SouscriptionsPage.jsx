@@ -140,9 +140,9 @@ function DirectorSouscriptions() {
           <p className="text-sm text-amber-800 font-medium flex-1">
             Votre essai gratuit expire dans <strong>{daysLeft} jour{daysLeft > 1 ? 's' : ''}</strong>. Souscrivez maintenant pour ne pas perdre l'accès.
           </p>
-          <a href={`/souscrire?cycle=${sub?.cycle || 'Primaire'}&plan=annual`} className="flex-shrink-0 text-xs font-bold px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors">
+          <Link to="/dashboard/souscriptions/payer" className="flex-shrink-0 text-xs font-bold px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors">
             Souscrire maintenant
-          </a>
+          </Link>
         </div>
       )}
       {(isExpired || (isTrial && daysLeft !== null && daysLeft <= 0)) && (
@@ -151,9 +151,9 @@ function DirectorSouscriptions() {
           <p className="text-sm text-red-800 font-semibold flex-1">
             {isTrial ? "Votre essai gratuit est terminé." : "Votre abonnement a expiré."} L'accès de votre école est bloqué jusqu'au paiement.
           </p>
-          <a href={`/souscrire?cycle=${sub?.cycle || 'Primaire'}&plan=annual`} className="flex-shrink-0 text-xs font-bold px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors">
+          <Link to="/dashboard/souscriptions/payer" className="flex-shrink-0 text-xs font-bold px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors">
             Payer maintenant
-          </a>
+          </Link>
         </div>
       )}
 

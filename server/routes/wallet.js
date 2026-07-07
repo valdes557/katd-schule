@@ -18,20 +18,62 @@ const SLA_HOURS = Number(process.env.WITHDRAWAL_SLA_HOURS || 24)
 function genRef(p){ return p + '_' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex') }
 
 // ───────────────────────── SOLDE & HISTORIQUE ─────────────────────────
-// GET /api/wallet/me — solde + 50 dernières opérations
+// GET /api/wallet/me — solde + 50 dernières opérations + numéro de compte KS
 router.get('/me', protect, async (req, res) => {
   try {
     const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
     const txs = await WalletTransaction.find({ owner: req.user._id }).sort({ createdAt: -1 }).limit(50)
     const hasPin = !!(await User.findById(req.user._id).select('+walletPin').then(u => u && u.walletPin))
+    // Génère le numéro de compte KS-XXXXXX à la première ouverture (couvre les comptes existants).
+    const accountNo = await wallet.ensureAccountNo(req.user._id)
     res.json({ success: true, balance: w.balance, locked: w.locked, currency: w.currency,
-      totalIn: w.totalIn, totalOut: w.totalOut, hasPin, transactions: txs })
+      totalIn: w.totalIn, totalOut: w.totalOut, hasPin, accountNo, transactions: txs })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// ───────────────────────── DÉPÔT (directeur) ─────────────────────────
+// GET /api/wallet/lookup/:accountNo — résout un numéro de compte -> nom du destinataire (avant transfert)
+router.get('/lookup/:accountNo', protect, async (req, res) => {
+  try {
+    const acc = String(req.params.accountNo || '').trim().toUpperCase()
+    if (!/^KS-[0-9A-F]{6}$/.test(acc)) return res.status(400).json({ message: 'Numéro de compte invalide (format KS-XXXXXX)' })
+    const u = await User.findOne({ walletAccountNo: acc }).select('name role')
+    if (!u) return res.status(404).json({ message: 'Aucun utilisateur avec ce numéro de compte' })
+    if (String(u._id) === String(req.user._id)) return res.status(400).json({ message: 'Ceci est votre propre compte' })
+    res.json({ success: true, id: u._id, name: u.name, role: u.role })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/wallet/transfer-user — transfert vers un autre utilisateur (frais 0,25%, PIN requis)
+router.post('/transfer-user', protect, async (req, res) => {
+  try {
+    const { accountNo, amount, pin } = req.body
+    const amt = Number(amount)
+    if (!accountNo) return res.status(400).json({ message: 'Numéro de compte du destinataire requis' })
+    if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
+    if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
+    // PIN de l'envoyeur
+    const u = await User.findById(req.user._id).select('+walletPin')
+    if (!u.walletPin) return res.status(400).json({ message: "Veuillez d'abord créer votre code PIN" })
+    const pinOk = await bcrypt.compare(String(pin), u.walletPin)
+    if (!pinOk) return res.status(401).json({ message: 'Code PIN incorrect' })
+    // Résolution du destinataire
+    const acc = String(accountNo).trim().toUpperCase()
+    const dest = await User.findOne({ walletAccountNo: acc }).select('_id name email')
+    if (!dest) return res.status(404).json({ message: 'Destinataire introuvable' })
+    const r = await wallet.transferBetweenUsers(req.user._id, dest._id, {
+      amount: amt, description: 'Transfert à ' + (dest.name || acc) })
+    // Notifie le destinataire (best-effort)
+    try {
+      if (dest.email) await sendEmail({ to: dest.email, subject: 'Transfert reçu — KATD-SCHÜLE',
+        html: '<p>Bonjour ' + (dest.name || '') + ', vous avez reçu <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> sur votre portefeuille KATD-SCHÜLE (compte ' + acc + ').</p>' })
+    } catch (e) {}
+    res.json({ success: true, message: 'Transfert effectué', amount: r.amount, fee: r.fee, total: r.total, balance: r.from.balance })
+  } catch (err) { res.status(400).json({ message: err.message }) }
+})
+
+// ───────────────────────── DÉPÔT (tous les utilisateurs) ─────────────────────────
 // POST /api/wallet/deposit/initiate — dépôt via Mobile Money (collecte SEBPay)
-router.post('/deposit/initiate', protect, authorize('directeur'), async (req, res) => {
+router.post('/deposit/initiate', protect, async (req, res) => {
   try {
     const { amount, phone, operator } = req.body
     const amt = Number(amount)

@@ -118,6 +118,7 @@ const NotesPage = lazyPage(() => import('./pages/NotesPage'))
 const PresencePage = lazyPage(() => import('./pages/PresencePage'))
 const MessagingPage = lazyPage(() => import('./pages/MessagingPage'))
 const SouscriptionsPage = lazyPage(() => import('./pages/SouscriptionsPage'))
+const PaySubscriptionPage = lazyPage(() => import('./pages/PaySubscriptionPage'))
 const PortefeuillePage = lazyPage(() => import('./pages/PortefeuillePage'))
 const EnrollmentPage = lazyPage(() => import('./pages/EnrollmentPage'))
 const InscriptionsPage = lazyPage(() => import('./pages/InscriptionsPage'))
@@ -274,6 +275,7 @@ export default function App() {
         <Route path="presence" element={<PresencePage />} />
         <Route path="messagerie" element={<MessagingPage />} />
         <Route path="souscriptions" element={<SouscriptionsPage />} />
+        <Route path="souscriptions/payer" element={<PaySubscriptionPage />} />
         <Route path="portefeuille" element={<PortefeuillePage />} />
         <Route path="inscriptions" element={<InscriptionsPage />} />
 
@@ -359,6 +361,7 @@ export default function App() {
         <Route path="notifications" element={<UserNotificationsPage />} />
         <Route path="news" element={<NewsPage />} />
         <Route path="profil" element={<UserProfilePage />} />
+        <Route path="portefeuille" element={<PortefeuillePage />} />
       </Route>
 
       {/* 404 fallback */}

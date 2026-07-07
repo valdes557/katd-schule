@@ -90,4 +90,47 @@ async function provisionDirector(data) {
   return { school, user, rawPassword, matricule, emailSent }
 }
 
-module.exports = { provisionDirector }
+// Réactive/renouvelle la souscription d'une école existante (paiement après essai, sans
+// recréer l'école ni le compte directeur). data: { schoolId, plan, amount }
+async function activateExistingSchool(data) {
+  const school = await School.findById(data.schoolId)
+  if (!school) throw new Error('École introuvable pour la réactivation')
+  const _now = new Date()
+  // Prolonge d'un an à partir de la fin d'abonnement si encore valide, sinon à partir d'aujourd'hui.
+  const currentEnd = school.subscription?.endDate ? new Date(school.subscription.endDate) : _now
+  const base = currentEnd > _now ? currentEnd : _now
+  const _endDate = new Date(base)
+  _endDate.setFullYear(_endDate.getFullYear() + 1)
+  school.subscription = {
+    ...(school.subscription ? school.subscription.toObject?.() || school.subscription : {}),
+    plan: data.plan || school.subscription?.plan || 'annual',
+    status: 'active',
+    startDate: school.subscription?.startDate || _now,
+    endDate: _endDate,
+    amount: data.amount || school.subscription?.amount || 0,
+  }
+  school.isActive = true
+  await school.save()
+
+  // Email de confirmation au directeur
+  try {
+    const dir = school.director ? await User.findById(school.director).select('email name') : null
+    const to = dir?.email || school.contactEmail
+    if (to) {
+      const html = [
+        '<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">',
+        '<h2 style="color:#1d4ed8">✅ Abonnement activé — KATD-SCHÜLE</h2>',
+        '<p>Bonjour <b>' + (dir?.name || '') + '</b>,</p>',
+        '<p>Votre abonnement pour l\'école <b>' + school.name + '</b> est désormais <b>actif</b> jusqu\'au <b>' + _endDate.toLocaleDateString('fr-FR') + '</b>.</p>',
+        '<p>Merci de votre confiance.</p>',
+        '<hr><p style="color:#6b7280;font-size:12px">KATD-SCHÜLE — Apprendre, Partager, Grandir</p>',
+        '</div>',
+      ].join('')
+      await sendEmail({ to, subject: '✅ Abonnement activé — KATD-SCHÜLE', html })
+    }
+  } catch (e) { console.error('Email activation abonnement échoué:', e.message) }
+
+  return { school, renewed: true }
+}
+
+module.exports = { provisionDirector, activateExistingSchool }

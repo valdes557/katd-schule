@@ -20,6 +20,12 @@ const txSchema = new mongoose.Schema(
         'withdrawal',        // retrait (débit -> file 24h)
         'withdrawal_refund', // remboursement si retrait rejeté
         'adjustment',        // ajustement admin
+        'transfer_sent',     // transfert utilisateur -> utilisateur (côté envoyeur)
+        'transfer_received', // transfert utilisateur -> utilisateur (côté destinataire)
+        'transfer_fee',      // frais 0,25% prélevés à l'envoyeur (débit)
+        'fee_collected',     // frais 0,25% encaissés par l'admin (crédit)
+        'pension_payment',   // paiement de pension/frais depuis le solde (côté parent, débit)
+        'pension_received',  // pension reçue par le directeur (crédit)
       ],
       required: true,
       index: true,

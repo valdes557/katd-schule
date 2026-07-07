@@ -199,8 +199,13 @@ export default function MessagingPage() {
 
   const startRec = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream)
+      // (4) Qualité audio : réduction d'écho/bruit + gain auto, mono, 128 kbps opus.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      })
+      let mr
+      try { mr = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 }) }
+      catch { mr = new MediaRecorder(stream) }
       chunksRef.current = []
       mr.ondataavailable = (ev) => { if (ev.data.size > 0) chunksRef.current.push(ev.data) }
       mr.onstop = () => {

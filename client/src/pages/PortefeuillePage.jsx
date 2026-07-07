@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, RefreshCw, X, Loader2 } from 'lucide-react'
+import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, RefreshCw, X, Loader2, Users, Copy, Check } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { walletApi } from '../lib/api'
 
@@ -17,9 +17,10 @@ export default function PortefeuillePage() {
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
-  const [modal, setModal] = useState(null) // 'deposit' | 'withdraw' | 'transfer' | 'pin' | 'forgotPin'
+  const [modal, setModal] = useState(null) // 'deposit' | 'withdraw' | 'transfer' | 'transferUser' | 'pin' | 'forgotPin'
   const [teachers, setTeachers] = useState([])
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const load = async () => {
     try { setLoading(true); const d = await walletApi.me(); setData(d) }
@@ -29,6 +30,11 @@ export default function PortefeuillePage() {
   useEffect(() => { if (modal === 'transfer') walletApi.teachers().then(r => setTeachers(r.teachers || [])).catch(() => {}) }, [modal])
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 4000) }
+
+  const copyAccount = () => {
+    if (!data?.accountNo) return
+    navigator.clipboard?.writeText(data.accountNo).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }).catch(() => {})
+  }
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" /></div>
 
@@ -47,18 +53,26 @@ export default function PortefeuillePage() {
         <p className="text-sm opacity-80">Solde disponible</p>
         <p className="text-4xl font-bold mt-1">{fmt(data?.balance)} <span className="text-lg font-medium">FCFA</span></p>
         {data?.locked > 0 && <p className="text-xs opacity-80 mt-2 flex items-center gap-1"><Lock size={12} /> {fmt(data.locked)} FCFA en cours de retrait</p>}
+        {data?.accountNo && (
+          <button onClick={copyAccount} title="Copier mon numéro de compte" className="mt-4 inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 transition-colors rounded-lg px-3 py-1.5">
+            <span className="text-xs opacity-80">N° de compte</span>
+            <span className="font-mono font-bold tracking-wider">{data.accountNo}</span>
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        )}
         <div className="flex gap-4 mt-4 text-xs opacity-90">
           <span>Total reçu : {fmt(data?.totalIn)} F</span>
           <span>Total sorti : {fmt(data?.totalOut)} F</span>
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Actions — dépôt, transfert et PIN accessibles à tous ; transfert salaire réservé au directeur */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {isDirector && <button onClick={() => setModal('deposit')} className="btn-secondary flex flex-col items-center gap-1 py-4"><ArrowDownToLine size={20} /><span className="text-xs">Dépôt</span></button>}
+        <button onClick={() => setModal('deposit')} className="btn-secondary flex flex-col items-center gap-1 py-4"><ArrowDownToLine size={20} /><span className="text-xs">Dépôt</span></button>
+        <button onClick={() => setModal('transferUser')} className="btn-secondary flex flex-col items-center gap-1 py-4"><Users size={20} /><span className="text-xs">Transfert</span></button>
         <button onClick={() => setModal('withdraw')} className="btn-secondary flex flex-col items-center gap-1 py-4"><ArrowUpFromLine size={20} /><span className="text-xs">Retrait</span></button>
         {isDirector && <button onClick={() => setModal('transfer')} className="btn-secondary flex flex-col items-center gap-1 py-4"><Send size={20} /><span className="text-xs">Salaire</span></button>}
-        {isDirector && <button onClick={() => setModal(data?.hasPin ? 'forgotPin' : 'pin')} className="btn-secondary flex flex-col items-center gap-1 py-4"><KeyRound size={20} /><span className="text-xs">{data?.hasPin ? 'Modifier PIN' : 'Créer PIN'}</span></button>}
+        <button onClick={() => setModal(data?.hasPin ? 'forgotPin' : 'pin')} className="btn-secondary flex flex-col items-center gap-1 py-4"><KeyRound size={20} /><span className="text-xs">{data?.hasPin ? 'Modifier PIN' : 'Créer PIN'}</span></button>
       </div>
 
       {/* Historique */}
@@ -89,9 +103,23 @@ export default function PortefeuillePage() {
 }
 
 function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, onError }) {
-  const [f, setF] = useState({ amount: '', phone: '', operator: 'mtn', momoNumber: '', momoOperator: 'mtn', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '' })
+  const [f, setF] = useState({ amount: '', phone: '', operator: 'mtn', momoNumber: '', momoOperator: 'mtn', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
   const [status, setStatus] = useState('')
+  const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
+
+  // Aperçu des frais de transfert utilisateur (0,25%, arrondi, payés en plus)
+  const transferFee = Math.round((Number(f.amount) || 0) * 0.0025)
+  const transferTotal = (Number(f.amount) || 0) + transferFee
+
+  // Résout le numéro de compte du destinataire (KS-XXXXXX) -> nom
+  const lookupRecipient = async () => {
+    const acc = String(f.accountNo || '').trim().toUpperCase()
+    setRecipient(null)
+    if (!/^KS-[0-9A-F]{6}$/i.test(acc)) return
+    try { const r = await walletApi.lookup(acc); setRecipient({ name: r.name, role: r.role }) }
+    catch (e) { setRecipient({ error: e.message }) }
+  }
 
   const submit = async () => {
     onError('')
@@ -113,6 +141,9 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
       } else if (type === 'transfer') {
         await walletApi.transfer({ teacherUserId: f.teacherUserId, amount: Number(f.amount), pin: f.pin })
         onDone('Salaire transféré avec succès')
+      } else if (type === 'transferUser') {
+        const r = await walletApi.transferUser({ accountNo: f.accountNo, amount: Number(f.amount), pin: f.pin })
+        onDone(`Transfert de ${fmt(r.amount)} F effectué (frais ${fmt(r.fee)} F)`)
       } else if (type === 'pin') {
         await walletApi.setPin({ pin: f.pin, confirmPin: f.confirmPin })
         onDone('Code PIN créé')
@@ -125,7 +156,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
 
   const sendForgotCode = async () => { try { await walletApi.forgotPin(); setStatus('Code envoyé à votre email') } catch (e) { onError(e.message) } }
 
-  const titles = { deposit: 'Effectuer un dépôt', withdraw: 'Demande de retrait', transfer: 'Transférer un salaire', pin: 'Créer un code PIN', forgotPin: 'Modifier le code PIN' }
+  const titles = { deposit: 'Effectuer un dépôt', withdraw: 'Demande de retrait', transfer: 'Transférer un salaire', transferUser: 'Transférer à un utilisateur', pin: 'Créer un code PIN', forgotPin: 'Modifier le code PIN' }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && setModal(null)}>
@@ -135,12 +166,29 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           <button onClick={() => !busy && setModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
 
-        {(type === 'deposit' || type === 'withdraw' || type === 'transfer') && (
+        {(type === 'deposit' || type === 'withdraw' || type === 'transfer' || type === 'transferUser') && (
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">Montant (FCFA)</label>
             <input type="number" value={f.amount} onChange={up('amount')} className="input w-full" placeholder="Ex: 50000" />
           </div>
         )}
+
+        {type === 'transferUser' && (<>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">N° de compte du destinataire (KS-XXXXXX)</label>
+            <input value={f.accountNo} onChange={(e) => setF({ ...f, accountNo: e.target.value.toUpperCase() })} onBlur={lookupRecipient} className="input w-full font-mono tracking-wider" placeholder="KS-A1B2C3" />
+            {recipient?.name && <p className="text-xs text-green-700 mt-1">Destinataire : <b>{recipient.name}</b></p>}
+            {recipient?.error && <p className="text-xs text-red-600 mt-1">{recipient.error}</p>}
+          </div>
+          {Number(f.amount) > 0 && (
+            <div className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
+              <div className="flex justify-between"><span>Montant reçu par le destinataire</span><b>{fmt(Number(f.amount))} F</b></div>
+              <div className="flex justify-between text-gray-500"><span>Frais (0,25%)</span><span>{fmt(transferFee)} F</span></div>
+              <div className="flex justify-between border-t border-blue-100 pt-1 mt-1"><span>Total débité de votre solde</span><b>{fmt(transferTotal)} F</b></div>
+            </div>
+          )}
+          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
+        </>)}
 
         {type === 'deposit' && (<>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur</label><select value={f.operator} onChange={up('operator')} className="input w-full">{OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>

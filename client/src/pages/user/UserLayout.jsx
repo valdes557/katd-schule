@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft } from 'lucide-react'
+import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { messagesApi, platformApi, newsApi } from '../../lib/api'
 import WhatsAppFab from '../../components/WhatsAppFab'
@@ -33,6 +33,7 @@ export default function UserLayout() {
   const isProfil = pathname.startsWith('/u/profil')
   const isNotif = pathname.startsWith('/u/notifications')
   const isNews = pathname.startsWith('/u/news')
+  const isWallet = pathname.startsWith('/u/portefeuille')
 
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
@@ -100,6 +101,19 @@ export default function UserLayout() {
   }, [])
   useEffect(() => { refreshBadges() }, [pathname, refreshBadges])
 
+  // (9) Bouton retour physique du navigateur : tant qu'on est dans l'espace /u, toute
+  // navigation qui sortirait de /u est ramenée vers /u (on reste dans l'espace utilisateur
+  // au lieu de retomber sur un dashboard interne).
+  useEffect(() => {
+    const onPop = () => {
+      if (!window.location.pathname.startsWith('/u')) {
+        navigate('/u', { replace: true })
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [navigate])
+
   // Icône de l'en-tête (haut de page)
   const HeaderIcon = ({ active, onClick, icon: Icon, avatar, badge }) => (
     <button
@@ -165,6 +179,7 @@ export default function UserLayout() {
 
           <div className="flex items-center gap-1 flex-shrink-0">
             <HeaderIcon active={onHome} onClick={() => navigate('/u')} icon={Home} />
+            <HeaderIcon active={isWallet} onClick={() => navigate('/u/portefeuille')} icon={Wallet} />
             <HeaderIcon active={isProfil} onClick={() => navigate('/u/profil')} icon={User} avatar={user?.avatar} />
             <HeaderIcon active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} badge={unreadNotifs} />
           </div>
@@ -172,7 +187,7 @@ export default function UserLayout() {
       </header>
 
       {/* ── Contenu ── */}
-      <main className={`flex-1 w-full max-w-2xl mx-auto px-4 py-5 ${isMessages ? '' : 'pr-16 sm:pr-20'}`}>
+      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5">
         <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen, searchTerm }} />
       </main>
 
