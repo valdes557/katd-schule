@@ -5,6 +5,7 @@ import {
   MessageCircle, CreditCard, Phone, Info, Pencil, X, FileText, Link, Music,
 } from 'lucide-react'
 import { platformApi, plansApi, newsApi } from '../lib/api'
+import { uploadToCloudinary } from '../lib/cloudinaryUpload'
 import { assertVideoWithinLimit } from '../lib/videoValidation'
 import { useAuth } from '../context/AuthContext'
 import RichTextEditor from '../components/ui/RichTextEditor'
@@ -146,14 +147,29 @@ function PostsPanel() {
   const handleCreate = async (e) => {
     e.preventDefault()
     setSubmitting(true)
-    const fd = new FormData()
-    fd.append('mediaType', mediaType)
-    Object.entries(form).forEach(([k, v]) => v && fd.append(k, v))
-    imageFiles.forEach((f) => fd.append('images', f))
-    if (audioFile) fd.append('audio', audioFile)
-    if (videoFile) fd.append('video', videoFile)
     try {
-      const r = await platformApi.createPost(fd)
+      // Médias envoyés en DIRECT à Cloudinary, puis POST JSON des URLs.
+      const payload = { mediaType }
+      Object.entries(form).forEach(([k, v]) => { if (v) payload[k] = v })
+      if (imageFiles.length) {
+        const ups = []
+        for (const f of imageFiles) ups.push(await uploadToCloudinary(f, { resourceType: 'image' }))
+        payload.images = ups.map((u) => u.secureUrl)
+        payload.mediaWidth = ups[0]?.width
+        payload.mediaHeight = ups[0]?.height
+      }
+      if (videoFile) {
+        const u = await uploadToCloudinary(videoFile, { resourceType: 'video' })
+        payload.videoUrl = u.secureUrl
+        payload.thumbnail = u.thumbnailUrl
+        payload.mediaWidth = u.width
+        payload.mediaHeight = u.height
+      }
+      if (audioFile) {
+        const u = await uploadToCloudinary(audioFile, { resourceType: 'video' })
+        payload.audioUrl = u.secureUrl
+      }
+      const r = await platformApi.createPostJson(payload)
       if (r.success) { setPosts((p) => [r.data, ...p]); resetForm() }
       else alert(r.message || 'Erreur')
     } catch (err) { alert(err.message) }

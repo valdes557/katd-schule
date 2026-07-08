@@ -1,9 +1,27 @@
 const express = require('express')
 const router = express.Router()
 const Announcement = require('../models/Announcement')
+const User = require('../models/User')
+const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
+const pushService = require('../services/pushService')
 
 function schoolId(req) { return req.user.school?._id || req.user.school }
+
+// Destinataires push d'une annonce selon l'audience (all / parents / teachers).
+async function announcementRecipients(sid, audience, excludeId) {
+  const ids = []
+  if (audience === 'all' || audience === 'teachers') {
+    const staff = await User.find({ school: sid, role: { $in: ['enseignant'] }, isActive: { $ne: false } }).select('_id').lean()
+    ids.push(...staff.map((u) => u._id.toString()))
+  }
+  if (audience === 'all' || audience === 'parents') {
+    const students = await Student.find({ school: sid, parentUser: { $ne: null }, status: 'active' }).select('parentUser').lean()
+    ids.push(...students.map((s) => s.parentUser?.toString()).filter(Boolean))
+  }
+  const ex = excludeId?.toString()
+  return [...new Set(ids)].filter((id) => id !== ex)
+}
 
 // Audiences visibles selon le rôle de l'utilisateur
 function audiencesFor(role) {
@@ -40,13 +58,25 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
     const sid = schoolId(req)
     if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
 
+    const finalAudience = ['all', 'parents', 'teachers'].includes(audience) ? audience : 'all'
     const announcement = await Announcement.create({
       school: sid,
       title: title?.trim() || '',
       content: content.trim(),
-      audience: ['all', 'parents', 'teachers'].includes(audience) ? audience : 'all',
+      audience: finalAudience,
       createdBy: req.user._id,
     })
+
+    // Push aux destinataires de l'annonce (best-effort).
+    announcementRecipients(sid, finalAudience, req.user._id).then((ids) => {
+      pushService.sendToUsers(ids, {
+        title: announcement.title || 'Nouvelle annonce',
+        body: content.trim().slice(0, 100),
+        url: '/dashboard/annonces',
+        tag: 'ann_' + announcement._id.toString(),
+      })
+    }).catch(() => {})
+
     res.status(201).json({ success: true, data: announcement })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

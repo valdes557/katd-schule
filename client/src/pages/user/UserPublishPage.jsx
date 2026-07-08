@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Image, Video, Music, UploadCloud, X, CheckCircle2, Loader2 } from 'lucide-react'
 import { platformApi } from '../../lib/api'
 import { assertVideoWithinLimit } from '../../lib/videoValidation'
+import { uploadToCloudinary } from '../../lib/cloudinaryUpload'
 
 const TYPES = [
   { key: 'photo', label: 'Photo', Icon: Image, accept: 'image/*' },
@@ -47,16 +48,31 @@ export default function UserPublishPage() {
     setLoading(true)
     setProgress(0)
     try {
-      const fd = new FormData()
-      fd.append('mediaType', type)
-      fd.append('title', title.trim())
-      // Le fil commun exige un contenu texte : on retombe sur le titre si vide.
-      fd.append('content', description.trim() || title.trim())
-      if (type === 'photo') fd.append('images', file)
-      else if (type === 'video') fd.append('video', file)
-      else if (type === 'audio') fd.append('audio', file)
+      // Upload DIRECT vers Cloudinary (le fichier ne passe plus par le serveur) :
+      // supprime la lenteur et l'erreur « Impossible de joindre le serveur ».
+      const resourceType = type === 'photo' ? 'image' : 'video' // Cloudinary traite l'audio comme 'video'
+      const up = await uploadToCloudinary(file, { onProgress: setProgress, resourceType })
 
-      const r = await platformApi.createPostWithProgress(fd, setProgress)
+      const payload = {
+        mediaType: type,
+        title: title.trim(),
+        // Le fil commun exige un contenu texte : on retombe sur le titre si vide.
+        content: description.trim() || title.trim(),
+      }
+      if (type === 'photo') {
+        payload.images = [up.secureUrl]
+        payload.mediaWidth = up.width
+        payload.mediaHeight = up.height
+      } else if (type === 'video') {
+        payload.videoUrl = up.secureUrl
+        payload.thumbnail = up.thumbnailUrl
+        payload.mediaWidth = up.width
+        payload.mediaHeight = up.height
+      } else if (type === 'audio') {
+        payload.audioUrl = up.secureUrl
+      }
+
+      const r = await platformApi.createPostJson(payload)
       if (r.success && r.data) {
         setDone(true)
         setTimeout(() => navigate('/u'), 900)

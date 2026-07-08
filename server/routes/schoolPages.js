@@ -5,8 +5,25 @@ const TeamMember = require('../models/TeamMember')
 const SchoolPost = require('../models/SchoolPost')
 const SchoolReview = require('../models/SchoolReview')
 const PaymentModality = require('../models/PaymentModality')
+const User = require('../models/User')
+const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
 const { upload, videoThumbnailUrl } = require('../config/cloudinary')
+const pushService = require('../services/pushService')
+
+// Ids des comptes rattachés à une école (staff + parents d'élèves actifs) pour le push.
+async function schoolMemberUserIds(schoolId, excludeId) {
+  if (!schoolId) return []
+  const staff = await User.find({ school: schoolId, isActive: { $ne: false } }).select('_id').lean()
+  const students = await Student.find({ school: schoolId, parentUser: { $ne: null }, status: 'active' })
+    .select('parentUser').lean()
+  const ids = [
+    ...staff.map((u) => u._id.toString()),
+    ...students.map((s) => s.parentUser?.toString()).filter(Boolean),
+  ]
+  const ex = excludeId?.toString()
+  return [...new Set(ids)].filter((id) => id !== ex)
+}
 
 // ===================== SCHOOL PAGE (about, terms, privacy, help, donations, contacts) =====================
 
@@ -99,7 +116,13 @@ router.get('/:schoolId/posts', async (req, res) => {
 router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const imageFiles = req.files?.images || []
-    const images = imageFiles.map((f) => f.path)
+    let images = imageFiles.map((f) => f.path)
+    // Mode JSON (upload direct Cloudinary) : URLs d'images dans le body.
+    if (!images.length && req.body.images) {
+      let bodyImages = req.body.images
+      if (typeof bodyImages === 'string') { try { bodyImages = JSON.parse(bodyImages) } catch (_) { bodyImages = [bodyImages] } }
+      if (Array.isArray(bodyImages)) images = bodyImages.filter(Boolean)
+    }
     const videoFileObj = req.files?.video?.[0]
     const videoUrl = videoFileObj?.path || req.body.videoUrl || ''
     const type = videoUrl ? 'video' : images.length > 0 ? 'photo' : 'text'
@@ -109,10 +132,10 @@ router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), 
     if (type === 'video') thumbnail = videoThumbnailUrl(videoUrl) || thumbnail
     else if (images.length > 0) thumbnail = images[0]
 
-    // Dimensions réelles du média principal (orientation)
+    // Dimensions réelles du média principal (fournies par le client en mode JSON).
     const mainMedia = type === 'video' ? videoFileObj : imageFiles[0]
-    const mediaWidth = mainMedia?.width
-    const mediaHeight = mainMedia?.height
+    const mediaWidth = mainMedia?.width || Number(req.body.mediaWidth) || undefined
+    const mediaHeight = mainMedia?.height || Number(req.body.mediaHeight) || undefined
     const aspectRatio = mediaWidth && mediaHeight ? mediaWidth / mediaHeight : undefined
 
     const post = await SchoolPost.create({
@@ -131,6 +154,17 @@ router.post('/:schoolId/posts', protect, authorize('directeur', 'super_admin'), 
       duration: req.body.duration || '',
     })
     const populated = await post.populate('author', 'name avatar')
+
+    // Push aux membres de l'école (nouvelle publication de l'établissement).
+    schoolMemberUserIds(req.params.schoolId, req.user._id).then((ids) => {
+      pushService.sendToUsers(ids, {
+        title: 'Nouvelle publication',
+        body: `${req.user.name || 'Votre école'} a publié quelque chose`,
+        url: '/dashboard/social',
+        tag: 'post_' + post._id.toString(),
+      })
+    }).catch(() => {})
+
     res.status(201).json({ success: true, data: populated })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
@@ -159,6 +193,17 @@ router.post('/posts/:id/comment', protect, async (req, res) => {
       { path: 'author', select: 'name avatar' },
       { path: 'comments.authorId', select: 'name avatar' },
     ])
+
+    // Push à l'auteur de la publication (nouveau commentaire), sauf lui-même.
+    if (post.author && post.author._id?.toString() !== req.user._id.toString()) {
+      pushService.sendToUser(post.author._id, {
+        title: 'Nouveau commentaire',
+        body: `${req.user.name || 'Quelqu\'un'} a commenté votre publication`,
+        url: '/dashboard/social',
+        tag: 'comment_' + post._id.toString(),
+      })
+    }
+
     res.json({ success: true, data: post })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

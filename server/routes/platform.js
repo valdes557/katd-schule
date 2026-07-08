@@ -6,10 +6,28 @@ const SchoolReview = require('../models/SchoolReview')
 const PlatformPaymentMethod = require('../models/PlatformPaymentMethod')
 const SubscriptionPlan = require('../models/SubscriptionPlan')
 const Resource = require('../models/Resource')
+const User = require('../models/User')
+const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
 const { upload, videoThumbnailUrl } = require('../config/cloudinary')
+const pushService = require('../services/pushService')
 const http = require('http')
 const https = require('https')
+
+// Ids des utilisateurs (comptes) rattachés à une école — pour notifier d'une nouvelle
+// publication : directeurs/enseignants + comptes parents des élèves de l'école.
+async function schoolMemberUserIds(schoolId, excludeId) {
+  if (!schoolId) return []
+  const staff = await User.find({ school: schoolId, isActive: { $ne: false } }).select('_id').lean()
+  const students = await Student.find({ school: schoolId, parentUser: { $ne: null }, status: 'active' })
+    .select('parentUser').lean()
+  const ids = [
+    ...staff.map((u) => u._id.toString()),
+    ...students.map((s) => s.parentUser?.toString()).filter(Boolean),
+  ]
+  const ex = excludeId?.toString()
+  return [...new Set(ids)].filter((id) => id !== ex)
+}
 
 // ===================== PLATFORM PAGE CONTENT =====================
 
@@ -65,7 +83,13 @@ router.get('/feed', async (req, res) => {
 router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant', 'parent', 'utilisateur', 'eleve'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'audio', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const imageFiles = req.files?.images || []
-    const images = imageFiles.map((f) => f.path)
+    let images = imageFiles.map((f) => f.path)
+    // Mode JSON (upload direct Cloudinary) : les URLs d'images arrivent dans le body.
+    if (!images.length && req.body.images) {
+      let bodyImages = req.body.images
+      if (typeof bodyImages === 'string') { try { bodyImages = JSON.parse(bodyImages) } catch (_) { bodyImages = [bodyImages] } }
+      if (Array.isArray(bodyImages)) images = bodyImages.filter(Boolean)
+    }
     const videoFileObj = req.files?.video?.[0]
     const audioFile = req.files?.audio?.[0]?.path || ''
     const videoFile = videoFileObj?.path || ''
@@ -73,8 +97,8 @@ router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant
 
     let type = 'text'
     let videoUrl = req.body.videoUrl || videoFile || ''
-    let audioUrl = audioFile
-    if (mediaType === 'audio' || audioFile) type = 'audio'
+    let audioUrl = audioFile || req.body.audioUrl || ''
+    if (mediaType === 'audio' || audioUrl) type = 'audio'
     else if (mediaType === 'video' || videoUrl) type = 'video'
     else if (images.length > 0 || mediaType === 'photo') type = 'photo'
 
@@ -83,10 +107,11 @@ router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant
     if (type === 'video') thumbnail = videoThumbnailUrl(videoUrl) || thumbnail
     else if (images.length > 0) thumbnail = images[0]
 
-    // Dimensions réelles du média principal (orientation portrait/paysage)
+    // Dimensions réelles du média principal (orientation portrait/paysage).
+    // En mode JSON, elles sont fournies par le client (dimensions retournées par Cloudinary).
     const mainMedia = type === 'video' ? videoFileObj : imageFiles[0]
-    const mediaWidth = mainMedia?.width
-    const mediaHeight = mainMedia?.height
+    const mediaWidth = mainMedia?.width || Number(req.body.mediaWidth) || undefined
+    const mediaHeight = mainMedia?.height || Number(req.body.mediaHeight) || undefined
     const aspectRatio = mediaWidth && mediaHeight ? mediaWidth / mediaHeight : undefined
 
     const isPlatform = req.user.role === 'super_admin'
@@ -111,6 +136,20 @@ router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant
       isPublic: true,
     })
     const populated = await post.populate('author', 'name avatar')
+
+    // Push aux membres de l'école (nouvelle publication). Les posts plateforme
+    // (super_admin, sans école) ne déclenchent pas de push de masse.
+    if (schoolId) {
+      schoolMemberUserIds(schoolId, req.user._id).then((ids) => {
+        pushService.sendToUsers(ids, {
+          title: 'Nouvelle publication',
+          body: `${req.user.name || 'Un membre'} a publié quelque chose`,
+          url: '/dashboard/social',
+          tag: 'post_' + post._id.toString(),
+        })
+      }).catch(() => {})
+    }
+
     res.status(201).json({ success: true, data: populated })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
@@ -168,6 +207,17 @@ router.post('/posts/:id/comment', protect, async (req, res) => {
       { path: 'author', select: 'name avatar' },
       { path: 'comments.authorId', select: 'name avatar' },
     ])
+
+    // Push à l'auteur de la publication (quelqu'un a commenté), sauf si c'est lui-même.
+    if (post.author && post.author._id?.toString() !== req.user._id.toString()) {
+      pushService.sendToUser(post.author._id, {
+        title: 'Nouveau commentaire',
+        body: `${req.user.name || 'Quelqu\'un'} a commenté votre publication`,
+        url: '/dashboard/social',
+        tag: 'comment_' + post._id.toString(),
+      })
+    }
+
     res.json({ success: true, data: populated })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

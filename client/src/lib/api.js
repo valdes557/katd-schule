@@ -202,7 +202,8 @@ export const messagesApi = {
     return json
   },
   sendGroup: (groupId, data) => api.post(`/messages/groups/${groupId}`, data),
-  remove: (id) => api.del(`/messages/${id}`),
+  // scope: 'me' (supprimer pour moi) | 'everyone' (supprimer pour tout le monde)
+  remove: (id, scope = 'me') => api.del(`/messages/${id}?scope=${scope}`),
 }
 
 export const mediaApi = {
@@ -304,13 +305,17 @@ export const platformApi = {
     const res = await fetch(`${API_URL}/platform/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
-  // Same as createPost but reports upload progress (0-100) via onProgress — uses
-  // XMLHttpRequest because fetch() cannot report upload progress.
+  // Mode JSON : les médias ont déjà été envoyés en direct à Cloudinary, on ne
+  // POST que les URLs (corps léger) → plus de limite Nginx ni de timeout d'upload.
+  createPostJson: (data) => api.post('/platform/posts', data),
+  // Ancien envoi multipart avec progression (filet de sécurité). Durci : timeout
+  // explicite + message d'erreur clair (le VPS reste dans la boucle sur ce chemin).
   createPostWithProgress: (formData, onProgress) => new Promise((resolve, reject) => {
     const token = localStorage.getItem('token')
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_URL}/platform/posts`)
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.timeout = 10 * 60 * 1000
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
     }
@@ -321,6 +326,7 @@ export const platformApi = {
       else reject(new Error(data.message || `Erreur HTTP ${xhr.status}`))
     }
     xhr.onerror = () => reject(new Error('Impossible de joindre le serveur. Vérifiez votre connexion.'))
+    xhr.ontimeout = () => reject(new Error("L'envoi a expiré. Essayez une vidéo plus courte ou une meilleure connexion."))
     xhr.send(formData)
   }),
   updatePost: (id, data) => api.put(`/platform/posts/${id}`, data),
@@ -483,13 +489,15 @@ export const schoolPagesApi = {
     const res = await fetch(`${API_URL}/school-pages/${schoolId}/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
-  // Same as createPost but reports upload progress (0-100) via onProgress — useful
-  // for large video uploads. Uses XMLHttpRequest because fetch() can't report it.
+  // Mode JSON : médias déjà envoyés en direct à Cloudinary, on ne POST que les URLs.
+  createPostJson: (schoolId, data) => api.post(`/school-pages/${schoolId}/posts`, data),
+  // Ancien envoi multipart avec progression (filet de sécurité, durci timeout).
   createPostWithProgress: (schoolId, formData, onProgress) => new Promise((resolve, reject) => {
     const token = localStorage.getItem('token')
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_URL}/school-pages/${schoolId}/posts`)
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.timeout = 10 * 60 * 1000
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
     }
@@ -500,6 +508,7 @@ export const schoolPagesApi = {
       else reject(new Error(data.message || `Erreur HTTP ${xhr.status}`))
     }
     xhr.onerror = () => reject(new Error('Impossible de joindre le serveur. Vérifiez votre connexion.'))
+    xhr.ontimeout = () => reject(new Error("L'envoi a expiré. Essayez une vidéo plus courte ou une meilleure connexion."))
     xhr.send(formData)
   }),
   likePost: (id) => api.put(`/school-pages/posts/${id}/like`),
@@ -821,6 +830,18 @@ export const walletAdminApi = {
   requestSebpayCode: () => api.post('/admin/sebpay/request-code', {}),
   revealSebpay: (code) => api.post('/admin/sebpay/reveal', { code }),
   updateSebpay: (payload) => api.put('/admin/sebpay', payload),
+}
+
+// Signature d'upload direct Cloudinary (le fichier ne transite plus par le VPS)
+export const uploadsApi = {
+  sign: (data) => api.post('/uploads/sign', data),
+}
+
+// Notifications Web Push
+export const pushApi = {
+  getVapid: () => api.get('/push/vapid'),
+  subscribe: (data) => api.post('/push/subscribe', data),
+  unsubscribe: (data) => api.post('/push/unsubscribe', data),
 }
 
 export default api
