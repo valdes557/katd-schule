@@ -8,6 +8,7 @@ import { schoolPagesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { assertVideoWithinLimit } from '../lib/videoValidation'
+import { uploadToCloudinary } from '../lib/cloudinaryUpload'
 
 const TABS = [
   { id: 'about', label: 'À propos', icon: Users },
@@ -226,12 +227,31 @@ function PostsEditor({ schoolId }) {
     if (!content.trim()) return
     setPosting(true)
     setProgress(0)
-    const fd = new FormData()
-    fd.append('content', content)
-    if (files) Array.from(files).forEach((f) => fd.append('images', f))
-    if (videoFile) fd.append('video', videoFile)
     try {
-      await schoolPagesApi.createPostWithProgress(schoolId, fd, setProgress)
+      // Médias envoyés en DIRECT à Cloudinary, puis POST JSON des URLs uniquement.
+      const payload = { content }
+      const imgs = files ? Array.from(files) : []
+      if (imgs.length) {
+        const ups = []
+        for (let i = 0; i < imgs.length; i++) {
+          const u = await uploadToCloudinary(imgs[i], {
+            resourceType: 'image',
+            onProgress: (p) => setProgress(Math.round(((i + p / 100) / imgs.length) * 100)),
+          })
+          ups.push(u)
+        }
+        payload.images = ups.map((u) => u.secureUrl)
+        payload.mediaWidth = ups[0]?.width
+        payload.mediaHeight = ups[0]?.height
+      }
+      if (videoFile) {
+        const u = await uploadToCloudinary(videoFile, { resourceType: 'video', onProgress: setProgress })
+        payload.videoUrl = u.secureUrl
+        payload.thumbnail = u.thumbnailUrl
+        payload.mediaWidth = u.width
+        payload.mediaHeight = u.height
+      }
+      await schoolPagesApi.createPostJson(schoolId, payload)
       setContent('')
       setFiles(null)
       setVideoFile(null)

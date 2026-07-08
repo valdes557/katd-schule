@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon, Trash2, Check, CheckCheck, Mic, Paperclip, Smile } from 'lucide-react'
+import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon, Trash2, Check, CheckCheck, Mic, Paperclip, Smile, MoreVertical, Ban } from 'lucide-react'
 import { messagesApi } from '../lib/api'
 import { assertVideoWithinLimit } from '../lib/videoValidation'
+import { uploadToCloudinary } from '../lib/cloudinaryUpload'
 import { useAuth } from '../context/AuthContext'
 import { useUnread } from '../context/UnreadContext'
 import { cn } from '../lib/utils'
@@ -31,6 +32,7 @@ export default function MessagingPage() {
   const [recording, setRecording] = useState(false)
   const [recSeconds, setRecSeconds] = useState(0)
   const [showStickers, setShowStickers] = useState(false)
+  const [menuMsgId, setMenuMsgId] = useState(null) // message dont le menu de suppression est ouvert
   const messagesEndRef = useRef(null)
   const prevCountRef = useRef(0)
   const fileRef = useRef(null)
@@ -132,11 +134,16 @@ export default function MessagingPage() {
     setLoadingMsgs(false)
   }
 
-  const handleDeleteMessage = async (m) => {
-    if (!window.confirm('Supprimer ce message ?')) return
+  // scope: 'me' (pour moi) | 'everyone' (pour tout le monde)
+  const handleDeleteMessage = async (m, scope) => {
+    setMenuMsgId(null)
     try {
-      await messagesApi.remove(m._id)
-      setMessages((prev) => prev.filter((x) => x._id !== m._id))
+      await messagesApi.remove(m._id, scope)
+      if (scope === 'everyone') {
+        setMessages((prev) => prev.map((x) => (x._id === m._id ? { ...x, deleted: true, body: '', mediaUrl: '', type: 'text' } : x)))
+      } else {
+        setMessages((prev) => prev.filter((x) => x._id !== m._id))
+      }
       refreshConversations()
     } catch (e) { alert(e.message) }
   }
@@ -190,11 +197,14 @@ export default function MessagingPage() {
     const isVideo = file.type.startsWith('video')
     const isImage = file.type.startsWith('image')
     if (!isVideo && !isImage) { alert('Seules les images et vidéos sont acceptées.'); return }
-    if (file.size > 25 * 1024 * 1024) { alert('Fichier trop volumineux (max 25 Mo).'); return }
     if (isVideo) { try { await assertVideoWithinLimit(file) } catch (err) { alert(err.message); return } }
-    const reader = new FileReader()
-    reader.onload = () => sendMedia({ type: isVideo ? 'video' : 'image', mediaUrl: reader.result })
-    reader.readAsDataURL(file)
+    setSending(true)
+    try {
+      // Upload DIRECT à Cloudinary (plus de limite 25 Mo ni de base64 lourd dans le corps).
+      const up = await uploadToCloudinary(file, { resourceType: isVideo ? 'video' : 'image' })
+      await sendMedia({ type: isVideo ? 'video' : 'image', mediaUrl: up.secureUrl })
+    } catch (err) { alert(err.message) }
+    setSending(false)
   }
 
   const startRec = async () => {
@@ -377,7 +387,7 @@ export default function MessagingPage() {
                     <span className="text-sm font-semibold text-gray-900 truncate">{c.contact?.name || 'Inconnu'}</span>
                     {c.unread > 0 && <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{c.unread}</span>}
                   </div>
-                  <div className="text-xs text-gray-500 truncate mt-0.5">{c.lastMessage?.subject || c.lastMessage?.body?.slice(0, 50)}</div>
+                  <div className="text-xs text-gray-500 truncate mt-0.5">{c.lastMessage?.deletedForEveryone ? '🚫 Message supprimé' : (c.lastMessage?.subject || c.lastMessage?.body?.slice(0, 50) || (c.lastMessage?.type && c.lastMessage.type !== 'text' ? '📎 Pièce jointe' : ''))}</div>
                   <div className="text-[10px] text-gray-400 mt-1">{new Date(c.lastMessage?.createdAt).toLocaleDateString('fr-FR')}</div>
                 </button>
               ))
@@ -424,19 +434,40 @@ export default function MessagingPage() {
                     const myId = String(user?.id || user?._id || '')
                     const senderId = String(m.sender?._id || m.sender || '')
                     const mine = !!myId && senderId === myId
-                    const canDelete = mine || (user?.role === 'directeur' && activeConv.isGroup)
+                    const canEveryone = mine || ['directeur', 'super_admin'].includes(user?.role)
+                    const menuOpen = menuMsgId === m._id
+                    // « Vu par » en groupe : lecteurs autres que l'expéditeur.
+                    const seenOthers = (m.readBy || []).filter((r) => String(r.user?._id || r.user || '') !== myId)
+                    const deleteMenu = (
+                      <div className="relative flex-shrink-0 self-center">
+                        <button
+                          onClick={() => setMenuMsgId(menuOpen ? null : m._id)}
+                          title="Options"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-gray-700"
+                        >
+                          <MoreVertical size={15} />
+                        </button>
+                        {menuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setMenuMsgId(null)} />
+                            <div className={cn('absolute z-20 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-100 py-1 text-sm', mine ? 'right-0' : 'left-0')}>
+                              <button onClick={() => handleDeleteMessage(m, 'me')} className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"><Trash2 size={14} /> Supprimer pour moi</button>
+                              {canEveryone && !m.deleted && (
+                                <button onClick={() => handleDeleteMessage(m, 'everyone')} className="w-full text-left px-3 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2"><Trash2 size={14} /> Supprimer pour tout le monde</button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )
                     return (
                       <div key={m._id} className={cn('group flex items-end gap-1.5', mine ? 'justify-end' : 'justify-start')}>
-                        {canDelete && mine && (
-                          <button
-                            onClick={() => handleDeleteMessage(m)}
-                            title="Supprimer le message"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-red-500 flex-shrink-0"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                        {m.type === 'sticker' ? (
+                        {mine && deleteMenu}
+                        {m.deleted ? (
+                          <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm italic flex items-center gap-1.5', mine ? 'bg-blue-100 text-blue-500 rounded-br-md' : 'bg-gray-100 text-gray-400 rounded-bl-md')}>
+                            <Ban size={13} /> Ce message a été supprimé
+                          </div>
+                        ) : m.type === 'sticker' ? (
                           <div className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
                             {activeConv.isGroup && !mine && m.sender?.name && (
                               <div className="text-[11px] font-semibold mb-0.5 text-blue-700">{m.sender.name}</div>
@@ -475,18 +506,15 @@ export default function MessagingPage() {
                                 ? <CheckCheck size={14} className="text-white" title="Lu" />
                                 : <Check size={14} className="text-blue-200" title="Envoyé" />
                             )}
+                            {mine && activeConv.isGroup && (
+                              seenOthers.length > 0
+                                ? <span className="flex items-center gap-0.5" title={`Vu par ${seenOthers.map((r) => r.user?.name).filter(Boolean).join(', ')}`}><CheckCheck size={14} className="text-white" /> {seenOthers.length}</span>
+                                : <Check size={14} className="text-blue-200" title="Envoyé" />
+                            )}
                           </div>
                         </div>
                         )}
-                        {canDelete && !mine && (
-                          <button
-                            onClick={() => handleDeleteMessage(m)}
-                            title="Supprimer le message"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-red-500 flex-shrink-0"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                        {!mine && deleteMenu}
                       </div>
                     )
                   })

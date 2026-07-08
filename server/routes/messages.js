@@ -7,6 +7,17 @@ const Teacher = require('../models/Teacher')
 const MessageGroup = require('../models/MessageGroup')
 const { protect, authorize } = require('../middleware/auth')
 const { upload, cloudinary } = require('../config/cloudinary')
+const pushService = require('../services/pushService')
+
+// Aperçu court d'un message pour la notification push.
+function messagePreview(type, body) {
+  if (type === 'voice') return '🎤 Message vocal'
+  if (type === 'image') return '📷 Photo'
+  if (type === 'video') return '🎬 Vidéo'
+  if (type === 'sticker') return 'Sticker'
+  const t = (body || '').trim()
+  return t.length > 80 ? t.slice(0, 80) + '…' : t || 'Nouveau message'
+}
 
 // Helper: compute allowed contacts for the current user based on role & school
 async function getAllowedContacts(user) {
@@ -95,14 +106,22 @@ router.get('/conversations', protect, async (req, res) => {
   try {
     const userId = req.user._id
     const conversations = await Message.aggregate([
-      { $match: { $or: [{ sender: userId }, { recipient: userId }] } },
+      // On ignore les messages que l'utilisateur a supprimés « pour moi ».
+      { $match: { $or: [{ sender: userId }, { recipient: userId }], deletedFor: { $ne: userId } } },
       { $sort: { createdAt: -1 } },
       {
         $group: {
           _id: '$conversationId',
           lastMessage: { $first: '$$ROOT' },
+          // Non lu = destiné à l'utilisateur et non encore lu (booléen legacy, rétro-compatible).
           unread: {
-            $sum: { $cond: [{ $and: [{ $eq: ['$recipient', userId] }, { $eq: ['$read', false] }] }, 1, 0] },
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$recipient', userId] }, { $eq: ['$read', false] }] },
+                1,
+                0,
+              ],
+            },
           },
         },
       },
@@ -157,12 +176,16 @@ router.get('/conversations', protect, async (req, res) => {
 router.get('/conversation/:conversationId', protect, async (req, res) => {
   try {
     const userId = req.user._id
+    const convId = req.params.conversationId
     const raw = await Message.find({
-      conversationId: req.params.conversationId,
+      conversationId: convId,
       $or: [{ sender: userId }, { recipient: userId }],
+      // « Supprimé pour moi » : masqué uniquement pour cet utilisateur.
+      deletedFor: { $ne: userId },
     })
       .populate('sender', 'name email role')
       .populate('recipient', 'name email role')
+      .populate('readBy.user', 'name')
       .sort({ createdAt: 1, _id: 1 })
 
     const seen = new Set()
@@ -174,12 +197,31 @@ router.get('/conversation/:conversationId', protect, async (req, res) => {
       messages.push(m)
     }
 
+    // Marque « vu » : booléen legacy (1-1) + readBy par-utilisateur (1-1 ET groupe).
+    // On pousse l'utilisateur dans readBy de TOUTES les copies de la conversation
+    // (chaque membre a sa copie en groupe) → la copie affichée accumule tous les lecteurs.
     await Message.updateMany(
-      { conversationId: req.params.conversationId, recipient: req.user._id, read: false },
+      { conversationId: convId, recipient: userId, read: false },
       { read: true, readAt: new Date() }
     )
+    await Message.updateMany(
+      { conversationId: convId, 'readBy.user': { $ne: userId } },
+      { $push: { readBy: { user: userId, at: new Date() } } }
+    )
 
-    res.json({ success: true, data: messages })
+    // Masque le contenu des messages supprimés « pour tout le monde ».
+    const out = messages.map((m) => {
+      const o = m.toObject()
+      if (o.deletedForEveryone) {
+        o.body = ''
+        o.mediaUrl = ''
+        o.type = 'text'
+        o.deleted = true
+      }
+      return o
+    })
+
+    res.json({ success: true, data: out })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -251,6 +293,16 @@ router.post('/', protect, async (req, res) => {
       { path: 'recipient', select: 'name email role' },
     ])
 
+    // Notification push au destinataire (best-effort, hors du site).
+    const rcptRole = populated.recipient?.role
+    const url = rcptRole === 'utilisateur' ? '/u/messages' : '/dashboard/messagerie'
+    pushService.sendToUser(recipientId, {
+      title: req.user.name || 'Nouveau message',
+      body: messagePreview(msgType, body),
+      url,
+      tag: 'msg_' + conversationId,
+    })
+
     res.status(201).json({ success: true, data: populated })
   } catch (err) {
     res.status(500).json({ message: err.message })
@@ -310,7 +362,12 @@ router.get('/staff', protect, async (req, res) => {
 // GET /api/messages/unread-count
 router.get('/unread-count', protect, async (req, res) => {
   try {
-    const count = await Message.countDocuments({ recipient: req.user._id, read: false })
+    const count = await Message.countDocuments({
+      recipient: req.user._id,
+      read: false,
+      deletedFor: { $ne: req.user._id },
+      deletedForEveryone: { $ne: true },
+    })
     res.json({ success: true, data: { count } })
   } catch (err) {
     res.status(500).json({ message: err.message })
@@ -468,22 +525,50 @@ router.post('/groups/:groupId', protect, async (req, res) => {
       .populate('sender', 'name email role')
       .populate('recipient', 'name email role')
 
+    // Notification push à chaque membre du groupe sauf l'expéditeur (best-effort).
+    const otherMembers = group.members.map((m) => m.toString()).filter((m) => m !== userId)
+    pushService.sendToUsers(otherMembers, {
+      title: `${req.user.name || 'Groupe'} · ${group.name}`,
+      body: messagePreview(msgType, body),
+      url: '/dashboard/messagerie',
+      tag: 'group_' + group._id.toString(),
+    })
+
     res.status(201).json({ success: true, data: populated })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
 })
 
-// DELETE /api/messages/:id — supprimer un message (pour tout le monde)
-// Règles : l'expéditeur peut supprimer son message ; un directeur/super_admin peut
-// supprimer n'importe quel message de son école. Pour les messages de groupe, on
-// supprime toutes les copies partageant le même broadcastKey.
+// DELETE /api/messages/:id?scope=me|everyone — suppression façon WhatsApp.
+//   scope=me       : « Supprimer pour moi » — le message est masqué uniquement pour
+//                    l'utilisateur courant (ajout à deletedFor). Toujours autorisé.
+//   scope=everyone : « Supprimer pour tout le monde » — contenu retiré, remplacé par
+//                    « Ce message a été supprimé » chez tous. Autorisé à l'expéditeur
+//                    (sans limite de temps) ou à un directeur/super_admin de l'école.
+// Pour les messages de groupe, l'action s'applique à toutes les copies (broadcastKey).
 router.delete('/:id', protect, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id)
     if (!msg) return res.status(404).json({ message: 'Message introuvable' })
 
     const userId = req.user._id.toString()
+    const scope = req.query.scope === 'everyone' ? 'everyone' : 'me'
+
+    if (scope === 'me') {
+      // Masque le message pour cet utilisateur seulement (sa/ses copies).
+      if (msg.broadcastKey) {
+        await Message.updateMany(
+          { broadcastKey: msg.broadcastKey, $or: [{ sender: req.user._id }, { recipient: req.user._id }] },
+          { $addToSet: { deletedFor: req.user._id } }
+        )
+      } else {
+        await Message.updateOne({ _id: msg._id }, { $addToSet: { deletedFor: req.user._id } })
+      }
+      return res.json({ success: true, scope: 'me' })
+    }
+
+    // scope === 'everyone'
     const isSender = msg.sender.toString() === userId
     const schoolId = (req.user.school?._id || req.user.school)?.toString()
     const isAdmin =
@@ -491,16 +576,17 @@ router.delete('/:id', protect, async (req, res) => {
       schoolId && msg.school?.toString() === schoolId
 
     if (!isSender && !isAdmin) {
-      return res.status(403).json({ message: 'Vous ne pouvez pas supprimer ce message' })
+      return res.status(403).json({ message: 'Vous ne pouvez pas supprimer ce message pour tout le monde' })
     }
 
+    const patch = { deletedForEveryone: true, deletedAt: new Date(), body: '', mediaUrl: '', mediaDuration: 0 }
     if (msg.broadcastKey) {
-      await Message.deleteMany({ broadcastKey: msg.broadcastKey })
+      await Message.updateMany({ broadcastKey: msg.broadcastKey }, { $set: patch })
     } else {
-      await Message.deleteOne({ _id: msg._id })
+      await Message.updateOne({ _id: msg._id }, { $set: patch })
     }
 
-    res.json({ success: true })
+    res.json({ success: true, scope: 'everyone' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

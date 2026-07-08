@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Image as ImageIcon, Film, Music, Plus, Loader2 } from 'lucide-react'
 import { platformApi } from '../lib/api'
 import { assertVideoWithinLimit } from '../lib/videoValidation'
+import { uploadToCloudinary } from '../lib/cloudinaryUpload'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import SocialTab from '../components/landing/SocialTab'
@@ -65,16 +66,36 @@ export default function DashboardSocialPage() {
     if (!form.content.trim() || !form.title.trim()) return
     setSubmitting(true)
     setProgress(0)
-    const fd = new FormData()
-    fd.append('mediaType', mediaType)
-    Object.entries(form).forEach(([k, v]) => {
-      if (v) fd.append(k, v)
-    })
-    imageFiles.forEach((f) => fd.append('images', f))
-    if (audioFile) fd.append('audio', audioFile)
-    if (videoFile) fd.append('video', videoFile)
     try {
-      const r = await platformApi.createPostWithProgress(fd, setProgress)
+      // Médias envoyés en DIRECT à Cloudinary (plus par le VPS) → rapide et fiable,
+      // puis on ne POST que les URLs (corps JSON léger).
+      const payload = { mediaType }
+      Object.entries(form).forEach(([k, v]) => { if (v) payload[k] = v })
+
+      if (mediaType === 'photo' && imageFiles.length) {
+        const ups = []
+        for (let i = 0; i < imageFiles.length; i++) {
+          const u = await uploadToCloudinary(imageFiles[i], {
+            resourceType: 'image',
+            onProgress: (p) => setProgress(Math.round(((i + p / 100) / imageFiles.length) * 100)),
+          })
+          ups.push(u)
+        }
+        payload.images = ups.map((u) => u.secureUrl)
+        payload.mediaWidth = ups[0]?.width
+        payload.mediaHeight = ups[0]?.height
+      } else if (mediaType === 'video' && videoFile) {
+        const u = await uploadToCloudinary(videoFile, { resourceType: 'video', onProgress: setProgress })
+        payload.videoUrl = u.secureUrl
+        payload.thumbnail = u.thumbnailUrl
+        payload.mediaWidth = u.width
+        payload.mediaHeight = u.height
+      } else if (mediaType === 'audio' && audioFile) {
+        const u = await uploadToCloudinary(audioFile, { resourceType: 'video', onProgress: setProgress })
+        payload.audioUrl = u.secureUrl
+      }
+
+      const r = await platformApi.createPostJson(payload)
       if (r.success && r.data) {
         cache.invalidate('/platform/feed')
         feedQ.setData((prev) => [r.data, ...(prev || [])])

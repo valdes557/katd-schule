@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { ArrowLeft, Circle, Send, Search, Smile, Paperclip, Mic } from 'lucide-react'
+import { ArrowLeft, Circle, Send, Search, Smile, Paperclip, Mic, Check, CheckCheck, MoreVertical, Trash2, Ban } from 'lucide-react'
 import { messagesApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { assertVideoWithinLimit } from '../../lib/videoValidation'
+import { uploadToCloudinary } from '../../lib/cloudinaryUpload'
 
 const ASSET = import.meta.env.VITE_API_URL || ''
 const asset = (u) => (!u ? '' : u.startsWith('http') ? u : ASSET + u)
@@ -19,6 +20,7 @@ function preview(m) {
   if (m.type === 'voice') return '🎤 Message vocal'
   if (m.type === 'image') return '📷 Photo'
   if (m.type === 'video') return '🎬 Vidéo'
+  if (m.deletedForEveryone) return '🚫 Message supprimé'
   if (m.type === 'sticker') return m.mediaUrl
   return m.body || ''
 }
@@ -52,6 +54,7 @@ export default function UserMessengerPage() {
   const [recSeconds, setRecSeconds] = useState(0)
   const [showStickers, setShowStickers] = useState(false)
   const [sending, setSending] = useState(false)
+  const [menuMsgId, setMenuMsgId] = useState(null)
   const endRef = useRef(null)
   const scrollRef = useRef(null)
   const atBottomRef = useRef(true)
@@ -161,11 +164,28 @@ export default function UserMessengerPage() {
     const isVideo = file.type.startsWith('video')
     const isImage = file.type.startsWith('image')
     if (!isVideo && !isImage) { alert('Seules les images et vidéos sont acceptées.'); return }
-    if (file.size > 25 * 1024 * 1024) { alert('Fichier trop volumineux (max 25 Mo).'); return }
     if (isVideo) { try { await assertVideoWithinLimit(file) } catch (err) { alert(err.message); return } }
-    const reader = new FileReader()
-    reader.onload = () => sendMedia({ type: isVideo ? 'video' : 'image', mediaUrl: reader.result })
-    reader.readAsDataURL(file)
+    setSending(true)
+    try {
+      // Upload DIRECT à Cloudinary (plus de limite 25 Mo ni de base64 lourd).
+      const up = await uploadToCloudinary(file, { resourceType: isVideo ? 'video' : 'image' })
+      await sendMedia({ type: isVideo ? 'video' : 'image', mediaUrl: up.secureUrl })
+    } catch (err) { alert(err.message) }
+    setSending(false)
+  }
+
+  // Suppression façon WhatsApp. scope: 'me' | 'everyone'
+  const handleDelete = async (m, scope) => {
+    setMenuMsgId(null)
+    try {
+      await messagesApi.remove(m._id, scope)
+      if (scope === 'everyone') {
+        setMessages((prev) => prev.map((x) => (x._id === m._id ? { ...x, deleted: true, deletedForEveryone: true, body: '', mediaUrl: '', type: 'text' } : x)))
+      } else {
+        setMessages((prev) => prev.filter((x) => x._id !== m._id))
+      }
+      loadConversations()
+    } catch (err) { alert(err.message) }
   }
 
   const startRec = async () => {
@@ -242,29 +262,58 @@ export default function UserMessengerPage() {
           {messages.length === 0 && <p className="text-center text-gray-400 text-sm mt-8">Démarrez la conversation 👋</p>}
           {messages.map((m) => {
             const mine = senderId(m) === myId
-            return (
-              <div key={m._id} className={`flex ${mine ? 'justify-end' : 'justify-start'} ${m._optimistic ? 'opacity-60' : ''}`}>
-                {m.type === 'sticker' ? (
-                  <div className="text-5xl select-none">{m.mediaUrl}</div>
-                ) : m.type === 'voice' && m.mediaUrl ? (
-                  // (2)(8) Bulle vocale compacte, dégradé indigo/violet dédié (plus clair côté reçu).
-                  <div className={`max-w-[80%] p-1 rounded-2xl flex items-center gap-2 ${mine
-                    ? 'bg-gradient-to-br from-indigo-600 to-violet-600 rounded-br-sm'
-                    : 'bg-gradient-to-br from-indigo-100 to-violet-100 rounded-bl-sm'}`}>
-                    <audio src={asset(m.mediaUrl)} controls className="h-8 max-w-[190px]" />
-                    {m.mediaDuration > 0 && <span className={`text-[11px] pr-1.5 ${mine ? 'text-white/80' : 'text-indigo-700/70'}`}>{m.mediaDuration}s</span>}
-                  </div>
-                ) : (
-                <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${mine ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'}`}>
-                  {m.type === 'image' && m.mediaUrl && (
-                    <img src={asset(m.mediaUrl)} alt="" className="rounded-lg max-w-full max-h-60 object-cover" />
-                  )}
-                  {m.type === 'video' && m.mediaUrl && (
-                    <video src={asset(m.mediaUrl)} controls className="rounded-lg max-w-full max-h-60" />
-                  )}
-                  {m.body && <div className={m.type && m.type !== 'text' ? 'mt-1' : ''}>{m.body}</div>}
-                </div>
+            const deleted = m.deleted || m.deletedForEveryone
+            const menuOpen = menuMsgId === m._id
+            const deleteMenu = m._optimistic ? null : (
+              <div className="relative flex-shrink-0 self-center">
+                <button onClick={() => setMenuMsgId(menuOpen ? null : m._id)} title="Options" className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-gray-700"><MoreVertical size={15} /></button>
+                {menuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setMenuMsgId(null)} />
+                    <div className={`absolute z-20 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-100 py-1 text-sm ${mine ? 'right-0' : 'left-0'}`}>
+                      <button onClick={() => handleDelete(m, 'me')} className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"><Trash2 size={14} /> Supprimer pour moi</button>
+                      {mine && !deleted && (
+                        <button onClick={() => handleDelete(m, 'everyone')} className="w-full text-left px-3 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2"><Trash2 size={14} /> Supprimer pour tout le monde</button>
+                      )}
+                    </div>
+                  </>
                 )}
+              </div>
+            )
+            const tick = mine && !m._optimistic && !deleted ? (
+              m.read ? <CheckCheck size={13} className="text-blue-500" title="Lu" /> : <Check size={13} className="text-gray-400" title="Envoyé" />
+            ) : null
+            return (
+              <div key={m._id} className={`group flex items-end gap-1 ${mine ? 'justify-end' : 'justify-start'} ${m._optimistic ? 'opacity-60' : ''}`}>
+                {mine && deleteMenu}
+                <div className={`flex flex-col ${mine ? 'items-end' : 'items-start'} max-w-[80%]`}>
+                  {deleted ? (
+                    <div className={`px-3 py-2 rounded-2xl text-sm italic flex items-center gap-1.5 ${mine ? 'bg-blue-100 text-blue-500 rounded-br-sm' : 'bg-gray-100 text-gray-400 rounded-bl-sm'}`}>
+                      <Ban size={13} /> Ce message a été supprimé
+                    </div>
+                  ) : m.type === 'sticker' ? (
+                    <div className="text-5xl select-none">{m.mediaUrl}</div>
+                  ) : m.type === 'voice' && m.mediaUrl ? (
+                    <div className={`p-1 rounded-2xl flex items-center gap-2 ${mine
+                      ? 'bg-gradient-to-br from-indigo-600 to-violet-600 rounded-br-sm'
+                      : 'bg-gradient-to-br from-indigo-100 to-violet-100 rounded-bl-sm'}`}>
+                      <audio src={asset(m.mediaUrl)} controls className="h-8 max-w-[190px]" />
+                      {m.mediaDuration > 0 && <span className={`text-[11px] pr-1.5 ${mine ? 'text-white/80' : 'text-indigo-700/70'}`}>{m.mediaDuration}s</span>}
+                    </div>
+                  ) : (
+                    <div className={`px-3 py-2 rounded-2xl text-sm ${mine ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'}`}>
+                      {m.type === 'image' && m.mediaUrl && (
+                        <img src={asset(m.mediaUrl)} alt="" className="rounded-lg max-w-full max-h-60 object-cover" />
+                      )}
+                      {m.type === 'video' && m.mediaUrl && (
+                        <video src={asset(m.mediaUrl)} controls className="rounded-lg max-w-full max-h-60" />
+                      )}
+                      {m.body && <div className={m.type && m.type !== 'text' ? 'mt-1' : ''}>{m.body}</div>}
+                    </div>
+                  )}
+                  {tick && <span className="mt-0.5">{tick}</span>}
+                </div>
+                {!mine && deleteMenu}
               </div>
             )
           })}
