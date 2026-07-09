@@ -15,8 +15,9 @@ const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'valdeslando15@gmail.com').toLow
 // Garde : super-admin global OU email admin configuré
 function isAdmin(u){ return u && (u.role === 'super_admin' || u.role === 'admin' || (u.email||'').toLowerCase() === ADMIN_EMAIL) }
 function adminOnly(req, res, next){ if(!isAdmin(req.user)) return res.status(403).json({ message: 'Accès réservé à l\'administrateur' }); next() }
-// Garde stricte : uniquement l'email super-admin (clés API)
-function superAdminOnly(req, res, next){ if((req.user.email||'').toLowerCase() !== ADMIN_EMAIL) return res.status(403).json({ message: 'Action réservée au super-administrateur' }); next() }
+// Garde stricte : rôle super_admin (clés API). L'email ADMIN_EMAIL ne sert PAS à se connecter,
+// il reçoit uniquement le code de déverrouillage (voir route /sebpay/request-code).
+function superAdminOnly(req, res, next){ if(req.user.role !== 'super_admin') return res.status(403).json({ message: 'Action réservée au super-administrateur' }); next() }
 
 // ───────────────────── RETRAITS (file 24h) ─────────────────────
 // GET /api/admin/withdrawals?status=pending

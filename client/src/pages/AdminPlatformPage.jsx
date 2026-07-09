@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Globe2, Plus, Trash2, CheckCircle, XCircle,
   Image, Film, Save, Loader2, Star,
   MessageCircle, CreditCard, Phone, Info, Pencil, X, FileText, Link, Music,
+  KeyRound, Eye, EyeOff, Send, ShieldCheck,
 } from 'lucide-react'
-import { platformApi, plansApi, newsApi } from '../lib/api'
+import { platformApi, plansApi, newsApi, walletAdminApi } from '../lib/api'
 import { uploadToCloudinary } from '../lib/cloudinaryUpload'
 import { assertVideoWithinLimit } from '../lib/videoValidation'
 import { useAuth } from '../context/AuthContext'
@@ -22,6 +24,7 @@ const TABS = [
   { id: 'experiences', label: 'Témoignages', icon: Star },
   { id: 'payments', label: 'Paiements', icon: CreditCard },
   { id: 'plans', label: 'Plans tarifaires', icon: Star },
+  { id: 'api', label: 'Clés API', icon: KeyRound },
   { id: 'news', label: 'News / Démos', icon: Film },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
 ]
@@ -1250,9 +1253,157 @@ function NewsDemoPanel() {
   )
 }
 
+// ─── Clés API SEBPay Panel ───────────────────────────────────────────────────
+// Gère l'unique paire de clés SEBPay (publique + secrète) par environnement (test/live).
+// L'opérateur Mobile Money (MTN / Orange / Moov) est choisi automatiquement au paiement,
+// il n'y a donc PAS de clé distincte par opérateur.
+function SebpayKeysPanel() {
+  const [loading, setLoading] = useState(true)
+  const [state, setState] = useState({ mode: 'test', configured: false, keys: {} }) // clés masquées
+  const [mode, setMode] = useState('test')
+  const [code, setCode] = useState('')
+  const [form, setForm] = useState({ publicKeyTest: '', secretKeyTest: '', publicKeyLive: '', secretKeyLive: '' })
+  const [sending, setSending] = useState(false)
+  const [revealing, setRevealing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [showSecret, setShowSecret] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    walletAdminApi.getSebpay()
+      .then((r) => { setState(r); setMode(r.mode || 'test') })
+      .catch((e) => alert(e.message))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const requestCode = async () => {
+    setSending(true)
+    try {
+      await walletAdminApi.requestSebpayCode()
+      alert('Un code de vérification a été envoyé à l\'email administrateur. Il est valable 10 minutes.')
+    } catch (e) { alert(e.message) }
+    setSending(false)
+  }
+
+  const reveal = async () => {
+    if (!code.trim()) return alert('Saisissez d\'abord le code reçu par email.')
+    setRevealing(true)
+    try {
+      const r = await walletAdminApi.revealSebpay(code.trim())
+      setForm({
+        publicKeyTest: r.keys?.publicKeyTest || '',
+        secretKeyTest: r.keys?.secretKeyTest || '',
+        publicKeyLive: r.keys?.publicKeyLive || '',
+        secretKeyLive: r.keys?.secretKeyLive || '',
+      })
+    } catch (e) { alert(e.message) }
+    setRevealing(false)
+  }
+
+  const save = async () => {
+    if (!code.trim()) return alert('Saisissez le code reçu par email pour confirmer la modification.')
+    setSaving(true)
+    try {
+      const payload = { mode, code: code.trim() }
+      for (const k of ['publicKeyTest', 'secretKeyTest', 'publicKeyLive', 'secretKeyLive']) {
+        if (form[k] && form[k].trim()) payload[k] = form[k].trim()
+      }
+      await walletAdminApi.updateSebpay(payload)
+      alert('Clés API SEBPay enregistrées ✅')
+      setCode('')
+      setForm({ publicKeyTest: '', secretKeyTest: '', publicKeyLive: '', secretKeyLive: '' })
+      load()
+    } catch (e) { alert(e.message) }
+    setSaving(false)
+  }
+
+  if (loading) return <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+
+  const isLive = mode === 'live'
+  const pkField = isLive ? 'publicKeyLive' : 'publicKeyTest'
+  const skField = isLive ? 'secretKeyLive' : 'secretKeyTest'
+  const pkPlaceholder = (isLive ? state.keys?.publicKeyLive : state.keys?.publicKeyTest) || 'pk_...'
+  const skPlaceholder = (isLive ? state.keys?.secretKeyLive : state.keys?.secretKeyTest) || 'sk_...'
+
+  return (
+    <div className="space-y-5 max-w-xl">
+      <div>
+        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><KeyRound size={15} /> Clés API SEBPay (Mobile Money)</h3>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Passerelle de collecte MTN / Orange Money / Moov. SEBPay fournit une seule paire de clés (publique + secrète) par environnement ; l'opérateur est choisi automatiquement au moment du paiement.
+        </p>
+      </div>
+
+      {/* Statut */}
+      <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 ${state.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+        {state.configured ? <CheckCircle size={14} /> : <Info size={14} />}
+        {state.configured
+          ? <span>Clés configurées — environnement actif : <b>{state.mode === 'live' ? 'Production (live)' : 'Test'}</b></span>
+          : <span>Aucune clé configurée pour le moment.</span>}
+      </div>
+
+      {/* Environnement */}
+      <div>
+        <label className="text-xs font-medium text-gray-600 block mb-1">Environnement à configurer</label>
+        <div className="flex gap-2">
+          {['test', 'live'].map((m) => (
+            <button key={m} type="button" onClick={() => setMode(m)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${mode === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
+              {m === 'live' ? 'Production (live)' : 'Test'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Étape 1 : code de sécurité */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700"><ShieldCheck size={14} /> Vérification de sécurité</div>
+        <p className="text-xs text-gray-500">Pour révéler ou modifier les clés, demandez un code à usage unique envoyé à l'email administrateur.</p>
+        <div className="flex gap-2">
+          <input value={code} onChange={(e) => setCode(e.target.value)} className="input text-sm flex-1" placeholder="Code reçu par email (6 chiffres)" inputMode="numeric" />
+          <button type="button" onClick={requestCode} disabled={sending} className="btn-ghost text-sm flex items-center gap-1.5 whitespace-nowrap">
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Recevoir le code
+          </button>
+        </div>
+        <button type="button" onClick={reveal} disabled={revealing || !code.trim()} className="btn-ghost text-sm flex items-center gap-1.5">
+          {revealing ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />} Révéler les clés existantes
+        </button>
+      </div>
+
+      {/* Étape 2 : clés */}
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Clé publique — {isLive ? 'Live' : 'Test'}</label>
+          <input value={form[pkField]} onChange={(e) => setForm({ ...form, [pkField]: e.target.value })}
+            className="input text-sm w-full font-mono" placeholder={pkPlaceholder} />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Clé secrète — {isLive ? 'Live' : 'Test'}</label>
+          <div className="relative">
+            <input type={showSecret ? 'text' : 'password'} value={form[skField]} onChange={(e) => setForm({ ...form, [skField]: e.target.value })}
+              className="input text-sm w-full font-mono pr-10" placeholder={skPlaceholder} />
+            <button type="button" onClick={() => setShowSecret((s) => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              {showSecret ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+        </div>
+        <p className="text-[11px] text-gray-400">Laissez un champ vide pour conserver la clé actuelle. Les valeurs grisées (ex. « ab••••cd ») sont les clés déjà enregistrées, masquées.</p>
+      </div>
+
+      <div className="flex justify-end">
+        <button type="button" onClick={save} disabled={saving || !code.trim()} className="btn-primary text-sm flex items-center gap-1.5">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer les clés
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPlatformPage() {
   const { user } = useAuth()
-  const [tab, setTab] = useState('posts')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState(searchParams.get('tab') || 'posts')
 
   const platformQ = useCachedFetch('/platform?', async () => {
     const r = await platformApi.get()
@@ -1266,6 +1417,12 @@ export default function AdminPlatformPage() {
     cache.invalidate('/platform')
     platformQ.refetch()
   }
+
+  // Ouvre directement l'onglet passé en query (?tab=api) même si la page est déjà montée.
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (t) setTab(t)
+  }, [searchParams])
 
   if (user?.role !== 'super_admin') {
     return (
@@ -1314,6 +1471,7 @@ export default function AdminPlatformPage() {
           {tab === 'experiences' && <ExperiencesPanel />}
           {tab === 'payments' && <PaymentsPanel />}
           {tab === 'plans' && <PlansPanel />}
+          {tab === 'api' && <SebpayKeysPanel />}
           {tab === 'news' && <NewsDemoPanel />}
           {tab === 'whatsapp' && <WhatsAppPanel platformData={platformData} refresh={refresh} />}
         </>

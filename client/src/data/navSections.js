@@ -3,7 +3,7 @@ import {
   UserCheck, UserCog, ClipboardList, FileText, CalendarCheck, Activity,
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
   BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet, QrCode,
-  Bot, Sparkles, Image as ImageIcon, Briefcase, Newspaper,
+  Bot, Sparkles, Image as ImageIcon, Briefcase, Newspaper, KeyRound,
 } from 'lucide-react'
 
 // roles: array of allowed roles. undefined = all roles.
@@ -149,6 +149,7 @@ export const navSections = [
       { label: 'Matières par école', icon: ClipboardList, path: '/dashboard/matieres-ecoles' },
       { label: 'Localités (Pays/Villes)', icon: MapPin, path: '/dashboard/localites' },
       { label: 'Gestion Plateforme', icon: LayoutGrid, path: '/dashboard/plateforme' },
+      { label: 'Gestion API (Paiements)', icon: KeyRound, path: '/dashboard/plateforme?tab=api' },
       { label: 'Bannières', icon: ImageIcon, path: '/dashboard/bannieres' },
       { label: 'Assistant IA', icon: Bot, path: '/dashboard/ia-admin' },
       { label: 'Suivi des connexions', icon: Activity, path: '/dashboard/suivi-connexions' },
