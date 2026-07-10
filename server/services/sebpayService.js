@@ -56,6 +56,12 @@ function normalizePhone(phone, country) {
   return digits
 }
 
+// SEBPay /collections attend le CODE opérateur sans suffixe pays :
+// "mtn-cm" -> "mtn", "orange-cm" -> "orange" (le pays est déjà envoyé à part).
+function normalizeOperator(operator) {
+  return String(operator || '').trim().toLowerCase().replace(/[-_][a-z]{2}$/, '')
+}
+
 function authHeaders(cfg) {
   return {
     'Content-Type': 'application/json',
@@ -75,7 +81,7 @@ async function createCollection({ amount, phone, operator, reference, callbackUr
     amount,
     currency,
     phone: normalizePhone(phone, country),
-    operator,
+    operator: normalizeOperator(operator),
     country,
     external_reference: reference,
   }
