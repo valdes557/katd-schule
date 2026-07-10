@@ -106,6 +106,8 @@ router.post('/subscription/initiate', async (req, res) => {
     const result = await sebpay.createCollection({
       amount, phone, operator, reference, callbackUrl: callbackUrl(),
     })
+    console.log('SEBPay collection créée [' + reference + '] amount=' + amount +
+                ' operator=' + operator + ' →', JSON.stringify(result))
     if (result.transaction_id) {
       intent.sebpayTransactionId = result.transaction_id
       await intent.save()
