@@ -805,6 +805,7 @@ export const paymentsApi = {
   initiateSubscription: (payload) => api.post('/payments/subscription/initiate', payload),
   initiateEnrollment: (payload) => api.post('/payments/enrollment/initiate', payload),
   status: (reference) => api.get(`/payments/status/${reference}`),
+  operators: (country) => api.get(`/payments/operators${country ? `?country=${country}` : ''}`),
 }
 
 export const walletApi = {

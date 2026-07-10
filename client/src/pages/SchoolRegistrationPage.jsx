@@ -34,6 +34,12 @@ export default function SchoolRegistrationPage() {
   const [proofPreview, setProofPreview] = useState(null)
   const [statusMsg, setStatusMsg] = useState('')
   const [billingMap, setBillingMap] = useState({}) // planId -> 'annual'|'trimestrial'
+  // Opérateurs Mobile Money supportés (chargés depuis SEBPay ; fallback Cameroun)
+  const FALLBACK_OPERATORS = [
+    { slug: 'mtn', name: 'MTN Mobile Money' },
+    { slug: 'orange', name: 'Orange Money' },
+  ]
+  const [operators, setOperators] = useState(FALLBACK_OPERATORS)
 
   const [form, setForm] = useState({
     schoolName: '', directorName: '',
@@ -41,6 +47,19 @@ export default function SchoolRegistrationPage() {
     whatsapp: '', email: '',
     phone: '', operator: 'mtn',
   })
+
+  // Charge la vraie liste d'opérateurs SEBPay (slugs exacts) ; garde le fallback si échec
+  useEffect(() => {
+    paymentsApi.operators().then((r) => {
+      const list = (r.operators || [])
+        .map((o) => ({ slug: o.slug || o.code, name: o.name || o.slug }))
+        .filter((o) => o.slug)
+      if (list.length) {
+        setOperators(list)
+        setForm((f) => (list.some((o) => o.slug === f.operator) ? f : { ...f, operator: list[0].slug }))
+      }
+    }).catch(() => { /* garde FALLBACK_OPERATORS */ })
+  }, [])
 
   // Stable on-mount fetches
   const plansQ = useCachedFetch('/plans', async () => {
@@ -460,9 +479,9 @@ export default function SchoolRegistrationPage() {
                   onChange={(e) => setForm({ ...form, operator: e.target.value })}
                   className="input w-full"
                 >
-                  <option value="mtn">MTN Mobile Money</option>
-                  <option value="moov">Moov Money</option>
-                  <option value="celtiis">Celtiis Cash</option>
+                  {operators.map((op) => (
+                    <option key={op.slug} value={op.slug}>{op.name}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -471,7 +490,7 @@ export default function SchoolRegistrationPage() {
                   type="tel"
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="Ex: 01 97 00 00 00"
+                  placeholder="Ex: 6 90 00 00 00"
                   className="input w-full"
                 />
               </div>

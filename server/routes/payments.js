@@ -19,6 +19,17 @@ function callbackUrl() {
   return base.replace(/\/$/, '') + '/api/payments/webhook'
 }
 
+// GET /api/payments/operators — opérateurs Mobile Money supportés (pour peupler le formulaire)
+router.get('/operators', async (req, res) => {
+  try {
+    const operators = await sebpay.listOperators(req.query.country)
+    return res.json({ success: true, operators, currency: sebpay.DEFAULT_CURRENCY, country: req.query.country || sebpay.DEFAULT_COUNTRY })
+  } catch (err) {
+    console.error('list operators error:', err.message, err.data ? JSON.stringify(err.data) : '')
+    return res.status(err.status || 500).json({ message: err.message, data: err.data })
+  }
+})
+
 // POST /api/payments/subscription/initiate — démarre la collecte de souscription directeur
 router.post('/subscription/initiate', async (req, res) => {
   try {

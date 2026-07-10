@@ -5,6 +5,9 @@ const SebpayConfig = require('../models/SebpayConfig')
 const { decrypt } = require('../utils/crypto')
 
 const BASE_URL = process.env.SEBPAY_BASE_URL || 'https://newapi.sebpay.bj/api/v1'
+// Pays / devise par défaut du marché (Cameroun / Afrique centrale). Surchargeables par .env.
+const DEFAULT_COUNTRY = process.env.SEBPAY_COUNTRY || 'CM'
+const DEFAULT_CURRENCY = process.env.SEBPAY_CURRENCY || 'XAF'
 
 // Résout les clés actives : la config DB (dashboard) prend le dessus sur le .env
 async function resolveConfig() {
@@ -46,7 +49,7 @@ function authHeaders(cfg) {
 }
 
 // Initie une collecte Mobile Money (argent entrant)
-async function createCollection({ amount, phone, operator, reference, callbackUrl, country = 'BJ', currency = 'XOF', otpCode }) {
+async function createCollection({ amount, phone, operator, reference, callbackUrl, country = DEFAULT_COUNTRY, currency = DEFAULT_CURRENCY, otpCode }) {
   const cfg = await resolveConfig()
   if (!cfg.publicKey || !cfg.secretKey) {
     throw new Error('Clés API SEBPay non configurées (mode ' + cfg.mode + ')')
@@ -86,6 +89,28 @@ async function createCollection({ amount, phone, operator, reference, callbackUr
   return { mode: cfg.mode, ...data }
 }
 
+// Liste les opérateurs Mobile Money supportés (filtrés par pays) — pour peupler le formulaire
+async function listOperators(country = DEFAULT_COUNTRY) {
+  const cfg = await resolveConfig()
+  if (!cfg.publicKey || !cfg.secretKey) {
+    throw new Error('Clés API SEBPay non configurées (mode ' + cfg.mode + ')')
+  }
+  const res = await fetch(BASE_URL + '/operators?country=' + encodeURIComponent(country), {
+    method: 'GET',
+    headers: authHeaders(cfg),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data && data.message) || ('Erreur SEBPay ' + res.status))
+    err.status = res.status
+    err.data = data
+    throw err
+  }
+  // Normalise : SEBPay renvoie soit un tableau, soit { data: [...] }
+  const list = Array.isArray(data) ? data : (data.data || data.operators || [])
+  return list
+}
+
 // Vérifie le statut d'une collecte (par transaction_id ou external_reference)
 async function getCollectionStatus(idOrRef) {
   const cfg = await resolveConfig()
@@ -116,4 +141,4 @@ async function verifyWebhookSignature(rawBody, signature) {
   }
 }
 
-module.exports = { resolveConfig, createCollection, getCollectionStatus, verifyWebhookSignature, BASE_URL }
+module.exports = { resolveConfig, createCollection, listOperators, getCollectionStatus, verifyWebhookSignature, BASE_URL, DEFAULT_COUNTRY, DEFAULT_CURRENCY }
