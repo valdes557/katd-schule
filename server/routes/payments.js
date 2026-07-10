@@ -19,6 +19,23 @@ function callbackUrl() {
   return base.replace(/\/$/, '') + '/api/payments/webhook'
 }
 
+// Normalise les nombreux libellés de statut SEBPay vers 'approved' | 'rejected' | 'pending'
+const APPROVED_STATES = ['approved', 'success', 'successful', 'completed', 'complete', 'paid', 'confirmed']
+const REJECTED_STATES = ['rejected', 'failed', 'failure', 'declined', 'cancelled', 'canceled', 'expired', 'error']
+function mapStatus(raw) {
+  const s = String(raw || '').toLowerCase().trim()
+  if (APPROVED_STATES.includes(s)) return 'approved'
+  if (REJECTED_STATES.includes(s)) return 'rejected'
+  return 'pending'
+}
+// Extrait la raison d'échec renvoyée par SEBPay (champs variables selon l'API)
+function extractReason(obj) {
+  if (!obj || typeof obj !== 'object') return ''
+  const d = obj.data && typeof obj.data === 'object' ? obj.data : obj
+  return d.reason || d.message || d.status_reason || d.failure_reason ||
+         (obj.error && (obj.error.message || obj.error)) || ''
+}
+
 // GET /api/payments/operators — opérateurs Mobile Money supportés (pour peupler le formulaire)
 router.get('/operators', async (req, res) => {
   try {
@@ -122,14 +139,15 @@ router.get('/status/:reference', async (req, res) => {
     if (intent.status === 'pending') {
       try {
         const remote = await sebpay.getCollectionStatus(intent.sebpayTransactionId || intent.reference)
-        const rs = (remote.status || remote.data && remote.data.status || '').toLowerCase()
+        const rs = mapStatus(remote.status || (remote.data && remote.data.status))
         if (rs === 'approved' || rs === 'rejected') {
           await applyOutcome(intent, rs, remote)
         }
       } catch (e) { /* ignore polling errors */ }
     }
     const fresh = await PaymentIntent.findById(intent._id)
-    return res.json({ success: true, status: fresh.status, fulfilled: fresh.fulfilled, purpose: fresh.purpose })
+    return res.json({ success: true, status: fresh.status, fulfilled: fresh.fulfilled,
+                      purpose: fresh.purpose, reason: fresh.status === 'rejected' ? extractReason(fresh.rawWebhook) : '' })
   } catch (err) {
     return res.status(500).json({ message: err.message })
   }
@@ -147,7 +165,7 @@ router.post('/webhook', async (req, res) => {
     }
     const payload = req.body || {}
     const reference = payload.external_reference
-    const status = (payload.status || '').toLowerCase()
+    const status = mapStatus(payload.status)
     if (!reference) return res.status(400).json({ message: 'external_reference manquant' })
     const intent = await PaymentIntent.findOne({ reference })
     if (!intent) return res.status(404).json({ message: 'Intent introuvable' })

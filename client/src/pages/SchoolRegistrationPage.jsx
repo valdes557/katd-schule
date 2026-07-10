@@ -197,7 +197,9 @@ export default function SchoolRegistrationPage() {
             setSubmitted(true)
           } else if (st.status === 'rejected') {
             done = true
-            setError('Le paiement a été rejeté ou annulé. Veuillez réessayer.')
+            setError(st.reason
+              ? `Paiement non abouti : ${st.reason}. Vérifiez votre solde puis réessayez.`
+              : "Le paiement n'a pas été validé sur votre téléphone (refusé, annulé ou expiré). Réessayez et saisissez votre code Mobile Money à l'invite.")
           }
         } catch (e) { /* continue polling */ }
       }
