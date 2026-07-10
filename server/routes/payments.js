@@ -65,7 +65,7 @@ router.post('/subscription/initiate', async (req, res) => {
       message: 'Demande de paiement envoyée. Validez le paiement sur votre téléphone Mobile Money.',
     })
   } catch (err) {
-    console.error('initiate subscription error:', err.message)
+    console.error('initiate subscription error:', err.message, err.data ? JSON.stringify(err.data) : '')
     return res.status(err.status || 500).json({ message: err.message, data: err.data })
   }
 })
@@ -97,7 +97,7 @@ router.post('/enrollment/initiate', async (req, res) => {
     return res.json({ success: true, reference, amount: fee, mode, transaction: result,
       message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money.' })
   } catch (err) {
-    console.error('initiate enrollment error:', err.message)
+    console.error('initiate enrollment error:', err.message, err.data ? JSON.stringify(err.data) : '')
     return res.status(err.status || 500).json({ message: err.message, data: err.data })
   }
 })

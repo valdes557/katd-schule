@@ -58,8 +58,10 @@ async function createCollection({ amount, phone, operator, reference, callbackUr
     operator,
     country,
     external_reference: reference,
-    callback_url: callbackUrl,
   }
+  // callback_url est optionnel : on ne l'envoie que s'il est absolu (http/https),
+  // sinon SEBPay rejette la requête (erreur de validation). Le suivi se fait par polling.
+  if (callbackUrl && /^https?:\/\//i.test(callbackUrl)) body.callback_url = callbackUrl
   if (otpCode) body.otp_code = otpCode
   const res = await fetch(BASE_URL + '/collections', {
     method: 'POST',
@@ -68,7 +70,14 @@ async function createCollection({ amount, phone, operator, reference, callbackUr
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const msg = (data && (data.message || data.error)) || ('Erreur SEBPay ' + res.status)
+    let msg = (data && (data.message || data.error)) || ('Erreur SEBPay ' + res.status)
+    // Détail champ par champ (format Laravel { errors: { champ: [messages] } })
+    if (data && data.errors && typeof data.errors === 'object') {
+      const details = Object.entries(data.errors)
+        .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+        .join(' | ')
+      if (details) msg += ' — ' + details
+    }
     const err = new Error(msg)
     err.status = res.status
     err.data = data
