@@ -8,8 +8,29 @@ const { provisionDirector, activateExistingSchool } = require('../services/direc
 const wallet = require('../services/walletService')
 const School = require('../models/School')
 const User = require('../models/User')
+const SubscriptionPlan = require('../models/SubscriptionPlan')
 
 const SUBSCRIPTION_FEE_DIRECTOR = Number(process.env.SUBSCRIPTION_FEE_DIRECTOR || 40000)
+
+// Résout le vrai prix depuis la BDD (jamais depuis le montant envoyé par le client).
+// cycle = 'Primaire'|'Maternelle'|'Secondaire' ; billing = 'annual' -> annualPrice, sinon quarterlyPrice.
+// Retombe sur SUBSCRIPTION_FEE_DIRECTOR si aucun plan correspondant.
+async function resolveSubscriptionAmount(cycle, billing) {
+  try {
+    if (cycle) {
+      // 'Maternelle' est fusionnée dans 'Primaire' côté public
+      const cycleQ = String(cycle).toLowerCase() === 'maternelle' ? 'Primaire' : cycle
+      const rx = new RegExp('^' + String(cycleQ).trim() + '$', 'i')
+      const plan = await SubscriptionPlan.findOne({ cycle: rx, isActive: true }).sort({ sortOrder: 1 })
+      if (plan) {
+        const annual = String(billing || 'annual').toLowerCase().startsWith('annu')
+        const price = annual ? plan.annualPrice : plan.quarterlyPrice
+        if (price > 0) return price
+      }
+    }
+  } catch (e) { /* fallback ci-dessous */ }
+  return SUBSCRIPTION_FEE_DIRECTOR
+}
 
 function genRef(prefix) {
   return prefix + '_' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex')
@@ -55,17 +76,18 @@ router.post('/subscription/initiate', async (req, res) => {
     if (!phone || !operator) {
       return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
     }
-    const amount = SUBSCRIPTION_FEE_DIRECTOR
     const reference = genRef('sub')
     const { mode } = await sebpay.resolveConfig()
 
     // Cas 1 : renouvellement d'une école existante (paiement après essai, sans re-remplir le formulaire)
-    let meta
+    let meta, amount
     if (schoolId) {
-      const school = await School.findById(schoolId).select('name subscription contactEmail director')
+      const school = await School.findById(schoolId).select('name subscription contactEmail director cycles cycle')
       if (!school) return res.status(404).json({ message: 'École introuvable' })
+      const schoolCycle = cycle || school.subscription?.cycle || (Array.isArray(school.cycles) ? school.cycles[0] : school.cycle)
       meta = { schoolId: String(school._id), schoolName: school.name,
                plan: plan || school.subscription?.plan || 'annual' }
+      amount = await resolveSubscriptionAmount(schoolCycle, meta.plan)
     } else {
       // Cas 2 : nouvelle souscription (création école + directeur au paiement)
       if (!schoolName || !directorName || !email) {
@@ -73,10 +95,11 @@ router.post('/subscription/initiate', async (req, res) => {
       }
       meta = { schoolName, directorName, email, whatsapp, cycle: cycle || 'primaire',
                plan: plan || 'annual', cityName, neighborhoodName, countryName }
+      amount = await resolveSubscriptionAmount(meta.cycle, meta.plan)
     }
 
     const intent = await PaymentIntent.create({
-      reference, purpose: 'subscription', amount, currency: 'XOF',
+      reference, purpose: 'subscription', amount, currency: sebpay.DEFAULT_CURRENCY,
       payerPhone: phone, payerOperator: operator, payerName: directorName || meta.schoolName,
       payerEmail: email || '', mode, meta,
     })
@@ -115,7 +138,7 @@ router.post('/enrollment/initiate', async (req, res) => {
     const reference = genRef('enr')
     const { mode } = await sebpay.resolveConfig()
     const intent = await PaymentIntent.create({
-      reference, purpose: 'enrollment', amount: fee, currency: 'XOF',
+      reference, purpose: 'enrollment', amount: fee, currency: sebpay.DEFAULT_CURRENCY,
       payerPhone: phone, payerOperator: operator, payerName: payerName || studentName || '',
       payerEmail: payerEmail || '', school: school._id, beneficiary: school.director, mode,
       meta: { studentName, studentId, classId, schoolName: school.name },
