@@ -51,8 +51,9 @@ export default function SchoolRegistrationPage() {
   // Charge la vraie liste d'opérateurs SEBPay (slugs exacts) ; garde le fallback si échec
   useEffect(() => {
     paymentsApi.operators().then((r) => {
+      // SEBPay /collections attend le `code` (ex: "mtn"), pas le `slug` (ex: "mtn-cm")
       const list = (r.operators || [])
-        .map((o) => ({ slug: o.slug || o.code, name: o.name || o.slug }))
+        .map((o) => ({ slug: o.code || o.slug, name: o.name || o.code || o.slug }))
         .filter((o) => o.slug)
       if (list.length) {
         setOperators(list)
