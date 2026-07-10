@@ -39,6 +39,23 @@ async function resolveConfig() {
   return { mode, publicKey: pk, secretKey: sk }
 }
 
+// Indicatifs téléphoniques par code pays ISO (marchés SEBPay courants)
+const DIAL_CODES = {
+  CM: '237', BJ: '229', CI: '225', SN: '221', TG: '228', BF: '226',
+  ML: '223', NE: '227', GN: '224', CG: '242', GA: '241', TD: '235', CF: '236',
+}
+
+// Normalise un numéro au format NATIONAL attendu par SEBPay (le pays est envoyé à part).
+// Retire l'indicatif pays s'il est présent (ex: 237680404921 -> 680404921).
+function normalizePhone(phone, country) {
+  let digits = String(phone || '').replace(/[^0-9]/g, '')
+  const dial = DIAL_CODES[String(country || '').toUpperCase()]
+  if (dial && digits.startsWith(dial) && digits.length > dial.length) {
+    digits = digits.slice(dial.length)
+  }
+  return digits
+}
+
 function authHeaders(cfg) {
   return {
     'Content-Type': 'application/json',
@@ -57,7 +74,7 @@ async function createCollection({ amount, phone, operator, reference, callbackUr
   const body = {
     amount,
     currency,
-    phone: String(phone).replace(/[^0-9]/g, ''),
+    phone: normalizePhone(phone, country),
     operator,
     country,
     external_reference: reference,
