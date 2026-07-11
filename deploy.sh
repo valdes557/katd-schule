@@ -22,7 +22,22 @@ npm install --production --no-audit --no-fund
 echo "==> 3/5  Frontend : build React"
 cd "$APP_DIR/client"
 npm install --no-audit --no-fund
-npm run build
+# Build dans un dossier temporaire puis bascule atomique : si le build échoue,
+# l'ancien dist/ (site en ligne) reste intact au lieu d'être laissé à moitié écrit.
+# --max-old-space-size évite les échecs OOM du build Vite sur un petit VPS.
+export NODE_OPTIONS="--max-old-space-size=1024"
+rm -rf dist.new
+if npx vite build --outDir dist.new; then
+  rm -rf dist.old
+  [ -d dist ] && mv dist dist.old
+  mv dist.new dist
+  rm -rf dist.old
+  echo "   Build client OK (bascule atomique)."
+else
+  rm -rf dist.new
+  echo "   ⚠️  Build client ÉCHOUÉ — l'ancien site reste en ligne. Voir les logs ci-dessus." >&2
+  exit 1
+fi
 
 echo "==> 4/5  Redémarrage de l'API (PM2)"
 cd "$APP_DIR/server"
