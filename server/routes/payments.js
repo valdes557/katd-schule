@@ -2,6 +2,7 @@
 const express = require('express')
 const router = express.Router()
 const crypto = require('crypto')
+const mongoose = require('mongoose')
 const PaymentIntent = require('../models/PaymentIntent')
 const sebpay = require('../services/sebpayService')
 const { provisionDirector, activateExistingSchool } = require('../services/directorProvisioning')
@@ -15,15 +16,25 @@ const SUBSCRIPTION_FEE_DIRECTOR = Number(process.env.SUBSCRIPTION_FEE_DIRECTOR |
 // Résout le vrai prix depuis la BDD (jamais depuis le montant envoyé par le client).
 // cycle = 'Primaire'|'Maternelle'|'Secondaire' ; billing = 'annual' -> annualPrice, sinon quarterlyPrice.
 // Retombe sur SUBSCRIPTION_FEE_DIRECTOR si aucun plan correspondant.
-async function resolveSubscriptionAmount(cycle, billing) {
+async function resolveSubscriptionAmount(cycle, billing, planId) {
+  const annual = String(billing || 'annual').toLowerCase().startsWith('annu')
   try {
+    // 1) Priorité au plan EXACT sélectionné par l'utilisateur (par son _id).
+    //    Sinon on facturait toujours le 1er plan du cycle, jamais celui choisi.
+    if (planId && mongoose.isValidObjectId(planId)) {
+      const plan = await SubscriptionPlan.findById(planId)
+      if (plan && plan.isActive) {
+        const price = annual ? plan.annualPrice : plan.quarterlyPrice
+        if (price > 0) return price
+      }
+    }
+    // 2) Repli : premier plan actif du cycle (compat. anciens appels sans planId)
     if (cycle) {
       // 'Maternelle' est fusionnée dans 'Primaire' côté public
       const cycleQ = String(cycle).toLowerCase() === 'maternelle' ? 'Primaire' : cycle
       const rx = new RegExp('^' + String(cycleQ).trim() + '$', 'i')
       const plan = await SubscriptionPlan.findOne({ cycle: rx, isActive: true }).sort({ sortOrder: 1 })
       if (plan) {
-        const annual = String(billing || 'annual').toLowerCase().startsWith('annu')
         const price = annual ? plan.annualPrice : plan.quarterlyPrice
         if (price > 0) return price
       }
@@ -85,7 +96,7 @@ router.get('/operators', async (req, res) => {
 // POST /api/payments/subscription/initiate — démarre la collecte de souscription directeur
 router.post('/subscription/initiate', async (req, res) => {
   try {
-    const { schoolId, schoolName, directorName, email, whatsapp, cycle, plan,
+    const { schoolId, schoolName, directorName, email, whatsapp, cycle, plan, planId,
             cityName, neighborhoodName, countryName, phone, operator } = req.body
     if (!phone || !operator) {
       return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
@@ -100,16 +111,16 @@ router.post('/subscription/initiate', async (req, res) => {
       if (!school) return res.status(404).json({ message: 'École introuvable' })
       const schoolCycle = cycle || school.subscription?.cycle || (Array.isArray(school.cycles) ? school.cycles[0] : school.cycle)
       meta = { schoolId: String(school._id), schoolName: school.name,
-               plan: plan || school.subscription?.plan || 'annual' }
-      amount = await resolveSubscriptionAmount(schoolCycle, meta.plan)
+               plan: plan || school.subscription?.plan || 'annual', planId: planId || null }
+      amount = await resolveSubscriptionAmount(schoolCycle, meta.plan, planId)
     } else {
       // Cas 2 : nouvelle souscription (création école + directeur au paiement)
       if (!schoolName || !directorName || !email) {
         return res.status(400).json({ message: 'Champs requis manquants (école, directeur, email)' })
       }
       meta = { schoolName, directorName, email, whatsapp, cycle: cycle || 'primaire',
-               plan: plan || 'annual', cityName, neighborhoodName, countryName }
-      amount = await resolveSubscriptionAmount(meta.cycle, meta.plan)
+               plan: plan || 'annual', planId: planId || null, cityName, neighborhoodName, countryName }
+      amount = await resolveSubscriptionAmount(meta.cycle, meta.plan, planId)
     }
 
     // Montant entier ≥ 1 (SEBPay rejette les décimaux / valeurs vides)

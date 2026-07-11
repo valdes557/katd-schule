@@ -125,7 +125,7 @@ export default function SchoolRegistrationPage() {
 
   const selectPlan = (plan, billing) => {
     const price = billing === 'annual' ? plan.annualPrice : plan.quarterlyPrice
-    setSelected({ cycle: plan.cycle, billing, amount: price, planName: plan.name })
+    setSelected({ planId: plan._id, cycle: plan.cycle, billing, amount: price, planName: plan.name })
     setStep(2)
   }
 
@@ -182,6 +182,7 @@ export default function SchoolRegistrationPage() {
         directorName: form.directorName,
         email: form.email,
         whatsapp: whatsappFull,
+        planId: selected.planId,
         cycle: selected.cycle,
         plan: selected.billing,
         countryName: form.country,
