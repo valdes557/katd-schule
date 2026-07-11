@@ -6,6 +6,7 @@ const { protect } = require('../middleware/auth')
 const User = require('../models/User')
 const WithdrawalRequest = require('../models/WithdrawalRequest')
 const PaymentIntent = require('../models/PaymentIntent')
+const WalletTransaction = require('../models/WalletTransaction')
 const SebpayConfig = require('../models/SebpayConfig')
 const wallet = require('../services/walletService')
 const { encrypt, decrypt, mask } = require('../utils/crypto')
@@ -117,6 +118,207 @@ router.get('/payments/stats', protect, adminOnly, async (req, res) => {
       if (st === 'approved') stats.byPurpose[pu].approvedTotal += r.total
     }
     res.json({ success: true, stats })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ───────────────────── TRANSACTIONS (grand livre unifié) ─────────────────────
+// Groupes de rôles : personnel de la plateforme vs utilisateurs/parents/élèves
+const STAFF_ROLES = ['super_admin', 'admin', 'directeur', 'enseignant']
+const USER_ROLES = ['utilisateur', 'parent', 'eleve']
+function roleGroup(role) { return USER_ROLES.includes(role) ? 'users' : 'staff' }
+
+// Libellés lisibles des natures d'opération (WalletTransaction.type + PaymentIntent.purpose)
+const CATEGORY_LABELS = {
+  subscription: 'Souscription', enrollment: 'Inscription élève', deposit: 'Dépôt portefeuille',
+  salary_transfer: 'Transfert salaire', salary_received: 'Salaire reçu',
+  withdrawal: 'Retrait', withdrawal_refund: 'Remboursement retrait', adjustment: 'Ajustement',
+  transfer_sent: 'Transfert envoyé', transfer_received: 'Transfert reçu',
+  transfer_fee: 'Frais de transfert', fee_collected: 'Frais encaissés',
+  pension_payment: 'Paiement pension', pension_received: 'Pension reçue',
+}
+
+// Construit un filtre de dates { createdAt: { $gte, $lte } } à partir de from/to (YYYY-MM-DD)
+function buildDateFilter(from, to) {
+  const f = {}
+  if (from) { const d = new Date(from); if (!isNaN(d)) f.$gte = d }
+  if (to) { const d = new Date(to); if (!isNaN(d)) { d.setHours(23, 59, 59, 999); f.$lte = d } }
+  return Object.keys(f).length ? { createdAt: f } : {}
+}
+
+function normalizeWalletTx(tx) {
+  const o = tx.owner || {}
+  const cp = tx.counterparty || null
+  return {
+    _id: 'w_' + tx._id, source: 'wallet', date: tx.createdAt,
+    category: tx.type, categoryLabel: CATEGORY_LABELS[tx.type] || tx.type,
+    direction: tx.direction, amount: tx.amount, currency: tx.currency || 'XOF',
+    status: 'completed',
+    actor: {
+      id: o._id, name: o.name || '—', role: o.role || '', email: o.email || '',
+      phone: o.phone || '', matricule: o.matricule || '', accountNo: o.walletAccountNo || '',
+      group: roleGroup(o.role),
+    },
+    counterparty: cp ? { name: cp.name, role: cp.role } : null,
+    description: tx.description || '',
+  }
+}
+
+function normalizeIntent(pi) {
+  const by = pi.initiatedBy || {}
+  const role = by.role || 'directeur'
+  return {
+    _id: 'p_' + pi._id, source: 'sebpay', date: pi.createdAt,
+    category: pi.purpose, categoryLabel: CATEGORY_LABELS[pi.purpose] || pi.purpose,
+    direction: 'credit', amount: pi.amount, currency: pi.currency || 'XOF',
+    status: pi.status,
+    actor: {
+      id: by._id, name: pi.payerName || by.name || (pi.meta && pi.meta.directorName) || '—',
+      role, email: pi.payerEmail || by.email || '',
+      phone: pi.payerPhone || '', matricule: by.matricule || '', accountNo: by.walletAccountNo || '',
+      group: roleGroup(role),
+    },
+    counterparty: pi.school ? { name: pi.school.name, role: 'school' } : null,
+    description: (pi.meta && (pi.meta.planName || pi.meta.schoolName)) || pi.reference || '',
+  }
+}
+
+// GET /api/admin/transactions — toutes les souscriptions + paiements (personnel & utilisateurs)
+// Union : grand livre portefeuille (WalletTransaction) + collectes SEBPay non converties en écriture
+// (souscriptions + tentatives non abouties). Filtres : type, statut, groupe (staff/users/rôle), dates, q.
+// Renvoie la liste paginée ET les statistiques sur l'ensemble filtré.
+router.get('/transactions', protect, adminOnly, async (req, res) => {
+  try {
+    const { category, status, group, from, to, q } = req.query
+    const page = Math.max(1, parseInt(req.query.page) || 1)
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50))
+    const dateFilter = buildDateFilter(from, to)
+
+    // Grand livre : tous les mouvements de portefeuille
+    const walletDocs = await WalletTransaction.find(dateFilter)
+      .sort({ createdAt: -1 })
+      .populate('owner', 'name role email phone matricule walletAccountNo')
+      .populate('counterparty', 'name role')
+      .limit(8000).lean()
+
+    // Collectes SEBPay : souscriptions (jamais écrites au grand livre) + tentatives non abouties
+    // (les dépôts/inscriptions approuvés sont déjà représentés par leur écriture de portefeuille).
+    const intentDocs = await PaymentIntent.find({
+      ...dateFilter,
+      $or: [{ purpose: 'subscription' }, { status: { $ne: 'approved' } }],
+    }).sort({ createdAt: -1 })
+      .populate('initiatedBy', 'name role email matricule walletAccountNo')
+      .populate('school', 'name')
+      .limit(3000).lean()
+
+    let items = [...walletDocs.map(normalizeWalletTx), ...intentDocs.map(normalizeIntent)]
+
+    // Filtres en mémoire (sur l'union normalisée)
+    if (category) items = items.filter((i) => i.category === category)
+    if (status) items = items.filter((i) => i.status === status)
+    if (group) {
+      if (group === 'staff' || group === 'users') items = items.filter((i) => i.actor.group === group)
+      else items = items.filter((i) => i.actor.role === group) // rôle précis
+    }
+    if (q && String(q).trim()) {
+      const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      items = items.filter((i) => rx.test(i.actor.name) || rx.test(i.actor.phone) ||
+        rx.test(i.actor.matricule) || rx.test(i.actor.accountNo) || rx.test(i.actor.email) || rx.test(i.description))
+    }
+
+    items.sort((a, b) => new Date(b.date) - new Date(a.date))
+
+    // Statistiques sur l'ensemble filtré (avant pagination)
+    const stats = {
+      totalCount: items.length, totalIn: 0, totalOut: 0,
+      byCategory: {}, byStatus: {}, byGroup: { staff: { count: 0, total: 0 }, users: { count: 0, total: 0 } },
+    }
+    for (const i of items) {
+      if (i.direction === 'debit') stats.totalOut += i.amount
+      else stats.totalIn += i.amount
+      const c = (stats.byCategory[i.category] ||= { label: i.categoryLabel, count: 0, total: 0 })
+      c.count++; c.total += i.amount
+      const s = (stats.byStatus[i.status] ||= { count: 0, total: 0 })
+      s.count++; s.total += i.amount
+      const g = stats.byGroup[i.actor.group]; if (g) { g.count++; g.total += i.amount }
+    }
+    stats.net = stats.totalIn - stats.totalOut
+
+    const total = items.length
+    const pages = Math.max(1, Math.ceil(total / limit))
+    const paged = items.slice((page - 1) * limit, (page - 1) * limit + limit)
+
+    res.json({ success: true, transactions: paged, total, page, pages, stats })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ───────────────────── FRAIS DE TRANSACTION (versés à l'admin) ─────────────────────
+// GET /api/admin/transaction-fees — frais encaissés par l'administrateur (type 'fee_collected').
+// Détaille le payeur (identifiants, nom, téléphone, date), le type et le montant du frais.
+// Filtres : dates, groupe (staff/users), q. Stats : total, moyenne, par groupe, par période (jour/mois).
+router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
+  try {
+    const { group, from, to, q } = req.query
+    const period = req.query.period === 'day' ? 'day' : 'month'
+    const page = Math.max(1, parseInt(req.query.page) || 1)
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50))
+    const dateFilter = buildDateFilter(from, to)
+
+    const docs = await WalletTransaction.find({ type: 'fee_collected', ...dateFilter })
+      .sort({ createdAt: -1 })
+      .populate('counterparty', 'name role email phone matricule walletAccountNo')
+      .limit(10000).lean()
+
+    let fees = docs.map((tx) => {
+      const p = tx.counterparty || {}
+      return {
+        _id: String(tx._id), date: tx.createdAt,
+        feeType: 'transfer', feeLabel: 'Frais de transfert (0,25%)',
+        amount: tx.amount, currency: tx.currency || 'XOF',
+        baseAmount: (tx.meta && tx.meta.baseAmount) || null,
+        rate: (tx.meta && tx.meta.rate) || 0.0025,
+        payer: {
+          id: p._id, name: p.name || '—', role: p.role || '', email: p.email || '',
+          phone: p.phone || '', matricule: p.matricule || '', accountNo: p.walletAccountNo || '',
+          group: roleGroup(p.role),
+        },
+      }
+    })
+
+    if (group) {
+      if (group === 'staff' || group === 'users') fees = fees.filter((f) => f.payer.group === group)
+      else fees = fees.filter((f) => f.payer.role === group)
+    }
+    if (q && String(q).trim()) {
+      const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      fees = fees.filter((f) => rx.test(f.payer.name) || rx.test(f.payer.phone) ||
+        rx.test(f.payer.matricule) || rx.test(f.payer.accountNo) || rx.test(f.payer.email))
+    }
+
+    // Statistiques
+    const stats = {
+      totalCount: fees.length, totalAmount: 0, avg: 0,
+      byGroup: { staff: { count: 0, total: 0 }, users: { count: 0, total: 0 } },
+      byPeriod: [], period,
+    }
+    const periodMap = {}
+    for (const f of fees) {
+      stats.totalAmount += f.amount
+      const g = stats.byGroup[f.payer.group]; if (g) { g.count++; g.total += f.amount }
+      const d = new Date(f.date)
+      const key = period === 'day'
+        ? d.toISOString().slice(0, 10)
+        : d.toISOString().slice(0, 7)
+      const pm = (periodMap[key] ||= { period: key, count: 0, total: 0 })
+      pm.count++; pm.total += f.amount
+    }
+    stats.avg = fees.length ? Math.round(stats.totalAmount / fees.length) : 0
+    stats.byPeriod = Object.values(periodMap).sort((a, b) => (a.period < b.period ? 1 : -1))
+
+    const total = fees.length
+    const pages = Math.max(1, Math.ceil(total / limit))
+    const paged = fees.slice((page - 1) * limit, (page - 1) * limit + limit)
+
+    res.json({ success: true, fees: paged, total, page, pages, stats })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

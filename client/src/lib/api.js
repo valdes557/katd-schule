@@ -833,6 +833,16 @@ export const walletAdminApi = {
     return api.get('/admin/payments' + (qs ? '?' + qs : ''))
   },
   paymentsStats: () => api.get('/admin/payments/stats'),
+  // Grand livre unifié (souscriptions + paiements du personnel & des utilisateurs)
+  transactions: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/admin/transactions' + (qs ? '?' + qs : ''))
+  },
+  // Frais de transaction versés à l'administrateur
+  transactionFees: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/admin/transaction-fees' + (qs ? '?' + qs : ''))
+  },
   getSebpay: () => api.get('/admin/sebpay'),
   requestSebpayCode: () => api.post('/admin/sebpay/request-code', {}),
   revealSebpay: (code) => api.post('/admin/sebpay/reveal', { code }),
