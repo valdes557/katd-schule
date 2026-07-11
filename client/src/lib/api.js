@@ -827,6 +827,12 @@ export const walletAdminApi = {
   withdrawals: (status) => api.get('/admin/withdrawals' + (status ? '?status=' + status : '')),
   payWithdrawal: (id, note) => api.put('/admin/withdrawals/' + id + '/pay', { note }),
   rejectWithdrawal: (id, reason) => api.put('/admin/withdrawals/' + id + '/reject', { reason }),
+  // Paiements SEBPay (collectes) — consultation admin
+  payments: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()
+    return api.get('/admin/payments' + (qs ? '?' + qs : ''))
+  },
+  paymentsStats: () => api.get('/admin/payments/stats'),
   getSebpay: () => api.get('/admin/sebpay'),
   requestSebpayCode: () => api.post('/admin/sebpay/request-code', {}),
   revealSebpay: (code) => api.post('/admin/sebpay/reveal', { code }),

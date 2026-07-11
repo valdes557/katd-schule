@@ -69,7 +69,7 @@ function AdminDashboard({ user }) {
           { label: 'Gérer les écoles', path: '/dashboard/ecoles-admin', icon: School, color: 'text-blue-600' },
           { label: 'Demandes d\'écoles', path: '/dashboard/demandes-ecoles', icon: UserPlus, color: 'text-amber-600' },
           { label: 'Souscriptions', path: '/dashboard/souscriptions', icon: CreditCard, color: 'text-green-600' },
-          { label: 'Paiements', path: '/dashboard/paiements', icon: DollarSign, color: 'text-purple-600' },
+          { label: 'Paiements SEBPay', path: '/dashboard/paiements-admin', icon: DollarSign, color: 'text-purple-600' },
         ].map((q) => (
           <Link key={q.path} to={q.path} className="card p-4 flex items-center gap-3 hover:shadow-card-lg transition-shadow group">
             <q.icon size={18} className={q.color} />

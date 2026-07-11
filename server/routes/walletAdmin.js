@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs')
 const { protect } = require('../middleware/auth')
 const User = require('../models/User')
 const WithdrawalRequest = require('../models/WithdrawalRequest')
+const PaymentIntent = require('../models/PaymentIntent')
 const SebpayConfig = require('../models/SebpayConfig')
 const wallet = require('../services/walletService')
 const { encrypt, decrypt, mask } = require('../utils/crypto')
@@ -68,6 +69,54 @@ router.put('/withdrawals/:id/reject', protect, adminOnly, async (req, res) => {
       subject: 'Retrait rejeté — KATD-SCHÜLE',
       html: '<p>Votre demande de retrait de <b>' + wr.amount.toLocaleString('fr-FR') + ' FCFA</b> a été rejetée et le montant recrédité sur votre portefeuille.' + (wr.rejectionReason ? ' Motif : ' + wr.rejectionReason : '') + '</p>' }) } catch(e){}
     res.json({ success: true, message: 'Demande rejetée et montant remboursé' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ───────────────────── PAIEMENTS SEBPAY (collectes) ─────────────────────
+// GET /api/admin/payments?purpose=subscription&status=approved — argent entrant SEBPay
+// Consultation seule : le statut est mis à jour automatiquement par le webhook SEBPay.
+router.get('/payments', protect, adminOnly, async (req, res) => {
+  try {
+    const filter = {}
+    const { purpose, status, q } = req.query
+    if (purpose && ['subscription', 'enrollment', 'deposit'].includes(purpose)) filter.purpose = purpose
+    if (status && ['pending', 'approved', 'rejected', 'expired'].includes(status)) filter.status = status
+    if (q && String(q).trim()) {
+      const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      filter.$or = [{ reference: rx }, { payerName: rx }, { payerEmail: rx }, { payerPhone: rx }, { sebpayTransactionId: rx }]
+    }
+    const list = await PaymentIntent.find(filter)
+      .sort({ createdAt: -1 })
+      .populate('school', 'name')
+      .populate('initiatedBy', 'name email')
+      .populate('beneficiary', 'name email')
+      .limit(300)
+      .lean()
+    res.json({ success: true, payments: list })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/admin/payments/stats — synthèse (encaissé / en attente / rejeté) par finalité
+router.get('/payments/stats', protect, adminOnly, async (req, res) => {
+  try {
+    const rows = await PaymentIntent.aggregate([
+      { $group: {
+        _id: { purpose: '$purpose', status: '$status' },
+        count: { $sum: 1 },
+        total: { $sum: '$amount' },
+      } },
+    ])
+    // Agrège en { approved: {count,total}, pending:{...}, rejected:{...}, byPurpose:{...} }
+    const stats = { approved: { count: 0, total: 0 }, pending: { count: 0, total: 0 }, rejected: { count: 0, total: 0 }, byPurpose: {} }
+    for (const r of rows) {
+      const st = r._id.status, pu = r._id.purpose || 'autre'
+      if (stats[st]) { stats[st].count += r.count; stats[st].total += r.total }
+      if (!stats.byPurpose[pu]) stats.byPurpose[pu] = { count: 0, total: 0, approvedTotal: 0 }
+      stats.byPurpose[pu].count += r.count
+      stats.byPurpose[pu].total += r.total
+      if (st === 'approved') stats.byPurpose[pu].approvedTotal += r.total
+    }
+    res.json({ success: true, stats })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
