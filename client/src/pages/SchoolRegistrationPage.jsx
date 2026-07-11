@@ -159,6 +159,13 @@ export default function SchoolRegistrationPage() {
     }
     if (!form.phone.trim()) { setError('Veuillez saisir votre numéro Mobile Money'); return }
     if (!form.operator) { setError('Veuillez choisir votre opérateur Mobile Money'); return }
+    // Le numéro national doit être complet (Cameroun = 9 chiffres). Évite le rejet
+    // SEBPay « Invalid phone number » sur un numéro tronqué.
+    const phoneDigits = form.phone.replace(/[^0-9]/g, '')
+    if (phoneDigits.length < 8) {
+      setError('Numéro Mobile Money incomplet. Saisissez votre numéro complet (9 chiffres, ex. 6XX XXX XXX) sans l’indicatif ' + (dialCode || '') + '.')
+      return
+    }
 
     setSubmitting(true)
     setStatusMsg('Initialisation du paiement...')

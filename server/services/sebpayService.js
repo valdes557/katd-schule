@@ -77,10 +77,19 @@ async function createCollection({ amount, phone, operator, reference, callbackUr
   if (!cfg.publicKey || !cfg.secretKey) {
     throw new Error('Clés API SEBPay non configurées (mode ' + cfg.mode + ')')
   }
+  // Valide le numéro AVANT l'appel : SEBPay rejette (400 "Invalid phone number")
+  // un numéro incomplet, mais avec un message technique peu clair. On échoue tôt
+  // avec un message compréhensible pour l'utilisateur.
+  const natPhone = normalizePhone(phone, country)
+  if (!/^[0-9]{8,12}$/.test(natPhone)) {
+    const err = new Error('Numéro Mobile Money invalide : « ' + (phone || '') + " ». Vérifiez qu'il est complet (9 chiffres pour le Cameroun, ex. 6XX XXX XXX) et sans espaces manquants.")
+    err.status = 400
+    throw err
+  }
   const body = {
     amount,
     currency,
-    phone: normalizePhone(phone, country),
+    phone: natPhone,
     operator: normalizeOperator(operator),
     country,
     external_reference: reference,
