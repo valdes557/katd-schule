@@ -194,9 +194,11 @@ export default function SchoolRegistrationPage() {
           const st = await paymentsApi.status(reference)
           if (st.status === 'approved') {
             done = true
+            setStatusMsg('')
             setSubmitted(true)
           } else if (st.status === 'rejected') {
             done = true
+            setStatusMsg('')
             setError(st.reason
               ? `Paiement non abouti : ${st.reason}. Vérifiez votre solde puis réessayez.`
               : "Le paiement n'a pas été validé sur votre téléphone (refusé, annulé ou expiré). Réessayez et saisissez votre code Mobile Money à l'invite.")
@@ -204,9 +206,11 @@ export default function SchoolRegistrationPage() {
         } catch (e) { /* continue polling */ }
       }
       if (!done) {
+        setStatusMsg('')
         setError("Le paiement n'a pas été confirmé à temps. Si vous avez payé, vos identifiants arriveront par email dès confirmation.")
       }
     } catch (err) {
+      setStatusMsg('')
       setError(err.message)
     }
     setSubmitting(false)

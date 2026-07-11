@@ -49,12 +49,26 @@ function mapStatus(raw) {
   if (REJECTED_STATES.includes(s)) return 'rejected'
   return 'pending'
 }
-// Extrait la raison d'échec renvoyée par SEBPay (champs variables selon l'API)
+// Extrait la raison d'échec renvoyée par SEBPay (champs variables selon l'API).
+// Explore récursivement (obj, obj.data, obj.error…) pour ne rien rater du motif réel.
 function extractReason(obj) {
   if (!obj || typeof obj !== 'object') return ''
-  const d = obj.data && typeof obj.data === 'object' ? obj.data : obj
-  return d.reason || d.message || d.status_reason || d.failure_reason ||
-         (obj.error && (obj.error.message || obj.error)) || ''
+  const found = []
+  const FIELDS = ['reason', 'message', 'status_reason', 'failure_reason',
+                  'error_message', 'detail', 'description', 'status_message']
+  const dig = (o, depth) => {
+    if (!o || typeof o !== 'object' || depth > 3) return
+    for (const k of FIELDS) {
+      if (typeof o[k] === 'string' && o[k].trim()) found.push(o[k].trim())
+    }
+    if (o.error) {
+      if (typeof o.error === 'string' && o.error.trim()) found.push(o.error.trim())
+      else dig(o.error, depth + 1)
+    }
+    if (o.data && typeof o.data === 'object') dig(o.data, depth + 1)
+  }
+  dig(obj, 0)
+  return found[0] || ''
 }
 
 // GET /api/payments/operators — opérateurs Mobile Money supportés (pour peupler le formulaire)
@@ -97,6 +111,14 @@ router.post('/subscription/initiate', async (req, res) => {
                plan: plan || 'annual', cityName, neighborhoodName, countryName }
       amount = await resolveSubscriptionAmount(meta.cycle, meta.plan)
     }
+
+    // Montant entier ≥ 1 (SEBPay rejette les décimaux / valeurs vides)
+    amount = Math.round(Number(amount) || 0)
+    if (amount < 1) {
+      return res.status(400).json({ message: "Le montant de la souscription est introuvable pour ce cycle/formule. Vérifiez la configuration des plans." })
+    }
+    console.log('Souscription: cycle=' + (meta.cycle || meta.schoolName) + ' plan=' + meta.plan +
+                ' → montant résolu=' + amount + ' ' + sebpay.DEFAULT_CURRENCY)
 
     const intent = await PaymentIntent.create({
       reference, purpose: 'subscription', amount, currency: sebpay.DEFAULT_CURRENCY,
@@ -254,6 +276,11 @@ async function applyOutcome(intent, status, raw) {
     intent.status = 'rejected'
     intent.rawWebhook = raw || {}
     await intent.save()
+    // Trace le motif exact du rejet (montant, plafond, opérateur…) pour diagnostic
+    console.warn('SEBPay REJET [' + intent.reference + '] purpose=' + intent.purpose +
+                 ' amount=' + intent.amount + ' operator=' + intent.payerOperator +
+                 ' raison=' + (extractReason(raw) || '(aucune)') +
+                 ' brut=' + JSON.stringify(raw || {}))
   }
 }
 
