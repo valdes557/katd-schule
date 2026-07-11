@@ -15,17 +15,19 @@ const SUBSCRIPTION_FEE_DIRECTOR = Number(process.env.SUBSCRIPTION_FEE_DIRECTOR |
 
 // Résout le vrai prix depuis la BDD (jamais depuis le montant envoyé par le client).
 // cycle = 'Primaire'|'Maternelle'|'Secondaire' ; billing = 'annual' -> annualPrice, sinon quarterlyPrice.
-// Retombe sur SUBSCRIPTION_FEE_DIRECTOR si aucun plan correspondant.
+// Résout le montant de la souscription. Renvoie { amount, source, planName }.
+//  source = 'plan-id'  -> plan exact choisi (idéal)
+//         = 'cycle'    -> repli sur 1er plan actif du cycle
+//         = 'default'  -> AUCUN plan trouvé -> SUBSCRIPTION_FEE_DIRECTOR (à signaler !)
 async function resolveSubscriptionAmount(cycle, billing, planId) {
   const annual = String(billing || 'annual').toLowerCase().startsWith('annu')
   try {
     // 1) Priorité au plan EXACT sélectionné par l'utilisateur (par son _id).
-    //    Sinon on facturait toujours le 1er plan du cycle, jamais celui choisi.
     if (planId && mongoose.isValidObjectId(planId)) {
       const plan = await SubscriptionPlan.findById(planId)
       if (plan && plan.isActive) {
         const price = annual ? plan.annualPrice : plan.quarterlyPrice
-        if (price > 0) return price
+        if (price > 0) return { amount: price, source: 'plan-id', planName: plan.name }
       }
     }
     // 2) Repli : premier plan actif du cycle (compat. anciens appels sans planId)
@@ -36,11 +38,11 @@ async function resolveSubscriptionAmount(cycle, billing, planId) {
       const plan = await SubscriptionPlan.findOne({ cycle: rx, isActive: true }).sort({ sortOrder: 1 })
       if (plan) {
         const price = annual ? plan.annualPrice : plan.quarterlyPrice
-        if (price > 0) return price
+        if (price > 0) return { amount: price, source: 'cycle', planName: plan.name }
       }
     }
   } catch (e) { /* fallback ci-dessous */ }
-  return SUBSCRIPTION_FEE_DIRECTOR
+  return { amount: SUBSCRIPTION_FEE_DIRECTOR, source: 'default', planName: null }
 }
 
 function genRef(prefix) {
@@ -105,14 +107,14 @@ router.post('/subscription/initiate', async (req, res) => {
     const { mode } = await sebpay.resolveConfig()
 
     // Cas 1 : renouvellement d'une école existante (paiement après essai, sans re-remplir le formulaire)
-    let meta, amount
+    let meta, resolved
     if (schoolId) {
       const school = await School.findById(schoolId).select('name subscription contactEmail director cycles cycle')
       if (!school) return res.status(404).json({ message: 'École introuvable' })
       const schoolCycle = cycle || school.subscription?.cycle || (Array.isArray(school.cycles) ? school.cycles[0] : school.cycle)
       meta = { schoolId: String(school._id), schoolName: school.name,
                plan: plan || school.subscription?.plan || 'annual', planId: planId || null }
-      amount = await resolveSubscriptionAmount(schoolCycle, meta.plan, planId)
+      resolved = await resolveSubscriptionAmount(schoolCycle, meta.plan, planId)
     } else {
       // Cas 2 : nouvelle souscription (création école + directeur au paiement)
       if (!schoolName || !directorName || !email) {
@@ -120,16 +122,28 @@ router.post('/subscription/initiate', async (req, res) => {
       }
       meta = { schoolName, directorName, email, whatsapp, cycle: cycle || 'primaire',
                plan: plan || 'annual', planId: planId || null, cityName, neighborhoodName, countryName }
-      amount = await resolveSubscriptionAmount(meta.cycle, meta.plan, planId)
+      resolved = await resolveSubscriptionAmount(meta.cycle, meta.plan, planId)
     }
 
-    // Montant entier ≥ 1 (SEBPay rejette les décimaux / valeurs vides)
-    amount = Math.round(Number(amount) || 0)
+    let amount = Math.round(Number(resolved.amount) || 0)
+    console.log('Souscription: planId=' + (planId || '(absent)') + ' cycle=' + (meta.cycle || meta.schoolName) +
+                ' plan=' + meta.plan + ' → source=' + resolved.source +
+                (resolved.planName ? " plan='" + resolved.planName + "'" : '') +
+                ' montant=' + amount + ' ' + sebpay.DEFAULT_CURRENCY)
+
+    // Si le plan choisi est introuvable/inactif, on REFUSE plutôt que de facturer
+    // silencieusement le tarif par défaut (SUBSCRIPTION_FEE_DIRECTOR). C'était la cause
+    // du « 80000 au lieu du plan choisi » : un planId périmé (liste de plans en cache).
+    if (resolved.source === 'default' && (planId || meta.cycle)) {
+      return res.status(409).json({
+        message: "Le plan sélectionné n'est plus disponible (il a peut-être été modifié ou désactivé). " +
+                 "Rechargez la page (Ctrl+Maj+R) pour récupérer la liste à jour des plans, puis réessayez.",
+        code: 'PLAN_UNRESOLVED',
+      })
+    }
     if (amount < 1) {
       return res.status(400).json({ message: "Le montant de la souscription est introuvable pour ce cycle/formule. Vérifiez la configuration des plans." })
     }
-    console.log('Souscription: planId=' + (planId || '(absent)') + ' cycle=' + (meta.cycle || meta.schoolName) +
-                ' plan=' + meta.plan + ' → montant résolu=' + amount + ' ' + sebpay.DEFAULT_CURRENCY)
 
     const intent = await PaymentIntent.create({
       reference, purpose: 'subscription', amount, currency: sebpay.DEFAULT_CURRENCY,
