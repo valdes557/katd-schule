@@ -128,8 +128,8 @@ router.post('/subscription/initiate', async (req, res) => {
     if (amount < 1) {
       return res.status(400).json({ message: "Le montant de la souscription est introuvable pour ce cycle/formule. Vérifiez la configuration des plans." })
     }
-    console.log('Souscription: cycle=' + (meta.cycle || meta.schoolName) + ' plan=' + meta.plan +
-                ' → montant résolu=' + amount + ' ' + sebpay.DEFAULT_CURRENCY)
+    console.log('Souscription: planId=' + (planId || '(absent)') + ' cycle=' + (meta.cycle || meta.schoolName) +
+                ' plan=' + meta.plan + ' → montant résolu=' + amount + ' ' + sebpay.DEFAULT_CURRENCY)
 
     const intent = await PaymentIntent.create({
       reference, purpose: 'subscription', amount, currency: sebpay.DEFAULT_CURRENCY,

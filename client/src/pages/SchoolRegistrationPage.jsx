@@ -100,6 +100,18 @@ export default function SchoolRegistrationPage() {
     }
   }, [])
 
+  // Complète le planId manquant (cas d'une pré-sélection par URL, sans _id) :
+  // sans planId, le serveur retombe sur le 1er plan du cycle et facture le mauvais montant.
+  useEffect(() => {
+    if (!selected || selected.planId || plans.length === 0) return
+    const cycleQ = String(selected.cycle || '').toLowerCase() === 'maternelle' ? 'primaire' : String(selected.cycle || '').toLowerCase()
+    const match = plans.find((p) => String(p.cycle || '').toLowerCase() === cycleQ)
+    if (match) {
+      const price = selected.billing === 'annual' ? match.annualPrice : match.quarterlyPrice
+      setSelected((s) => ({ ...s, planId: match._id, amount: s.amount || price }))
+    }
+  }, [selected, plans])
+
   // Cascading location loads (depend on user selection — keep as local state)
   useEffect(() => {
     if (form.country) {
