@@ -16,8 +16,8 @@ export default function LoginPage() {
   // Parrainage : lien .../login?ref=CODE → pré-remplit et force l'inscription utilisateur.
   const referralCode = (searchParams.get('ref') || '').trim().toUpperCase()
 
-  // Mode d'authentification : 'ecole' (personnel) ou 'user' (grand public)
-  const [mode, setMode] = useState(referralCode ? 'user' : 'ecole')
+  // Mode d'authentification : 'user' (grand public) par défaut, ou 'ecole' (personnel).
+  const [mode, setMode] = useState('user')
   const [userMode, setUserMode] = useState(referralCode ? 'signup' : 'login') // 'login' | 'signup'
   const [name, setName] = useState('')
   // Vérification email après inscription
@@ -196,11 +196,11 @@ export default function LoginPage() {
 
           <div className="bg-white rounded-2xl shadow-card-lg border border-gray-100 p-8">
             <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl">
-              <button type="button" onClick={() => { setMode('ecole'); setError('') }} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'ecole' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>
-                <GraduationCap size={16} /> École
-              </button>
               <button type="button" onClick={() => { setMode('user'); setError('') }} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'user' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>
                 <Users size={16} /> Utilisateur
+              </button>
+              <button type="button" onClick={() => { setMode('ecole'); setError('') }} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'ecole' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>
+                <GraduationCap size={16} /> École
               </button>
             </div>
 

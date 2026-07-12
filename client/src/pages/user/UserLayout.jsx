@@ -181,7 +181,6 @@ export default function UserLayout() {
           <div className="flex items-center gap-1 flex-shrink-0">
             <HeaderIcon active={onHome} onClick={() => navigate('/u')} icon={Home} />
             <HeaderIcon active={isWallet} onClick={() => navigate('/u/portefeuille')} icon={Wallet} />
-            <HeaderIcon active={isMerchant} onClick={() => navigate('/u/marchand')} icon={Store} />
             <HeaderIcon active={isProfil} onClick={() => navigate('/u/profil')} icon={User} avatar={user?.avatar} />
             <HeaderIcon active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} badge={unreadNotifs} />
           </div>
@@ -199,6 +198,7 @@ export default function UserLayout() {
           <NavButton active={onHome} onClick={() => navigate('/u')} icon={Home} label="Accueil" gradient="from-blue-500 to-indigo-600" />
           <NavButton active={isNews} onClick={() => navigate('/u/news')} icon={Newspaper} label="News" gradient="from-amber-500 to-orange-600" badge={unreadNews} />
           <NavButton active={isMessages} onClick={() => navigate('/u/messages')} icon={Users} label="Amis" gradient="from-teal-500 to-emerald-600" badge={unreadMessages} />
+          <NavButton active={isMerchant} onClick={() => navigate('/u/marchand')} icon={Store} label="Marchand" gradient="from-orange-500 to-amber-600" />
 
           {/* Bouton Publier (mis en avant) */}
           <button
