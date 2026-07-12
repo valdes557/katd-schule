@@ -298,6 +298,24 @@ async function applyOutcome(intent, status, raw) {
           description: 'Dépôt sur le portefeuille',
         })
       }
+    } else if (intent.purpose === 'merchant') {
+      // Activation d'un compte marchand : bascule le statut + s'assure du portefeuille
+      if (intent.initiatedBy) {
+        await User.updateOne({ _id: intent.initiatedBy }, { $set: { isMerchant: true, merchantSince: new Date() } })
+        await wallet.getOrCreateWallet(intent.initiatedBy)
+        // Frais d'activation encaissés par l'admin plateforme (best-effort, traçabilité)
+        try {
+          const admin = await wallet.getPlatformAdmin()
+          if (admin) {
+            await wallet.credit(admin._id, {
+              amount: intent.amount, type: 'merchant_signup', role: 'admin',
+              counterparty: intent.initiatedBy, paymentIntent: intent._id,
+              sebpayTransactionId: intent.sebpayTransactionId,
+              description: "Frais d'activation marchand",
+            })
+          }
+        } catch (e) { /* activation faite même si le crédit admin échoue */ }
+      }
     }
     intent.fulfilled = true
     await intent.save()

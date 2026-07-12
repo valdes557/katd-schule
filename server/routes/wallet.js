@@ -77,7 +77,7 @@ router.post('/transfer-user', protect, async (req, res) => {
       if (dest.email) await sendEmail({ to: dest.email, subject: 'Transfert reçu — KATD-SCHÜLE',
         html: '<p>Bonjour ' + (dest.name || '') + ', vous avez reçu <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> sur votre portefeuille KATD-SCHÜLE (compte ' + acc + ').</p>' })
     } catch (e) {}
-    res.json({ success: true, message: 'Transfert effectué', amount: r.amount, fee: r.fee, total: r.total, balance: r.from.balance })
+    res.json({ success: true, message: 'Transfert effectué', amount: r.amount, fee: r.fee, commission: r.commission, total: r.total, balance: r.from.balance })
   } catch (err) { res.status(400).json({ message: err.message }) }
 })
 
@@ -104,15 +104,39 @@ router.post('/deposit/initiate', protect, async (req, res) => {
 })
 
 // ───────────────────────── CODE PIN ─────────────────────────
-// POST /api/wallet/pin/set — créer/confirmer le code PIN (nouvelle création uniquement)
+// POST /api/wallet/pin/request-code — envoie un OTP par email pour créer/confirmer le PIN
+router.post('/pin/request-code', protect, async (req, res) => {
+  try {
+    const u = await User.findById(req.user._id).select('+pinResetCode +pinResetExpires name email')
+    const code = ('' + Math.floor(100000 + Math.random() * 900000))
+    u.pinResetCode = await bcrypt.hash(code, 10)
+    u.pinResetExpires = new Date(Date.now() + 15 * 60 * 1000)
+    await u.save()
+    await sendEmail({ to: u.email, subject: 'Code de confirmation du code PIN — KATD-SCHÜLE',
+      html: '<div style="font-family:Arial;max-width:520px;margin:auto"><h2>Confirmation du code PIN</h2>' +
+        '<p>Bonjour ' + (u.name || '') + ',</p><p>Voici votre code de confirmation (valable 15 minutes) :</p>' +
+        '<div style="font-size:28px;font-weight:bold;letter-spacing:6px;background:#f3f4f6;padding:16px;text-align:center;border-radius:8px">' + code + '</div>' +
+        '<p style="color:#6b7280;font-size:12px">Si vous n\'êtes pas à l\'origine de cette demande, ignorez cet email.</p></div>' })
+    res.json({ success: true, message: 'Un code de confirmation a été envoyé à votre email.' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/wallet/pin/set — créer le code PIN (OTP email requis, nouvelle création uniquement)
 router.post('/pin/set', protect, async (req, res) => {
   try {
-    const { pin, confirmPin } = req.body
+    const { code, pin, confirmPin } = req.body
     if (!pin || !/^[0-9]{4,6}$/.test(String(pin))) return res.status(400).json({ message: 'Le code PIN doit comporter 4 à 6 chiffres' })
     if (String(pin) !== String(confirmPin)) return res.status(400).json({ message: 'Les codes PIN ne correspondent pas' })
-    const u = await User.findById(req.user._id).select('+walletPin')
+    const u = await User.findById(req.user._id).select('+walletPin +pinResetCode +pinResetExpires')
     if (u.walletPin) return res.status(400).json({ message: 'Un code PIN existe déjà. Utilisez "PIN oublié" pour le modifier.' })
+    // Vérifie l'OTP envoyé par email (obligatoire pour la création)
+    if (!u.pinResetCode || !u.pinResetExpires || u.pinResetExpires < new Date()) {
+      return res.status(400).json({ message: 'Code expiré ou inexistant. Cliquez sur « Recevoir le code par email ».' })
+    }
+    const ok = await bcrypt.compare(String(code || ''), u.pinResetCode)
+    if (!ok) return res.status(400).json({ message: 'Code de confirmation invalide' })
     u.walletPin = await bcrypt.hash(String(pin), 10)
+    u.pinResetCode = null; u.pinResetExpires = null
     await u.save()
     res.json({ success: true, message: 'Code PIN créé avec succès' })
   } catch (err) { res.status(500).json({ message: err.message }) }

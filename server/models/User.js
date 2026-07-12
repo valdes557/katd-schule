@@ -39,6 +39,9 @@ const userSchema = new mongoose.Schema(
     // directeurs disposent de l'accès d'office si l'école a une souscription IA.
     aiAccess: { type: Boolean, default: false },
     aiAccessGrantedAt: { type: Date },
+    // Compte marchand : activé par paiement (6933) ou octroyé par l'admin
+    isMerchant: { type: Boolean, default: false },
+    merchantSince: { type: Date, default: null },
     // Date de dernière consultation par rubrique (clé → Date) pour les badges de nouveautés
     rubricSeen: { type: Map, of: Date, default: {} },
     // Sécurité authentification (Lot 6)

@@ -109,6 +109,8 @@ export default function PortefeuillePage() {
 }
 
 function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, onError }) {
+  const { user } = useAuth()
+  const isMerchant = user?.isMerchant === true
   const [f, setF] = useState({ amount: '', phone: '', operator: 'mtn', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
   const [status, setStatus] = useState('')
   const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
@@ -117,6 +119,8 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   // Aperçu des frais de transfert utilisateur (0,25%, arrondi, payés en plus)
   const transferFee = Math.round((Number(f.amount) || 0) * 0.0025)
   const transferTotal = (Number(f.amount) || 0) + transferFee
+  // Aperçu de la commission marchand (0,20%, bonus virtuel)
+  const merchantCommission = Math.round((Number(f.amount) || 0) * 0.002)
   // Aperçu des frais de retrait (2%, arrondi, déduits du montant reçu)
   const withdrawFee = Math.round((Number(f.amount) || 0) * 0.02)
   const withdrawNet = (Number(f.amount) || 0) - withdrawFee
@@ -154,9 +158,12 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         onDone('Salaire transféré avec succès')
       } else if (type === 'transferUser') {
         const r = await walletApi.transferUser({ accountNo: f.accountNo, amount: Number(f.amount), pin: f.pin })
-        onDone(`Transfert de ${fmt(r.amount)} F effectué (frais ${fmt(r.fee)} F)`)
+        onDone(r.commission > 0
+          ? `Transfert de ${fmt(r.amount)} F effectué (commission +${fmt(r.commission)} F)`
+          : `Transfert de ${fmt(r.amount)} F effectué (frais ${fmt(r.fee)} F)`)
       } else if (type === 'pin') {
-        await walletApi.setPin({ pin: f.pin, confirmPin: f.confirmPin })
+        if (!f.code) throw new Error('Saisissez le code reçu par email')
+        await walletApi.setPin({ code: f.code, pin: f.pin, confirmPin: f.confirmPin })
         onDone('Code PIN créé')
       } else if (type === 'forgotPin') {
         await walletApi.resetPin({ code: f.code, newPin: f.newPin, confirmPin: f.confirmPin })
@@ -166,6 +173,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   }
 
   const sendForgotCode = async () => { try { await walletApi.forgotPin(); setStatus('Code envoyé à votre email') } catch (e) { onError(e.message) } }
+  const sendCreateCode = async () => { try { await walletApi.requestPinCode(); setStatus('Code envoyé à votre email') } catch (e) { onError(e.message) } }
 
   const titles = { deposit: 'Effectuer un dépôt', withdraw: 'Demande de retrait', transfer: 'Transférer un salaire', transferUser: 'Transférer à un utilisateur', pin: 'Créer un code PIN', forgotPin: 'Modifier le code PIN' }
 
@@ -191,13 +199,20 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
             {recipient?.name && <p className="text-xs text-green-700 mt-1">Destinataire : <b>{recipient.name}</b></p>}
             {recipient?.error && <p className="text-xs text-red-600 mt-1">{recipient.error}</p>}
           </div>
-          {Number(f.amount) > 0 && (
+          {Number(f.amount) > 0 && (isMerchant ? (
+            <div className="text-xs bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-1">
+              <div className="flex justify-between"><span>Montant reçu par le destinataire</span><b>{fmt(Number(f.amount))} F</b></div>
+              <div className="flex justify-between text-gray-500"><span>Frais</span><span>Aucun (marchand)</span></div>
+              <div className="flex justify-between text-emerald-700"><span>Commission gagnée (0,20%)</span><b>+{fmt(merchantCommission)} F</b></div>
+              <div className="flex justify-between border-t border-amber-100 pt-1 mt-1"><span>Total débité de votre solde</span><b>{fmt(Number(f.amount))} F</b></div>
+            </div>
+          ) : (
             <div className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
               <div className="flex justify-between"><span>Montant reçu par le destinataire</span><b>{fmt(Number(f.amount))} F</b></div>
               <div className="flex justify-between text-gray-500"><span>Frais (0,25%)</span><span>{fmt(transferFee)} F</span></div>
               <div className="flex justify-between border-t border-blue-100 pt-1 mt-1"><span>Total débité de votre solde</span><b>{fmt(transferTotal)} F</b></div>
             </div>
-          )}
+          ))}
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
         </>)}
 
@@ -227,6 +242,9 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {type === 'pin' && (<>
+          <p className="text-xs text-gray-500">Pour votre sécurité, un code de confirmation vous est envoyé par email.</p>
+          <button onClick={sendCreateCode} type="button" className="btn-secondary w-full text-sm">Recevoir le code par email</button>
+          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code reçu par email</label><input value={f.code} onChange={up('code')} className="input w-full" placeholder="Collez le code" /></div>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Nouveau code PIN (4-6 chiffres)</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Confirmer le code PIN</label><input type="password" value={f.confirmPin} onChange={up('confirmPin')} className="input w-full" placeholder="••••" /></div>
         </>)}

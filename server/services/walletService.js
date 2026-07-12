@@ -8,6 +8,8 @@ const User = require('../models/User')
 const TRANSFER_FEE_RATE = 0.0025
 // Frais de retrait vers un opérateur externe : 2% du montant, DÉDUITS du montant reçu.
 const WITHDRAWAL_FEE_RATE = 0.02
+// Commission marchand : 0,20% du montant, bonus virtuel crédité au marchand (envoyeur) sur ses transferts.
+const MERCHANT_COMMISSION_RATE = 0.002
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'valdeslando15@gmail.com').toLowerCase()
 
 async function getOrCreateWallet(userId, { role = 'autre', school = null } = {}) {
@@ -135,6 +137,13 @@ function computeWithdrawalFee(amount) {
   return Math.round(amt * WITHDRAWAL_FEE_RATE)
 }
 
+// Calcule la commission marchand (0,20%, arrondi à l'entier) — bonus virtuel au marchand.
+function computeMerchantCommission(amount) {
+  const amt = Number(amount)
+  if (!amt || amt <= 0) return 0
+  return Math.round(amt * MERCHANT_COMMISSION_RATE)
+}
+
 // Crédite l'admin plateforme des frais encaissés (best-effort : ne bloque pas l'opération
 // si l'admin est introuvable ou si le crédit échoue). meta.feeType = 'transfer' | 'withdrawal'.
 async function collectFee({ fee, fromUserId, description, meta = {} }) {
@@ -149,31 +158,36 @@ async function collectFee({ fee, fromUserId, description, meta = {} }) {
   } catch (e) { /* frais tracés côté payeur même si le crédit admin échoue */ }
 }
 
-// Transfert entre deux utilisateurs quelconques (frais 0,25% ajoutés, encaissés par l'admin).
-// L'envoyeur est débité (amount + fee) ; le destinataire reçoit amount ; l'admin reçoit fee.
+// Transfert entre deux utilisateurs quelconques.
+// - Utilisateur normal : frais 0,25% payés EN PLUS par l'envoyeur, encaissés par l'admin.
+// - Marchand (envoyeur) : EXONÉRÉ des 0,25% ; gagne en plus une commission virtuelle de 0,20%.
+// Dans tous les cas le destinataire reçoit le montant plein.
 async function transferBetweenUsers(fromUserId, toUserId, { amount, description = '' }) {
   const amt = Number(amount)
   if (!amt || amt <= 0) throw new Error('Montant de transfert invalide')
   if (String(fromUserId) === String(toUserId)) throw new Error('Impossible de transférer vers votre propre compte')
-  const fee = computeTransferFee(amt)
-  const total = amt + fee
 
-  // Noms/comptes pour des libellés d'historique explicites (chantier 4).
+  // Noms/comptes + statut marchand pour libellés + tarification (chantiers 4 & marchands).
   const [fromU, toU] = await Promise.all([
-    User.findById(fromUserId).select('name walletAccountNo'),
+    User.findById(fromUserId).select('name walletAccountNo isMerchant'),
     User.findById(toUserId).select('name walletAccountNo'),
   ])
   const fromLabel = (fromU?.name || 'Utilisateur') + (fromU?.walletAccountNo ? ' (' + fromU.walletAccountNo + ')' : '')
   const toLabel = (toU?.name || 'Utilisateur') + (toU?.walletAccountNo ? ' (' + toU.walletAccountNo + ')' : '')
 
+  const isMerchant = !!fromU?.isMerchant
+  const fee = isMerchant ? 0 : computeTransferFee(amt) // marchand exonéré des 0,25%
+  const commission = isMerchant ? computeMerchantCommission(amt) : 0 // bonus 0,20%
+  const total = amt + fee
+
   // Vérifie le solde de l'envoyeur AVANT toute écriture (débit couvre montant + frais).
   const fromWallet = await getOrCreateWallet(fromUserId)
-  if (fromWallet.balance < total) throw new Error('Solde insuffisant (frais de 0,25% inclus)')
+  if (fromWallet.balance < total) throw new Error(isMerchant ? 'Solde insuffisant' : 'Solde insuffisant (frais de 0,25% inclus)')
 
   // Débit envoyeur : montant transféré (libellé nominatif : vers qui)
   const d = await debit(fromUserId, { amount: amt, type: 'transfer_sent',
     counterparty: toUserId, description: 'Envoyé à ' + toLabel })
-  // Débit envoyeur : frais 0,25%
+  // Débit envoyeur : frais 0,25% (utilisateur normal uniquement)
   if (fee > 0) {
     await debit(fromUserId, { amount: fee, type: 'transfer_fee', counterparty: toUserId,
       description: 'Frais de transfert (0,25%)', meta: { rate: TRANSFER_FEE_RATE, baseAmount: amt } })
@@ -185,12 +199,19 @@ async function transferBetweenUsers(fromUserId, toUserId, { amount, description 
   await collectFee({ fee, fromUserId,
     description: 'Frais de transfert encaissés (0,25%) — ' + fromLabel,
     meta: { feeType: 'transfer', rate: TRANSFER_FEE_RATE, baseAmount: amt, from: String(fromUserId), to: String(toUserId) } })
-  return { from: d.wallet, to: c.wallet, amount: amt, fee, total, debitTx: d.tx, creditTx: c.tx }
+  // Commission marchand : bonus virtuel 0,20% crédité à l'envoyeur marchand
+  if (commission > 0) {
+    await credit(fromUserId, { amount: commission, type: 'merchant_commission', counterparty: toUserId,
+      description: 'Commission marchand (0,20%) — ' + toLabel,
+      meta: { rate: MERCHANT_COMMISSION_RATE, baseAmount: amt, to: String(toUserId) } })
+  }
+  const fromWalletAfter = await getOrCreateWallet(fromUserId)
+  return { from: fromWalletAfter, to: c.wallet, amount: amt, fee, commission, total, debitTx: d.tx, creditTx: c.tx }
 }
 
 module.exports = {
   getOrCreateWallet, credit, debit, lock, settleLocked, unlock, transfer,
   ensureAccountNo, getPlatformAdmin, computeTransferFee, transferBetweenUsers,
-  computeWithdrawalFee, collectFee,
-  TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE,
+  computeWithdrawalFee, collectFee, computeMerchantCommission,
+  TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE, MERCHANT_COMMISSION_RATE,
 }

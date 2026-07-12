@@ -26,6 +26,9 @@ const txSchema = new mongoose.Schema(
         'fee_collected',     // frais 0,25% encaissés par l'admin (crédit)
         'pension_payment',   // paiement de pension/frais depuis le solde (côté parent, débit)
         'pension_received',  // pension reçue par le directeur (crédit)
+        'merchant_signup',   // frais d'activation marchand (6933) encaissés par l'admin (crédit)
+        'merchant_funding',  // approvisionnement virtuel admin -> marchand (crédit)
+        'merchant_commission', // commission 0,20% gagnée par le marchand sur un transfert (crédit)
       ],
       required: true,
       index: true,

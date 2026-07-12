@@ -48,7 +48,7 @@ router.get('/', protect, superAdminOnly, async (req, res) => {
         _id: u._id, name: u.name, email: u.email, role: u.role, phone: u.phone || '',
         matricule: u.matricule || '', walletAccountNo: u.walletAccountNo || '',
         school: u.school ? (schoolName[String(u.school)] || '') : '',
-        isActive: u.isActive !== false, isOnline: isOnline(u), createdAt: u.createdAt,
+        isActive: u.isActive !== false, isMerchant: u.isMerchant === true, isOnline: isOnline(u), createdAt: u.createdAt,
         balance: bal.balance, locked: bal.locked,
         externalAccount: {
           operator: u.externalAccount?.operator || '',

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet } from 'lucide-react'
+import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { messagesApi, platformApi, newsApi } from '../../lib/api'
 import WhatsAppFab from '../../components/WhatsAppFab'
@@ -34,6 +34,7 @@ export default function UserLayout() {
   const isNotif = pathname.startsWith('/u/notifications')
   const isNews = pathname.startsWith('/u/news')
   const isWallet = pathname.startsWith('/u/portefeuille')
+  const isMerchant = pathname.startsWith('/u/marchand')
 
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
@@ -180,6 +181,7 @@ export default function UserLayout() {
           <div className="flex items-center gap-1 flex-shrink-0">
             <HeaderIcon active={onHome} onClick={() => navigate('/u')} icon={Home} />
             <HeaderIcon active={isWallet} onClick={() => navigate('/u/portefeuille')} icon={Wallet} />
+            <HeaderIcon active={isMerchant} onClick={() => navigate('/u/marchand')} icon={Store} />
             <HeaderIcon active={isProfil} onClick={() => navigate('/u/profil')} icon={User} avatar={user?.avatar} />
             <HeaderIcon active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} badge={unreadNotifs} />
           </div>

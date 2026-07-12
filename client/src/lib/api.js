@@ -814,6 +814,7 @@ export const walletApi = {
   withdrawals: () => api.get('/wallet/withdrawals'),
   teachers: () => api.get('/wallet/teachers'),
   initiateDeposit: (payload) => api.post('/wallet/deposit/initiate', payload),
+  requestPinCode: () => api.post('/wallet/pin/request-code', {}),
   setPin: (payload) => api.post('/wallet/pin/set', payload),
   forgotPin: () => api.post('/wallet/pin/forgot', {}),
   resetPin: (payload) => api.post('/wallet/pin/reset', payload),
@@ -848,6 +849,23 @@ export const walletAdminApi = {
   requestSebpayCode: () => api.post('/admin/sebpay/request-code', {}),
   revealSebpay: (code) => api.post('/admin/sebpay/reveal', { code }),
   updateSebpay: (payload) => api.put('/admin/sebpay', payload),
+}
+
+// Compte marchand (côté utilisateur) : statut + commissions + activation 6933 F
+export const merchantApi = {
+  me: () => api.get('/merchant/me'),
+  initiate: (payload) => api.post('/merchant/initiate', payload),
+}
+
+// Gestion des marchands (admin) : liste + soldes + commissions, octroi, approvisionnement
+export const adminMerchantsApi = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/admin/merchants' + (qs ? '?' + qs : ''))
+  },
+  get: (id) => api.get('/admin/merchants/' + id),
+  grant: (id, isMerchant) => api.put('/admin/merchants/' + id + '/grant', { isMerchant }),
+  fund: (id, amount, reason) => api.put('/admin/merchants/' + id + '/fund', { amount, reason }),
 }
 
 // Gestion de tous les utilisateurs (super_admin) : liste + soldes + compte externe, blocage, suppression

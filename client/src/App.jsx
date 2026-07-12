@@ -145,6 +145,8 @@ const AdminPaiementsPage = lazyPage(() => import('./pages/AdminPaiementsPage'))
 const AdminTransactionsPage = lazyPage(() => import('./pages/AdminTransactionsPage'))
 const AdminTransactionFeesPage = lazyPage(() => import('./pages/AdminTransactionFeesPage'))
 const AdminUsersPage = lazyPage(() => import('./pages/AdminUsersPage'))
+const AdminMerchantsPage = lazyPage(() => import('./pages/AdminMerchantsPage'))
+const UserMerchantPage = lazyPage(() => import('./pages/user/UserMerchantPage'))
 const ParentChildDetailPage = lazyPage(() => import('./pages/ParentChildDetailPage'))
 const ParentFinancesPage = lazyPage(() => import('./pages/ParentFinancesPage'))
 const ParentControlsPage = lazyPage(() => import('./pages/ParentControlsPage'))
@@ -313,6 +315,7 @@ export default function App() {
         <Route path="transactions-admin" element={<AdminTransactionsPage />} />
         <Route path="frais-transaction-admin" element={<AdminTransactionFeesPage />} />
         <Route path="utilisateurs-admin" element={<AdminUsersPage />} />
+        <Route path="marchands-admin" element={<AdminMerchantsPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
         <Route path="recrutement" element={<RecruitmentPage />} />
         <Route path="repetitions" element={<TutoringPage />} />
@@ -370,6 +373,7 @@ export default function App() {
         <Route path="news" element={<NewsPage />} />
         <Route path="profil" element={<UserProfilePage />} />
         <Route path="portefeuille" element={<PortefeuillePage />} />
+        <Route path="marchand" element={<UserMerchantPage />} />
       </Route>
 
       {/* 404 fallback */}
