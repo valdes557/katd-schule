@@ -42,6 +42,12 @@ const userSchema = new mongoose.Schema(
     // Compte marchand : activé par paiement (6933) ou octroyé par l'admin
     isMerchant: { type: Boolean, default: false },
     merchantSince: { type: Date, default: null },
+    // Parrainage : code unique partageable + parrain + suivi du 1er dépôt
+    referralCode: { type: String, unique: true, sparse: true, index: true },
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    firstDepositDone: { type: Boolean, default: false },
+    // Arriéré de frais de maintenance (cumulé si solde insuffisant, réglé au prochain dépôt/mois)
+    maintenanceDue: { type: Number, default: 0 },
     // Date de dernière consultation par rubrique (clé → Date) pour les badges de nouveautés
     rubricSeen: { type: Map, of: Date, default: {} },
     // Sécurité authentification (Lot 6)

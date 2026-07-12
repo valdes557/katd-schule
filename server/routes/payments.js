@@ -297,6 +297,26 @@ async function applyOutcome(intent, status, raw) {
           paymentIntent: intent._id, sebpayTransactionId: intent.sebpayTransactionId,
           description: 'Dépôt sur le portefeuille',
         })
+        // Parrainage : au TOUT PREMIER dépôt du filleul, le parrain gagne 70 F (chantier 16).
+        try {
+          const u = await User.findById(intent.initiatedBy).select('name firstDepositDone referredBy')
+          if (u && !u.firstDepositDone) {
+            u.firstDepositDone = true
+            await u.save()
+            if (u.referredBy) {
+              await wallet.credit(u.referredBy, {
+                amount: 70, type: 'referral_bonus', counterparty: u._id,
+                description: 'Bonus parrainage — 1er dépôt de ' + (u.name || 'votre filleul'),
+                meta: { godchild: String(u._id) },
+              })
+            }
+          }
+        } catch (e) { console.error('[deposit:referral] ' + intent.initiatedBy + ' :', e.message) }
+        // Règlement de l'arriéré de frais de maintenance au prochain dépôt (chantier 20).
+        try {
+          const { applyMaintenanceOnDeposit } = require('../jobs/scheduler')
+          await applyMaintenanceOnDeposit(intent.initiatedBy)
+        } catch (e) { console.error('[deposit:maintenance] ' + intent.initiatedBy + ' :', e.message) }
       }
     } else if (intent.purpose === 'merchant') {
       // Activation d'un compte marchand : bascule le statut + s'assure du portefeuille

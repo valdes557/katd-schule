@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Store, Loader2, Coins, Wallet, X, CheckCircle2, TrendingUp, Sparkles } from 'lucide-react'
+import { Store, Loader2, Coins, Wallet, X, CheckCircle2, TrendingUp, Sparkles, Gift, Copy, Check, Users } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { merchantApi, paymentsApi, authApi } from '../../lib/api'
 
@@ -37,6 +37,8 @@ export default function UserMerchantPage() {
       </div>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm">{err}</div>}
+
+      {data?.referralCode && <ReferralCard code={data.referralCode} count={data.referralCount} earned={data.referralEarned} />}
 
       {!data?.isMerchant ? (
         /* ── Non marchand : proposition d'activation ── */
@@ -102,6 +104,33 @@ export default function UserMerchantPage() {
       )}
 
       {showPay && <PayModal fee={data?.fee} onClose={() => setShowPay(false)} onDone={async () => { setShowPay(false); await refreshUser(); load() }} />}
+    </div>
+  )
+}
+
+// Carte de parrainage : lien partageable .../login?ref=CODE + bonus reçus (70 F/filleul au 1er dépôt).
+function ReferralCard({ code, count, earned }) {
+  const [copied, setCopied] = useState(false)
+  const link = (typeof window !== 'undefined' ? window.location.origin : '') + '/login?ref=' + code
+  const copy = () => {
+    navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }).catch(() => {})
+  }
+  return (
+    <div className="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white rounded-2xl p-5 shadow-lg space-y-3">
+      <div className="flex items-center gap-2"><Gift size={20} /><h2 className="font-bold">Parrainez et gagnez 70 F</h2></div>
+      <p className="text-sm opacity-90 leading-relaxed">
+        Partagez votre lien. À chaque premier dépôt d'un filleul, vous recevez <b>70 F</b> sur votre portefeuille.
+      </p>
+      <div className="bg-white/15 rounded-xl p-3 flex items-center gap-2">
+        <span className="text-xs font-mono truncate flex-1">{link}</span>
+        <button onClick={copy} className="shrink-0 bg-white text-violet-700 rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1">
+          {copied ? <><Check size={14} /> Copié</> : <><Copy size={14} /> Copier</>}
+        </button>
+      </div>
+      <div className="flex items-center gap-4 text-sm">
+        <span className="flex items-center gap-1.5"><Users size={15} className="opacity-80" /> {fmt(count)} filleul{Number(count) > 1 ? 's' : ''}</span>
+        <span className="flex items-center gap-1.5"><Coins size={15} className="opacity-80" /> {fmt(earned)} F gagnés</span>
+      </div>
     </div>
   )
 }

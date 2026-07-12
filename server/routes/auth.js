@@ -85,10 +85,17 @@ router.post(
           return res.status(400).json({ message: 'Cet email est déjà utilisé' })
         }
       }
+      // Parrainage : si un code valide est fourni, on lie le nouveau compte à son parrain.
+      let referredBy = null
+      const rawRef = String(req.body.referralCode || '').trim().toUpperCase()
+      if (rawRef) {
+        const sponsor = await User.findOne({ referralCode: rawRef }).select('_id')
+        if (sponsor) referredBy = sponsor._id // code inconnu => simplement ignoré
+      }
       // Rôle forcé à 'utilisateur'. Compte créé NON vérifié : code envoyé par email.
       const code = gen6()
       const bcrypt = require('bcryptjs')
-      const user = await User.create({ name, email, password, role: 'utilisateur', emailVerified: false, emailVerifyCode: await bcrypt.hash(code, 10), emailVerifyExpires: new Date(Date.now() + 30 * 60000) })
+      const user = await User.create({ name, email, password, role: 'utilisateur', referredBy, emailVerified: false, emailVerifyCode: await bcrypt.hash(code, 10), emailVerifyExpires: new Date(Date.now() + 30 * 60000) })
       try {
         await sendEmail({
           to: user.email,

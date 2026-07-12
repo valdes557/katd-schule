@@ -19,6 +19,11 @@ router.get('/me', protect, async (req, res) => {
     const u = await User.findById(req.user._id).select('isMerchant merchantSince')
     const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
     const accountNo = await wallet.ensureAccountNo(req.user._id)
+    // Parrainage : code/lien partageable (généré paresseusement) + agrégats des bonus reçus.
+    const referralCode = await wallet.ensureReferralCode(req.user._id)
+    const referralCount = await User.countDocuments({ referredBy: req.user._id })
+    const referralTxs = await WalletTransaction.find({ owner: req.user._id, type: 'referral_bonus' }).select('amount').lean()
+    const referralEarned = referralTxs.reduce((s, t) => s + (t.amount || 0), 0)
 
     // Commissions (type merchant_commission) : total + mois en cours + dernières opérations
     const commissions = await WalletTransaction.find({ owner: req.user._id, type: 'merchant_commission' })
@@ -36,6 +41,7 @@ router.get('/me', protect, async (req, res) => {
       merchantSince: u?.merchantSince || null,
       fee: MERCHANT_FEE,
       balance: w.balance, locked: w.locked, currency: w.currency, accountNo,
+      referralCode, referralCount, referralEarned,
       commissionTotal, commissionThisMonth,
       transactions: commissions.map((t) => ({
         _id: t._id, amount: t.amount, createdAt: t.createdAt,

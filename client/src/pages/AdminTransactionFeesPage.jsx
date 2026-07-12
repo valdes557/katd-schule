@@ -45,7 +45,7 @@ export default function AdminTransactionFeesPage() {
 
   const data = query.data || {}
   const fees = data.fees || []
-  const stats = data.stats || { totalCount: 0, totalAmount: 0, avg: 0, byGroup: { staff: {}, users: {} }, byType: { transfer: {}, withdrawal: {} }, byPeriod: [] }
+  const stats = data.stats || { totalCount: 0, totalAmount: 0, avg: 0, byGroup: { staff: {}, users: {} }, byType: { transfer: {}, withdrawal: {}, maintenance: {} }, byPeriod: [] }
   const loading = query.loading
 
   const refresh = () => { cache.invalidate('/admin/transaction-fees'); query.refetch() }
@@ -92,6 +92,7 @@ export default function AdminTransactionFeesPage() {
             <div className="flex items-center gap-2 text-emerald-600"><Users size={16} /><span className="text-xs font-semibold uppercase tracking-wide">Par type</span></div>
             <div className="text-sm font-bold text-gray-900 mt-1">Transferts : {fmt(stats.byType?.transfer?.total)} XAF</div>
             <div className="text-sm font-bold text-gray-900">Retraits : {fmt(stats.byType?.withdrawal?.total)} XAF</div>
+            <div className="text-sm font-bold text-gray-900">Maintenance : {fmt(stats.byType?.maintenance?.total)} XAF</div>
           </div>
         </div>
 
@@ -112,6 +113,7 @@ export default function AdminTransactionFeesPage() {
               <option value="">Tous les frais</option>
               <option value="transfer">Frais de transfert (0,25%)</option>
               <option value="withdrawal">Frais de retrait (2%)</option>
+              <option value="maintenance">Frais de maintenance</option>
             </select>
             <label className="text-xs text-gray-500 flex items-center gap-1.5">Du <input type="date" value={from} onChange={changeFilter(setFrom)} className="input text-sm w-auto" /></label>
             <label className="text-xs text-gray-500 flex items-center gap-1.5">Au <input type="date" value={to} onChange={changeFilter(setTo)} className="input text-sm w-auto" /></label>

@@ -29,6 +29,9 @@ const txSchema = new mongoose.Schema(
         'merchant_signup',   // frais d'activation marchand (6933) encaissés par l'admin (crédit)
         'merchant_funding',  // approvisionnement virtuel admin -> marchand (crédit)
         'merchant_commission', // commission 0,20% gagnée par le marchand sur un transfert (crédit)
+        'referral_bonus',    // bonus de parrainage 70 F au 1er dépôt du filleul (crédit parrain)
+        'interest',          // intérêt quotidien directeur 0,01%/jour (crédit)
+        'maintenance_fee',   // frais de maintenance mensuels (débit utilisateur)
       ],
       required: true,
       index: true,

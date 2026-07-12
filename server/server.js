@@ -9,6 +9,9 @@ const app = express()
 
 connectDB()
 
+// Tâches planifiées in-process (intérêt quotidien directeur + maintenance mensuelle).
+try { require('./jobs/scheduler').start() } catch (e) { console.error('scheduler:', e.message) }
+
 // Gzip/Brotli responses for faster transfers
 app.use(compression())
 

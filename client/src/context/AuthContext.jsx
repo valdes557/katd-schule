@@ -75,9 +75,9 @@ export function AuthProvider({ children }) {
   }
 
   // Inscription publique en tant qu'utilisateur (grand public)
-  const register = async (name, email, password) => {
+  const register = async (name, email, password, referralCode) => {
     try {
-      const res = await authApi.registerUser({ name, email, password })
+      const res = await authApi.registerUser({ name, email, password, referralCode: referralCode || undefined })
       // Vérification email obligatoire : pas de token tant que non confirmé
       if (res.requiresVerification) {
         return { success: true, requiresVerification: true, email: res.email || email }

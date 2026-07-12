@@ -196,17 +196,31 @@ export default function EmploiDuTempsPage() {
               Les créneaux de <strong>{currentClass?.name}</strong> seront copiés vers les salles/classes cochées.
               <span className="text-amber-600"> L'emploi du temps existant de ces classes sera remplacé.</span>
             </p>
-            <div className="space-y-1.5 mb-4">
-              {classes.filter((c) => c._id !== selectedClass).map((c) => (
-                <label key={c._id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer">
-                  <input type="checkbox" checked={assignTargets.includes(c._id)} onChange={() => toggleTarget(c._id)} className="w-4 h-4 accent-indigo-600" />
-                  <span className="text-sm text-gray-700">{c.name} <span className="text-gray-400">({c.cycle})</span></span>
-                </label>
-              ))}
-              {classes.filter((c) => c._id !== selectedClass).length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-3">Aucune autre classe disponible.</p>
-              )}
-            </div>
+            {(() => {
+              const others = classes.filter((c) => c._id !== selectedClass)
+              const allSelected = others.length > 0 && others.every((c) => assignTargets.includes(c._id))
+              return (
+                <div className="space-y-1.5 mb-4">
+                  {others.length > 0 && (
+                    <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-indigo-100 bg-indigo-50/60 hover:bg-indigo-50 cursor-pointer">
+                      <input type="checkbox" checked={allSelected}
+                        onChange={() => setAssignTargets(allSelected ? [] : others.map((c) => c._id))}
+                        className="w-4 h-4 accent-indigo-600" />
+                      <span className="text-sm font-semibold text-indigo-700">Toute l'établissement (toutes les classes)</span>
+                    </label>
+                  )}
+                  {others.map((c) => (
+                    <label key={c._id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer">
+                      <input type="checkbox" checked={assignTargets.includes(c._id)} onChange={() => toggleTarget(c._id)} className="w-4 h-4 accent-indigo-600" />
+                      <span className="text-sm text-gray-700">{c.name} <span className="text-gray-400">({c.cycle})</span></span>
+                    </label>
+                  ))}
+                  {others.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-3">Aucune autre classe disponible.</p>
+                  )}
+                </div>
+              )
+            })()}
             <div className="flex gap-3">
               <button type="button" onClick={() => setShowAssign(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
               <button type="button" disabled={assigning || assignTargets.length === 0} onClick={handleAssign} className="btn-primary flex-1 justify-center">

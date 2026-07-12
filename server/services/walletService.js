@@ -20,13 +20,15 @@ async function getOrCreateWallet(userId, { role = 'autre', school = null } = {})
   return wallet
 }
 
-// Génère (une fois) le numéro de compte KS-XXXXXX d'un utilisateur, avec garantie d'unicité.
+// Génère (une fois) le numéro de compte KS###### (KS + 6 chiffres) d'un utilisateur,
+// avec garantie d'unicité. Ex. KS930021.
 async function ensureAccountNo(userId) {
   const u = await User.findById(userId).select('walletAccountNo name email role')
   if (!u) throw new Error('Utilisateur introuvable')
   if (u.walletAccountNo) return u.walletAccountNo
-  for (let i = 0; i < 8; i++) {
-    const candidate = 'KS-' + crypto.randomBytes(3).toString('hex').toUpperCase() // KS- + 6 hex
+  for (let i = 0; i < 12; i++) {
+    const n = crypto.randomInt(0, 1000000) // 0..999999
+    const candidate = 'KS' + String(n).padStart(6, '0') // KS + 6 chiffres
     const exists = await User.exists({ walletAccountNo: candidate })
     if (!exists) {
       u.walletAccountNo = candidate
@@ -35,6 +37,27 @@ async function ensureAccountNo(userId) {
     }
   }
   throw new Error("Impossible de générer un numéro de compte, réessayez")
+}
+
+// Génère (une fois) le code de parrainage court d'un utilisateur (ex. KATD7F3K9), unique.
+// Exposé dans l'espace /u pour partager le lien ...?ref=CODE.
+async function ensureReferralCode(userId) {
+  const u = await User.findById(userId).select('referralCode name')
+  if (!u) throw new Error('Utilisateur introuvable')
+  if (u.referralCode) return u.referralCode
+  const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // sans I,O,0,1 ambigus
+  for (let i = 0; i < 12; i++) {
+    let suffix = ''
+    for (let k = 0; k < 5; k++) suffix += ALPHABET[crypto.randomInt(0, ALPHABET.length)]
+    const candidate = 'KATD' + suffix
+    const exists = await User.exists({ referralCode: candidate })
+    if (!exists) {
+      u.referralCode = candidate
+      await u.save()
+      return candidate
+    }
+  }
+  throw new Error('Impossible de générer un code de parrainage, réessayez')
 }
 
 // Retourne l'utilisateur admin plateforme (destinataire des frais). null si introuvable.
@@ -211,7 +234,7 @@ async function transferBetweenUsers(fromUserId, toUserId, { amount, description 
 
 module.exports = {
   getOrCreateWallet, credit, debit, lock, settleLocked, unlock, transfer,
-  ensureAccountNo, getPlatformAdmin, computeTransferFee, transferBetweenUsers,
+  ensureAccountNo, ensureReferralCode, getPlatformAdmin, computeTransferFee, transferBetweenUsers,
   computeWithdrawalFee, collectFee, computeMerchantCommission,
   TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE, MERCHANT_COMMISSION_RATE,
 }

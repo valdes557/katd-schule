@@ -45,7 +45,7 @@ router.get('/me', protect, async (req, res) => {
 router.get('/lookup/:accountNo', protect, async (req, res) => {
   try {
     const acc = String(req.params.accountNo || '').trim().toUpperCase()
-    if (!/^KS-[0-9A-F]{6}$/.test(acc)) return res.status(400).json({ message: 'Numéro de compte invalide (format KS-XXXXXX)' })
+    if (!/^KS[0-9]{6}$/.test(acc)) return res.status(400).json({ message: 'Numéro de compte invalide (format KS000000)' })
     const u = await User.findOne({ walletAccountNo: acc }).select('name role')
     if (!u) return res.status(404).json({ message: 'Aucun utilisateur avec ce numéro de compte' })
     if (String(u._id) === String(req.user._id)) return res.status(400).json({ message: 'Ceci est votre propre compte' })

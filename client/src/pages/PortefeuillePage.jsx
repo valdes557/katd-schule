@@ -125,11 +125,11 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const withdrawFee = Math.round((Number(f.amount) || 0) * 0.02)
   const withdrawNet = (Number(f.amount) || 0) - withdrawFee
 
-  // Résout le numéro de compte du destinataire (KS-XXXXXX) -> nom
+  // Résout le numéro de compte du destinataire (KS######) -> nom
   const lookupRecipient = async () => {
     const acc = String(f.accountNo || '').trim().toUpperCase()
     setRecipient(null)
-    if (!/^KS-[0-9A-F]{6}$/i.test(acc)) return
+    if (!/^KS[0-9]{6}$/i.test(acc)) return
     try { const r = await walletApi.lookup(acc); setRecipient({ name: r.name, role: r.role }) }
     catch (e) { setRecipient({ error: e.message }) }
   }
@@ -194,8 +194,8 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
 
         {type === 'transferUser' && (<>
           <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">N° de compte du destinataire (KS-XXXXXX)</label>
-            <input value={f.accountNo} onChange={(e) => setF({ ...f, accountNo: e.target.value.toUpperCase() })} onBlur={lookupRecipient} className="input w-full font-mono tracking-wider" placeholder="KS-A1B2C3" />
+            <label className="text-xs font-medium text-gray-600 mb-1 block">N° de compte du destinataire (KS930021)</label>
+            <input value={f.accountNo} onChange={(e) => setF({ ...f, accountNo: e.target.value.toUpperCase() })} onBlur={lookupRecipient} className="input w-full font-mono tracking-wider" placeholder="KS930021" />
             {recipient?.name && <p className="text-xs text-green-700 mt-1">Destinataire : <b>{recipient.name}</b></p>}
             {recipient?.error && <p className="text-xs text-red-600 mt-1">{recipient.error}</p>}
           </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, X, GraduationCap, Users, User, UserPlus } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, X, GraduationCap, Users, User, UserPlus, Gift } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../lib/api'
 
@@ -12,10 +12,13 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const { login, register, verifyEmail } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Parrainage : lien .../login?ref=CODE → pré-remplit et force l'inscription utilisateur.
+  const referralCode = (searchParams.get('ref') || '').trim().toUpperCase()
 
   // Mode d'authentification : 'ecole' (personnel) ou 'user' (grand public)
-  const [mode, setMode] = useState('ecole')
-  const [userMode, setUserMode] = useState('login') // 'login' | 'signup'
+  const [mode, setMode] = useState(referralCode ? 'user' : 'ecole')
+  const [userMode, setUserMode] = useState(referralCode ? 'signup' : 'login') // 'login' | 'signup'
   const [name, setName] = useState('')
   // Vérification email après inscription
   const [verifyMode, setVerifyMode] = useState(false)
@@ -50,7 +53,7 @@ export default function LoginPage() {
     setLoading(true)
     const result =
       userMode === 'signup'
-        ? await register(name, email, password)
+        ? await register(name, email, password, referralCode)
         : await login(email, password, 'user')
     setLoading(false)
     if (result.success && result.requiresVerification) {
@@ -291,6 +294,12 @@ export default function LoginPage() {
 
             {mode === 'user' && !verifyMode && (
             <form onSubmit={handleUserSubmit} className="space-y-4">
+              {userMode === 'signup' && referralCode && (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2">
+                  <Gift size={16} className="shrink-0" />
+                  <span>Vous êtes parrainé (code <span className="font-mono font-semibold">{referralCode}</span>). Votre parrain recevra un bonus à votre premier dépôt.</span>
+                </div>
+              )}
               {userMode === 'signup' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Nom complet</label>
