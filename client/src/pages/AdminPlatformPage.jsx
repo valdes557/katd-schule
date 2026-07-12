@@ -1161,6 +1161,7 @@ function NewsDemoPanel() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [type, setType] = useState('video')
+  const [category, setCategory] = useState('demo')
   const [form, setForm] = useState({ title: '', description: '', link: '' })
   const [media, setMedia] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -1187,7 +1188,7 @@ function NewsDemoPanel() {
     if (type !== 'link' && !media) return alert('Veuillez sélectionner un fichier.')
     setSaving(true)
     try {
-      await newsApi.adminCreate({ title: form.title, description: form.description, type, link: form.link, media })
+      await newsApi.adminCreate({ title: form.title, description: form.description, type, category, link: form.link, media })
       setForm({ title: '', description: '', link: '' }); setMedia(null)
       if (fileRef.current) fileRef.current.value = ''
       load()
@@ -1204,8 +1205,18 @@ function NewsDemoPanel() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       <form onSubmit={submit} className="bg-white border border-gray-100 rounded-xl p-5 space-y-3">
         <div>
-          <h3 className="text-sm font-bold text-gray-900">Publier une démo / news</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Vidéos de démonstration de l'application, PDF ou images — visibles dans le bouton News de tous les dashboards et de l'accueil.</p>
+          <h3 className="text-sm font-bold text-gray-900">Publier une démo / news / publicité</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Vidéos de démonstration, publicités, PDF ou images — visibles dans le bouton News de tous les dashboards et de l'accueil.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setCategory('demo')}
+            className={`text-xs py-2 rounded-lg border transition-colors ${category === 'demo' ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-semibold' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+            Démo / Actualité
+          </button>
+          <button type="button" onClick={() => setCategory('pub')}
+            className={`text-xs py-2 rounded-lg border transition-colors ${category === 'pub' ? 'bg-amber-50 border-amber-300 text-amber-700 font-semibold' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+            🎬 Vidéo publicitaire
+          </button>
         </div>
         <div className="grid grid-cols-4 gap-2">
           {NEWS_TYPES.map((t) => (
@@ -1243,7 +1254,10 @@ function NewsDemoPanel() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-gray-800 truncate">{it.title}</p>
-              <p className="text-xs text-gray-400 capitalize">{it.type}</p>
+              <p className="text-xs text-gray-400 capitalize">
+                {it.type}
+                {it.category === 'pub' && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 text-[10px] font-medium not-capitalize">Publicité</span>}
+              </p>
             </div>
             <button onClick={() => remove(it._id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
           </div>

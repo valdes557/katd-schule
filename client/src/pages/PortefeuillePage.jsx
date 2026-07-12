@@ -87,6 +87,12 @@ export default function PortefeuillePage() {
             <div key={t._id} className="flex items-center justify-between p-3 text-sm">
               <div>
                 <p className="font-medium text-gray-800">{t.description || t.type}</p>
+                {t.counterpartyName && (
+                  <p className="text-xs text-gray-500">
+                    {t.direction === 'credit' ? 'De' : 'Vers'} : <b>{t.counterpartyName}</b>
+                    {t.counterpartyAccountNo && <span className="font-mono text-gray-400"> ({t.counterpartyAccountNo})</span>}
+                  </p>
+                )}
                 <p className="text-xs text-gray-400">{new Date(t.createdAt).toLocaleString('fr-FR')}</p>
               </div>
               <span className={t.direction === 'credit' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
@@ -103,7 +109,7 @@ export default function PortefeuillePage() {
 }
 
 function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, onError }) {
-  const [f, setF] = useState({ amount: '', phone: '', operator: 'mtn', momoNumber: '', momoOperator: 'mtn', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
+  const [f, setF] = useState({ amount: '', phone: '', operator: 'mtn', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
   const [status, setStatus] = useState('')
   const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -111,6 +117,9 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   // Aperçu des frais de transfert utilisateur (0,25%, arrondi, payés en plus)
   const transferFee = Math.round((Number(f.amount) || 0) * 0.0025)
   const transferTotal = (Number(f.amount) || 0) + transferFee
+  // Aperçu des frais de retrait (2%, arrondi, déduits du montant reçu)
+  const withdrawFee = Math.round((Number(f.amount) || 0) * 0.02)
+  const withdrawNet = (Number(f.amount) || 0) - withdrawFee
 
   // Résout le numéro de compte du destinataire (KS-XXXXXX) -> nom
   const lookupRecipient = async () => {
@@ -136,8 +145,10 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         if (!ok) throw new Error("Dépôt non confirmé à temps")
         onDone('Dépôt effectué avec succès')
       } else if (type === 'withdraw') {
-        await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, pin: f.pin })
-        onDone('Demande de retrait enregistrée. Traitement sous 24h.')
+        if (Number(f.amount) < 2000) throw new Error('Le retrait minimum est de 2000 F')
+        if (!f.pin) throw new Error('Code PIN requis')
+        const r = await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, accountName: f.accountName, pin: f.pin })
+        onDone(r?.message || 'Demande de retrait enregistrée. Traitement sous 24h.')
       } else if (type === 'transfer') {
         await walletApi.transfer({ teacherUserId: f.teacherUserId, amount: Number(f.amount), pin: f.pin })
         onDone('Salaire transféré avec succès')
@@ -198,8 +209,16 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         {type === 'withdraw' && (<>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de réception</label><select value={f.momoOperator} onChange={up('momoOperator')} className="input w-full">{OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label><input type="tel" value={f.momoNumber} onChange={up('momoNumber')} className="input w-full" placeholder="01 97 00 00 00" /></div>
-          {hasPin && <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>}
-          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">Les retraits sont traités et reçus sous 24h.</p>
+          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Nom du compte (facultatif)</label><input value={f.accountName} onChange={up('accountName')} className="input w-full" placeholder="Nom du titulaire Mobile Money" /></div>
+          {Number(f.amount) > 0 && (
+            <div className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
+              <div className="flex justify-between"><span>Montant demandé</span><b>{fmt(Number(f.amount))} F</b></div>
+              <div className="flex justify-between text-gray-500"><span>Frais de retrait (2%)</span><span>− {fmt(withdrawFee)} F</span></div>
+              <div className="flex justify-between border-t border-blue-100 pt-1 mt-1"><span>Vous recevrez</span><b>{fmt(withdrawNet)} F</b></div>
+            </div>
+          )}
+          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">Retrait minimum : 2000 F. Frais de 2% déduits. Traitement et réception sous 24h.</p>
         </>)}
 
         {type === 'transfer' && (<>

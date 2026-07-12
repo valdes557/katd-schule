@@ -496,6 +496,8 @@ router.post('/free-trial', async (req, res) => {
       message: "🎉 Essai gratuit activé ! Votre école est créée pour 1 mois. Vos identifiants ont été envoyés par email.",
       trialEndsAt: trialEnd,
       emailSent: result.emailSent,
+      // Identifiants renvoyés pour affichage à l'écran + envoi WhatsApp (chantier 1)
+      credentials: { email, password: result.rawPassword, matricule: result.matricule, whatsapp: whatsapp || '' },
     })
   } catch (err) {
     res.status(500).json({ message: err.message })

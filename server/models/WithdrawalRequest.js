@@ -8,6 +8,9 @@ const withdrawalSchema = new mongoose.Schema(
     role: { type: String, enum: ['directeur', 'enseignant', 'utilisateur', 'admin'], required: true },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', default: null },
     amount: { type: Number, required: true, min: 1 },
+    // Frais de retrait (2%) déduits du montant + montant net réellement versé à l'opérateur
+    fee: { type: Number, default: 0 },
+    netAmount: { type: Number, default: 0 },
     currency: { type: String, default: 'XOF' },
     // Coordonnées Mobile Money de réception
     momoNumber: { type: String, required: true },

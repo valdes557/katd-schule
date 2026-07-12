@@ -8,6 +8,8 @@ const platformNewsSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     type: { type: String, enum: ['video', 'pdf', 'image', 'link'], default: 'video' },
+    // Catégorie : 'demo' (démonstration/actualité) ou 'pub' (vidéo publicitaire)
+    category: { type: String, enum: ['demo', 'pub'], default: 'demo' },
     mediaUrl: { type: String }, // URL Cloudinary (vidéo/pdf/image)
     link: { type: String, trim: true }, // lien externe optionnel
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

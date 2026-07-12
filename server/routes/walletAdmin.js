@@ -257,7 +257,7 @@ router.get('/transactions', protect, adminOnly, async (req, res) => {
 // Filtres : dates, groupe (staff/users), q. Stats : total, moyenne, par groupe, par période (jour/mois).
 router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
   try {
-    const { group, from, to, q } = req.query
+    const { group, from, to, q, feeType } = req.query
     const period = req.query.period === 'day' ? 'day' : 'month'
     const page = Math.max(1, parseInt(req.query.page) || 1)
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50))
@@ -270,12 +270,15 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
 
     let fees = docs.map((tx) => {
       const p = tx.counterparty || {}
+      // Distingue frais de transfert (0,25%) et frais de retrait (2%) via meta.feeType.
+      const kind = (tx.meta && tx.meta.feeType) === 'withdrawal' ? 'withdrawal' : 'transfer'
       return {
         _id: String(tx._id), date: tx.createdAt,
-        feeType: 'transfer', feeLabel: 'Frais de transfert (0,25%)',
+        feeType: kind,
+        feeLabel: kind === 'withdrawal' ? 'Frais de retrait (2%)' : 'Frais de transfert (0,25%)',
         amount: tx.amount, currency: tx.currency || 'XOF',
         baseAmount: (tx.meta && tx.meta.baseAmount) || null,
-        rate: (tx.meta && tx.meta.rate) || 0.0025,
+        rate: (tx.meta && tx.meta.rate) || (kind === 'withdrawal' ? 0.02 : 0.0025),
         payer: {
           id: p._id, name: p.name || '—', role: p.role || '', email: p.email || '',
           phone: p.phone || '', matricule: p.matricule || '', accountNo: p.walletAccountNo || '',
@@ -284,6 +287,7 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
       }
     })
 
+    if (feeType === 'transfer' || feeType === 'withdrawal') fees = fees.filter((f) => f.feeType === feeType)
     if (group) {
       if (group === 'staff' || group === 'users') fees = fees.filter((f) => f.payer.group === group)
       else fees = fees.filter((f) => f.payer.role === group)
@@ -298,12 +302,14 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
     const stats = {
       totalCount: fees.length, totalAmount: 0, avg: 0,
       byGroup: { staff: { count: 0, total: 0 }, users: { count: 0, total: 0 } },
+      byType: { transfer: { count: 0, total: 0 }, withdrawal: { count: 0, total: 0 } },
       byPeriod: [], period,
     }
     const periodMap = {}
     for (const f of fees) {
       stats.totalAmount += f.amount
       const g = stats.byGroup[f.payer.group]; if (g) { g.count++; g.total += f.amount }
+      const ty = stats.byType[f.feeType]; if (ty) { ty.count++; ty.total += f.amount }
       const d = new Date(f.date)
       const key = period === 'day'
         ? d.toISOString().slice(0, 10)

@@ -449,6 +449,7 @@ export const newsApi = {
     fd.append('title', data.title || '')
     fd.append('description', data.description || '')
     fd.append('type', data.type || 'video')
+    fd.append('category', data.category || 'demo')
     if (data.link) fd.append('link', data.link)
     if (data.media instanceof File) fd.append('media', data.media)
     const token = localStorage.getItem('token')
@@ -847,6 +848,16 @@ export const walletAdminApi = {
   requestSebpayCode: () => api.post('/admin/sebpay/request-code', {}),
   revealSebpay: (code) => api.post('/admin/sebpay/reveal', { code }),
   updateSebpay: (payload) => api.put('/admin/sebpay', payload),
+}
+
+// Gestion de tous les utilisateurs (super_admin) : liste + soldes + compte externe, blocage, suppression
+export const adminUsersApi = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/admin/users' + (qs ? '?' + qs : ''))
+  },
+  block: (id, blocked) => api.put('/admin/users/' + id + '/block', { blocked }),
+  remove: (id) => api.del('/admin/users/' + id),
 }
 
 // Signature d'upload direct Cloudinary (le fichier ne transite plus par le VPS)

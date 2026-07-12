@@ -151,6 +151,7 @@ export const navSections = [
       { label: 'Localités (Pays/Villes)', icon: MapPin, path: '/dashboard/localites' },
       { label: 'Gestion Plateforme', icon: LayoutGrid, path: '/dashboard/plateforme' },
       { label: 'Gestion API (Paiements)', icon: KeyRound, path: '/dashboard/plateforme?tab=api' },
+      { label: 'Gestion des utilisateurs', icon: UserCog, path: '/dashboard/utilisateurs-admin' },
       { label: 'Gestion des transactions', icon: ArrowLeftRight, path: '/dashboard/transactions-admin' },
       { label: 'Frais de transaction', icon: Coins, path: '/dashboard/frais-transaction-admin' },
       { label: 'Bannières', icon: ImageIcon, path: '/dashboard/bannieres' },

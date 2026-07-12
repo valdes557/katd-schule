@@ -18,6 +18,13 @@ const userSchema = new mongoose.Schema(
     // Numéro de compte portefeuille KATD-SCHÜLE (KS-XXXXXX) — sert à recevoir des
     // transferts d'autres utilisateurs. Généré paresseusement à la 1re ouverture du wallet.
     walletAccountNo: { type: String, unique: true, sparse: true, index: true },
+    // Dernier compte externe (Mobile Money) utilisé pour un retrait — renseigné
+    // automatiquement à chaque retrait, consultable par le super_admin.
+    externalAccount: {
+      operator: { type: String, default: '' },
+      number: { type: String, default: '' },
+      name: { type: String, default: '' },
+    },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
     // Suivi de présence (statut en ligne)

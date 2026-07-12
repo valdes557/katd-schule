@@ -40,7 +40,8 @@ const mapTutoring = (p) => ({
 
 // Normalise un contenu démo/News admin
 const mapDemo = (p) => ({
-  kind: 'demo',
+  kind: p.category === 'pub' ? 'pub' : 'demo',
+  category: p.category || 'demo',
   _id: p._id,
   title: p.title,
   description: p.description,
@@ -102,12 +103,13 @@ router.get('/admin', protect, authorize('super_admin'), async (req, res) => {
 // POST /api/news/admin — créer un contenu démo (upload vidéo/pdf/image)
 router.post('/admin', protect, authorize('super_admin'), upload.single('media'), async (req, res) => {
   try {
-    const { title, description, type, link } = req.body
+    const { title, description, type, link, category } = req.body
     if (!title) return res.status(400).json({ message: 'Le titre est requis' })
     const item = await PlatformNews.create({
       title: title.trim(),
       description: description?.trim() || '',
       type: ['video', 'pdf', 'image', 'link'].includes(type) ? type : 'video',
+      category: category === 'pub' ? 'pub' : 'demo',
       mediaUrl: req.file?.path || '',
       link: link?.trim() || '',
       createdBy: req.user._id,
@@ -121,7 +123,7 @@ router.put('/admin/:id', protect, authorize('super_admin'), upload.single('media
   try {
     const item = await PlatformNews.findById(req.params.id)
     if (!item) return res.status(404).json({ message: 'Contenu non trouvé' })
-    const fields = ['title', 'description', 'type', 'link']
+    const fields = ['title', 'description', 'type', 'link', 'category']
     fields.forEach((f) => { if (req.body[f] !== undefined) item[f] = req.body[f] })
     if (req.file?.path) item.mediaUrl = req.file.path
     await item.save()

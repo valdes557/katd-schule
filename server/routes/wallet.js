@@ -15,6 +15,7 @@ const sebpay = require('../services/sebpayService')
 const { sendEmail } = require('../utils/emailService')
 
 const SLA_HOURS = Number(process.env.WITHDRAWAL_SLA_HOURS || 24)
+const MIN_WITHDRAWAL = 2000 // retrait minimum vers un opérateur externe
 function genRef(p){ return p + '_' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex') }
 
 // ───────────────────────── SOLDE & HISTORIQUE ─────────────────────────
@@ -22,12 +23,21 @@ function genRef(p){ return p + '_' + Date.now().toString(36) + crypto.randomByte
 router.get('/me', protect, async (req, res) => {
   try {
     const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
-    const txs = await WalletTransaction.find({ owner: req.user._id }).sort({ createdAt: -1 }).limit(50)
+    const txs = await WalletTransaction.find({ owner: req.user._id })
+      .populate('counterparty', 'name walletAccountNo role')
+      .sort({ createdAt: -1 }).limit(50).lean()
+    // Enrichit chaque opération avec le nom/compte de la contrepartie (historique précis, chantier 4)
+    const transactions = txs.map((t) => ({
+      ...t,
+      counterpartyName: t.counterparty?.name || null,
+      counterpartyAccountNo: t.counterparty?.walletAccountNo || null,
+      counterparty: t.counterparty?._id || t.counterparty || null,
+    }))
     const hasPin = !!(await User.findById(req.user._id).select('+walletPin').then(u => u && u.walletPin))
     // Génère le numéro de compte KS-XXXXXX à la première ouverture (couvre les comptes existants).
     const accountNo = await wallet.ensureAccountNo(req.user._id)
     res.json({ success: true, balance: w.balance, locked: w.locked, currency: w.currency,
-      totalIn: w.totalIn, totalOut: w.totalOut, hasPin, accountNo, transactions: txs })
+      totalIn: w.totalIn, totalOut: w.totalOut, hasPin, accountNo, transactions })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -184,37 +194,56 @@ router.post('/transfer', protect, authorize('directeur'), async (req, res) => {
 })
 
 // ───────────────────────── RETRAIT (file 24h) ─────────────────────────
-// POST /api/wallet/withdraw — demande de retrait (directeur: PIN requis)
+// POST /api/wallet/withdraw — demande de retrait (min 2000 F, PIN obligatoire, frais 2% déduits)
 router.post('/withdraw', protect, async (req, res) => {
   try {
-    const { amount, momoNumber, momoOperator, pin } = req.body
+    const { amount, momoNumber, momoOperator, accountName, pin } = req.body
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
+    if (amt < MIN_WITHDRAWAL) return res.status(400).json({ message: 'Le retrait minimum est de ' + MIN_WITHDRAWAL.toLocaleString('fr-FR') + ' F' })
     if (!momoNumber) return res.status(400).json({ message: 'Numéro Mobile Money requis' })
-    // Directeur: exige le PIN
-    if (req.user.role === 'directeur') {
-      const u = await User.findById(req.user._id).select('+walletPin')
-      if (!u.walletPin) return res.status(400).json({ message: "Veuillez d'abord créer votre code PIN" })
-      const pinOk = await bcrypt.compare(String(pin || ''), u.walletPin)
-      if (!pinOk) return res.status(401).json({ message: 'Code PIN incorrect' })
-    }
+    // PIN obligatoire pour TOUS les rôles
+    if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
+    const u = await User.findById(req.user._id).select('+walletPin')
+    if (!u.walletPin) return res.status(400).json({ message: "Veuillez d'abord créer votre code PIN" })
+    const pinOk = await bcrypt.compare(String(pin), u.walletPin)
+    if (!pinOk) return res.status(401).json({ message: 'Code PIN incorrect' })
+
     const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
     if (w.balance < amt) return res.status(400).json({ message: 'Solde insuffisant' })
-    // bloque le montant
+
+    // Frais 2% déduits du montant : l'utilisateur reçoit (amount − fee), l'admin encaisse fee.
+    const fee = wallet.computeWithdrawalFee(amt)
+    const netAmount = amt - fee
+    const holderName = String(accountName || req.user.name || '').trim()
+
+    // bloque le montant total (débité du solde)
     await wallet.lock(req.user._id, amt)
     const wr = await WithdrawalRequest.create({
       user: req.user._id, wallet: w._id, role: req.user.role, school: req.user.school?._id || null,
-      amount: amt, momoNumber, momoOperator: momoOperator || '', accountName: req.user.name,
+      amount: amt, fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName,
       status: 'pending', dueAt: new Date(Date.now() + SLA_HOURS * 3600 * 1000),
     })
     // ledger: débit (sortie effective côté solde déjà bloquée)
     await WalletTransaction.create({ wallet: w._id, owner: req.user._id, direction: 'debit',
-      amount: amt, currency: w.currency, type: 'withdrawal', balanceAfter: w.balance,
-      withdrawal: wr._id, description: 'Demande de retrait (traitement < ' + SLA_HOURS + 'h)' })
+      amount: amt, currency: w.currency, type: 'withdrawal', balanceAfter: w.balance, withdrawal: wr._id,
+      description: 'Retrait vers ' + (momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber + ' (net ' + netAmount.toLocaleString('fr-FR') + ' F, frais 2%)',
+      meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '' } })
+    // Frais encaissés par l'admin → rubrique « gestion des frais » (best-effort)
+    await wallet.collectFee({ fee, fromUserId: req.user._id,
+      description: 'Frais de retrait (2%) — ' + (req.user.name || ''),
+      meta: { feeType: 'withdrawal', rate: wallet.WITHDRAWAL_FEE_RATE, baseAmount: amt, withdrawal: String(wr._id) } })
+
+    // Mémorise le dernier compte externe utilisé (consultable par le super_admin)
+    try {
+      await User.updateOne({ _id: req.user._id }, { $set: {
+        externalAccount: { operator: momoOperator || '', number: momoNumber, name: holderName } } })
+    } catch (e) {}
+
     try { await sendEmail({ to: req.user.email, subject: 'Demande de retrait reçue — KATD-SCHÜLE',
-      html: '<p>Votre demande de retrait de <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> a été enregistrée. ' +
-      'Vous recevrez le montant sur ' + momoNumber + ' sous ' + SLA_HOURS + ' heures.</p>' }) } catch(e){}
-    res.json({ success: true, message: 'Demande de retrait enregistrée. Traitement sous ' + SLA_HOURS + 'h.', withdrawal: wr })
+      html: '<p>Votre demande de retrait de <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> a été enregistrée ' +
+      '(frais 2% : ' + fee.toLocaleString('fr-FR') + ' F). Vous recevrez <b>' + netAmount.toLocaleString('fr-FR') + ' FCFA</b> sur ' + momoNumber + ' sous ' + SLA_HOURS + ' heures.</p>' }) } catch(e){}
+    res.json({ success: true, message: 'Demande de retrait enregistrée. Vous recevrez ' + netAmount.toLocaleString('fr-FR') + ' F (frais 2%) sous ' + SLA_HOURS + 'h.', withdrawal: wr })
   } catch (err) { res.status(400).json({ message: err.message }) }
 })
 

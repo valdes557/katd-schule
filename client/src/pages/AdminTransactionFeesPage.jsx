@@ -27,6 +27,7 @@ function periodLabel(key) {
 
 export default function AdminTransactionFeesPage() {
   const [group, setGroup] = useState('')
+  const [feeType, setFeeType] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [period, setPeriod] = useState('month')
@@ -35,21 +36,21 @@ export default function AdminTransactionFeesPage() {
   const [page, setPage] = useState(1)
   const pdfRef = useRef(null)
 
-  const key = `/admin/transaction-fees?g=${group}&f=${from}&t=${to}&per=${period}&q=${search}&p=${page}`
+  const key = `/admin/transaction-fees?g=${group}&ft=${feeType}&f=${from}&t=${to}&per=${period}&q=${search}&p=${page}`
   const query = useCachedFetch(
     key,
-    async () => walletAdminApi.transactionFees({ group, from, to, period, q: search, page, limit: 50 }),
-    [group, from, to, period, search, page],
+    async () => walletAdminApi.transactionFees({ group, feeType, from, to, period, q: search, page, limit: 50 }),
+    [group, feeType, from, to, period, search, page],
   )
 
   const data = query.data || {}
   const fees = data.fees || []
-  const stats = data.stats || { totalCount: 0, totalAmount: 0, avg: 0, byGroup: { staff: {}, users: {} }, byPeriod: [] }
+  const stats = data.stats || { totalCount: 0, totalAmount: 0, avg: 0, byGroup: { staff: {}, users: {} }, byType: { transfer: {}, withdrawal: {} }, byPeriod: [] }
   const loading = query.loading
 
   const refresh = () => { cache.invalidate('/admin/transaction-fees'); query.refetch() }
   const onSearch = (e) => { e.preventDefault(); setPage(1); setSearch(q.trim()) }
-  const resetFilters = () => { setGroup(''); setFrom(''); setTo(''); setQ(''); setSearch(''); setPage(1) }
+  const resetFilters = () => { setGroup(''); setFeeType(''); setFrom(''); setTo(''); setQ(''); setSearch(''); setPage(1) }
   const changeFilter = (setter) => (e) => { setPage(1); setter(e.target.value) }
 
   return (
@@ -88,9 +89,9 @@ export default function AdminTransactionFeesPage() {
             <div className="text-xs text-gray-500 mt-0.5">Par opération</div>
           </div>
           <div className="card p-4 border-l-4 border-emerald-500">
-            <div className="flex items-center gap-2 text-emerald-600"><Users size={16} /><span className="text-xs font-semibold uppercase tracking-wide">Répartition</span></div>
-            <div className="text-sm font-bold text-gray-900 mt-1">Personnel : {fmt(stats.byGroup?.staff?.total)} XAF</div>
-            <div className="text-sm font-bold text-gray-900">Utilisateurs : {fmt(stats.byGroup?.users?.total)} XAF</div>
+            <div className="flex items-center gap-2 text-emerald-600"><Users size={16} /><span className="text-xs font-semibold uppercase tracking-wide">Par type</span></div>
+            <div className="text-sm font-bold text-gray-900 mt-1">Transferts : {fmt(stats.byType?.transfer?.total)} XAF</div>
+            <div className="text-sm font-bold text-gray-900">Retraits : {fmt(stats.byType?.withdrawal?.total)} XAF</div>
           </div>
         </div>
 
@@ -107,6 +108,11 @@ export default function AdminTransactionFeesPage() {
               <option value="eleve">Élèves</option>
               <option value="utilisateur">Utilisateurs (simples)</option>
             </select>
+            <select value={feeType} onChange={changeFilter(setFeeType)} className="input text-sm w-auto">
+              <option value="">Tous les frais</option>
+              <option value="transfer">Frais de transfert (0,25%)</option>
+              <option value="withdrawal">Frais de retrait (2%)</option>
+            </select>
             <label className="text-xs text-gray-500 flex items-center gap-1.5">Du <input type="date" value={from} onChange={changeFilter(setFrom)} className="input text-sm w-auto" /></label>
             <label className="text-xs text-gray-500 flex items-center gap-1.5">Au <input type="date" value={to} onChange={changeFilter(setTo)} className="input text-sm w-auto" /></label>
             <select value={period} onChange={changeFilter(setPeriod)} className="input text-sm w-auto">
@@ -119,7 +125,7 @@ export default function AdminTransactionFeesPage() {
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher (nom, téléphone, matricule, n° compte)…" className="input text-sm flex-1" />
               <button type="submit" className="btn-secondary text-sm">Rechercher</button>
             </form>
-            {(group || from || to || search) && (
+            {(group || feeType || from || to || search) && (
               <button onClick={resetFilters} className="text-xs text-gray-500 hover:text-gray-700 underline">Réinitialiser</button>
             )}
           </div>

@@ -6,6 +6,8 @@ const User = require('../models/User')
 
 // Frais de transfert entre utilisateurs : 0,25% du montant, payés EN PLUS par l'envoyeur.
 const TRANSFER_FEE_RATE = 0.0025
+// Frais de retrait vers un opérateur externe : 2% du montant, DÉDUITS du montant reçu.
+const WITHDRAWAL_FEE_RATE = 0.02
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'valdeslando15@gmail.com').toLowerCase()
 
 async function getOrCreateWallet(userId, { role = 'autre', school = null } = {}) {
@@ -126,6 +128,27 @@ function computeTransferFee(amount) {
   return Math.round(amt * TRANSFER_FEE_RATE)
 }
 
+// Calcule les frais de retrait (2%, arrondi à l'entier) — DÉDUITS du montant reçu.
+function computeWithdrawalFee(amount) {
+  const amt = Number(amount)
+  if (!amt || amt <= 0) return 0
+  return Math.round(amt * WITHDRAWAL_FEE_RATE)
+}
+
+// Crédite l'admin plateforme des frais encaissés (best-effort : ne bloque pas l'opération
+// si l'admin est introuvable ou si le crédit échoue). meta.feeType = 'transfer' | 'withdrawal'.
+async function collectFee({ fee, fromUserId, description, meta = {} }) {
+  const f = Number(fee)
+  if (!f || f <= 0) return
+  try {
+    const admin = await getPlatformAdmin()
+    if (admin) {
+      await credit(admin._id, { amount: f, type: 'fee_collected', counterparty: fromUserId,
+        role: 'admin', description, meta })
+    }
+  } catch (e) { /* frais tracés côté payeur même si le crédit admin échoue */ }
+}
+
 // Transfert entre deux utilisateurs quelconques (frais 0,25% ajoutés, encaissés par l'admin).
 // L'envoyeur est débité (amount + fee) ; le destinataire reçoit amount ; l'admin reçoit fee.
 async function transferBetweenUsers(fromUserId, toUserId, { amount, description = '' }) {
@@ -135,37 +158,39 @@ async function transferBetweenUsers(fromUserId, toUserId, { amount, description 
   const fee = computeTransferFee(amt)
   const total = amt + fee
 
+  // Noms/comptes pour des libellés d'historique explicites (chantier 4).
+  const [fromU, toU] = await Promise.all([
+    User.findById(fromUserId).select('name walletAccountNo'),
+    User.findById(toUserId).select('name walletAccountNo'),
+  ])
+  const fromLabel = (fromU?.name || 'Utilisateur') + (fromU?.walletAccountNo ? ' (' + fromU.walletAccountNo + ')' : '')
+  const toLabel = (toU?.name || 'Utilisateur') + (toU?.walletAccountNo ? ' (' + toU.walletAccountNo + ')' : '')
+
   // Vérifie le solde de l'envoyeur AVANT toute écriture (débit couvre montant + frais).
   const fromWallet = await getOrCreateWallet(fromUserId)
   if (fromWallet.balance < total) throw new Error('Solde insuffisant (frais de 0,25% inclus)')
 
-  // Débit envoyeur : montant transféré
+  // Débit envoyeur : montant transféré (libellé nominatif : vers qui)
   const d = await debit(fromUserId, { amount: amt, type: 'transfer_sent',
-    counterparty: toUserId, description: description || 'Transfert envoyé' })
+    counterparty: toUserId, description: 'Envoyé à ' + toLabel })
   // Débit envoyeur : frais 0,25%
   if (fee > 0) {
     await debit(fromUserId, { amount: fee, type: 'transfer_fee', counterparty: toUserId,
       description: 'Frais de transfert (0,25%)', meta: { rate: TRANSFER_FEE_RATE, baseAmount: amt } })
   }
-  // Crédit destinataire : montant transféré
+  // Crédit destinataire : montant transféré (libellé nominatif : de qui)
   const c = await credit(toUserId, { amount: amt, type: 'transfer_received',
-    counterparty: fromUserId, description: description || 'Transfert reçu' })
+    counterparty: fromUserId, description: 'Reçu de ' + fromLabel })
   // Crédit admin : frais encaissés (best-effort, ne bloque pas le transfert si admin absent)
-  if (fee > 0) {
-    try {
-      const admin = await getPlatformAdmin()
-      if (admin) {
-        await credit(admin._id, { amount: fee, type: 'fee_collected', counterparty: fromUserId,
-          role: 'admin', description: 'Frais de transfert encaissés (0,25%)',
-          meta: { from: String(fromUserId), to: String(toUserId), baseAmount: amt } })
-      }
-    } catch (e) { /* frais tracés côté envoyeur même si le crédit admin échoue */ }
-  }
+  await collectFee({ fee, fromUserId,
+    description: 'Frais de transfert encaissés (0,25%) — ' + fromLabel,
+    meta: { feeType: 'transfer', rate: TRANSFER_FEE_RATE, baseAmount: amt, from: String(fromUserId), to: String(toUserId) } })
   return { from: d.wallet, to: c.wallet, amount: amt, fee, total, debitTx: d.tx, creditTx: c.tx }
 }
 
 module.exports = {
   getOrCreateWallet, credit, debit, lock, settleLocked, unlock, transfer,
   ensureAccountNo, getPlatformAdmin, computeTransferFee, transferBetweenUsers,
-  TRANSFER_FEE_RATE,
+  computeWithdrawalFee, collectFee,
+  TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE,
 }

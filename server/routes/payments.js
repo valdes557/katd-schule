@@ -219,7 +219,8 @@ router.get('/status/:reference', async (req, res) => {
     }
     const fresh = await PaymentIntent.findById(intent._id)
     return res.json({ success: true, status: fresh.status, fulfilled: fresh.fulfilled,
-                      purpose: fresh.purpose, reason: fresh.status === 'rejected' ? extractReason(fresh.rawWebhook) : '' })
+                      purpose: fresh.purpose, reason: fresh.status === 'rejected' ? extractReason(fresh.rawWebhook) : '',
+                      credentials: (fresh.status === 'approved' && fresh.meta && fresh.meta.credentials) ? fresh.meta.credentials : null })
   } catch (err) {
     return res.status(500).json({ message: err.message })
   }
@@ -266,11 +267,14 @@ async function applyOutcome(intent, status, raw) {
         await activateExistingSchool({ schoolId: m.schoolId, plan: m.plan, amount: intent.amount })
       } else {
         // Nouvelle souscription : création école + directeur
-        await provisionDirector({
+        const prov = await provisionDirector({
           schoolName: m.schoolName, directorName: m.directorName, email: m.email,
           whatsapp: m.whatsapp, cycle: m.cycle, plan: m.plan, amount: intent.amount,
           cityName: m.cityName, neighborhoodName: m.neighborhoodName, countryName: m.countryName,
         })
+        // Conserve les identifiants pour les afficher au souscripteur via /status (chantier 1)
+        intent.meta = { ...m, credentials: { email: m.email, password: prov.rawPassword, matricule: prov.matricule, whatsapp: m.whatsapp || '' } }
+        intent.markModified('meta')
       }
     }
     else if (intent.purpose === 'enrollment') {

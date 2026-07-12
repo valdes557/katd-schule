@@ -144,6 +144,7 @@ const AdminEcolesPage = lazyPage(() => import('./pages/AdminEcolesPage'))
 const AdminPaiementsPage = lazyPage(() => import('./pages/AdminPaiementsPage'))
 const AdminTransactionsPage = lazyPage(() => import('./pages/AdminTransactionsPage'))
 const AdminTransactionFeesPage = lazyPage(() => import('./pages/AdminTransactionFeesPage'))
+const AdminUsersPage = lazyPage(() => import('./pages/AdminUsersPage'))
 const ParentChildDetailPage = lazyPage(() => import('./pages/ParentChildDetailPage'))
 const ParentFinancesPage = lazyPage(() => import('./pages/ParentFinancesPage'))
 const ParentControlsPage = lazyPage(() => import('./pages/ParentControlsPage'))
@@ -311,6 +312,7 @@ export default function App() {
         <Route path="paiements-admin" element={<AdminPaiementsPage />} />
         <Route path="transactions-admin" element={<AdminTransactionsPage />} />
         <Route path="frais-transaction-admin" element={<AdminTransactionFeesPage />} />
+        <Route path="utilisateurs-admin" element={<AdminUsersPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
         <Route path="recrutement" element={<RecruitmentPage />} />
         <Route path="repetitions" element={<TutoringPage />} />

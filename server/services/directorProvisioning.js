@@ -5,15 +5,24 @@ const Wallet = require('../models/Wallet')
 const { generateUserMatricule } = require('../utils/matricule')
 const { sendEmail } = require('../utils/emailService')
 
+// Ajoute la durée d'un plan payé à une date : trimestriel/quarterly = +3 mois, sinon annuel = +1 an.
+function addPlanDuration(date, plan) {
+  const d = new Date(date)
+  const p = String(plan || '').toLowerCase()
+  if (p === 'quarterly' || p === 'trimestriel' || p === 'trimestrial') d.setMonth(d.getMonth() + 3)
+  else d.setFullYear(d.getFullYear() + 1)
+  return d
+}
+
 // data: { schoolName, directorName, email, whatsapp, cycle, plan, amount,
 //         cityName, neighborhoodName, countryName }
 async function provisionDirector(data) {
   // 1) École
-  // Abonnement: essai gratuit de 1 mois par défaut, ou actif (1 an) si déjà payé
+  // Abonnement: essai gratuit de 1 mois par défaut, ou actif (durée du plan) si déjà payé
   const _now = new Date()
   const _isPaid = data.paid === true
-  const _endDate = new Date(_now)
-  if (_isPaid) _endDate.setFullYear(_endDate.getFullYear() + 1)
+  let _endDate = new Date(_now)
+  if (_isPaid) _endDate = addPlanDuration(_now, data.plan) // trimestriel = +3 mois, annuel = +1 an
   else _endDate.setMonth(_endDate.getMonth() + 1) // essai = 1 mois
   const school = await School.create({
     name: data.schoolName,
@@ -99,8 +108,8 @@ async function activateExistingSchool(data) {
   // Prolonge d'un an à partir de la fin d'abonnement si encore valide, sinon à partir d'aujourd'hui.
   const currentEnd = school.subscription?.endDate ? new Date(school.subscription.endDate) : _now
   const base = currentEnd > _now ? currentEnd : _now
-  const _endDate = new Date(base)
-  _endDate.setFullYear(_endDate.getFullYear() + 1)
+  // Prolonge selon la durée du plan payé (trimestriel = +3 mois, annuel = +1 an)
+  const _endDate = addPlanDuration(base, data.plan || school.subscription?.plan)
   school.subscription = {
     ...(school.subscription ? school.subscription.toObject?.() || school.subscription : {}),
     plan: data.plan || school.subscription?.plan || 'annual',
@@ -133,4 +142,4 @@ async function activateExistingSchool(data) {
   return { school, renewed: true }
 }
 
-module.exports = { provisionDirector, activateExistingSchool }
+module.exports = { provisionDirector, activateExistingSchool, addPlanDuration }

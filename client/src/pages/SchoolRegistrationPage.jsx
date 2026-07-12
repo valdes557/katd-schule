@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import {
   GraduationCap, ArrowLeft, CheckCircle2, Loader2, AlertCircle,
-  CreditCard, Upload, ImageIcon, Check, ChevronRight,
+  CreditCard, Upload, ImageIcon, Check, ChevronRight, KeyRound, Copy, MessageCircle,
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
@@ -29,6 +29,8 @@ export default function SchoolRegistrationPage() {
   const [neighborhoods, setNeighborhoods] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [credentials, setCredentials] = useState(null) // { email, password, matricule, whatsapp }
+  const [copiedCreds, setCopiedCreds] = useState(false)
   const [error, setError] = useState('')
   const [proofFile, setProofFile] = useState(null)
   const [proofPreview, setProofPreview] = useState(null)
@@ -151,7 +153,7 @@ export default function SchoolRegistrationPage() {
         const whatsappFull = dialCode && !form.whatsapp.trim().startsWith('+')
           ? `${dialCode} ${form.whatsapp.trim()}`
           : form.whatsapp.trim()
-        await schoolRegistrationApi.freeTrial({
+        const trialRes = await schoolRegistrationApi.freeTrial({
           schoolName: form.schoolName,
           directorName: form.directorName,
           email: form.email,
@@ -162,6 +164,7 @@ export default function SchoolRegistrationPage() {
           cityName: form.city,
           neighborhoodName: form.neighborhood,
         })
+        if (trialRes?.credentials) setCredentials(trialRes.credentials)
         setSubmitted(true)
       } catch (err) {
         setError(err.message)
@@ -215,6 +218,7 @@ export default function SchoolRegistrationPage() {
           if (st.status === 'approved') {
             done = true
             setStatusMsg('')
+            if (st.credentials) setCredentials(st.credentials)
             setSubmitted(true)
           } else if (st.status === 'rejected') {
             done = true
@@ -252,10 +256,40 @@ export default function SchoolRegistrationPage() {
                 ? <>Votre établissement (cycle <strong>{selected?.cycle}</strong>) profite de <strong>1 mois d'essai gratuit</strong>. Votre compte directeur a été créé automatiquement. À la fin de l'essai, réglez votre souscription pour conserver l'accès.</>
                 : <>Votre demande pour le cycle <strong>{selected?.cycle}</strong> ({selected?.billing === 'annual' ? 'Annuel' : 'Trimestriel'}) a été réglée avec succès. Votre compte directeur a été créé automatiquement.</>}
             </p>
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-sm mb-6">
-              <p className="text-blue-800 font-medium mb-1">📧 Prochaines étapes</p>
-              <p className="text-blue-600 text-xs">Vos identifiants de connexion (email + mot de passe) viennent d'être envoyés à votre adresse email. Pensez à vérifier vos spams, puis connectez-vous et changez votre mot de passe.</p>
-            </div>
+            {credentials ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left text-sm mb-6">
+                <p className="text-amber-800 font-semibold mb-2 flex items-center gap-1.5"><KeyRound size={15} /> Vos identifiants de connexion</p>
+                <p className="text-amber-700 text-xs mb-3">Notez-les précieusement (ils vous ont aussi été envoyés par email). Changez votre mot de passe à la première connexion.</p>
+                <div className="bg-white rounded-lg border border-amber-100 divide-y divide-amber-50 font-mono text-sm">
+                  <div className="flex items-center justify-between px-3 py-2"><span className="text-gray-400 text-xs font-sans">Email</span><b className="text-gray-800">{credentials.email}</b></div>
+                  <div className="flex items-center justify-between px-3 py-2"><span className="text-gray-400 text-xs font-sans">Mot de passe</span><b className="text-gray-800">{credentials.password}</b></div>
+                  {credentials.matricule && <div className="flex items-center justify-between px-3 py-2"><span className="text-gray-400 text-xs font-sans">Matricule</span><b className="text-gray-800">{credentials.matricule}</b></div>}
+                </div>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button
+                    onClick={() => {
+                      const txt = `KATD-SCHÜLE — Identifiants Directeur\nEmail : ${credentials.email}\nMot de passe : ${credentials.password}${credentials.matricule ? `\nMatricule : ${credentials.matricule}` : ''}`
+                      navigator.clipboard?.writeText(txt).then(() => { setCopiedCreds(true); setTimeout(() => setCopiedCreds(false), 2000) }).catch(() => {})
+                    }}
+                    className="btn-secondary text-xs inline-flex items-center gap-1.5">
+                    {copiedCreds ? <><Check size={13} /> Copié</> : <><Copy size={13} /> Copier</>}
+                  </button>
+                  {credentials.whatsapp && (
+                    <a
+                      href={`https://wa.me/${String(credentials.whatsapp).replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`KATD-SCHÜLE — Vos identifiants Directeur\n\nEmail : ${credentials.email}\nMot de passe : ${credentials.password}${credentials.matricule ? `\nMatricule : ${credentials.matricule}` : ''}\n\nConnectez-vous puis changez votre mot de passe.`)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-xs inline-flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg px-3 py-2 font-medium">
+                      <MessageCircle size={13} /> Envoyer sur WhatsApp
+                    </a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-sm mb-6">
+                <p className="text-blue-800 font-medium mb-1">📧 Prochaines étapes</p>
+                <p className="text-blue-600 text-xs">Vos identifiants de connexion (email + mot de passe) viennent d'être envoyés à votre adresse email. Pensez à vérifier vos spams, puis connectez-vous et changez votre mot de passe.</p>
+              </div>
+            )}
             <Link to="/" className="btn-primary inline-flex items-center gap-2 text-sm">
               <ArrowLeft size={14} /> Retour à l'accueil
             </Link>

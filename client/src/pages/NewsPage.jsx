@@ -13,6 +13,7 @@ const KIND_META = {
   recrutement: { label: 'Recrutement', icon: Briefcase, color: 'text-blue-600 bg-blue-50' },
   repetition: { label: 'Répétition', icon: GraduationCap, color: 'text-indigo-600 bg-indigo-50' },
   demo: { label: 'Démo', icon: PlayCircle, color: 'text-rose-600 bg-rose-50' },
+  pub: { label: 'Publicité', icon: PlayCircle, color: 'text-amber-600 bg-amber-50' },
 }
 
 const waLink = (num) => `https://wa.me/${String(num || '').replace(/[^0-9]/g, '')}`
@@ -52,6 +53,37 @@ export default function NewsPage() {
     setSending(false)
   }
 
+  const renderCard = (p) => {
+    const meta = KIND_META[p.kind] || KIND_META.demo
+    const isMedia = p.kind === 'demo' || p.kind === 'pub'
+    return (
+      <button key={`${p.kind}-${p._id}`} onClick={() => openItem(p)} className="card overflow-hidden text-left hover:shadow-md transition-shadow">
+        {(p.photo || (isMedia && p.type === 'image' && p.mediaUrl)) && (
+          <img src={p.photo || p.mediaUrl} alt="" className="w-full h-36 object-cover" />
+        )}
+        {isMedia && p.type === 'video' && p.mediaUrl && (
+          <div className="w-full h-36 bg-black flex items-center justify-center"><PlayCircle size={40} className="text-white/80" /></div>
+        )}
+        <div className="p-4">
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 ${meta.color}`}>
+            <meta.icon size={11} /> {meta.label}
+          </span>
+          <p className="font-bold text-gray-900 leading-tight">{p.title}</p>
+          {p.kind === 'recrutement' && <p className="text-xs text-gray-500 mt-1">{[p.poste, p.contractType].filter(Boolean).join(' · ')}</p>}
+          {p.kind === 'repetition' && <p className="text-xs text-gray-500 mt-1">{[p.subjects, p.price].filter(Boolean).join(' · ')}</p>}
+          <p className="text-sm text-gray-600 mt-2 line-clamp-2">{p.description}</p>
+          <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
+            {(p.school?.name || p.teacherName) && <span className="flex items-center gap-1 truncate"><Building2 size={12} /> {p.school?.name || p.teacherName}</span>}
+            {p.location && <span className="flex items-center gap-1"><MapPin size={12} /> {p.location}</span>}
+          </div>
+        </div>
+      </button>
+    )
+  }
+
+  const ads = feed.filter((p) => p.kind === 'pub')
+  const rest = feed.filter((p) => p.kind !== 'pub')
+
   const list = (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -70,34 +102,28 @@ export default function NewsPage() {
           <p className="text-sm">Aucune actualité pour le moment.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {feed.map((p) => {
-            const meta = KIND_META[p.kind] || KIND_META.demo
-            return (
-              <button key={`${p.kind}-${p._id}`} onClick={() => openItem(p)} className="card overflow-hidden text-left hover:shadow-md transition-shadow">
-                {(p.photo || (p.kind === 'demo' && p.type === 'image' && p.mediaUrl)) && (
-                  <img src={p.photo || p.mediaUrl} alt="" className="w-full h-36 object-cover" />
-                )}
-                {p.kind === 'demo' && p.type === 'video' && p.mediaUrl && (
-                  <div className="w-full h-36 bg-black flex items-center justify-center"><PlayCircle size={40} className="text-white/80" /></div>
-                )}
-                <div className="p-4">
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 ${meta.color}`}>
-                    <meta.icon size={11} /> {meta.label}
-                  </span>
-                  <p className="font-bold text-gray-900 leading-tight">{p.title}</p>
-                  {p.kind === 'recrutement' && <p className="text-xs text-gray-500 mt-1">{[p.poste, p.contractType].filter(Boolean).join(' · ')}</p>}
-                  {p.kind === 'repetition' && <p className="text-xs text-gray-500 mt-1">{[p.subjects, p.price].filter(Boolean).join(' · ')}</p>}
-                  <p className="text-sm text-gray-600 mt-2 line-clamp-2">{p.description}</p>
-                  <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
-                    {(p.school?.name || p.teacherName) && <span className="flex items-center gap-1 truncate"><Building2 size={12} /> {p.school?.name || p.teacherName}</span>}
-                    {p.location && <span className="flex items-center gap-1"><MapPin size={12} /> {p.location}</span>}
-                  </div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
+        <>
+          {/* Section dédiée aux vidéos publicitaires */}
+          {ads.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                <PlayCircle size={16} className="text-amber-600" /> 🎬 Vidéos publicitaires
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {ads.map(renderCard)}
+              </div>
+            </div>
+          )}
+
+          {rest.length > 0 && (
+            <div className="space-y-3">
+              {ads.length > 0 && <h2 className="text-sm font-bold text-gray-800 pt-2">Actualités & démonstrations</h2>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {rest.map(renderCard)}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
