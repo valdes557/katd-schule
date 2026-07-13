@@ -33,7 +33,8 @@ router.post(
     }
 
     try {
-      const { name, email, password, role } = req.body
+      const { name, password, role } = req.body
+      const email = (req.body.email || '').trim().toLowerCase()
       const existing = await User.findOne({ email })
       if (existing) {
         return res.status(400).json({ message: 'Cet email est déjà utilisé' })
@@ -67,7 +68,8 @@ router.post(
       return res.status(400).json({ errors: errors.array() })
     }
     try {
-      const { name, email, password } = req.body
+      const { name, password } = req.body
+      const email = (req.body.email || '').trim().toLowerCase()
       let existing = await User.findOne({ email })
       if (existing) {
         // Compte JAMAIS vérifié => suppression complète (et données liées) pour
@@ -149,7 +151,11 @@ router.post(
     }
 
     try {
-      const { email, password, space } = req.body
+      const { password, space } = req.body
+      // Normalisation de l'email (minuscules + trim) : en base il est stocké en
+      // minuscules (lowercase:true). Sans ça, `Email@X.com` ou un espace parasite
+      // ne matchait AUCUN compte → « incorrect » même avec le bon mot de passe.
+      const email = (req.body.email || '').trim().toLowerCase()
       const user = await User.findOne({ email }).select('+loginAttempts +lockUntil +password').populate('school')
 
       // Séparation des espaces : les identifiants « utilisateur » (grand public) ne
