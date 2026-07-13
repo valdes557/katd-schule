@@ -109,7 +109,7 @@ export default function LoginPage() {
     if (!forgot.email) { setForgotError('Veuillez saisir votre email.'); return }
     setForgotLoading(true)
     try {
-      await authApi.forgotPassword(forgot.email)
+      await authApi.forgotPassword(forgot.email, mode)
       setForgotStep(2)
     } catch (err) {
       setForgotError(err.message || "Impossible d'envoyer le code.")

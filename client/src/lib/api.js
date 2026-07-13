@@ -58,7 +58,7 @@ export const authApi = {
   heartbeat: () => api.post('/auth/heartbeat').catch(() => {}),
   goOffline: () => api.post('/auth/offline').catch(() => {}),
   me: () => api.get('/auth/me'),
-  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  forgotPassword: (email, space) => api.post('/auth/forgot-password', { email, space }),
   resetPassword: (email, code, newPassword) => api.post('/auth/reset-password', { email, code, newPassword }),
   verifyEmail: (email, code) => api.post('/auth/verify-email', { email, code }),
   resendVerification: (email) => api.post('/auth/resend-verification', { email }),

@@ -151,16 +151,22 @@ router.post(
     try {
       const { email, password, space } = req.body
       const user = await User.findOne({ email }).select('+loginAttempts +lockUntil +password').populate('school')
-      if (!user) {
-        return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
-      }
+
       // Séparation des espaces : les identifiants « utilisateur » (grand public) ne
       // fonctionnent que sur l'onglet Utilisateur, et vice-versa pour l'espace École.
-      // Message générique pour ne pas divulguer l'existence/type du compte.
-      if (space === 'ecole' && user.role === 'utilisateur') {
-        return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
-      }
-      if (space === 'user' && user.role !== 'utilisateur') {
+      // Sur demande : on indique clairement quand AUCUN compte du bon type n'existe
+      // pour cette adresse (au lieu du message générique qui prêtait à confusion).
+      const isSchoolAccount = (u) => u && u.role !== 'utilisateur'
+      if (space === 'ecole') {
+        if (!isSchoolAccount(user)) {
+          return res.status(404).json({ message: "Aucun compte école n'est associé à cet email. Vérifiez l'adresse ou inscrivez votre établissement." })
+        }
+      } else if (space === 'user') {
+        if (!user || user.role !== 'utilisateur') {
+          return res.status(404).json({ message: "Aucun compte utilisateur n'est associé à cet email. Vérifiez l'adresse ou créez un compte." })
+        }
+      } else if (!user) {
+        // Espace non précisé : message générique (anti-énumération).
         return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
       }
       // Compte verrouillé après trop de tentatives
@@ -177,7 +183,7 @@ router.post(
           return res.status(429).json({ message: `Trop de tentatives. Compte bloqué pendant ${LOCK_MINUTES} minutes.` })
         }
         await user.save({ validateBeforeSave: false })
-        return res.status(401).json({ message: `Email ou mot de passe incorrect (${MAX_ATTEMPTS - user.loginAttempts} essai(s) restant(s))` })
+        return res.status(401).json({ message: `Mot de passe incorrect (${MAX_ATTEMPTS - user.loginAttempts} essai(s) restant(s))` })
       }
       // Connexion réussie : on remet le compteur à zéro
       user.loginAttempts = 0
@@ -243,7 +249,20 @@ router.post('/forgot-password', async (req, res) => {
   try {
     const email = (req.body.email || '').trim().toLowerCase()
     if (!email) return res.status(400).json({ message: 'Email requis' })
+    const space = req.body.space
     const user = await User.findOne({ email })
+    // Sur demande : pour l'espace École (ou Utilisateur), on prévient clairement
+    // quand aucun compte du bon type n'existe — inutile d'envoyer un code fantôme
+    // puis d'échouer à la connexion. (Espace non précisé → anti-énumération.)
+    if (space === 'ecole') {
+      if (!user || user.role === 'utilisateur') {
+        return res.status(404).json({ message: "Aucun compte école n'est associé à cet email. Vérifiez l'adresse ou inscrivez votre établissement." })
+      }
+    } else if (space === 'user') {
+      if (!user || user.role !== 'utilisateur') {
+        return res.status(404).json({ message: "Aucun compte utilisateur n'est associé à cet email. Vérifiez l'adresse ou créez un compte." })
+      }
+    }
     // Réponse identique que le compte existe ou non (anti-énumération)
     const genericMsg = 'Si un compte existe pour cet email, un code de réinitialisation a été envoyé.'
     if (!user || user.isActive === false) {
