@@ -226,6 +226,8 @@ router.post('/withdraw', protect, async (req, res) => {
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
     if (amt < MIN_WITHDRAWAL) return res.status(400).json({ message: 'Le retrait minimum est de ' + MIN_WITHDRAWAL.toLocaleString('fr-FR') + ' F' })
     if (!momoNumber) return res.status(400).json({ message: 'Numéro Mobile Money requis' })
+    // Nom du titulaire du numéro OBLIGATOIRE (affiché à l'admin pour la confirmation du retrait)
+    if (!accountName || !String(accountName).trim()) return res.status(400).json({ message: 'Le nom du titulaire du numéro est obligatoire' })
     // PIN obligatoire pour TOUS les rôles
     if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
     const u = await User.findById(req.user._id).select('+walletPin')
@@ -239,7 +241,7 @@ router.post('/withdraw', protect, async (req, res) => {
     // Frais 2% déduits du montant : l'utilisateur reçoit (amount − fee), l'admin encaisse fee.
     const fee = wallet.computeWithdrawalFee(amt)
     const netAmount = amt - fee
-    const holderName = String(accountName || req.user.name || '').trim()
+    const holderName = String(accountName).trim()
 
     // bloque le montant total (débité du solde)
     await wallet.lock(req.user._id, amt)
@@ -252,7 +254,7 @@ router.post('/withdraw', protect, async (req, res) => {
     await WalletTransaction.create({ wallet: w._id, owner: req.user._id, direction: 'debit',
       amount: amt, currency: w.currency, type: 'withdrawal', balanceAfter: w.balance, withdrawal: wr._id,
       description: 'Retrait vers ' + (momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber + ' (net ' + netAmount.toLocaleString('fr-FR') + ' F, frais 2%)',
-      meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '' } })
+      meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName } })
     // Frais encaissés par l'admin → rubrique « gestion des frais » (best-effort)
     await wallet.collectFee({ fee, fromUserId: req.user._id,
       description: 'Frais de retrait (2%) — ' + (req.user.name || ''),

@@ -150,6 +150,8 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         onDone('Dépôt effectué avec succès')
       } else if (type === 'withdraw') {
         if (Number(f.amount) < 2000) throw new Error('Le retrait minimum est de 2000 F')
+        if (!f.momoNumber.trim()) throw new Error('Numéro Mobile Money requis')
+        if (!f.accountName.trim()) throw new Error('Le nom du titulaire du numéro est obligatoire')
         if (!f.pin) throw new Error('Code PIN requis')
         const r = await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, accountName: f.accountName, pin: f.pin })
         onDone(r?.message || 'Demande de retrait enregistrée. Traitement sous 24h.')
@@ -224,7 +226,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         {type === 'withdraw' && (<>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de réception</label><select value={f.momoOperator} onChange={up('momoOperator')} className="input w-full">{OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label><input type="tel" value={f.momoNumber} onChange={up('momoNumber')} className="input w-full" placeholder="01 97 00 00 00" /></div>
-          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Nom du compte (facultatif)</label><input value={f.accountName} onChange={up('accountName')} className="input w-full" placeholder="Nom du titulaire Mobile Money" /></div>
+          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Nom du titulaire du numéro <span className="text-red-500">*</span></label><input value={f.accountName} onChange={up('accountName')} className="input w-full" placeholder="Nom du titulaire Mobile Money" required /></div>
           {Number(f.amount) > 0 && (
             <div className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
               <div className="flex justify-between"><span>Montant demandé</span><b>{fmt(Number(f.amount))} F</b></div>

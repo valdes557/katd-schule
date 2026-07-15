@@ -148,11 +148,25 @@ function buildDateFilter(from, to) {
 function normalizeWalletTx(tx) {
   const o = tx.owner || {}
   const cp = tx.counterparty || null
+  // Retrait : statut réel de la demande (pending → en attente de confirmation admin) + détails MoMo
+  const wr = tx.withdrawal && typeof tx.withdrawal === 'object' ? tx.withdrawal : null
+  const WR_STATUS = { pending: 'pending', processing: 'pending', paid: 'completed', rejected: 'rejected' }
+  const status = tx.type === 'withdrawal' && wr ? (WR_STATUS[wr.status] || 'pending') : 'completed'
+  const withdrawal = tx.type === 'withdrawal' ? {
+    id: wr ? String(wr._id) : null,
+    status: wr ? wr.status : null,
+    momoNumber: (wr && wr.momoNumber) || (tx.meta && tx.meta.momoNumber) || '',
+    momoOperator: (wr && wr.momoOperator) || (tx.meta && tx.meta.momoOperator) || '',
+    accountName: (wr && wr.accountName) || (tx.meta && tx.meta.accountName) || '',
+    fee: (wr && wr.fee) ?? (tx.meta && tx.meta.fee) ?? 0,
+    netAmount: (wr && wr.netAmount) ?? (tx.meta && tx.meta.netAmount) ?? 0,
+  } : null
   return {
     _id: 'w_' + tx._id, source: 'wallet', date: tx.createdAt,
     category: tx.type, categoryLabel: CATEGORY_LABELS[tx.type] || tx.type,
     direction: tx.direction, amount: tx.amount, currency: tx.currency || 'XOF',
-    status: 'completed',
+    status,
+    withdrawal,
     actor: {
       id: o._id, name: o.name || '—', role: o.role || '', email: o.email || '',
       phone: o.phone || '', matricule: o.matricule || '', accountNo: o.walletAccountNo || '',
@@ -198,6 +212,7 @@ router.get('/transactions', protect, adminOnly, async (req, res) => {
       .sort({ createdAt: -1 })
       .populate('owner', 'name role email phone matricule walletAccountNo')
       .populate('counterparty', 'name role')
+      .populate('withdrawal', 'status momoNumber momoOperator accountName fee netAmount')
       .limit(8000).lean()
 
     // Collectes SEBPay : souscriptions (jamais écrites au grand livre) + tentatives non abouties

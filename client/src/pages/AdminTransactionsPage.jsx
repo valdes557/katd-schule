@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import {
   ArrowLeftRight, Loader2, RefreshCw, TrendingUp, TrendingDown, Scale, Hash,
   CheckCircle2, Clock, XCircle, ChevronLeft, ChevronRight, Users, Building2,
+  ArrowUpFromLine, Phone, User as UserIcon,
 } from 'lucide-react'
 import { walletAdminApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -41,6 +42,114 @@ const STATUS_MAP = {
 const ROLE_LABELS = {
   super_admin: 'Administrateur', directeur: 'Directeur', enseignant: 'Enseignant',
   parent: 'Parent', eleve: 'Élève', utilisateur: 'Utilisateur', admin: 'Administrateur',
+}
+
+const OPERATOR_LABELS = { mtn: 'MTN', moov: 'Moov', celtiis: 'Celtiis' }
+
+// ─────────── Gestion des retraits en attente (confirmation admin) ───────────
+function PendingWithdrawals({ onProcessed }) {
+  const [busyId, setBusyId] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [error, setError] = useState('')
+
+  const key = '/admin/withdrawals?status=pending'
+  const query = useCachedFetch(key, () => walletAdminApi.withdrawals('pending'), [])
+  const list = query.data?.withdrawals || []
+  const loading = query.loading
+
+  const refresh = () => { cache.invalidate('/admin/withdrawals'); query.refetch() }
+  const flash = (m) => { setMsg(m); setError(''); setTimeout(() => setMsg(''), 4000) }
+
+  const confirm = async (wr) => {
+    if (!window.confirm(`Confirmer le paiement de ${fmt(wr.netAmount)} F (net) à ${wr.accountName || wr.user?.name || '—'} sur le ${wr.momoNumber} ?`)) return
+    setBusyId(wr._id); setError('')
+    try { await walletAdminApi.payWithdrawal(wr._id); flash('Retrait confirmé et marqué comme payé.'); refresh(); onProcessed?.() }
+    catch (e) { setError(e.message) } finally { setBusyId(null) }
+  }
+
+  const reject = async (wr) => {
+    const reason = window.prompt('Motif du rejet (le montant sera remboursé au portefeuille) :', '')
+    if (reason === null) return
+    setBusyId(wr._id); setError('')
+    try { await walletAdminApi.rejectWithdrawal(wr._id, reason); flash('Retrait rejeté, montant remboursé au portefeuille.'); refresh(); onProcessed?.() }
+    catch (e) { setError(e.message) } finally { setBusyId(null) }
+  }
+
+  return (
+    <div className="card overflow-hidden border-l-4 border-orange-400">
+      <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-wrap gap-2">
+        <div>
+          <h2 className="font-bold text-gray-900 flex items-center gap-2">
+            <ArrowUpFromLine size={18} className="text-orange-500" /> Gestion des retraits
+            {list.length > 0 && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700">{list.length} en attente</span>}
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">Les retraits restent en attente jusqu'à votre confirmation. Le net à payer est déduit des frais de 2%.</p>
+        </div>
+        <button onClick={refresh} className="btn-secondary text-sm inline-flex items-center gap-1.5">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Actualiser
+        </button>
+      </div>
+
+      {msg && <div className="mx-4 mt-3 bg-green-50 border border-green-200 text-green-800 rounded-xl p-2.5 text-sm">{msg}</div>}
+      {error && <div className="mx-4 mt-3 bg-red-50 border border-red-200 text-red-800 rounded-xl p-2.5 text-sm">{error}</div>}
+
+      {loading ? (
+        <div className="p-8 text-center text-gray-400"><Loader2 size={20} className="animate-spin mx-auto mb-2" /> Chargement…</div>
+      ) : list.length === 0 ? (
+        <div className="p-8 text-center text-gray-400 text-sm">Aucun retrait en attente de confirmation.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-400 border-b border-gray-100">
+                <th className="px-4 py-3 font-semibold">Date</th>
+                <th className="px-4 py-3 font-semibold">Utilisateur</th>
+                <th className="px-4 py-3 font-semibold">N° de retrait</th>
+                <th className="px-4 py-3 font-semibold">Nom du titulaire</th>
+                <th className="px-4 py-3 font-semibold text-right">Montant</th>
+                <th className="px-4 py-3 font-semibold text-right">Frais (2%)</th>
+                <th className="px-4 py-3 font-semibold text-right">Net à payer</th>
+                <th className="px-4 py-3 font-semibold text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((wr) => (
+                <tr key={wr._id} className="border-b border-gray-50 hover:bg-orange-50/40">
+                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmtDate(wr.createdAt)}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-gray-900">{wr.user?.name || '—'}</div>
+                    <div className="text-xs text-gray-500">{ROLE_LABELS[wr.user?.role] || wr.user?.role || '—'}</div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="font-mono font-semibold text-gray-900 flex items-center gap-1.5"><Phone size={13} className="text-gray-400" /> {wr.momoNumber}</div>
+                    <div className="text-xs text-gray-500 uppercase">{OPERATOR_LABELS[wr.momoOperator] || wr.momoOperator || '—'}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1.5 font-medium text-gray-800"><UserIcon size={13} className="text-gray-400" /> {wr.accountName || '—'}</span>
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(wr.amount)} F</td>
+                  <td className="px-4 py-3 text-right text-red-500 whitespace-nowrap">− {fmt(wr.fee)} F</td>
+                  <td className="px-4 py-3 text-right font-bold text-green-700 whitespace-nowrap">{fmt(wr.netAmount)} F</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => confirm(wr)} disabled={busyId === wr._id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                        {busyId === wr._id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Confirmer
+                      </button>
+                      <button onClick={() => reject(wr)} disabled={busyId === wr._id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-50">
+                        <XCircle size={13} /> Rejeter
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function AdminTransactionsPage() {
@@ -89,6 +198,9 @@ export default function AdminTransactionsPage() {
       </div>
 
       <div ref={pdfRef} className="space-y-6">
+        {/* Retraits en attente de confirmation admin */}
+        <PendingWithdrawals onProcessed={refresh} />
+
         {/* Cartes de synthèse */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="card p-4 border-l-4 border-green-500">
@@ -183,6 +295,13 @@ export default function AdminTransactionsPage() {
                         <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmtDate(t.date)}</td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-700">{t.categoryLabel}</span>
+                          {t.withdrawal && (
+                            <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                              <div>📱 <span className="font-mono font-semibold">{t.withdrawal.momoNumber}</span>{t.withdrawal.momoOperator && <span className="uppercase"> · {t.withdrawal.momoOperator}</span>}</div>
+                              {t.withdrawal.accountName && <div>👤 {t.withdrawal.accountName}</div>}
+                              <div>Net à payer : <b className="text-green-700">{fmt(t.withdrawal.netAmount)} F</b> <span className="text-gray-400">(frais 2% : {fmt(t.withdrawal.fee)} F)</span></div>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-gray-900">{t.actor?.name || '—'}</div>
