@@ -868,6 +868,20 @@ export const adminMerchantsApi = {
   fund: (id, amount, reason) => api.put('/admin/merchants/' + id + '/fund', { amount, reason }),
 }
 
+// Programme actionnaires : plans/termes + souscription (utilisateur), gestion (super admin)
+export const shareholdersApi = {
+  config: () => api.get('/shareholders/config'),
+  me: () => api.get('/shareholders/me'),
+  subscribe: (payload) => api.post('/shareholders/subscribe', payload),
+  adminConfig: () => api.get('/shareholders/admin/config'),
+  adminUpdateConfig: (payload) => api.put('/shareholders/admin/config', payload),
+  adminList: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/shareholders/admin/list' + (qs ? '?' + qs : ''))
+  },
+  adminRevoke: (id) => api.put('/shareholders/admin/' + id + '/revoke', {}),
+}
+
 // Gestion de tous les utilisateurs (super_admin) : liste + soldes + compte externe, blocage, suppression
 export const adminUsersApi = {
   list: (params = {}) => {

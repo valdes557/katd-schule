@@ -32,6 +32,7 @@ const txSchema = new mongoose.Schema(
         'referral_bonus',    // bonus de parrainage 70 F au 1er dépôt du filleul (crédit parrain)
         'interest',          // intérêt quotidien directeur 0,01%/jour (crédit)
         'maintenance_fee',   // frais de maintenance mensuels (débit utilisateur)
+        'shareholder_subscription', // souscription actionnaire encaissée par l'admin (crédit)
       ],
       required: true,
       index: true,

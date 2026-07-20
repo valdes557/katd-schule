@@ -135,6 +135,11 @@ const CATEGORY_LABELS = {
   transfer_sent: 'Transfert envoyé', transfer_received: 'Transfert reçu',
   transfer_fee: 'Frais de transfert', fee_collected: 'Frais encaissés',
   pension_payment: 'Paiement pension', pension_received: 'Pension reçue',
+  merchant_signup: 'Activation marchand', merchant_funding: 'Approvisionnement marchand',
+  merchant_commission: 'Commission marchand', referral_bonus: 'Bonus parrainage',
+  interest: 'Intérêt', maintenance_fee: 'Frais de maintenance',
+  merchant: 'Activation marchand', shareholder: 'Souscription actionnaire',
+  shareholder_subscription: 'Souscription actionnaire',
 }
 
 // Construit un filtre de dates { createdAt: { $gte, $lte } } à partir de from/to (YYYY-MM-DD)

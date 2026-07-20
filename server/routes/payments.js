@@ -336,6 +336,34 @@ async function applyOutcome(intent, status, raw) {
           }
         } catch (e) { /* activation faite même si le crédit admin échoue */ }
       }
+    } else if (intent.purpose === 'shareholder') {
+      // Souscription actionnaire : crée la part (1% / zone / durée) + encaisse la somme (admin).
+      // La somme est NON REMBOURSABLE (cf. termes) — elle va directement à l'admin plateforme.
+      if (intent.initiatedBy) {
+        const m = intent.meta || {}
+        const Shareholding = require('../models/Shareholding')
+        const years = Number(m.durationYears) || 35
+        const startAt = new Date()
+        const endAt = new Date(startAt)
+        endAt.setFullYear(endAt.getFullYear() + years)
+        await Shareholding.create({
+          user: intent.initiatedBy, planKey: m.planKey, planLabel: m.planLabel || '',
+          percent: Number(m.percent) || 1, amount: intent.amount, durationYears: years,
+          zone: m.zone || '', startAt, endAt, status: 'active', paymentIntent: intent._id,
+        })
+        try {
+          const admin = await wallet.getPlatformAdmin()
+          if (admin) {
+            await wallet.credit(admin._id, {
+              amount: intent.amount, type: 'shareholder_subscription', role: 'admin',
+              counterparty: intent.initiatedBy, paymentIntent: intent._id,
+              sebpayTransactionId: intent.sebpayTransactionId,
+              description: 'Souscription actionnaire — ' + (m.planLabel || m.planKey || ''),
+              meta: { planKey: m.planKey, zone: m.zone || '' },
+            })
+          }
+        } catch (e) { /* part créée même si le crédit admin échoue */ }
+      }
     }
     intent.fulfilled = true
     await intent.save()
