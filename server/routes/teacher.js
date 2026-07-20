@@ -19,6 +19,15 @@ const SchoolPost = require('../models/SchoolPost')
 const Announcement = require('../models/Announcement')
 const Salary = require('../models/Salary')
 const { sendEmail } = require('../utils/emailService')
+const pushService = require('../services/pushService')
+
+// Ids des comptes parents des élèves actifs d'une ou plusieurs classes (pour push).
+async function classParentUserIds(classIds) {
+  const ids = Array.isArray(classIds) ? classIds : [classIds]
+  const students = await Student.find({ class: { $in: ids }, parentUser: { $ne: null }, status: 'active' })
+    .select('parentUser').lean()
+  return [...new Set(students.map((s) => s.parentUser?.toString()).filter(Boolean))]
+}
 
 const teacherOnly = (req, res, next) => {
   if (req.user.role !== 'enseignant') return res.status(403).json({ message: 'Accès réservé aux enseignants' })
@@ -329,6 +338,16 @@ router.post('/homeworks', protect, teacherOnly, async (req, res) => {
     })
     const populated = await Homework.findById(hw._id).populate('class', 'name level')
     res.status(201).json({ success: true, data: populated })
+
+    // Push aux parents de la classe (best-effort).
+    classParentUserIds(hw.class).then((ids) => {
+      pushService.sendToUsers(ids, {
+        title: `📚 Nouveau devoir — ${hw.subject}`,
+        body: `${hw.title} • à remettre le ${new Date(hw.dueDate).toLocaleDateString('fr-FR')}`,
+        url: '/dashboard/parent/devoirs',
+        tag: 'hw_' + hw._id.toString(),
+      })
+    }).catch(() => {})
 
     // Notify parents of all students in this class (async, non-blocking)
     Student.find({ class: hw.class, status: 'active' }).populate('parentUser', 'email name').then((students) => {
@@ -708,6 +727,16 @@ router.post('/activities', protect, pedagogueOnly, async (req, res) => {
     const populated = await Activity.findById(act._id).populate('class', 'name level').populate('teacher', 'firstName lastName')
     res.status(201).json({ success: true, data: populated })
 
+    // Push aux parents de la classe (best-effort).
+    classParentUserIds(act.class).then((ids) => {
+      pushService.sendToUsers(ids, {
+        title: `🎯 Nouvelle activité — ${act.title}`,
+        body: `${act.type || 'Activité'} • ${new Date(act.date).toLocaleDateString('fr-FR')}${act.location ? ' • ' + act.location : ''}`,
+        url: '/dashboard/parent/activites',
+        tag: 'act_' + act._id.toString(),
+      })
+    }).catch(() => {})
+
     // Notify parents of class
     Student.find({ class: act.class, status: 'active' }).populate('parentUser', 'email name').then((students) => {
       students.filter((s) => s.parentUser?.email).forEach((s) => {
@@ -784,6 +813,16 @@ router.post('/resources', protect, pedagogueOnly, async (req, res) => {
     })
     const populated = await Resource.findById(r._id).populate('classes', 'name level')
     res.status(201).json({ success: true, data: populated })
+
+    // Push aux parents des classes ciblées (best-effort).
+    classParentUserIds(targetClasses).then((ids) => {
+      pushService.sendToUsers(ids, {
+        title: '📖 Nouvelle ressource pédagogique',
+        body: r.title || 'Une ressource a été partagée pour votre enfant',
+        url: '/dashboard/parent/ressources',
+        tag: 'res_' + r._id.toString(),
+      })
+    }).catch(() => {})
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

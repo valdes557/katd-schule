@@ -63,4 +63,20 @@ async function sendToUsers(userIds, payload) {
   await Promise.all(unique.map((id) => sendToUser(id, payload)))
 }
 
-module.exports = { sendToUser, sendToUsers, isConfigured, VAPID_PUBLIC }
+// Envoie à TOUS les abonnés push de la plateforme (news/recrutement publics).
+// Borné par construction : on ne parcourt que les utilisateurs ayant une
+// souscription push enregistrée, pas toute la table User.
+async function sendToAllSubscribers(payload, excludeId) {
+  if (!configured) return
+  try {
+    const ids = await PushSubscription.distinct('user')
+    const ex = excludeId?.toString()
+    await Promise.all(
+      ids.filter((id) => id && id.toString() !== ex).map((id) => sendToUser(id, payload))
+    )
+  } catch (e) {
+    console.error('[push] sendToAllSubscribers a échoué :', e.message)
+  }
+}
+
+module.exports = { sendToUser, sendToUsers, sendToAllSubscribers, isConfigured, VAPID_PUBLIC }

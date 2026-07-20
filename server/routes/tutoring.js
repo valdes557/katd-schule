@@ -3,6 +3,7 @@ const router = express.Router()
 const TutoringPost = require('../models/TutoringPost')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
+const pushService = require('../services/pushService')
 
 /* ─────────────── ROUTES PUBLIQUES (feed News — sans authentification) ─────────────── */
 
@@ -59,6 +60,16 @@ router.post('/', protect, authorize('enseignant'), upload.single('photo'), async
       status: ['published', 'closed'].includes(status) ? status : 'published',
     })
     res.status(201).json({ success: true, data: post })
+
+    // Push global (feed News public) si l'annonce est publiée — best-effort.
+    if (post.status === 'published') {
+      pushService.sendToAllSubscribers({
+        title: '🎓 Nouvelle offre de répétitions',
+        body: `${post.title}${post.subjects ? ' • ' + post.subjects : ''}`,
+        url: '/dashboard/news',
+        tag: 'tut_' + post._id.toString(),
+      }, req.user._id).catch(() => {})
+    }
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

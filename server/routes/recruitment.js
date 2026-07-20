@@ -6,6 +6,7 @@ const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
 const { sendRecruitmentApplicationEmail, sendRecruitmentDecisionEmail } = require('../utils/emailService')
+const pushService = require('../services/pushService')
 
 // Helper : école du directeur connecté
 function schoolId(req) { return req.user.school?._id || req.user.school }
@@ -123,6 +124,16 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
       createdBy: req.user._id,
     })
     res.status(201).json({ success: true, data: post })
+
+    // Push global (job board public) si l'annonce est publiée — best-effort.
+    if (post.status === 'published') {
+      pushService.sendToAllSubscribers({
+        title: '💼 Nouvelle offre de recrutement',
+        body: `${post.title}${post.location ? ' • ' + post.location : ''}`,
+        url: '/dashboard/news',
+        tag: 'recr_' + post._id.toString(),
+      }, req.user._id).catch(() => {})
+    }
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

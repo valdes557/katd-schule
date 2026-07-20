@@ -1,10 +1,28 @@
 const express = require('express')
 const router = express.Router()
 const SharedDocument = require('../models/SharedDocument')
+const User = require('../models/User')
+const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
+const pushService = require('../services/pushService')
 
 function schoolId(req) { return req.user.school?._id || req.user.school }
+
+// Destinataires push d'un document : membres de l'école (staff + comptes parents).
+// Si le document vise une classe précise, seuls les parents de cette classe (+ staff).
+async function documentRecipients(sid, classId, excludeId) {
+  const staff = await User.find({ school: sid, isActive: { $ne: false } }).select('_id').lean()
+  const studentQuery = { school: sid, parentUser: { $ne: null }, status: 'active' }
+  if (classId) studentQuery.class = classId
+  const students = await Student.find(studentQuery).select('parentUser').lean()
+  const ids = [
+    ...staff.map((u) => u._id.toString()),
+    ...students.map((s) => s.parentUser?.toString()).filter(Boolean),
+  ]
+  const ex = excludeId?.toString()
+  return [...new Set(ids)].filter((id) => id !== ex)
+}
 
 // GET /api/documents — documents partagés de l'école de l'utilisateur courant
 // Tous les membres de l'école (directeur, enseignant, parent) y ont accès.
@@ -62,6 +80,16 @@ router.post(
         { path: 'class', select: 'name level' },
       ])
       res.status(201).json({ success: true, data: populated })
+
+      // Push aux membres concernés (best-effort).
+      documentRecipients(sid, doc.class, req.user._id).then((ids) => {
+        pushService.sendToUsers(ids, {
+          title: '📄 Nouveau document partagé',
+          body: doc.title,
+          url: '/dashboard/documents',
+          tag: 'doc_' + doc._id.toString(),
+        })
+      }).catch(() => {})
     } catch (err) { res.status(500).json({ message: err.message }) }
   }
 )

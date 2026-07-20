@@ -5,6 +5,7 @@ const TutoringPost = require('../models/TutoringPost')
 const PlatformNews = require('../models/PlatformNews')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
+const pushService = require('../services/pushService')
 
 // Normalise une annonce de recrutement en item de feed unifié
 const mapRecruitment = (p) => ({
@@ -115,6 +116,14 @@ router.post('/admin', protect, authorize('super_admin'), upload.single('media'),
       createdBy: req.user._id,
     })
     res.status(201).json({ success: true, data: item })
+
+    // Push global : nouveau contenu News plateforme (démo/pub) — best-effort.
+    pushService.sendToAllSubscribers({
+      title: item.category === 'pub' ? '🎬 Nouvelle vidéo publicitaire' : '📰 Nouveauté sur KATD SCHÜLE',
+      body: item.title,
+      url: '/dashboard/news',
+      tag: 'news_' + item._id.toString(),
+    }, req.user._id).catch(() => {})
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

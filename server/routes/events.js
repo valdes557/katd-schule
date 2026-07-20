@@ -1,9 +1,27 @@
 const express = require('express')
 const router = express.Router()
 const Event = require('../models/Event')
+const User = require('../models/User')
+const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
+const pushService = require('../services/pushService')
 
 function schoolId(req) { return req.user.school?._id || req.user.school }
+
+// Destinataires push d'un évènement selon l'audience (all / parents / teachers).
+async function eventRecipients(sid, audience, excludeId) {
+  const ids = []
+  if (audience === 'all' || audience === 'teachers') {
+    const staff = await User.find({ school: sid, role: { $in: ['enseignant'] }, isActive: { $ne: false } }).select('_id').lean()
+    ids.push(...staff.map((u) => u._id.toString()))
+  }
+  if (audience === 'all' || audience === 'parents') {
+    const students = await Student.find({ school: sid, parentUser: { $ne: null }, status: 'active' }).select('parentUser').lean()
+    ids.push(...students.map((s) => s.parentUser?.toString()).filter(Boolean))
+  }
+  const ex = excludeId?.toString()
+  return [...new Set(ids)].filter((id) => id !== ex)
+}
 
 // Audiences visibles selon le rôle de l'utilisateur
 function audiencesFor(role) {
@@ -55,6 +73,16 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
       createdBy: req.user._id,
     })
     res.status(201).json({ success: true, data: event })
+
+    // Push aux destinataires de l'évènement (best-effort).
+    eventRecipients(sid, event.audience, req.user._id).then((ids) => {
+      pushService.sendToUsers(ids, {
+        title: `📅 ${event.title}`,
+        body: `${new Date(event.startDate).toLocaleDateString('fr-FR')}${event.location ? ' • ' + event.location : ''}`,
+        url: '/dashboard/infos',
+        tag: 'evt_' + event._id.toString(),
+      })
+    }).catch(() => {})
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
