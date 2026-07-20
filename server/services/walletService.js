@@ -12,6 +12,11 @@ const WITHDRAWAL_FEE_RATE = 0.02
 const MERCHANT_COMMISSION_RATE = 0.002
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'valdeslando15@gmail.com').toLowerCase()
 
+// Types de crédit « argent reçu d'un particulier » : la TOUTE PREMIÈRE somme reçue
+// (transfert, salaire, pension, inscription) règle l'arriéré de frais de maintenance
+// du bénéficiaire, exactement comme un dépôt qu'il fait lui-même sur son compte.
+const MAINTENANCE_ON_CREDIT_TYPES = new Set(['transfer_received', 'salary_received', 'pension_received', 'enrollment'])
+
 async function getOrCreateWallet(userId, { role = 'autre', school = null } = {}) {
   let wallet = await Wallet.findOne({ owner: userId })
   if (!wallet) {
@@ -83,6 +88,15 @@ async function credit(userId, { amount, type, description = '', counterparty = n
     currency: wallet.currency, type, balanceAfter: wallet.balance,
     counterparty, paymentIntent, sebpayTransactionId, description, meta,
   })
+  // Frais de maintenance : la première somme reçue d'un particulier (transfert, salaire,
+  // pension, inscription) règle l'arriéré, exactement comme un dépôt fait par soi-même.
+  // Best-effort + require paresseux (scheduler dépend déjà de ce service).
+  if (MAINTENANCE_ON_CREDIT_TYPES.has(type)) {
+    try {
+      const { applyMaintenanceOnDeposit } = require('../jobs/scheduler')
+      await applyMaintenanceOnDeposit(userId)
+    } catch (e) { console.error('[maintenance:onCredit] ' + userId + ' :', e.message) }
+  }
   return { wallet, tx }
 }
 

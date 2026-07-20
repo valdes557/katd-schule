@@ -70,9 +70,9 @@ router.post('/:id/slots', protect, authorize('directeur', 'super_admin', 'enseig
 
 // POST assign/duplicate a timetable's slots to one OR several other classes/rooms
 // Body: { classIds: [<classId>, ...] } — copie les créneaux de l'emploi source vers
-// chaque classe cible (création si l'emploi n'existe pas encore). Le directeur peut
-// ainsi appliquer le même emploi du temps à plusieurs salles de son école.
-router.post('/:id/assign-to', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+// chaque classe cible (création si l'emploi n'existe pas encore). Le directeur ET le
+// personnel enseignant peuvent ainsi appliquer le même emploi du temps à plusieurs classes.
+router.post('/:id/assign-to', protect, authorize('directeur', 'super_admin', 'enseignant'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
     if (!schoolId) return res.status(400).json({ message: 'Aucune école associée à votre compte' })

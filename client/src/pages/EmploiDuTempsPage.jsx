@@ -7,7 +7,6 @@ import { cache } from '../lib/cache'
 import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
-const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00']
 const SLOT_COLORS = ['#3B82F6','#10B981','#F59E0B','#8B5CF6','#EF4444','#06B6D4','#EC4899','#14B8A6','#F97316','#6366F1']
 const DAY_COLORS = { Lundi: 'bg-blue-50', Mardi: 'bg-green-50', Mercredi: 'bg-yellow-50', Jeudi: 'bg-purple-50', Vendredi: 'bg-red-50', Samedi: 'bg-cyan-50' }
 
@@ -17,6 +16,9 @@ export default function EmploiDuTempsPage() {
   const pdfRef = useRef(null)
   const { user } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+  // Le personnel enseignant peut aussi gérer l'emploi du temps (ajout de créneaux avec
+  // heures libres + duplication vers plusieurs classes) — routes serveur déjà ouvertes.
+  const canEdit = isDirecteur || user?.role === 'enseignant'
 
   const [selectedClass, setSelectedClass] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -54,6 +56,10 @@ export default function EmploiDuTempsPage() {
   const addSlot = async (e) => {
     e.preventDefault()
     if (!timetable) return
+    if (slotForm.startTime && slotForm.endTime && slotForm.endTime <= slotForm.startTime) {
+      alert("L'heure de fin doit être après l'heure de début")
+      return
+    }
     try {
       const r = await timetablesApi.addSlot(timetable._id, slotForm)
       timetableQ.setData(r.data)
@@ -91,6 +97,14 @@ export default function EmploiDuTempsPage() {
   const slots = timetable?.slots || []
   const currentClass = classes.find((c) => c._id === selectedClass)
 
+  // Lignes horaires de la grille : dérivées des créneaux réels (heures libres possibles,
+  // ex. 06:30 ou 18:45), avec la plage par défaut 07:00 → 18:00 en repli.
+  const slotHours = slots.map((s) => parseInt(s.startTime, 10)).filter((h) => !Number.isNaN(h))
+  const firstHour = Math.min(7, ...(slotHours.length ? slotHours : [7]))
+  const lastHour = Math.max(17, ...(slotHours.length ? slotHours : [17]))
+  const GRID_HOURS = []
+  for (let h = firstHour; h <= lastHour; h++) GRID_HOURS.push(String(h).padStart(2, '0') + ':00')
+
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
 
   return (
@@ -107,12 +121,12 @@ export default function EmploiDuTempsPage() {
             {classes.map((c) => <option key={c._id} value={c._id}>{c.name} ({c.cycle})</option>)}
           </select>
           <DownloadPdfButton containerRef={pdfRef} filename="emploi-du-temps.pdf" title="Emploi du temps" subtitle={currentClass ? `${currentClass.name} — ${currentClass.cycle}` : ''} label="Emploi du temps PDF" iconOnly />
-          {isDirecteur && timetable && (
+          {canEdit && timetable && (
             <button onClick={() => { setSlotForm(EMPTY_SLOT); setShowModal(true) }} className="btn-primary text-sm">
               <Plus size={15} /> Ajouter
             </button>
           )}
-          {isDirecteur && timetable && (
+          {canEdit && timetable && (
             <button onClick={() => { setAssignTargets([]); setShowAssign(true) }} className="btn-ghost text-sm border border-gray-200" title="Appliquer cet emploi du temps à d'autres salles">
               <Copy size={15} /> Dupliquer vers d'autres salles
             </button>
@@ -139,8 +153,8 @@ export default function EmploiDuTempsPage() {
               </tr>
             </thead>
             <tbody>
-              {HOURS.filter((_, i) => i % 2 === 0).map((hour) => {
-                const nextHour = HOURS[HOURS.indexOf(hour) + 2] || '17:30'
+              {GRID_HOURS.map((hour) => {
+                const nextHour = String(parseInt(hour, 10) + 1).padStart(2, '0') + ':00'
                 return (
                   <tr key={hour} className="border-b border-gray-50">
                     <td className="px-3 py-1 text-[10px] font-mono text-gray-400 align-top pt-2">{hour}</td>
@@ -159,7 +173,7 @@ export default function EmploiDuTempsPage() {
                               {s.date && <div className="opacity-70">📅 {new Date(s.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</div>}
                               {s.teacher && <div className="opacity-70">{s.teacher}</div>}
                               {s.room && <div className="opacity-70">📍 {s.room}</div>}
-                              {isDirecteur && (
+                              {canEdit && (
                                 <button
                                   onClick={() => removeSlot(s._id)}
                                   className="absolute top-0.5 right-0.5 bg-white/30 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -179,7 +193,7 @@ export default function EmploiDuTempsPage() {
           </table>
           {slots.length === 0 && (
             <div className="text-center py-10 text-gray-400 text-sm">
-              Aucun créneau défini.{isDirecteur && ' Cliquez sur "Ajouter" pour commencer.'}
+              Aucun créneau défini.{canEdit && ' Cliquez sur "Ajouter" pour commencer.'}
             </div>
           )}
         </div>
@@ -265,17 +279,14 @@ export default function EmploiDuTempsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600">Début *</label>
-                  <select value={slotForm.startTime} onChange={(e) => setSlotForm({ ...slotForm, startTime: e.target.value })} className="input text-sm mt-1">
-                    {HOURS.map((h) => <option key={h}>{h}</option>)}
-                  </select>
+                  <input type="time" required value={slotForm.startTime} onChange={(e) => setSlotForm({ ...slotForm, startTime: e.target.value })} className="input text-sm mt-1" />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600">Fin *</label>
-                  <select value={slotForm.endTime} onChange={(e) => setSlotForm({ ...slotForm, endTime: e.target.value })} className="input text-sm mt-1">
-                    {HOURS.map((h) => <option key={h}>{h}</option>)}
-                  </select>
+                  <input type="time" required value={slotForm.endTime} onChange={(e) => setSlotForm({ ...slotForm, endTime: e.target.value })} className="input text-sm mt-1" />
                 </div>
               </div>
+              <p className="text-[10px] text-gray-400 -mt-1">Saisissez librement les heures (ex. 07:45 → 09:15).</p>
               <div>
                 <label className="text-xs font-medium text-gray-600">Matière</label>
                 <select value={slotForm.subject} onChange={(e) => setSlotForm({ ...slotForm, subject: e.target.value })} className="input text-sm mt-1">

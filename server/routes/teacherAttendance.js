@@ -10,12 +10,27 @@ const { sendEmail } = require('../utils/emailService')
 
 function schoolId(req) { return req.user.school?._id || req.user.school }
 
-// Jour courant au format YYYY-MM-DD (fuseau serveur)
+// Fuseau horaire de l'application (heure locale du Cameroun, UTC+1).
+// Le VPS tourne en UTC : sans conversion, un enseignant arrivant à 07h45 locale était
+// vu par le serveur comme arrivé à 06h45 → « présent » alors qu'il était en retard.
+// Toutes les comparaisons d'heures (arrivée/sortie) se font désormais dans ce fuseau,
+// à la minute près : heure limite 07:10 → arrivée 07:11 = retard de 1 min.
+const APP_TZ = process.env.APP_TZ || 'Africa/Douala'
+
+// Décompose une date dans le fuseau APP_TZ (année, mois, jour, heure, minute)
+function tzParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: APP_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date)
+  const get = (t) => parts.find((p) => p.type === t)?.value
+  return { y: get('year'), mo: get('month'), d: get('day'), h: Number(get('hour')) % 24, mi: Number(get('minute')) }
+}
+
+// Jour courant au format YYYY-MM-DD (fuseau APP_TZ)
 function todayKey(d = new Date()) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  const p = tzParts(d)
+  return `${p.y}-${p.mo}-${p.d}`
 }
 
 // Convertit "HH:MM" → minutes depuis minuit
@@ -26,12 +41,14 @@ function hhmmToMinutes(s) {
   return h * 60 + m
 }
 
+// Minutes depuis minuit dans le fuseau APP_TZ (comparables à l'heure saisie par le directeur)
 function minutesOfDay(date) {
-  return date.getHours() * 60 + date.getMinutes()
+  const p = tzParts(date)
+  return p.h * 60 + p.mi
 }
 
 function fmtTime(date) {
-  return new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  return new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: APP_TZ })
 }
 
 // S'assure que l'école a un token QR ; le génère si absent.
