@@ -872,6 +872,8 @@ export const adminMerchantsApi = {
 export const shareholdersApi = {
   config: () => api.get('/shareholders/config'),
   me: () => api.get('/shareholders/me'),
+  // Portefeuille actionnaire : agrégats de la zone + gains + publications admin
+  dashboard: () => api.get('/shareholders/dashboard'),
   subscribe: (payload) => api.post('/shareholders/subscribe', payload),
   adminConfig: () => api.get('/shareholders/admin/config'),
   adminUpdateConfig: (payload) => api.put('/shareholders/admin/config', payload),
@@ -880,6 +882,15 @@ export const shareholdersApi = {
     return api.get('/shareholders/admin/list' + (qs ? '?' + qs : ''))
   },
   adminRevoke: (id) => api.put('/shareholders/admin/' + id + '/revoke', {}),
+  // Activer / modifier / éditer / supprimer le plan d'un actionnaire
+  adminUpdate: (id, payload) => api.put('/shareholders/admin/' + id, payload),
+  adminDelete: (id) => api.del('/shareholders/admin/' + id),
+  adminPayGain: (id, amount, note) => api.put('/shareholders/admin/' + id + '/pay-gain', { amount, note }),
+  // Publications destinées aux actionnaires (dépenses, sommes à payer, réunions…)
+  adminPosts: () => api.get('/shareholders/admin/posts'),
+  adminCreatePost: (payload) => api.post('/shareholders/admin/posts', payload),
+  adminUpdatePost: (id, payload) => api.put('/shareholders/admin/posts/' + id, payload),
+  adminDeletePost: (id) => api.del('/shareholders/admin/posts/' + id),
 }
 
 // Gestion de tous les utilisateurs (super_admin) : liste + soldes + compte externe, blocage, suppression

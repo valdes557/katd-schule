@@ -33,6 +33,7 @@ const txSchema = new mongoose.Schema(
         'interest',          // intérêt quotidien directeur 0,01%/jour (crédit)
         'maintenance_fee',   // frais de maintenance mensuels (débit utilisateur)
         'shareholder_subscription', // souscription actionnaire encaissée par l'admin (crédit)
+        'shareholder_gain',  // gain/dividende versé à un actionnaire (crédit)
       ],
       required: true,
       index: true,

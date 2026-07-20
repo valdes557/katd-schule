@@ -140,6 +140,7 @@ const CATEGORY_LABELS = {
   interest: 'Intérêt', maintenance_fee: 'Frais de maintenance',
   merchant: 'Activation marchand', shareholder: 'Souscription actionnaire',
   shareholder_subscription: 'Souscription actionnaire',
+  shareholder_gain: 'Gain actionnaire',
 }
 
 // Construit un filtre de dates { createdAt: { $gte, $lte } } à partir de from/to (YYYY-MM-DD)
