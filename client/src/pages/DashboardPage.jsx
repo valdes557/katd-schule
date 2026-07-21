@@ -15,7 +15,14 @@ import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import ParentDashboardPage from './ParentDashboardPage'
 import TeacherDashboardPage from './TeacherDashboardPage'
+import VicePrincipalDashboard from './secondary/VicePrincipalDashboard'
+import SurveillantDashboard from './secondary/SurveillantDashboard'
+import CaissiereDashboard from './secondary/CaissiereDashboard'
+import SecretaireDashboard from './secondary/SecretaireDashboard'
+import PortierDashboard from './secondary/PortierDashboard'
+import EleveDashboardPage from './secondary/EleveDashboardPage'
 import AppLauncher from '../components/layout/AppLauncher'
+import { roleLabel, isSecondarySchool } from '../lib/roleLabels'
 
 const PIE_COLORS = ['#3B82F6', '#F59E0B', '#10B981']
 
@@ -239,8 +246,11 @@ function DirectorDashboard({ user, school }) {
       {/* En-tête fixe (sticky) : identité du directeur — reste en haut de la page */}
       <div className="sticky top-24 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-gray-50/95 backdrop-blur-sm border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Bonjour, {user?.name || 'Directeur'} 👋</h1>
-          <p className="text-sm text-gray-500">{school?.name || 'Mon école'}</p>
+          <h1 className="text-xl font-bold text-gray-900">Bonjour, {user?.name || roleLabel('directeur', school)} 👋</h1>
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-indigo-600">{roleLabel('directeur', school)}</span>
+            {school?.name ? ` — ${school.name}` : isSecondarySchool(school) ? '' : ' — Mon école'}
+          </p>
           {schoolCycles.length > 0 && (
             <div className="flex gap-1 mt-1">{schoolCycles.map((c) => <span key={c} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-medium">{c}</span>)}</div>
           )}
@@ -382,6 +392,18 @@ function DirectorDashboard({ user, school }) {
 
 export default function DashboardPage() {
   const { user, school } = useAuth()
+  // Dashboards du cycle Secondaire (chacun gère son propre en-tête + AppLauncher)
+  const SECONDARY_DASHBOARDS = {
+    vice_principal: VicePrincipalDashboard,
+    surveillant_general: SurveillantDashboard,
+    caissiere: CaissiereDashboard,
+    secretaire: SecretaireDashboard,
+    portier: PortierDashboard,
+    eleve: EleveDashboardPage,
+  }
+  const SecondaryDash = SECONDARY_DASHBOARDS[user?.role]
+  if (SecondaryDash) return <SecondaryDash />
+
   let content
   if (user?.role === 'super_admin') content = <AdminDashboard user={user} />
   else if (user?.role === 'parent') content = <ParentDashboardPage />

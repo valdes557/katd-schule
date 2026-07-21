@@ -30,6 +30,13 @@ const ROLE_PREFIX = {
   enseignant: 'ENS',
   parent: 'PAR',
   super_admin: 'ADM',
+  eleve: 'ELV',
+  // Rôles administratifs du cycle Secondaire
+  vice_principal: 'VPR',
+  surveillant_general: 'SGL',
+  caissiere: 'CAI',
+  secretaire: 'SEC',
+  portier: 'POR',
 }
 
 // Génère un matricule unique pour un compte utilisateur (directeur/enseignant/parent).

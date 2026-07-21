@@ -8,7 +8,11 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6 },
     role: {
       type: String,
-      enum: ['super_admin', 'directeur', 'enseignant', 'parent', 'eleve', 'utilisateur'],
+      enum: [
+        'super_admin', 'directeur', 'enseignant', 'parent', 'eleve', 'utilisateur',
+        // Rôles administratifs du cycle Secondaire (créés par le principal)
+        'vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier',
+      ],
       default: 'directeur',
     },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School' },

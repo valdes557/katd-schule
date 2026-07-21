@@ -246,6 +246,75 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
   }
 })
 
+// POST /api/students/:id/student-account — le principal crée un compte de connexion pour l'élève (Secondaire)
+router.post('/:id/student-account', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id).populate('class', 'name level cycle room')
+    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+    if (req.user.role !== 'super_admin' && String(student.school) !== String(req.user.school?._id || req.user.school)) {
+      return res.status(403).json({ message: 'Élève hors de votre établissement' })
+    }
+
+    // Compte déjà existant ?
+    if (student.user) {
+      const existing = await User.findById(student.user)
+      if (existing) return res.status(400).json({ message: 'Un compte élève existe déjà', data: { email: existing.email } })
+    }
+
+    const email = (req.body.email || '').trim().toLowerCase()
+    if (!email) return res.status(400).json({ message: "Email de l'élève requis" })
+    const already = await User.findOne({ email })
+    if (already) return res.status(400).json({ message: 'Cet email est déjà utilisé' })
+
+    const rawPassword = req.body.password || `eleve${Math.floor(10000 + Math.random() * 90000)}`
+    const { generateUserMatricule } = require('../utils/matricule')
+    // Réutilise le matricule élève existant s'il est libre côté User, sinon en génère un ELV-...
+    let matricule = student.matricule || null
+    if (matricule && (await User.findOne({ matricule }))) matricule = null
+    if (!matricule) matricule = await generateUserMatricule('eleve', student.school)
+
+    const user = await User.create({
+      name: `${student.lastName} ${student.firstName}`,
+      email,
+      password: rawPassword,
+      role: 'eleve',
+      school: student.school,
+      matricule,
+    })
+    student.user = user._id
+    await student.save()
+
+    res.status(201).json({
+      success: true,
+      message: 'Compte élève créé avec succès',
+      data: {
+        email,
+        rawPassword,
+        matricule,
+        userId: user._id,
+        studentName: `${student.lastName} ${student.firstName}`,
+        class: student.class ? { name: student.class.name, level: student.class.level } : null,
+      },
+    })
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ message: 'Cet email est déjà utilisé' })
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/students/me — l'élève connecté récupère sa fiche (notes/EDT via son id)
+router.get('/me/profile', protect, authorize('eleve'), async (req, res) => {
+  try {
+    const student = await Student.findOne({ user: req.user._id })
+      .populate('class', 'name level cycle room')
+      .populate('school', 'name cycles')
+    if (!student) return res.status(404).json({ message: 'Aucune fiche élève liée à ce compte' })
+    res.json({ success: true, data: student })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // GET /api/students/with-parents — list students with parent account status (for director)
 router.get('/with-parents', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {

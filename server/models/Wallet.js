@@ -4,7 +4,16 @@ const mongoose = require('mongoose')
 const walletSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true, index: true },
-    role: { type: String, enum: ['admin', 'directeur', 'enseignant', 'utilisateur', 'autre'], default: 'autre' },
+    role: {
+      type: String,
+      enum: [
+        'admin', 'directeur', 'enseignant', 'utilisateur', 'autre',
+        'parent', 'eleve',
+        // Rôles administratifs du cycle Secondaire
+        'vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier',
+      ],
+      default: 'autre',
+    },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', default: null, index: true },
     currency: { type: String, default: 'XOF' },
     // Solde disponible (retirable / transférable)

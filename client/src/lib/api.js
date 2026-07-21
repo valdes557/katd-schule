@@ -119,6 +119,8 @@ export const studentsApi = {
   remove: (id) => api.del(`/students/${id}`),
   withParents: () => api.get('/students/with-parents'),
   createParentAccount: (studentId, data) => api.post(`/students/${studentId}/parent-account`, data),
+  createStudentAccount: (studentId, data) => api.post(`/students/${studentId}/student-account`, data),
+  myProfile: () => api.get('/students/me/profile'),
   linkParent: (email, studentIds) => api.post('/students/link-parent', { email, studentIds }),
 }
 
@@ -144,6 +146,16 @@ export const staffApi = {
   create: (data) => api.post('/staff', data),
   update: (id, data) => api.put(`/staff/${id}`, data),
   remove: (id) => api.del(`/staff/${id}`),
+}
+
+// Membres administratifs du Secondaire (vice-principal, SG, caissière, secrétaire, portier)
+export const staffAccountsApi = {
+  list: () => api.get('/staff-accounts'),
+  create: (data) => api.post('/staff-accounts', data),
+  update: (id, data) => api.put(`/staff-accounts/${id}`, data),
+  toggleActive: (id) => api.put(`/staff-accounts/${id}/toggle-active`),
+  resetPassword: (id, data = {}) => api.post(`/staff-accounts/${id}/reset-password`, data),
+  remove: (id) => api.del(`/staff-accounts/${id}`),
 }
 
 export const presenceApi = {

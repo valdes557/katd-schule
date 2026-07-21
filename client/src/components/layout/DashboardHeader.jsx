@@ -4,6 +4,7 @@ import { Bell, ChevronDown, BookOpen, GraduationCap, Baby, Calendar, LogOut } fr
 import { useAuth } from '../../context/AuthContext'
 import { useUnread } from '../../context/UnreadContext'
 import { getInitials } from '../../lib/utils'
+import { roleLabel } from '../../lib/roleLabels'
 import { authApi } from '../../lib/api'
 
 const CYCLES = [
@@ -121,7 +122,7 @@ export default function DashboardHeader() {
             <div className="absolute right-0 top-11 bg-white border border-gray-200 rounded-xl shadow-card-lg w-48 py-1 z-50">
               <div className="px-4 py-2 border-b border-gray-100">
                 <div className="text-sm font-semibold text-gray-800">{user?.name || 'Directeur'}</div>
-                <div className="text-xs text-gray-400">{user?.role || 'Admin école'}</div>
+                <div className="text-xs text-gray-400">{user?.role ? roleLabel(user.role, school) : 'Admin école'}</div>
               </div>
               <button onClick={() => { setProfileOpen(true); setUserOpen(false); setPForm({ name: user?.name || '', phone: user?.phone || '' }) }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Mon profil</button>
               <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Paramètres</button>

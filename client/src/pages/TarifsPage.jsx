@@ -83,7 +83,7 @@ export default function TarifsPage() {
                     <div className="text-lg font-bold flex items-center gap-2">
                       {plan.cycle === 'Primaire' ? 'Primaire/Maternelle' : plan.cycle}
                       {plan.cycle === 'Secondaire' && (
-                        <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">Bientôt</span>
+                        <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">Nouveau</span>
                       )}
                     </div>
                     {plan.name && <p className="text-white/80 text-sm">{plan.name}</p>}
@@ -100,31 +100,20 @@ export default function TarifsPage() {
                         </div>
                       ))}
                     </div>
-                    {plan.cycle === 'Secondaire' ? (
-                      <button
-                        type="button"
-                        disabled
-                        title="Ce cycle n'est pas encore disponible"
-                        className="w-full flex items-center justify-center gap-2 text-sm font-semibold py-3 rounded-xl bg-gray-100 text-gray-400 cursor-not-allowed"
+                    <div className="space-y-2">
+                      <Link
+                        to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
+                        className={`w-full flex items-center justify-center gap-2 text-white text-sm font-semibold py-3 rounded-xl ${c.btn} transition-colors`}
                       >
-                        🚧 Disponible très bientôt
-                      </button>
-                    ) : (
-                      <div className="space-y-2">
-                        <Link
-                          to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}`}
-                          className={`w-full flex items-center justify-center gap-2 text-white text-sm font-semibold py-3 rounded-xl ${c.btn} transition-colors`}
-                        >
-                          <GraduationCap size={16} /> S'inscrire
-                        </Link>
-                        <Link
-                          to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}&trial=1`}
-                          className="w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded-xl border-2 border-dashed border-green-400 text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
-                        >
-                          🎁 Essai gratuit 30 jours
-                        </Link>
-                      </div>
-                    )}
+                        <GraduationCap size={16} /> S'inscrire
+                      </Link>
+                      <Link
+                        to={`/souscrire?cycle=${plan.cycle}&plan=${billing}&amount=${price}&trial=1`}
+                        className="w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded-xl border-2 border-dashed border-green-400 text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                      >
+                        🎁 Essai gratuit 30 jours
+                      </Link>
+                    </div>
                   </div>
                 </div>
               )

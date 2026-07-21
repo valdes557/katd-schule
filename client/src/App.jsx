@@ -189,6 +189,8 @@ const AdminBannersPage = lazyPage(() => import('./pages/AdminBannersPage'))
 const RecruitmentPage = lazyPage(() => import('./pages/RecruitmentPage'))
 const NewsPage = lazyPage(() => import('./pages/NewsPage'))
 const TutoringPage = lazyPage(() => import('./pages/TutoringPage'))
+// Cycle Secondaire
+const StaffAccountsPage = lazyPage(() => import('./pages/secondary/StaffAccountsPage'))
 
 function PageFallback() {
   return (
@@ -330,6 +332,9 @@ export default function App() {
         <Route path="director/pensions" element={<DirectorFeesPage />} />
         <Route path="pointage" element={<TeacherAttendanceAdminPage />} />
         <Route path="pointage/rapports" element={<TeacherAttendanceDashboardPage />} />
+
+        {/* Secondary cycle routes */}
+        <Route path="membres-admin" element={<StaffAccountsPage />} />
 
         {/* Teacher routes */}
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />

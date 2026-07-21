@@ -11,6 +11,8 @@ export default function ElevesPage() {
   const { user, school } = useAuth()
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
+  // Au Secondaire, le principal peut créer un compte de connexion pour chaque élève
+  const isSecondaire = subscribedCycle === 'Secondaire' || school?.cycles?.includes('Secondaire')
 
   const [search, setSearch] = useState('')
   const [cycleFilter, setCycleFilter] = useState('')
@@ -93,6 +95,29 @@ export default function ElevesPage() {
       else alert(r.message || 'Erreur')
     } catch (err) { alert(err.message) }
     setParentSaving(false)
+  }
+
+  // Compte de connexion ÉLÈVE (cycle Secondaire)
+  const [studentAccountModal, setStudentAccountModal] = useState(null)
+  const [studentAccountForm, setStudentAccountForm] = useState({ email: '', password: '' })
+  const [studentAccountResult, setStudentAccountResult] = useState(null)
+  const [studentAccountSaving, setStudentAccountSaving] = useState(false)
+
+  const openStudentAccountModal = (s) => {
+    setStudentAccountModal(s)
+    setStudentAccountForm({ email: '', password: '' })
+    setStudentAccountResult(null)
+  }
+
+  const handleCreateStudentAccount = async (e) => {
+    e.preventDefault()
+    setStudentAccountSaving(true)
+    try {
+      const r = await studentsApi.createStudentAccount(studentAccountModal._id, studentAccountForm)
+      if (r.success) { setStudentAccountResult(r); refreshStudents() }
+      else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+    setStudentAccountSaving(false)
   }
 
   const toggleSelectStudent = (id) => {
@@ -257,6 +282,9 @@ export default function ElevesPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button title="Créer compte parent" onClick={() => openParentModal(s)} className="p-1.5 rounded hover:bg-green-50 text-green-600"><UserPlus size={14} /></button>
+                        {isSecondaire && (
+                          <button title="Créer compte élève" onClick={() => openStudentAccountModal(s)} className="p-1.5 rounded hover:bg-indigo-50 text-indigo-600"><KeyRound size={14} /></button>
+                        )}
                         <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={14} /></button>
                         <button onClick={() => handleDelete(s._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
                       </div>
@@ -421,6 +449,56 @@ export default function ElevesPage() {
                   <button type="button" onClick={() => setParentModal(null)} className="btn-ghost flex-1 justify-center">Annuler</button>
                   <button type="submit" disabled={parentSaving} className="btn-primary flex-1 justify-center">
                     {parentSaving ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Créer le compte
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modale compte de connexion ÉLÈVE (cycle Secondaire) */}
+      {studentAccountModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <KeyRound size={18} className="text-indigo-600" /> Compte élève — {studentAccountModal.lastName} {studentAccountModal.firstName}
+              </h3>
+              <button onClick={() => setStudentAccountModal(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            {studentAccountResult ? (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <p className="text-sm font-semibold text-green-800">Compte élève créé avec succès</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+                  <p className="text-xs font-bold text-gray-700">📋 Identifiants à communiquer à l'élève :</p>
+                  <div className="font-mono text-sm space-y-1">
+                    <p>📧 Email : <strong>{studentAccountResult.data?.email}</strong></p>
+                    <p>🔑 Mot de passe : <strong>{studentAccountResult.data?.rawPassword}</strong></p>
+                    {studentAccountResult.data?.matricule && <p>🎫 Matricule : <strong>{studentAccountResult.data.matricule}</strong></p>}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">Notez ces identifiants. Le mot de passe ne sera plus affiché. Connexion via l'onglet École.</p>
+                </div>
+                <button onClick={() => setStudentAccountModal(null)} className="btn-primary w-full justify-center">Fermer</button>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateStudentAccount} className="space-y-3">
+                <p className="text-xs text-gray-500">Créer un compte de connexion pour cet élève : il pourra consulter ses notes, son emploi du temps, ses devoirs et son QR de présence.</p>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Email * <span className="text-gray-400">(sera l'identifiant)</span></label>
+                  <input required type="email" value={studentAccountForm.email} onChange={(e) => setStudentAccountForm({ ...studentAccountForm, email: e.target.value })} className="input text-sm mt-1 w-full" placeholder="email@exemple.com" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Mot de passe <span className="text-gray-400">(auto-généré si vide)</span></label>
+                  <input value={studentAccountForm.password} onChange={(e) => setStudentAccountForm({ ...studentAccountForm, password: e.target.value })} className="input text-sm mt-1 w-full" placeholder="Laisser vide = auto" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setStudentAccountModal(null)} className="btn-ghost flex-1 justify-center">Annuler</button>
+                  <button type="submit" disabled={studentAccountSaving} className="btn-primary flex-1 justify-center">
+                    {studentAccountSaving ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} Créer le compte
                   </button>
                 </div>
               </form>
