@@ -315,6 +315,22 @@ router.get('/me/profile', protect, authorize('eleve'), async (req, res) => {
   }
 })
 
+// GET /api/students/me/homeworks — les devoirs de la classe de l'élève connecté
+router.get('/me/homeworks', protect, authorize('eleve'), async (req, res) => {
+  try {
+    const student = await Student.findOne({ user: req.user._id }).select('class school')
+    if (!student?.class) return res.json({ success: true, data: [] })
+    const Homework = require('../models/Homework')
+    const homeworks = await Homework.find({ school: student.school, class: student.class })
+      .populate('class', 'name level')
+      .sort({ dueDate: -1 })
+      .limit(200)
+    res.json({ success: true, data: homeworks })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // GET /api/students/with-parents — list students with parent account status (for director)
 router.get('/with-parents', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {

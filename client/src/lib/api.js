@@ -121,6 +121,7 @@ export const studentsApi = {
   createParentAccount: (studentId, data) => api.post(`/students/${studentId}/parent-account`, data),
   createStudentAccount: (studentId, data) => api.post(`/students/${studentId}/student-account`, data),
   myProfile: () => api.get('/students/me/profile'),
+  myHomeworks: () => api.get('/students/me/homeworks'),
   linkParent: (email, studentIds) => api.post('/students/link-parent', { email, studentIds }),
 }
 

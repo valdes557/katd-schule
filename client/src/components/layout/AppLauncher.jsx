@@ -29,6 +29,8 @@ const RUBRIC_BY_PATH = {
   '/dashboard/devoirs': 'devoirs',
   '/dashboard/parent/devoirs': 'devoirs',
   '/dashboard/news': 'news',
+  '/dashboard/rapports-recus': 'rapports',
+  '/dashboard/permissions': 'permissions',
 }
 
 // Grille de boutons ronds remplaçant la sidebar : chaque bouton ouvre une fonctionnalité.

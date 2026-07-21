@@ -21,6 +21,11 @@ router.get('/', protect, async (req, res) => {
       const ids = children.map((s) => s.class).filter(Boolean)
       if (ids.length === 0) return res.json({ success: true, data: [] })
       query.class = { $in: ids }
+    } else if (req.user.role === 'eleve') {
+      // L'élève (Secondaire) ne voit que l'emploi du temps de SA classe
+      const me = await Student.findOne({ user: req.user._id }).select('class')
+      if (!me?.class) return res.json({ success: true, data: [] })
+      query.class = me.class
     }
     const timetables = await Timetable.find(query).populate('class', 'name level cycle room')
     res.json({ success: true, data: timetables })

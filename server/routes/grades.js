@@ -41,6 +41,11 @@ router.get('/', protect, async (req, res) => {
       } else {
         query.student = { $in: childIds }
       }
+    } else if (req.user.role === 'eleve') {
+      // L'élève (Secondaire) ne voit que SES propres notes
+      const me = await Student.findOne({ user: req.user._id }).select('_id')
+      if (!me) return res.json({ success: true, total: 0, data: [] })
+      query.student = me._id
     }
     const total = await Grade.countDocuments(query)
     const grades = await Grade.find(query)

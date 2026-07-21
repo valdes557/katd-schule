@@ -14,9 +14,11 @@ const SchoolPost = require('../models/SchoolPost')
 const RecruitmentPost = require('../models/RecruitmentPost')
 const TutoringPost = require('../models/TutoringPost')
 const PlatformNews = require('../models/PlatformNews')
+const Report = require('../models/Report')
+const PermissionRequest = require('../models/PermissionRequest')
 
 // Rubriques publiables suivies par les badges de nouveautés.
-const RUBRICS = ['social', 'annonces', 'activites', 'ressources', 'documents', 'infos', 'devoirs', 'news']
+const RUBRICS = ['social', 'annonces', 'activites', 'ressources', 'documents', 'infos', 'devoirs', 'news', 'rapports', 'permissions']
 
 const audienceFor = (role) =>
   role === 'parent' ? ['all', 'parents']
@@ -97,7 +99,20 @@ router.get('/counts', protect, async (req, res) => {
       ]).then(([r, t, d]) => r + t + d),
     ])
 
-    res.json({ success: true, data: { annonces, infos, documents, activites, ressources, devoirs, social, news } })
+    // Rubriques du cycle Secondaire (rapports reçus + permissions à traiter)
+    let rapports = 0, permissions = 0
+    if (role === 'directeur' || role === 'vice_principal') {
+      const toRole = role === 'vice_principal' ? 'vice_principal' : 'directeur'
+      rapports = await Report.countDocuments({ school: schoolId, toRole, createdAt: since('rapports') })
+    }
+    if (['surveillant_general', 'directeur', 'portier'].includes(role)) {
+      const q = { school: schoolId, createdAt: since('permissions') }
+      if (role === 'portier') q.status = 'approved'
+      else q.status = 'pending'
+      permissions = await PermissionRequest.countDocuments(q)
+    }
+
+    res.json({ success: true, data: { annonces, infos, documents, activites, ressources, devoirs, social, news, rapports, permissions } })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
