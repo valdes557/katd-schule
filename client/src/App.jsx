@@ -195,6 +195,8 @@ const PresenceQrPage = lazyPage(() => import('./pages/secondary/PresenceQrPage')
 const PortierScanPage = lazyPage(() => import('./pages/secondary/PortierScanPage'))
 const SurveillantPresencePage = lazyPage(() => import('./pages/secondary/SurveillantPresencePage'))
 const MyQrPage = lazyPage(() => import('./pages/secondary/MyQrPage'))
+const PermissionsPage = lazyPage(() => import('./pages/secondary/PermissionsPage'))
+const ReportsPage = lazyPage(() => import('./pages/secondary/ReportsPage'))
 
 function PageFallback() {
   return (
@@ -344,6 +346,9 @@ export default function App() {
         <Route path="portier/journal" element={<SurveillantPresencePage />} />
         <Route path="surveillance" element={<SurveillantPresencePage />} />
         <Route path="eleve/mon-qr" element={<MyQrPage />} />
+        <Route path="permissions" element={<PermissionsPage />} />
+        <Route path="rapports-recus" element={<ReportsPage />} />
+        <Route path="mes-rapports" element={<ReportsPage />} />
 
         {/* Teacher routes */}
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />

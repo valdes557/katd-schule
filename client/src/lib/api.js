@@ -691,6 +691,23 @@ export const entryAttendanceApi = {
   history: (params = {}) => api.get(`/entry-attendance/history?${new URLSearchParams(params).toString()}`),
 }
 
+// Demandes de permission (cycle Secondaire)
+export const permissionsApi = {
+  list: (status = '') => api.get(`/permissions${status ? `?status=${status}` : ''}`),
+  create: (data) => api.post('/permissions', data),
+  approve: (id, note = '') => api.put(`/permissions/${id}/approve`, { note }),
+  reject: (id, note = '') => api.put(`/permissions/${id}/reject`, { note }),
+}
+
+// Rapports internes (membres → principal / professeurs → vice-principal)
+export const reportsApi = {
+  send: (data) => api.post('/reports', data),
+  inbox: () => api.get('/reports/inbox'),
+  mine: () => api.get('/reports/mine'),
+  markRead: (id) => api.put(`/reports/${id}/read`),
+  remove: (id) => api.del(`/reports/${id}`),
+}
+
 export const documentsApi = {
   list: (classId = '') => api.get(`/documents${classId ? `?classId=${classId}` : ''}`),
   upload: async (data) => {
