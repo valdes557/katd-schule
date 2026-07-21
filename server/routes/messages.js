@@ -25,9 +25,12 @@ async function getAllowedContacts(user) {
   if (!schoolId) return []
 
   const baseUserQuery = { school: schoolId, _id: { $ne: user._id }, isActive: true }
+  // Membres administratifs du Secondaire — joignables par le principal et les professeurs
+  const SECONDARY_ADMIN_ROLES = ['vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier']
 
   if (user.role === 'directeur') {
     const teachers = await User.find({ ...baseUserQuery, role: 'enseignant' })
+    const adminMembers = await User.find({ ...baseUserQuery, role: { $in: SECONDARY_ADMIN_ROLES } })
 
     const students = await Student.find({ school: schoolId, parentUser: { $ne: null }, status: 'active' })
       .select('parentUser')
@@ -38,14 +41,14 @@ async function getAllowedContacts(user) {
       : []
 
     const map = new Map()
-    for (const u of [...teachers, ...parents]) {
+    for (const u of [...teachers, ...adminMembers, ...parents]) {
       map.set(u._id.toString(), u)
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
   }
 
   if (user.role === 'enseignant') {
-    const directors = await User.find({ ...baseUserQuery, role: 'directeur' })
+    const directors = await User.find({ ...baseUserQuery, role: { $in: ['directeur', ...SECONDARY_ADMIN_ROLES] } })
 
     const teacherProfile = await Teacher.findOne({ user: user._id }).select('_id school')
     let parents = []

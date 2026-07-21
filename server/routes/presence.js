@@ -43,8 +43,8 @@ router.post('/logout', protect, async (req, res) => {
 
 // GET /api/presence — liste de présence
 //   super_admin : tous les établissements (filtre ?school=) + parents inclus
-//   directeur / enseignant : uniquement les utilisateurs de leur établissement
-router.get('/', protect, authorize('super_admin', 'directeur', 'enseignant'), async (req, res) => {
+//   directeur / enseignant / VP / SG : uniquement les utilisateurs de leur établissement
+router.get('/', protect, authorize('super_admin', 'directeur', 'enseignant', 'vice_principal', 'surveillant_general'), async (req, res) => {
   try {
     const isAdmin = req.user.role === 'super_admin'
     let query

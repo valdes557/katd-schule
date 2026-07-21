@@ -81,7 +81,7 @@ router.get('/:id', protect, async (req, res) => {
   }
 })
 
-router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     const userSchool = req.user.school?._id || req.user.school
     // super_admin must provide school in body; directeur uses their own school
@@ -105,7 +105,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
   }
 })
 
-router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     // For Maternelle/Primaire, prevent associating a teacher directly
     if (['Maternelle', 'Primaire'].includes(req.body.cycle)) {
@@ -119,7 +119,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
   }
 })
 
-router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     await Subject.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Matière supprimée' })

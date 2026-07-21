@@ -46,7 +46,7 @@ router.get('/:id', protect, async (req, res) => {
 })
 
 // POST /api/classes
-router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
     if (!schoolId) return res.status(400).json({ message: 'École requise' })
@@ -64,7 +64,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 })
 
 // PUT /api/classes/:id
-router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     const cls = await Class.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
     if (!cls) return res.status(404).json({ message: 'Classe non trouvée' })
@@ -75,7 +75,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
 })
 
 // DELETE /api/classes/:id
-router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     await Class.findByIdAndDelete(req.params.id)
     res.json({ success: true, message: 'Classe supprimée' })

@@ -112,7 +112,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 })
 
 // PUT /api/teachers/:id
-router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     const { password, email, ...rest } = req.body
     if (rest.subjects && typeof rest.subjects === 'string') {

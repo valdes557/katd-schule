@@ -112,6 +112,7 @@ export const navSections = [
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Suivi des devoirs', icon: ClipboardList, path: '/dashboard/devoirs' },
       { label: 'Notes & examens', icon: FileText, path: '/dashboard/notes' },
+      { label: 'Rendez-vous parents', icon: CalendarCheck, path: '/dashboard/rendez-vous-ecole' },
       { label: 'Rapports reçus', icon: FolderOpen, path: '/dashboard/rapports-recus' },
     ],
   },

@@ -197,6 +197,9 @@ const SurveillantPresencePage = lazyPage(() => import('./pages/secondary/Surveil
 const MyQrPage = lazyPage(() => import('./pages/secondary/MyQrPage'))
 const PermissionsPage = lazyPage(() => import('./pages/secondary/PermissionsPage'))
 const ReportsPage = lazyPage(() => import('./pages/secondary/ReportsPage'))
+const ParentsDirectoryPage = lazyPage(() => import('./pages/secondary/ParentsDirectoryPage'))
+const CaissiereReportsPage = lazyPage(() => import('./pages/secondary/CaissiereReportsPage'))
+const SchoolAppointmentsPage = lazyPage(() => import('./pages/secondary/SchoolAppointmentsPage'))
 
 function PageFallback() {
   return (
@@ -349,6 +352,9 @@ export default function App() {
         <Route path="permissions" element={<PermissionsPage />} />
         <Route path="rapports-recus" element={<ReportsPage />} />
         <Route path="mes-rapports" element={<ReportsPage />} />
+        <Route path="contacts-parents" element={<ParentsDirectoryPage />} />
+        <Route path="rapports-financiers" element={<CaissiereReportsPage />} />
+        <Route path="rendez-vous-ecole" element={<SchoolAppointmentsPage />} />
 
         {/* Teacher routes */}
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />

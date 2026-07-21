@@ -6,7 +6,7 @@ const { protect, authorize } = require('../middleware/auth')
 function schoolId(req) { return req.user.school?._id || req.user.school }
 
 // GET /api/expenses — Liste des dépenses de l'école (+ résumé)
-router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.get('/', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const { category, from, to, month } = req.query
     const query = { school: schoolId(req) }

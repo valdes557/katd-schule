@@ -5,7 +5,7 @@ const appointmentSchema = new mongoose.Schema(
     parent: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
-    with: { type: String, enum: ['enseignant', 'directeur', 'conseiller'], required: true },
+    with: { type: String, enum: ['enseignant', 'directeur', 'conseiller', 'vice_principal'], required: true },
     withUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     date: { type: Date, required: true },
     time: { type: String, required: true },

@@ -14,7 +14,8 @@ const AUDIENCE_META = Object.fromEntries(AUDIENCES.map((a) => [a.value, a]))
 
 export default function AnnoncesPage() {
   const { user } = useAuth()
-  const isDirector = user?.role === 'directeur'
+  // Le secrétaire (Secondaire) passe les annonces sous ordre du principal ou du VP
+  const isDirector = user?.role === 'directeur' || user?.role === 'secretaire'
 
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState({ title: '', content: '', audience: 'all' })

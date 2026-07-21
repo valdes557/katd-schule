@@ -45,7 +45,7 @@ router.get('/class/:classId', protect, async (req, res) => {
 })
 
 // PUT update timetable for a class (add/update slots)
-router.put('/:id', protect, authorize('directeur', 'super_admin', 'enseignant'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'super_admin', 'enseignant', 'vice_principal'), async (req, res) => {
   try {
     const tt = await Timetable.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('class', 'name level cycle room')
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
@@ -56,7 +56,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin', 'enseignant'),
 })
 
 // POST add a slot to a timetable
-router.post('/:id/slots', protect, authorize('directeur', 'super_admin', 'enseignant'), async (req, res) => {
+router.post('/:id/slots', protect, authorize('directeur', 'super_admin', 'enseignant', 'vice_principal'), async (req, res) => {
   try {
     const tt = await Timetable.findById(req.params.id)
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
@@ -72,7 +72,7 @@ router.post('/:id/slots', protect, authorize('directeur', 'super_admin', 'enseig
 // Body: { classIds: [<classId>, ...] } — copie les créneaux de l'emploi source vers
 // chaque classe cible (création si l'emploi n'existe pas encore). Le directeur ET le
 // personnel enseignant peuvent ainsi appliquer le même emploi du temps à plusieurs classes.
-router.post('/:id/assign-to', protect, authorize('directeur', 'super_admin', 'enseignant'), async (req, res) => {
+router.post('/:id/assign-to', protect, authorize('directeur', 'super_admin', 'enseignant', 'vice_principal'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
     if (!schoolId) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
@@ -110,7 +110,7 @@ router.post('/:id/assign-to', protect, authorize('directeur', 'super_admin', 'en
 })
 
 // DELETE a slot from a timetable
-router.delete('/:id/slots/:slotId', protect, authorize('directeur', 'super_admin', 'enseignant'), async (req, res) => {
+router.delete('/:id/slots/:slotId', protect, authorize('directeur', 'super_admin', 'enseignant', 'vice_principal'), async (req, res) => {
   try {
     const tt = await Timetable.findById(req.params.id)
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })

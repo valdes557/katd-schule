@@ -8,7 +8,8 @@ const { protect, authorize } = require('../middleware/auth')
 function schoolId(req) { return req.user.school?._id || req.user.school }
 
 // GET /api/salaries — Liste des salaires de l'école (filtrable par mois/enseignant) + résumé
-router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+// La caissière (Secondaire) prépare les salaires ; le paiement reste réservé au principal.
+router.get('/', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const { month, teacherId } = req.query
     const query = { school: schoolId(req) }
@@ -35,7 +36,7 @@ router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res)
 })
 
 // POST /api/salaries — Créer/enregistrer un salaire pour un enseignant et un mois
-router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const { teacherId, month, grossAmount, deductions, deductionReason, status, method, reference, bankDetails, note, paidAt } = req.body
     // Le montant brut (ou, à défaut, amount pour compatibilité) est requis
@@ -49,7 +50,9 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 
     const ded = Math.max(0, Number(deductions) || 0)
     const net = Math.max(0, gross - ded)
-    const isPaid = status === 'paid'
+    // La caissière PRÉPARE seulement : elle ne peut pas marquer un salaire « payé »
+    // (la validation/le paiement restent au principal).
+    const isPaid = status === 'paid' && req.user.role !== 'caissiere'
     const salary = await Salary.create({
       school: schoolId(req),
       teacher: teacherId,
@@ -92,10 +95,15 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 })
 
 // PUT /api/salaries/:id — Modifier un salaire
-router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const salary = await Salary.findOne({ _id: req.params.id, school: schoolId(req) })
     if (!salary) return res.status(404).json({ message: 'Salaire non trouvé' })
+    // La caissière ne peut pas modifier un salaire déjà payé ni changer le statut
+    if (req.user.role === 'caissiere') {
+      if (salary.status === 'paid') return res.status(403).json({ message: 'Salaire déjà payé — modification réservée au principal' })
+      delete req.body.status
+    }
 
     const fields = ['month', 'method', 'reference', 'note', 'deductionReason', 'bankDetails']
     fields.forEach((f) => { if (req.body[f] !== undefined) salary[f] = req.body[f] })

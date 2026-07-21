@@ -127,6 +127,7 @@ export const studentsApi = {
 // Gestion des parents par le directeur (CRUD + associations élèves)
 export const parentsApi = {
   list: () => api.get('/parents'),
+  directory: () => api.get('/parents/directory'),
   create: (data) => api.post('/parents', data),
   update: (id, data) => api.put(`/parents/${id}`, data),
   remove: (id) => api.del(`/parents/${id}`),
@@ -610,6 +611,8 @@ export const parentApi = {
   fees: () => api.get('/parent/fees'),
   payFee: (feeId, data) => api.post(`/parent/fees/${feeId}/pay`, data),
   appointments: () => api.get('/parent/appointments'),
+  schoolAppointments: () => api.get('/parent/appointments/school'),
+  setAppointmentStatus: (id, status) => api.put(`/parent/appointments/${id}/status`, { status }),
   createAppointment: (data) => api.post('/parent/appointments', data),
   getControls: (studentId) => api.get(`/parent/controls/${studentId}`),
   updateControls: (studentId, data) => api.put(`/parent/controls/${studentId}`, data),

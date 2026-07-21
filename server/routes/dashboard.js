@@ -183,7 +183,7 @@ router.put('/reports/:id/unreview', protect, authorize('directeur', 'super_admin
 
 // GET /api/dashboard/homework-overview — supervision des devoirs par classe (directeur)
 // Permet au directeur de vérifier que les enseignants donnent ET corrigent les devoirs.
-router.get('/homework-overview', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.get('/homework-overview', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
     if (!schoolId) return res.json({ success: true, data: { classes: [], summary: {} } })

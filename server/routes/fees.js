@@ -15,7 +15,7 @@ const PDFDocument = require('pdfkit')
 function schoolId(req) { return req.user.school?._id || req.user.school }
 
 // GET /api/fees — List all fees for the school (director)
-router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.get('/', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const { classId, studentId, status, page = 1, limit = 50 } = req.query
     const query = { school: schoolId(req) }
@@ -41,7 +41,7 @@ router.get('/', protect, authorize('directeur', 'super_admin'), async (req, res)
 })
 
 // GET /api/fees/payment-status — Summary by class: who paid/not paid
-router.get('/payment-status', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.get('/payment-status', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const { classId } = req.query
     if (!classId) return res.status(400).json({ message: 'classId requis' })
@@ -85,7 +85,7 @@ router.get('/payment-status', protect, authorize('directeur', 'super_admin'), as
 })
 
 // GET /api/fees/payment-history — Directeur: tous les paiements par élève/parent + reste
-router.get('/payment-history', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.get('/payment-history', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const { classId } = req.query
     const query = { school: schoolId(req) }
@@ -154,7 +154,7 @@ router.get('/payment-history', protect, authorize('directeur', 'super_admin'), a
 })
 
 // POST /api/fees — Create fee for a student
-router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const { studentId, label, type, amount, dueDate, term, academicYear, paymentMode, installments } = req.body
     const student = await Student.findOne({ _id: studentId, school: schoolId(req) })
@@ -182,7 +182,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 // POST /api/fees/bulk-assign — Associer des frais à TOUS les élèves (classe ou école entière)
 // source 'manual' : même montant/tranches pour tous.
 // source 'modality' : montant/tranches récupérés depuis PaymentModality selon la classe.
-router.post('/bulk-assign', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/bulk-assign', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const sid = schoolId(req)
     if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
@@ -270,7 +270,7 @@ router.post('/bulk-assign', protect, authorize('directeur', 'super_admin'), asyn
 })
 
 // PUT /api/fees/:id — Update fee
-router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const fee = await Fee.findOne({ _id: req.params.id, school: schoolId(req) })
     if (!fee) return res.status(404).json({ message: 'Frais non trouvé' })
@@ -282,7 +282,7 @@ router.put('/:id', protect, authorize('directeur', 'super_admin'), async (req, r
 })
 
 // POST /api/fees/:id/record-payment — Record a payment (full or installment)
-router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const fee = await Fee.findOne({ _id: req.params.id, school: schoolId(req) })
       .populate('student', 'firstName lastName parentUser')
@@ -394,7 +394,7 @@ router.post('/:id/pay-wallet', protect, authorize('parent'), async (req, res) =>
 })
 
 // POST /api/fees/:id/notify-installment — Send reminder to parent for overdue installment
-router.post('/:id/notify-installment', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/:id/notify-installment', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const fee = await Fee.findOne({ _id: req.params.id, school: schoolId(req) })
       .populate({ path: 'student', populate: { path: 'parentUser', select: 'email name' } })
@@ -486,7 +486,7 @@ router.get('/:id/receipt/:paymentIndex', protect, async (req, res) => {
 })
 
 // DELETE /api/fees/:id
-router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     await Fee.findOneAndDelete({ _id: req.params.id, school: schoolId(req) })
     res.json({ success: true, message: 'Frais supprimé' })

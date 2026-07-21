@@ -18,7 +18,8 @@ export default function EmploiDuTempsPage() {
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
   // Le personnel enseignant peut aussi gérer l'emploi du temps (ajout de créneaux avec
   // heures libres + duplication vers plusieurs classes) — routes serveur déjà ouvertes.
-  const canEdit = isDirecteur || user?.role === 'enseignant'
+  // Le vice-principal (Secondaire) gère les EDT de tout l'établissement.
+  const canEdit = isDirecteur || user?.role === 'enseignant' || user?.role === 'vice_principal'
 
   const [selectedClass, setSelectedClass] = useState('')
   const [showModal, setShowModal] = useState(false)

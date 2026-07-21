@@ -49,7 +49,7 @@ router.get('/', protect, async (req, res) => {
 })
 
 // POST /api/announcements — le directeur publie une annonce
-router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin', 'secretaire'), async (req, res) => {
   try {
     const { title, content, audience } = req.body
     if (!content || String(content).trim().length === 0) {
@@ -82,7 +82,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 })
 
 // DELETE /api/announcements/:id
-router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('directeur', 'super_admin', 'secretaire'), async (req, res) => {
   try {
     const r = await Announcement.findOneAndDelete({ _id: req.params.id, school: schoolId(req) })
     if (!r) return res.status(404).json({ message: 'Annonce non trouvée' })

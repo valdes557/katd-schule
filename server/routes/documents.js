@@ -44,11 +44,11 @@ router.get('/', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/documents — upload d'un document (directeur ou enseignant)
+// POST /api/documents — upload d'un document (directeur, enseignant, secrétaire ou VP)
 router.post(
   '/',
   protect,
-  authorize('directeur', 'enseignant', 'super_admin'),
+  authorize('directeur', 'enseignant', 'super_admin', 'secretaire', 'vice_principal'),
   upload.single('file'),
   async (req, res) => {
     try {

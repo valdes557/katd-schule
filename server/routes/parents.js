@@ -5,6 +5,37 @@ const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
 const { generateUserMatricule } = require('../utils/matricule')
 
+// GET /api/parents/directory — annuaire des parents (Surveillant Général : contacts
+// pour joindre les familles). Déclarée AVANT le router.use directeur ci-dessous.
+router.get('/directory', protect, authorize('surveillant_general', 'directeur', 'vice_principal', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) return res.json({ success: true, data: [] })
+    const linkedIds = await Student.find({ school: schoolId, parentUser: { $ne: null } }).distinct('parentUser')
+    const parents = await User.find({
+      role: 'parent',
+      $or: [{ school: schoolId }, { _id: { $in: linkedIds } }],
+    }).select('name email phone').sort({ name: 1 })
+    const children = await Student.find({ school: schoolId, parentUser: { $in: parents.map((p) => p._id) } })
+      .select('firstName lastName parentUser class')
+      .populate('class', 'name')
+      .lean()
+    const byParent = new Map()
+    for (const s of children) {
+      const key = s.parentUser.toString()
+      if (!byParent.has(key)) byParent.set(key, [])
+      byParent.get(key).push(`${s.lastName} ${s.firstName}${s.class?.name ? ` (${s.class.name})` : ''}`)
+    }
+    res.json({
+      success: true,
+      data: parents.map((p) => ({
+        _id: p._id, name: p.name, email: p.email, phone: p.phone || '',
+        children: byParent.get(p._id.toString()) || [],
+      })),
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // Toutes les routes : directeur ou super_admin, limitées à l'école de l'utilisateur.
 router.use(protect, authorize('directeur', 'super_admin'))
 

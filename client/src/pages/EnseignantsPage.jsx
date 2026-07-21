@@ -11,7 +11,9 @@ const EMPTY = { firstName: '', lastName: '', email: '', phone: '', gender: 'M', 
 
 export default function EnseignantsPage() {
   const { user, school } = useAuth()
-  const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+  // Le vice-principal (Secondaire) attribue classes et matières aux professeurs
+  // (modification seulement — la création reste réservée au principal).
+  const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin' || user?.role === 'vice_principal'
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
 
   const [search, setSearch] = useState('')

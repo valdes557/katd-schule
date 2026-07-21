@@ -430,6 +430,45 @@ router.post('/fees/:feeId/pay', protect, parentOnly, async (req, res) => {
 })
 
 // ─── APPOINTMENTS ───
+// GET /api/parent/appointments/school — rendez-vous de l'établissement (principal / vice-principal)
+router.get('/appointments/school', protect, async (req, res) => {
+  try {
+    if (!['directeur', 'vice_principal', 'super_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Accès réservé au principal et au vice-principal' })
+    }
+    const sid = req.user.school?._id || req.user.school
+    const appointments = await Appointment.find({ school: sid })
+      .populate('parent', 'name email phone')
+      .populate('student', 'firstName lastName')
+      .sort({ date: -1 })
+      .limit(500)
+    res.json({ success: true, data: appointments })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// PUT /api/parent/appointments/:id/status — confirmer/annuler (principal / vice-principal)
+router.put('/appointments/:id/status', protect, async (req, res) => {
+  try {
+    if (!['directeur', 'vice_principal', 'super_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Accès réservé au principal et au vice-principal' })
+    }
+    const sid = req.user.school?._id || req.user.school
+    const { status } = req.body
+    if (!['approved', 'rejected', 'completed', 'pending'].includes(status)) return res.status(400).json({ message: 'Statut invalide' })
+    const appt = await Appointment.findOneAndUpdate(
+      { _id: req.params.id, school: sid },
+      { status },
+      { new: true }
+    ).populate('parent', 'name').populate('student', 'firstName lastName')
+    if (!appt) return res.status(404).json({ message: 'Rendez-vous non trouvé' })
+    res.json({ success: true, data: appt })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 router.get('/appointments', protect, parentOnly, async (req, res) => {
   try {
     const appointments = await Appointment.find({ parent: req.user._id })
