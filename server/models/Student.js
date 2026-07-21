@@ -6,6 +6,8 @@ const studentSchema = new mongoose.Schema(
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
     matricule: { type: String, unique: true },
+    // Identifiant du QR de présence individuel (Secondaire) — scanné par le portier à l'entrée.
+    attendanceQrId: { type: String, unique: true, sparse: true, index: true },
     dateOfBirth: { type: Date },
     placeOfBirth: { type: String, trim: true },
     gender: { type: String, enum: ['M', 'F'], required: true },

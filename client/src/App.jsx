@@ -191,6 +191,10 @@ const NewsPage = lazyPage(() => import('./pages/NewsPage'))
 const TutoringPage = lazyPage(() => import('./pages/TutoringPage'))
 // Cycle Secondaire
 const StaffAccountsPage = lazyPage(() => import('./pages/secondary/StaffAccountsPage'))
+const PresenceQrPage = lazyPage(() => import('./pages/secondary/PresenceQrPage'))
+const PortierScanPage = lazyPage(() => import('./pages/secondary/PortierScanPage'))
+const SurveillantPresencePage = lazyPage(() => import('./pages/secondary/SurveillantPresencePage'))
+const MyQrPage = lazyPage(() => import('./pages/secondary/MyQrPage'))
 
 function PageFallback() {
   return (
@@ -335,6 +339,11 @@ export default function App() {
 
         {/* Secondary cycle routes */}
         <Route path="membres-admin" element={<StaffAccountsPage />} />
+        <Route path="qr-presence" element={<PresenceQrPage />} />
+        <Route path="portier/scan" element={<PortierScanPage />} />
+        <Route path="portier/journal" element={<SurveillantPresencePage />} />
+        <Route path="surveillance" element={<SurveillantPresencePage />} />
+        <Route path="eleve/mon-qr" element={<MyQrPage />} />
 
         {/* Teacher routes */}
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />

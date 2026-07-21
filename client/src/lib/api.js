@@ -681,6 +681,16 @@ export const teacherAttendanceApi = {
   scan: (token) => api.post('/teacher-attendance/scan', { token }),
 }
 
+// Présence par QR individuel (cycle Secondaire) : QR téléchargés par le principal,
+// scannés par le portier, consultés par le Surveillant Général.
+export const entryAttendanceApi = {
+  qrList: () => api.get('/entry-attendance/qr-list'),
+  myQr: () => api.get('/entry-attendance/my-qr'),
+  scan: (qrId) => api.post('/entry-attendance/scan', { qrId }),
+  today: (day = '') => api.get(`/entry-attendance/today${day ? `?day=${day}` : ''}`),
+  history: (params = {}) => api.get(`/entry-attendance/history?${new URLSearchParams(params).toString()}`),
+}
+
 export const documentsApi = {
   list: (classId = '') => api.get(`/documents${classId ? `?classId=${classId}` : ''}`),
   upload: async (data) => {

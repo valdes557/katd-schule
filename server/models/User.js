@@ -19,6 +19,8 @@ const userSchema = new mongoose.Schema(
     phone: { type: String },
     avatar: { type: String },
     matricule: { type: String, unique: true, sparse: true },
+    // Identifiant du QR de présence individuel (Secondaire) — scanné par le portier à l'entrée.
+    attendanceQrId: { type: String, unique: true, sparse: true, index: true },
     // Numéro de compte portefeuille KATD-SCHÜLE (KS-XXXXXX) — sert à recevoir des
     // transferts d'autres utilisateurs. Généré paresseusement à la 1re ouverture du wallet.
     walletAccountNo: { type: String, unique: true, sparse: true, index: true },
