@@ -216,6 +216,9 @@ export const messagesApi = {
     return json
   },
   sendGroup: (groupId, data) => api.post(`/messages/groups/${groupId}`, data),
+  // Gestion des membres d'un groupe existant (directeur) : détail + ajout
+  groupDetail: (groupId) => api.get(`/messages/groups/${groupId}`),
+  addGroupMembers: (groupId, memberIds) => api.post(`/messages/groups/${groupId}/members`, { memberIds }),
   // scope: 'me' (supprimer pour moi) | 'everyone' (supprimer pour tout le monde)
   remove: (id, scope = 'me') => api.del(`/messages/${id}?scope=${scope}`),
 }

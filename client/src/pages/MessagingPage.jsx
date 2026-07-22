@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, Image as ImageIcon, Trash2, Check, CheckCheck, Mic, Paperclip, Smile, MoreVertical, Ban } from 'lucide-react'
+import { MessageSquare, Send, Plus, Search, ArrowLeft, Loader2, X, Users, UserPlus, Image as ImageIcon, Trash2, Check, CheckCheck, Mic, Paperclip, Smile, MoreVertical, Ban } from 'lucide-react'
 import { messagesApi } from '../lib/api'
 import { assertVideoWithinLimit } from '../lib/videoValidation'
 import { uploadToCloudinary } from '../lib/cloudinaryUpload'
@@ -10,7 +10,9 @@ import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 
 const ASSET = import.meta.env.VITE_API_URL || ''
-const asset = (u) => (!u ? '' : u.startsWith('http') ? u : ASSET + u)
+// Laisse passer les URLs absolues (http), ainsi que les aperçus locaux optimistes
+// (blob: / data:) — sinon on préfixerait l'API et le lecteur audio/vidéo casserait.
+const asset = (u) => (!u ? '' : (u.startsWith('http') || u.startsWith('blob:') || u.startsWith('data:')) ? u : ASSET + u)
 const STICKERS = ['😀', '😂', '😍', '👍', '🙏', '🎉', '❤️', '😎', '😢', '🔥', '👏', '🤔', '😴', '🥳', '💯', '✅']
 
 export default function MessagingPage() {
@@ -33,12 +35,19 @@ export default function MessagingPage() {
   const [recSeconds, setRecSeconds] = useState(0)
   const [showStickers, setShowStickers] = useState(false)
   const [menuMsgId, setMenuMsgId] = useState(null) // message dont le menu de suppression est ouvert
+  // Ajout de membres à un groupe existant (directeur)
+  const [showMembersModal, setShowMembersModal] = useState(false)
+  const [groupMemberIds, setGroupMemberIds] = useState([])
+  const [groupType, setGroupType] = useState('teacher_group')
+  const [addMemberIds, setAddMemberIds] = useState([])
+  const [membersBusy, setMembersBusy] = useState(false)
   const messagesEndRef = useRef(null)
   const prevCountRef = useRef(0)
   const fileRef = useRef(null)
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
   const recTimerRef = useRef(null)
+  const sendingRef = useRef(false) // vrai pendant un envoi : met le polling en pause pour ne pas effacer le message optimiste
 
   const convsQ = useCachedFetch('/messages/conversations', async () => (await messagesApi.conversations()).data || [], [])
   const contactsQ = useCachedFetch('/messages/contacts', async () => (await messagesApi.contacts()).data || [], [])
@@ -63,11 +72,16 @@ export default function MessagingPage() {
     prevCountRef.current = messages.length
   }, [messages])
 
+  // Garde le ref d'« envoi en cours » à jour (utilisé pour suspendre le polling).
+  useEffect(() => { sendingRef.current = sending }, [sending])
+
   // Rafraîchissement automatique de la conversation ouverte (toutes les 8s) :
   // récupère les nouveaux messages et met à jour le compteur global de non-lus.
+  // On saute le tick pendant un envoi pour ne pas effacer le message optimiste.
   useEffect(() => {
     if (!activeConv) return
     const id = setInterval(async () => {
+      if (sendingRef.current) return
       try {
         const res = await messagesApi.conversation(activeConv.conversationId)
         setMessages(res.data || [])
@@ -148,63 +162,84 @@ export default function MessagingPage() {
     } catch (e) { alert(e.message) }
   }
 
+  // Ajoute un message OPTIMISTE (affichage instantané côté envoyeur) et renvoie son
+  // id temporaire ; il sera remplacé par la vraie liste après reconciliation (refetch).
+  const addOptimistic = (partial) => {
+    const myId = user?.id || user?._id
+    const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2)
+    setMessages((prev) => [...prev, {
+      _id: tempId, createdAt: new Date().toISOString(),
+      sender: { _id: myId, name: user?.name }, read: false, subject: '', body: '', pending: true, ...partial,
+    }])
+    return tempId
+  }
+  const dropOptimistic = (tempId) => setMessages((prev) => prev.filter((x) => x._id !== tempId))
+  // Recharge la conversation depuis le serveur (remplace l'optimiste par le vrai message).
+  const reconcile = async () => {
+    try { const res = await messagesApi.conversation(activeConv.conversationId); setMessages(res.data || []) } catch (_) {}
+    refreshConversations()
+  }
+
   const handleSendReply = async () => {
     if (!reply.trim() || !activeConv) return
+    const text = reply
+    setReply('')
+    const tempId = addOptimistic({ type: 'text', body: text })
     setSending(true)
     try {
-      if (activeConv.isGroup && activeConv.groupId) {
-        await messagesApi.sendGroup(activeConv.groupId, {
-          subject: activeConv.lastMessage?.subject || '',
-          body: reply,
-        })
-      } else {
-        await messagesApi.send({
-          recipientId: activeConv.contact?._id,
-          subject: activeConv.lastMessage?.subject || '',
-          body: reply,
-        })
-      }
-      setReply('')
-      const res = await messagesApi.conversation(activeConv.conversationId)
-      setMessages(res.data || [])
-      refreshConversations()
-    } catch (e) { alert(e.message) }
+      const payload = { subject: activeConv.lastMessage?.subject || '', body: text }
+      if (activeConv.isGroup && activeConv.groupId) await messagesApi.sendGroup(activeConv.groupId, payload)
+      else await messagesApi.send({ recipientId: activeConv.contact?._id, ...payload })
+      await reconcile()
+    } catch (e) { dropOptimistic(tempId); setReply(text); alert(e.message) }
     setSending(false)
   }
 
-  // Envoi d'un média (image, vidéo, vocal) ou sticker — vers un groupe ou en 1-1.
-  const sendMedia = async ({ type, mediaUrl, mediaDuration }) => {
+  // Envoie un média déjà uploadé (mediaUrl = URL Cloudinary). `localUrl` = aperçu
+  // local (blob:) affiché immédiatement en optimiste. Envoi groupe ou 1-1.
+  const sendMedia = async ({ type, mediaUrl, mediaDuration = 0, localUrl, tempId }) => {
     if (!activeConv) return
+    const optimisticId = tempId || addOptimistic({ type, mediaUrl: localUrl || mediaUrl, mediaDuration })
     setSending(true)
     try {
-      const payload = { subject: activeConv.lastMessage?.subject || '', body: '', type, mediaUrl, mediaDuration: mediaDuration || 0 }
-      if (activeConv.isGroup && activeConv.groupId) {
-        await messagesApi.sendGroup(activeConv.groupId, payload)
-      } else {
-        await messagesApi.send({ recipientId: activeConv.contact?._id, ...payload })
-      }
-      const res = await messagesApi.conversation(activeConv.conversationId)
-      setMessages(res.data || [])
-      refreshConversations()
-    } catch (e) { alert(e.message) }
+      const payload = { subject: activeConv.lastMessage?.subject || '', body: '', type, mediaUrl, mediaDuration }
+      if (activeConv.isGroup && activeConv.groupId) await messagesApi.sendGroup(activeConv.groupId, payload)
+      else await messagesApi.send({ recipientId: activeConv.contact?._id, ...payload })
+      await reconcile()
+    } catch (e) { dropOptimistic(optimisticId); alert(e.message) }
     setSending(false)
   }
 
   const onPickFile = async (e) => {
     const file = e.target.files && e.target.files[0]
     e.target.value = ''
-    if (!file) return
+    if (!file || !activeConv) return
     const isVideo = file.type.startsWith('video')
     const isImage = file.type.startsWith('image')
     if (!isVideo && !isImage) { alert('Seules les images et vidéos sont acceptées.'); return }
     if (isVideo) { try { await assertVideoWithinLimit(file) } catch (err) { alert(err.message); return } }
+    const type = isVideo ? 'video' : 'image'
+    const localUrl = URL.createObjectURL(file)
+    // Affichage instantané (optimiste) puis upload DIRECT à Cloudinary, puis envoi.
+    const tempId = addOptimistic({ type, mediaUrl: localUrl, pending: true })
     setSending(true)
     try {
-      // Upload DIRECT à Cloudinary (plus de limite 25 Mo ni de base64 lourd dans le corps).
       const up = await uploadToCloudinary(file, { resourceType: isVideo ? 'video' : 'image' })
-      await sendMedia({ type: isVideo ? 'video' : 'image', mediaUrl: up.secureUrl })
-    } catch (err) { alert(err.message) }
-    setSending(false)
+      await sendMedia({ type, mediaUrl: up.secureUrl, localUrl, tempId })
+    } catch (err) { dropOptimistic(tempId); alert(err.message); setSending(false) }
+  }
+
+  // Envoi d'un vocal : affichage INSTANTANÉ (blob local) puis upload direct Cloudinary.
+  const sendVoice = async (blob, dur) => {
+    if (!activeConv) return
+    const localUrl = URL.createObjectURL(blob)
+    const tempId = addOptimistic({ type: 'voice', mediaUrl: localUrl, mediaDuration: dur, pending: true })
+    setSending(true)
+    try {
+      const file = new File([blob], 'voice.webm', { type: 'audio/webm' })
+      const up = await uploadToCloudinary(file, { resourceType: 'video' }) // cloudinary traite l'audio comme 'video'
+      await sendMedia({ type: 'voice', mediaUrl: up.secureUrl, mediaDuration: dur, localUrl, tempId })
+    } catch (err) { dropOptimistic(tempId); alert(err.message); setSending(false) }
   }
 
   const startRec = async () => {
@@ -221,10 +256,8 @@ export default function MessagingPage() {
       mr.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
         const dur = recSeconds
-        const reader = new FileReader()
-        reader.onload = () => sendMedia({ type: 'voice', mediaUrl: reader.result, mediaDuration: dur })
-        reader.readAsDataURL(blob)
         stream.getTracks().forEach((t) => t.stop())
+        sendVoice(blob, dur)
       }
       mediaRef.current = mr
       mr.start()
@@ -243,7 +276,7 @@ export default function MessagingPage() {
     mr.stop()
   }
 
-  const sendSticker = (emoji) => { setShowStickers(false); sendMedia({ type: 'sticker', mediaUrl: emoji }) }
+  const sendSticker = (emoji) => { setShowStickers(false); sendMedia({ type: 'sticker', mediaUrl: emoji }) } // sticker = emoji direct, pas d'upload
 
   const handleCompose = async (e) => {
     e.preventDefault()
@@ -281,6 +314,32 @@ export default function MessagingPage() {
       alert(err.message)
     }
     setSending(false)
+  }
+
+  // Ouvre la modale d'ajout de membres pour le groupe actif (récupère les membres actuels).
+  const openMembersModal = async () => {
+    if (!activeConv?.groupId) return
+    setAddMemberIds([])
+    try {
+      const r = await messagesApi.groupDetail(activeConv.groupId)
+      setGroupMemberIds((r.data?.members || []).map((m) => String(m._id || m)))
+      setGroupType(r.data?.type || 'teacher_group')
+    } catch (_) { setGroupMemberIds([]); setGroupType('teacher_group') }
+    setShowMembersModal(true)
+  }
+
+  const handleAddMembers = async (e) => {
+    e.preventDefault()
+    if (addMemberIds.length === 0) return
+    setMembersBusy(true)
+    try {
+      const r = await messagesApi.addGroupMembers(activeConv.groupId, addMemberIds)
+      setShowMembersModal(false)
+      setAddMemberIds([])
+      refreshGroups()
+      alert(`${r.data?.added || addMemberIds.length} membre(s) ajouté(s) au groupe.`)
+    } catch (err) { alert(err.message) }
+    setMembersBusy(false)
   }
 
   const filteredConvs = conversations.filter((c) => {
@@ -415,13 +474,18 @@ export default function MessagingPage() {
                     <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0"><Users size={16} className="text-indigo-600" /></div>
                   )
                 )}
-                <div>
-                  <div className="text-sm font-bold text-gray-900">{activeConv.contact?.name}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-gray-900 truncate">{activeConv.contact?.name}</div>
                   <div className="text-xs text-gray-500">
                     {activeConv.isGroup ? 'Groupe d\'échange' : activeConv.contact?.role}
                     {!activeConv.isGroup && activeConv.contact?.email ? ` · ${activeConv.contact.email}` : ''}
                   </div>
                 </div>
+                {activeConv.isGroup && ['directeur', 'super_admin'].includes(user?.role) && (
+                  <button onClick={openMembersModal} title="Ajouter des membres" className="btn-ghost text-xs border border-gray-200 flex-shrink-0">
+                    <UserPlus size={15} /> Membres
+                  </button>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
                 {loadingMsgs ? (
@@ -434,7 +498,9 @@ export default function MessagingPage() {
                     const myId = String(user?.id || user?._id || '')
                     const senderId = String(m.sender?._id || m.sender || '')
                     const mine = !!myId && senderId === myId
-                    const canEveryone = mine || ['directeur', 'super_admin'].includes(user?.role)
+                    // « Supprimer pour tout le monde » réservé à l'EXPÉDITEUR : le
+                    // récepteur d'un message reçu ne peut que le supprimer pour lui.
+                    const canEveryone = mine
                     const menuOpen = menuMsgId === m._id
                     // « Vu par » en groupe : lecteurs autres que l'expéditeur.
                     const seenOthers = (m.readBy || []).filter((r) => String(r.user?._id || r.user || '') !== myId)
@@ -480,7 +546,8 @@ export default function MessagingPage() {
                           'max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm',
                           mine
                             ? 'bg-blue-600 text-white rounded-br-md'
-                            : 'bg-gray-200 text-gray-800 rounded-bl-md'
+                            : 'bg-gray-200 text-gray-800 rounded-bl-md',
+                          m.pending && 'opacity-70'
                         )}>
                           {activeConv.isGroup && !mine && m.sender?.name && (
                             <div className="text-[11px] font-semibold mb-0.5 text-blue-700">{m.sender.name}</div>
@@ -682,6 +749,45 @@ export default function MessagingPage() {
                 <button type="button" onClick={() => setShowGroupModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
                 <button type="submit" disabled={sending || !groupForm.name.trim() || groupForm.memberIds.length === 0} className="btn-primary flex-1 justify-center">
                   {sending ? <Loader2 size={15} className="animate-spin" /> : <Users size={15} />} Créer le groupe
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Ajouter des membres à un groupe existant (directeur) */}
+      {showMembersModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Ajouter des membres</h3>
+              <button onClick={() => setShowMembersModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+            </div>
+            <form onSubmit={handleAddMembers} className="space-y-3">
+              <p className="text-xs text-gray-500">Sélectionnez les {groupType === 'parent_group' ? 'parents' : 'enseignants'} à ajouter à « {activeConv?.contact?.name} ».</p>
+              <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1">
+                {(() => {
+                  const role = groupType === 'parent_group' ? 'parent' : 'enseignant'
+                  const eligible = contacts.filter((c) => c.role === role && !groupMemberIds.includes(String(c._id)))
+                  if (eligible.length === 0) return <p className="text-xs text-gray-400 text-center py-4">Aucun {role} à ajouter (déjà tous membres).</p>
+                  return eligible.map((c) => (
+                    <label key={c._id} className="flex items-center gap-2 text-xs py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={addMemberIds.includes(c._id)}
+                        onChange={() => setAddMemberIds((prev) => prev.includes(c._id) ? prev.filter((x) => x !== c._id) : [...prev, c._id])}
+                      />
+                      <span className="truncate">{c.name}</span>
+                    </label>
+                  ))
+                })()}
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowMembersModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
+                <button type="submit" disabled={membersBusy || addMemberIds.length === 0} className="btn-primary flex-1 justify-center">
+                  {membersBusy ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />} Ajouter
                 </button>
               </div>
             </form>

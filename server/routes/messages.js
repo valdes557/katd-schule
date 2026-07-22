@@ -460,6 +460,48 @@ router.post('/groups', protect, authorize('directeur', 'super_admin'), upload.si
   }
 })
 
+// GET /api/messages/groups/:groupId — détail d'un groupe (membres) pour la gestion
+router.get('/groups/:groupId', protect, async (req, res) => {
+  try {
+    const group = await MessageGroup.findById(req.params.groupId).populate('members', 'name role')
+    if (!group || !group.isActive) return res.status(404).json({ message: 'Groupe introuvable' })
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId || group.school.toString() !== schoolId.toString()) return res.status(403).json({ message: 'Accès refusé à ce groupe' })
+    res.json({ success: true, data: { _id: group._id, name: group.name, type: group.type, image: group.image || null, members: group.members } })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/messages/groups/:groupId/members — le directeur ajoute des membres
+// (enseignants ou parents selon le type) à un groupe EXISTANT de son école.
+router.post('/groups/:groupId/members', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    let { memberIds = [] } = req.body
+    if (!Array.isArray(memberIds)) memberIds = [memberIds].filter(Boolean)
+    if (memberIds.length === 0) return res.status(400).json({ message: 'Aucun membre à ajouter' })
+
+    const group = await MessageGroup.findById(req.params.groupId)
+    if (!group || !group.isActive) return res.status(404).json({ message: 'Groupe introuvable' })
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId || group.school.toString() !== schoolId.toString()) return res.status(403).json({ message: 'Accès refusé à ce groupe' })
+
+    // Valide les membres selon le type de groupe (même logique que la création).
+    let validIds = []
+    if (group.type === 'parent_group') {
+      const students = await Student.find({ school: schoolId, parentUser: { $in: memberIds }, status: 'active' })
+        .select('parentUser').lean()
+      validIds = [...new Set(students.map((s) => s.parentUser?.toString()).filter(Boolean))]
+    } else {
+      const teachers = await User.find({ _id: { $in: memberIds }, school: schoolId, role: 'enseignant', isActive: true }).select('_id')
+      validIds = teachers.map((t) => t._id.toString())
+    }
+    if (validIds.length === 0) return res.status(400).json({ message: 'Aucun membre valide à ajouter' })
+
+    await MessageGroup.updateOne({ _id: group._id }, { $addToSet: { members: { $each: validIds } } })
+    const updated = await MessageGroup.findById(group._id)
+    res.json({ success: true, data: { _id: updated._id, membersCount: updated.members.length, added: validIds.length } })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // POST /api/messages/groups/:groupId — send a message in a group conversation
 router.post('/groups/:groupId', protect, async (req, res) => {
   try {

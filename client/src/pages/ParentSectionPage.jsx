@@ -36,16 +36,19 @@ const SECTION_DESCRIPTIONS = {
 export default function ParentSectionPage({ section = 'notes' }) {
   const navigate = useNavigate()
 
+  // IMPORTANT : la clé '/parent/dashboard' est partagée avec ParentDashboardPage et
+  // d'autres pages qui y stockent l'OBJET complet {children, stats, ...}. On renvoie
+  // donc la même forme (objet) pour éviter une collision de cache, et on dérive les
+  // enfants de façon défensive (accepte objet OU tableau) — sinon `children.map` plantait
+  // (« n.map is not a function ») au 1er clic quand le cache contenait déjà l'objet.
   const dashQ = useCachedFetch(
     '/parent/dashboard',
-    async () => {
-      const r = await parentApi.dashboard()
-      return r.data?.children || r.data?.students || []
-    },
+    async () => (await parentApi.dashboard()).data || null,
     [],
   )
 
-  const children = dashQ.data || []
+  const d = dashQ.data
+  const children = Array.isArray(d) ? d : (d?.children || d?.students || [])
   const loading = dashQ.loading
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
