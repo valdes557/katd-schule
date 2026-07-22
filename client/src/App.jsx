@@ -26,6 +26,21 @@ function isChunkLoadError(err) {
   const msg = (err && (err.message || err.toString())) || ''
   return /Loading chunk|dynamically imported module|Importing a module script failed|Failed to fetch|error loading dynamically/i.test(msg)
 }
+// Garde-fou TEMPOREL (au lieu d'un booléen à usage unique) : on autorise un
+// rechargement auto tant que le précédent remonte à plus de COOLDOWN. Ainsi chaque
+// navigation vers un NOUVEAU chunk périmé (après un déploiement) se rétablit toute
+// seule, sans laisser l'écran « Impossible de charger cette page ». Deux erreurs
+// rapprochées (< COOLDOWN) = vrai souci → on arrête la boucle et on montre l'écran.
+const CHUNK_RELOAD_COOLDOWN = 12000
+function canAutoReload() {
+  try {
+    const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0)
+    return !last || Date.now() - last > CHUNK_RELOAD_COOLDOWN
+  } catch (_) { return true }
+}
+function markAutoReload() {
+  try { sessionStorage.setItem(CHUNK_RELOAD_KEY, Date.now().toString()) } catch (_) {}
+}
 // Recharge la page en CONTOURNANT le cache : on ajoute un parametre unique a l'URL
 // pour que le navigateur redemande un index.html FRAIS (l'ancien, mis en cache,
 // reference des chunks au hash perime qui n'existent plus apres un deploiement).
@@ -42,8 +57,8 @@ function reloadBustingCache() {
 }
 function importWithRetry(factory) {
   return factory().catch((err) => {
-    if (isChunkLoadError(err) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
-      sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
+    if (isChunkLoadError(err) && canAutoReload()) {
+      markAutoReload()
       reloadBustingCache()
       return new Promise(() => {})
     }
@@ -66,8 +81,8 @@ class RouteErrorBoundary extends Component {
     return { hasError: true }
   }
   componentDidCatch(error) {
-    if (isChunkLoadError(error) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
-      sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
+    if (isChunkLoadError(error) && canAutoReload()) {
+      markAutoReload()
       reloadBustingCache()
     }
   }
@@ -240,13 +255,11 @@ export default function App() {
   // Précharge en arrière-plan tous les chunks de page une fois l'app montée :
   // le clic sur une fonctionnalité affiche alors la page sans temps de chargement.
   useEffect(() => {
-    // On efface le drapeau anti-boucle UNIQUEMENT après un rendu stable (5s).
-    // Sinon, un cache périmé provoquerait une boucle de rechargement infinie :
-    // reload -> drapeau effacé -> chunk échoue -> reload -> ...
+    // Le garde-fou TEMPOREL (canAutoReload/CHUNK_RELOAD_COOLDOWN) gère seul les
+    // boucles : on n'efface donc plus le drapeau ici (il expire naturellement après
+    // le cooldown). On nettoie juste le paramètre anti-cache « _v » ajouté par
+    // reloadBustingCache() pour garder une URL propre une fois la page chargée.
     const t = setTimeout(() => {
-      try { sessionStorage.removeItem(CHUNK_RELOAD_KEY) } catch (_) {}
-      // Nettoie le paramètre anti-cache « _v » ajouté par reloadBustingCache()
-      // pour garder une URL propre une fois la page chargée correctement.
       try {
         const url = new URL(window.location.href)
         if (url.searchParams.has('_v')) {
@@ -254,7 +267,7 @@ export default function App() {
           window.history.replaceState({}, '', url.pathname + url.search + url.hash)
         }
       } catch (_) {}
-    }, 5000)
+    }, 3000)
     prefetchAllPages()
     return () => clearTimeout(t)
   }, [])

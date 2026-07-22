@@ -45,6 +45,7 @@ export const navSections = [
     items: [
       { label: 'Frais & tranches', icon: Receipt, path: '/dashboard/parent/frais' },
       { label: 'Pension', icon: CreditCard, path: '/dashboard/parent/finances' },
+      { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
       { label: 'Historique des paiements', icon: History, path: '/dashboard/paiements' },
       { label: 'Documents administratifs', icon: FolderOpen, path: '/dashboard/parent/documents' },
       { label: 'Rendez-vous', icon: CalendarCheck, path: '/dashboard/parent/rendez-vous' },

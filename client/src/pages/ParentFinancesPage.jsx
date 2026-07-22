@@ -279,6 +279,9 @@ function PayWalletModal({ ctx, onClose, onPaid }) {
         <button onClick={submit} disabled={busy} className="btn-primary w-full justify-center">
           {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : isTranche ? `Payer ${FMT(tranche.amount)} F` : 'Confirmer le paiement'}
         </button>
+        <Link to="/dashboard/portefeuille" className="block text-center text-xs text-indigo-600 hover:underline">
+          Recharger / gérer mon portefeuille
+        </Link>
       </div>
     </div>
   )

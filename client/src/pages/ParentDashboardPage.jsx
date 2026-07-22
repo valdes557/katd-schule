@@ -3,7 +3,7 @@ import {
   Users, BookOpen, CalendarCheck, CreditCard, MessageSquare,
   TrendingUp, Clock, FileText, Loader2, RefreshCw, ArrowRight, Shield,
   GraduationCap, CheckCircle2, XCircle, AlertTriangle, Banknote, Calendar,
-  Receipt, Bell, Coins,
+  Receipt, Bell, Coins, Wallet,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { parentApi } from '../lib/api'
@@ -226,6 +226,7 @@ export default function ParentDashboardPage() {
         {[
           { label: 'Messagerie', path: '/dashboard/messagerie', icon: MessageSquare, color: 'text-blue-600' },
           { label: 'Pension', path: '/dashboard/parent/finances', icon: Coins, color: 'text-lime-600' },
+          { label: 'Mon portefeuille', path: '/dashboard/portefeuille', icon: Wallet, color: 'text-indigo-600' },
           { label: 'Rendez-vous', path: '/dashboard/parent/rendez-vous', icon: CalendarCheck, color: 'text-purple-600' },
           { label: 'Contrôle parental', path: '/dashboard/parent/controles', icon: Shield, color: 'text-orange-600' },
         ].map((q) => (
