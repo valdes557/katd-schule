@@ -7,7 +7,7 @@ import {
 import {
   Users, UserCheck, BookOpen, TrendingUp, RefreshCw, School,
   ArrowRight, Calendar, CreditCard, AlertCircle, CheckCircle2, Loader2, DollarSign, UserPlus,
-  ClipboardList, FileText, Briefcase,
+  ClipboardList, FileText, Briefcase, Coins,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { dashboardApi, teacherAttendanceApi } from '../lib/api'
@@ -337,6 +337,7 @@ function DirectorDashboard({ user, school }) {
           { label: 'Gérer les élèves', path: '/dashboard/eleves', icon: Users, bg: 'bg-blue-600 hover:bg-blue-700' },
           { label: 'Saisir des notes', path: '/dashboard/notes', icon: BookOpen, bg: 'bg-purple-600 hover:bg-purple-700' },
           { label: 'Faire l\'appel', path: '/dashboard/presence', icon: Calendar, bg: 'bg-green-600 hover:bg-green-700' },
+          { label: 'Pension', path: '/dashboard/director/pensions', icon: Coins, bg: 'bg-lime-600 hover:bg-lime-700' },
           { label: 'Souscriptions', path: '/dashboard/souscriptions', icon: CreditCard, bg: 'bg-orange-500 hover:bg-orange-600' },
           { label: 'Devoirs & évaluations', path: '/dashboard/devoirs', icon: ClipboardList, bg: 'bg-teal-600 hover:bg-teal-700' },
           { label: 'Notes & bulletins', path: '/dashboard/bulletin', icon: FileText, bg: 'bg-indigo-600 hover:bg-indigo-700' },

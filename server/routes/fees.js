@@ -433,9 +433,7 @@ router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin'
 // (method 'wallet') et renvoie l'index du paiement pour télécharger le reçu PDF.
 router.post('/:id/pay-wallet', protect, authorize('parent'), async (req, res) => {
   try {
-    const { amount, pin } = req.body
-    const amt = Number(amount)
-    if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
+    const { pin, installmentIndex } = req.body
     if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
 
     const fee = await Fee.findById(req.params.id)
@@ -447,6 +445,20 @@ router.post('/:id/pay-wallet', protect, authorize('parent'), async (req, res) =>
     if (!student || String(student.parentUser || '') !== String(req.user._id)) {
       return res.status(403).json({ message: 'Accès refusé : cet élève ne vous est pas rattaché' })
     }
+
+    // Paiement d'une TRANCHE précise (installmentIndex) : le montant = celui de la tranche.
+    let instIdx = null
+    let amt
+    if (installmentIndex !== undefined && installmentIndex !== null && installmentIndex !== '') {
+      instIdx = Number(installmentIndex)
+      const inst = fee.installments?.[instIdx]
+      if (!inst) return res.status(400).json({ message: 'Tranche introuvable' })
+      if (inst.paid) return res.status(400).json({ message: 'Cette tranche est déjà payée' })
+      amt = Number(inst.amount)
+    } else {
+      amt = Number(req.body.amount)
+    }
+    if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
 
     // Ne pas payer plus que le reste dû
     const remaining = Math.max(0, (fee.amount || 0) - (fee.paid || 0))
@@ -484,6 +496,13 @@ router.post('/:id/pay-wallet', protect, authorize('parent'), async (req, res) =>
 
     // Enregistre le paiement + met à jour l'état du frais
     fee.payments.push({ amount: amt, method: 'wallet', reference: 'WALLET-' + crypto.randomBytes(3).toString('hex').toUpperCase(), note: 'Payé depuis le portefeuille' })
+    // Si paiement d'une tranche : la marquer payée
+    if (instIdx !== null && fee.installments[instIdx]) {
+      fee.installments[instIdx].paid = true
+      fee.installments[instIdx].paidAt = new Date()
+      fee.installments[instIdx].paidAmount = amt
+      fee.installments[instIdx].method = 'wallet'
+    }
     fee.paid = (fee.paid || 0) + amt
     fee.status = fee.paid >= fee.amount ? 'paid' : fee.paid > 0 ? 'partial' : 'pending'
     await fee.save()
