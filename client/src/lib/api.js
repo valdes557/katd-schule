@@ -610,6 +610,7 @@ export const parentApi = {
   dashboard: () => api.get('/parent/dashboard'),
   childDetail: (studentId) => api.get(`/parent/children/${studentId}`),
   fees: () => api.get('/parent/fees'),
+  pensionModalities: () => api.get('/parent/pension-modalities'),
   payFee: (feeId, data) => api.post(`/parent/fees/${feeId}/pay`, data),
   appointments: () => api.get('/parent/appointments'),
   schoolAppointments: () => api.get('/parent/appointments/school'),
@@ -745,6 +746,12 @@ export const feesApi = {
   recordPayment: (id, data) => api.post(`/fees/${id}/record-payment`, data),
   payWallet: (id, data) => api.post(`/fees/${id}/pay-wallet`, data),
   notifyInstallment: (id, installmentIndex) => api.post(`/fees/${id}/notify-installment`, { installmentIndex }),
+  // Barèmes de pension par classe (prix + tranches) — définition puis assignation aux élèves
+  modalities: () => api.get('/fees/modalities'),
+  createModality: (data) => api.post('/fees/modalities', data),
+  updateModality: (id, data) => api.put(`/fees/modalities/${id}`, data),
+  removeModality: (id) => api.del(`/fees/modalities/${id}`),
+  assignModality: (id, data = {}) => api.post(`/fees/modalities/${id}/assign`, data),
   downloadReceipt: async (id, paymentIndex) => {
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/fees/${id}/receipt/${paymentIndex}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })

@@ -269,6 +269,113 @@ router.post('/bulk-assign', protect, authorize('directeur', 'super_admin', 'cais
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// ───────────── Barèmes de pension par classe (PaymentModality) ─────────────
+// Le directeur / la caissière définit LA PENSION D'UNE CLASSE : prix total + tranches.
+// Ces barèmes sont ensuite assignés aux élèves (création d'un Fee par élève).
+const PaymentModality = require('../models/PaymentModality')
+
+function cleanInstallments(installments) {
+  return Array.isArray(installments)
+    ? installments
+        .filter((i) => i && i.label && Number(i.amount) > 0)
+        .map((i) => ({ label: String(i.label).trim(), amount: Number(i.amount), deadline: i.deadline ? String(i.deadline) : '' }))
+    : []
+}
+
+// GET /api/fees/modalities — liste des barèmes de pension de l'école
+router.get('/modalities', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const list = await PaymentModality.find({ school: schoolId(req) }).sort({ order: 1, className: 1 })
+    res.json({ success: true, data: list })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/fees/modalities — crée un barème de pension pour une classe
+router.post('/modalities', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const sid = schoolId(req)
+    if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+    const { className, totalAmount, installments, order } = req.body
+    if (!className || !String(className).trim()) return res.status(400).json({ message: 'Classe requise' })
+    const total = Number(totalAmount)
+    if (!(total > 0)) return res.status(400).json({ message: 'Montant total invalide' })
+    const m = await PaymentModality.create({
+      school: sid, className: String(className).trim(), totalAmount: total,
+      installments: cleanInstallments(installments), order: Number(order) || 0,
+    })
+    res.status(201).json({ success: true, data: m })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/fees/modalities/:id — modifie un barème
+router.put('/modalities/:id', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const m = await PaymentModality.findOne({ _id: req.params.id, school: schoolId(req) })
+    if (!m) return res.status(404).json({ message: 'Barème introuvable' })
+    const { className, totalAmount, installments, order } = req.body
+    if (className !== undefined) m.className = String(className).trim()
+    if (totalAmount !== undefined) { const t = Number(totalAmount); if (!(t > 0)) return res.status(400).json({ message: 'Montant total invalide' }); m.totalAmount = t }
+    if (installments !== undefined) m.installments = cleanInstallments(installments)
+    if (order !== undefined) m.order = Number(order) || 0
+    await m.save()
+    res.json({ success: true, data: m })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// DELETE /api/fees/modalities/:id — supprime un barème
+router.delete('/modalities/:id', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const m = await PaymentModality.findOneAndDelete({ _id: req.params.id, school: schoolId(req) })
+    if (!m) return res.status(404).json({ message: 'Barème introuvable' })
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/fees/modalities/:id/assign — assigne le barème à tous les élèves actifs de la classe
+// (crée un Fee de type 'pension' par élève, anti-doublon par label + année scolaire)
+router.post('/modalities/:id/assign', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const sid = schoolId(req)
+    const m = await PaymentModality.findOne({ _id: req.params.id, school: sid })
+    if (!m) return res.status(404).json({ message: 'Barème introuvable' })
+
+    const year = req.body.academicYear || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
+    const feeLabel = req.body.label || `Pension ${m.className} ${year}`
+
+    // Élèves actifs de la classe (match par nom de classe)
+    const students = await Student.find({ school: sid, status: 'active' }).populate('class', 'name')
+    const target = students.filter((s) => s.class?.name === m.className)
+    if (target.length === 0) return res.status(400).json({ message: `Aucun élève actif dans la classe ${m.className}` })
+
+    // Anti-doublon
+    const existing = await Fee.find({ school: sid, label: feeLabel, academicYear: year }).select('student')
+    const alreadyHas = new Set(existing.map((f) => f.student.toString()))
+
+    const hasTranches = Array.isArray(m.installments) && m.installments.length > 0
+    // dueDate est obligatoire sur Fee.installments -> fallback si deadline absente/invalide
+    const fallbackDue = req.body.dueDate ? new Date(req.body.dueDate) : new Date()
+    const mkInstallments = () => m.installments.map((inst) => {
+      const d = inst.deadline ? new Date(inst.deadline) : null
+      return { label: inst.label, amount: inst.amount, dueDate: (d && !isNaN(d)) ? d : fallbackDue }
+    })
+
+    const docs = []
+    let skipped = 0
+    for (const s of target) {
+      if (alreadyHas.has(s._id.toString())) { skipped++; continue }
+      docs.push({
+        student: s._id, school: sid, label: feeLabel, type: 'pension',
+        amount: m.totalAmount, academicYear: year, status: 'pending',
+        dueDate: hasTranches ? undefined : fallbackDue,
+        paymentMode: hasTranches ? 'tranches' : 'complet',
+        installments: hasTranches ? mkInstallments() : [],
+      })
+    }
+    if (docs.length > 0) await Fee.insertMany(docs)
+    res.json({ success: true, data: { created: docs.length, skipped, totalStudents: target.length, className: m.className } })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // PUT /api/fees/:id — Update fee
 router.put('/:id', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {

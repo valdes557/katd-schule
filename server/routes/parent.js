@@ -406,6 +406,20 @@ router.get('/fees', protect, parentOnly, async (req, res) => {
   }
 })
 
+// GET /api/parent/pension-modalities — barèmes de pension des classes de ses enfants
+// (permet au parent de voir « les pensions listées par classe » même avant assignation)
+router.get('/pension-modalities', protect, parentOnly, async (req, res) => {
+  try {
+    const children = await getChildren(req.user._id)
+    const classNames = [...new Set(children.map((c) => c.class?.name).filter(Boolean))]
+    if (classNames.length === 0) return res.json({ success: true, data: [] })
+    const schoolIds = [...new Set(children.map((c) => String(c.school?._id || c.school)).filter(Boolean))]
+    const PaymentModality = require('../models/PaymentModality')
+    const list = await PaymentModality.find({ school: { $in: schoolIds }, className: { $in: classNames } }).sort({ order: 1 })
+    res.json({ success: true, data: list })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // Pay a fee (partial or full)
 router.post('/fees/:feeId/pay', protect, parentOnly, async (req, res) => {
   try {

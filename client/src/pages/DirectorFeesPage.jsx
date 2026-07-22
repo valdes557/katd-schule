@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import {
   CreditCard, Plus, Trash2, Loader2, CheckCircle2, Bell,
   AlertCircle, X, ChevronDown, ChevronUp, Users, Search,
+  Layers, Pencil, Send, ListChecks,
 } from 'lucide-react'
 import { feesApi, classesApi, studentsApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
@@ -28,6 +29,7 @@ export default function DirectorFeesPage() {
     [subscribedCycle],
   )
   const classes = classesQ.data || []
+  const [tab, setTab] = useState('suivi') // 'suivi' | 'baremes'
   const [selectedClass, setSelectedClass] = useState('')
   const [paymentStatus, setPaymentStatus] = useState([])
   const [loading, setLoading] = useState(false)
@@ -158,10 +160,23 @@ export default function DirectorFeesPage() {
         </div>
         <div className="flex gap-2">
           <DownloadPdfButton containerRef={pdfRef} filename="pensions-frais.pdf" title="Frais & Pensions" label="Frais PDF" />
-          <button onClick={() => setBulkModal(true)} className="btn-primary text-sm self-start"><Users size={15} /> Assigner les frais en masse</button>
+          {tab === 'suivi' && <button onClick={() => setBulkModal(true)} className="btn-primary text-sm self-start"><Users size={15} /> Assigner les frais en masse</button>}
         </div>
       </div>
 
+      {/* Onglets : Suivi & paiements / Barèmes de pension par classe */}
+      <div className="flex gap-2 border-b border-gray-100">
+        {[{ v: 'suivi', l: 'Suivi & paiements', icon: ListChecks }, { v: 'baremes', l: 'Pensions par classe (barème)', icon: Layers }].map((t) => (
+          <button key={t.v} onClick={() => setTab(t.v)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t.v ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            <t.icon size={15} /> {t.l}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'baremes' && <ModalitiesManager classes={classes} />}
+
+      {tab === 'suivi' && (<>
       <div className="flex flex-wrap gap-3">
         <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="input text-sm w-auto min-w-[200px]">
           <option value="">— Sélectionner une classe —</option>
@@ -276,6 +291,7 @@ export default function DirectorFeesPage() {
           ))}
         </div>
       )}
+      </>)}
 
       {/* Create Fee Modal */}
       {showFeeModal && (
@@ -472,6 +488,182 @@ export default function DirectorFeesPage() {
                 <button type="button" onClick={() => setBulkModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
                 <button type="submit" disabled={bulkSaving} className="btn-primary flex-1 justify-center">
                   {bulkSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Assigner
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Gestion des barèmes de pension par classe (prix + tranches) ──
+const EMPTY_MODALITY = { className: '', totalAmount: '', installments: [] }
+
+function ModalitiesManager({ classes }) {
+  const [list, setList] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [modal, setModal] = useState(null) // { _id?, className, totalAmount, installments }
+  const [saving, setSaving] = useState(false)
+  const [assigning, setAssigning] = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    try { const r = await feesApi.modalities(); setList(r.data || []) } catch (_) {}
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const openNew = () => setModal({ ...EMPTY_MODALITY, installments: [] })
+  const openEdit = (m) => setModal({
+    _id: m._id, className: m.className, totalAmount: String(m.totalAmount || ''),
+    installments: (m.installments || []).map((i) => ({ label: i.label, amount: String(i.amount || ''), deadline: i.deadline || '' })),
+  })
+
+  const trancheTotal = modal ? modal.installments.reduce((s, i) => s + (Number(i.amount) || 0), 0) : 0
+
+  const save = async (e) => {
+    e.preventDefault()
+    if (!modal.className) { alert('Sélectionnez une classe'); return }
+    setSaving(true)
+    try {
+      const payload = {
+        className: modal.className,
+        totalAmount: Number(modal.totalAmount),
+        installments: modal.installments
+          .filter((i) => i.label && Number(i.amount) > 0)
+          .map((i) => ({ label: i.label, amount: Number(i.amount), deadline: i.deadline || '' })),
+      }
+      const r = modal._id ? await feesApi.updateModality(modal._id, payload) : await feesApi.createModality(payload)
+      if (r.success) { setModal(null); load() } else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  const remove = async (id) => {
+    if (!confirm('Supprimer ce barème de pension ?')) return
+    try { const r = await feesApi.removeModality(id); if (r.success) load() } catch (err) { alert(err.message) }
+  }
+
+  const assign = async (m) => {
+    if (!confirm(`Assigner la pension « ${m.className} » à tous les élèves actifs de cette classe ?`)) return
+    setAssigning(m._id)
+    try {
+      const r = await feesApi.assignModality(m._id)
+      if (r.success) {
+        const { created, skipped, totalStudents } = r.data
+        alert(`${created} pension(s) créée(s) sur ${totalStudents} élève(s).${skipped ? ` ${skipped} déjà existante(s) ignorée(s).` : ''}`)
+      } else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+    setAssigning('')
+  }
+
+  const setInst = (idx, field, value) => setModal({
+    ...modal,
+    installments: modal.installments.map((x, i) => i === idx ? { ...x, [field]: value } : x),
+  })
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">Définissez la pension de chaque classe (prix total + tranches), puis assignez-la aux élèves.</p>
+        <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} /> Nouveau barème</button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-10"><Loader2 size={22} className="animate-spin text-blue-600" /></div>
+      ) : list.length === 0 ? (
+        <div className="text-center py-14 text-gray-400">
+          <Layers size={34} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">Aucun barème de pension défini. Créez-en un pour commencer.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {list.map((m) => (
+            <div key={m._id} className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-900">{m.className}</p>
+                <p className="text-xs text-gray-500">{FMT(m.totalAmount)} F CFA · {m.installments?.length ? `${m.installments.length} tranche(s)` : 'Paiement complet'}</p>
+                {m.installments?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {m.installments.map((i, idx) => (
+                      <span key={idx} className="text-[10px] bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{i.label} · {FMT(i.amount)} F</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => assign(m)} disabled={assigning === m._id} className="btn-primary text-xs">
+                  {assigning === m._id ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Assigner aux élèves
+                </button>
+                <button onClick={() => openEdit(m)} className="btn-ghost text-xs border border-gray-200"><Pencil size={12} /></button>
+                <button onClick={() => remove(m._id)} className="btn-ghost text-xs border border-gray-200 text-red-500"><Trash2 size={12} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900">{modal._id ? 'Modifier le barème' : 'Nouveau barème de pension'}</h3>
+              <button onClick={() => setModal(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <form onSubmit={save} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Classe *</label>
+                  <select required value={modal.className} onChange={(e) => setModal({ ...modal, className: e.target.value })} className="input text-sm mt-1 w-full">
+                    <option value="">— Classe —</option>
+                    {classes.map((c) => <option key={c._id} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Prix total (F CFA) *</label>
+                  <input required type="number" min="1" value={modal.totalAmount} onChange={(e) => setModal({ ...modal, totalAmount: e.target.value })} className="input text-sm mt-1 w-full" />
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-gray-700">Tranches (nombre + prix de chaque tranche)</p>
+                  <button type="button" onClick={() => setModal({ ...modal, installments: [...modal.installments, { label: `${modal.installments.length + 1}ère tranche`, amount: '', deadline: '' }] })} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Ajouter</button>
+                </div>
+                {modal.installments.map((inst, i) => (
+                  <div key={i} className="grid grid-cols-3 gap-2 items-end">
+                    <div>
+                      <label className="text-[10px] text-gray-500">Libellé</label>
+                      <input value={inst.label} onChange={(e) => setInst(i, 'label', e.target.value)} className="input text-xs mt-0.5 w-full" placeholder={`Tranche ${i + 1}`} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500">Montant</label>
+                      <input type="number" value={inst.amount} onChange={(e) => setInst(i, 'amount', e.target.value)} className="input text-xs mt-0.5 w-full" />
+                    </div>
+                    <div className="flex gap-1 items-end">
+                      <div className="flex-1">
+                        <label className="text-[10px] text-gray-500">Échéance</label>
+                        <input type="date" value={inst.deadline} onChange={(e) => setInst(i, 'deadline', e.target.value)} className="input text-xs mt-0.5 w-full" />
+                      </div>
+                      <button type="button" onClick={() => setModal({ ...modal, installments: modal.installments.filter((_, idx) => idx !== i) })} className="p-1.5 text-red-400 hover:bg-red-50 rounded"><Trash2 size={12} /></button>
+                    </div>
+                  </div>
+                ))}
+                {modal.installments.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-1">Aucune tranche : paiement en une fois.</p>
+                ) : (
+                  <p className={`text-[11px] font-medium ${trancheTotal === Number(modal.totalAmount) ? 'text-green-600' : 'text-amber-600'}`}>
+                    Total des tranches : {FMT(trancheTotal)} F {trancheTotal !== Number(modal.totalAmount) && `(≠ prix total ${FMT(modal.totalAmount)} F)`}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setModal(null)} className="btn-ghost flex-1 justify-center">Annuler</button>
+                <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Enregistrer
                 </button>
               </div>
             </form>
