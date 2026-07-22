@@ -248,10 +248,10 @@ export default function UserMessengerPage() {
         <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
           <button onClick={() => setActive(null)} className="text-gray-500"><ArrowLeft size={20} /></button>
           <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold overflow-hidden">
-            {active.avatar ? <img src={asset(active.avatar)} alt="" className="w-full h-full object-cover" /> : active.name.charAt(0).toUpperCase()}
+            {active.avatar ? <img src={asset(active.avatar)} alt="" className="w-full h-full object-cover" /> : (active.name || '?').charAt(0).toUpperCase()}
           </div>
           <div>
-            <p className="font-semibold text-gray-900 text-sm leading-tight">{active.name}</p>
+            <p className="font-semibold text-gray-900 text-sm leading-tight">{active.name || 'Utilisateur'}</p>
             <p className={`text-xs flex items-center gap-1 ${active.online ? 'text-green-600' : 'text-gray-400'}`}>
               <Circle size={8} fill="currentColor" /> {active.online ? 'En ligne' : 'Hors ligne'}
             </p>
@@ -371,7 +371,7 @@ export default function UserMessengerPage() {
               <button key={u._id} onClick={() => openThread(u)} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left">
                 <div className="relative">
                   <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold overflow-hidden">
-                    {u.avatar ? <img src={asset(u.avatar)} alt="" className="w-full h-full object-cover" /> : u.name.charAt(0).toUpperCase()}
+                    {u.avatar ? <img src={asset(u.avatar)} alt="" className="w-full h-full object-cover" /> : (u.name || '?').charAt(0).toUpperCase()}
                   </div>
                   <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${u.online ? 'bg-green-500' : 'bg-gray-300'}`} />
                 </div>

@@ -165,6 +165,7 @@ const AdminShareholdersPage = lazyPage(() => import('./pages/AdminShareholdersPa
 const UserMerchantPage = lazyPage(() => import('./pages/user/UserMerchantPage'))
 const UserShareholdersPage = lazyPage(() => import('./pages/user/UserShareholdersPage'))
 const ParentChildDetailPage = lazyPage(() => import('./pages/ParentChildDetailPage'))
+const ParentChildrenPage = lazyPage(() => import('./pages/ParentChildrenPage'))
 const ParentFinancesPage = lazyPage(() => import('./pages/ParentFinancesPage'))
 const ParentControlsPage = lazyPage(() => import('./pages/ParentControlsPage'))
 const ParentAppointmentsPage = lazyPage(() => import('./pages/ParentAppointmentsPage'))
@@ -383,6 +384,7 @@ export default function App() {
         <Route path="teacher/salaires" element={<TeacherSalaryPage />} />
 
         {/* Parent routes */}
+        <Route path="parent/enfants" element={<ParentChildrenPage />} />
         <Route path="parent/enfant/:studentId" element={<ParentChildDetailPage />} />
         <Route path="parent/notes" element={<ParentSectionPage section="notes" />} />
         <Route path="parent/presence" element={<ParentSectionPage section="attendance" />} />

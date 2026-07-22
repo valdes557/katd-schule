@@ -25,7 +25,7 @@ export const navSections = [
     label: 'SUIVI SCOLAIRE',
     roles: ['parent'],
     items: [
-      { label: 'Mes enfants', icon: GraduationCap, path: '/dashboard' },
+      { label: 'Mes enfants', icon: GraduationCap, path: '/dashboard/parent/enfants' },
       { label: 'Notes & Bulletins', icon: FileText, path: '/dashboard/parent/notes' },
       { label: 'Bulletin trimestriel', icon: Receipt, path: '/dashboard/bulletin' },
       { label: 'Présence (mon enfant)', icon: CalendarCheck, path: '/dashboard/parent/presence' },
