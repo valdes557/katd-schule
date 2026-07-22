@@ -11,7 +11,7 @@ import {
   Landmark, Loader2, X, CheckCircle2, MapPin, Users, ArrowLeftRight, Coins,
   TrendingUp, Crown, Megaphone, CalendarClock, Video, Banknote, Receipt, Wallet,
 } from 'lucide-react'
-import { shareholdersApi, paymentsApi } from '../../lib/api'
+import { shareholdersApi, paymentsApi, walletApi } from '../../lib/api'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 const OPERATORS = [
@@ -196,19 +196,41 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
   const [selected, setSelected] = useState(null)   // plan choisi
   const [showTerms, setShowTerms] = useState(false) // lecture des conditions
   const [accepted, setAccepted] = useState(false)
-  const [f, setF] = useState({ zone: '', phone: '', operator: 'mtn' })
+  const [method, setMethod] = useState('wallet')   // 'wallet' (portefeuille) | 'momo' (Mobile Money)
+  const [balance, setBalance] = useState(null)      // solde du portefeuille
+  const [f, setF] = useState({ zone: '', phone: '', operator: 'mtn', pin: '' })
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [err, setErr] = useState('')
 
   const needZone = selected && selected.key !== 'international'
 
+  // Charge le solde du portefeuille à l'ouverture (pour le paiement par portefeuille)
+  useEffect(() => {
+    walletApi.me().then((w) => setBalance(Number(w?.balance) || 0)).catch(() => setBalance(0))
+  }, [])
+
   const submit = async () => {
     setErr('')
     if (!selected) { setErr('Sélectionnez un plan'); return }
     if (needZone && !f.zone.trim()) { setErr(ZONE_LABELS[selected.key] + ' requis'); return }
-    if (!f.phone) { setErr('Numéro Mobile Money requis'); return }
     if (!accepted) { setErr('Veuillez cocher « J\'accepte les conditions »'); return }
+
+    // ── Paiement depuis le solde du portefeuille ──
+    if (method === 'wallet') {
+      if (!f.pin) { setErr('Code PIN requis'); return }
+      if (balance != null && balance < selected.price) { setErr('Solde insuffisant. Effectuez d\'abord un dépôt sur votre portefeuille.'); return }
+      setBusy(true)
+      setStatus('Paiement depuis votre portefeuille...')
+      try {
+        await shareholdersApi.subscribeWallet({ planKey: selected.key, zone: f.zone.trim(), pin: f.pin })
+        onDone()
+      } catch (e) { setErr(e.message); setStatus('') } finally { setBusy(false) }
+      return
+    }
+
+    // ── Paiement Mobile Money (SebPay) ──
+    if (!f.phone) { setErr('Numéro Mobile Money requis'); return }
     setBusy(true)
     setStatus('Validez le paiement sur votre téléphone...')
     try {
@@ -269,25 +291,62 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
             })}
           </div>
 
-          {/* Formulaire (zone + Mobile Money) — visible dès qu'un plan est choisi */}
+          {/* Formulaire (zone + mode de paiement) — visible dès qu'un plan est choisi */}
           {selected && (
             <div className="space-y-3 border-t border-gray-100 pt-3">
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{ZONE_LABELS[selected.key]}{needZone ? ' *' : ''}</label>
                 <input value={f.zone} onChange={(e) => setF({ ...f, zone: e.target.value })} className="input w-full" placeholder={ZONE_LABELS[selected.key]} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur</label>
-                  <select value={f.operator} onChange={(e) => setF({ ...f, operator: e.target.value })} className="input w-full">
-                    {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label>
-                  <input type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className="input w-full" placeholder="6XX XXX XXX" />
+
+              {/* Choix du mode de paiement */}
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Mode de paiement</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setMethod('wallet')}
+                    className={`flex items-center gap-2 rounded-xl border-2 p-2.5 text-left transition-all ${method === 'wallet' ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-indigo-200'}`}>
+                    <Wallet size={16} className="text-indigo-600 flex-shrink-0" />
+                    <span className="text-xs font-semibold text-gray-800">Mon portefeuille</span>
+                  </button>
+                  <button type="button" onClick={() => setMethod('momo')}
+                    className={`flex items-center gap-2 rounded-xl border-2 p-2.5 text-left transition-all ${method === 'momo' ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-indigo-200'}`}>
+                    <Banknote size={16} className="text-emerald-600 flex-shrink-0" />
+                    <span className="text-xs font-semibold text-gray-800">Mobile Money</span>
+                  </button>
                 </div>
               </div>
+
+              {/* Champs selon le mode choisi */}
+              {method === 'wallet' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2">
+                    <span className="text-xs text-gray-600">Solde disponible</span>
+                    <span className={`text-sm font-bold ${balance != null && balance < selected.price ? 'text-red-600' : 'text-indigo-700'}`}>
+                      {balance == null ? '…' : fmt(balance) + ' F'}
+                    </span>
+                  </div>
+                  {balance != null && balance < selected.price && (
+                    <p className="text-[11px] text-red-600">Solde insuffisant pour ce plan ({fmt(selected.price)} F). Rechargez votre portefeuille.</p>
+                  )}
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN du portefeuille *</label>
+                    <input type="password" inputMode="numeric" value={f.pin} onChange={(e) => setF({ ...f, pin: e.target.value })} className="input w-full" placeholder="••••" />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur</label>
+                    <select value={f.operator} onChange={(e) => setF({ ...f, operator: e.target.value })} className="input w-full">
+                      {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label>
+                    <input type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className="input w-full" placeholder="6XX XXX XXX" />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -308,7 +367,9 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
 
           <button onClick={submit} disabled={busy || !selected} className="btn-primary w-full justify-center">
             {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</>
-              : selected ? <>Valider — Payer {fmt(selected.price)} F</> : <>Sélectionnez un plan</>}
+              : !selected ? <>Sélectionnez un plan</>
+              : method === 'wallet' ? <>Payer {fmt(selected.price)} F depuis mon portefeuille</>
+              : <>Valider — Payer {fmt(selected.price)} F</>}
           </button>
         </div>
       </div>

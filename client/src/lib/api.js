@@ -918,6 +918,8 @@ export const shareholdersApi = {
   // Portefeuille actionnaire : agrégats de la zone + gains + publications admin
   dashboard: () => api.get('/shareholders/dashboard'),
   subscribe: (payload) => api.post('/shareholders/subscribe', payload),
+  // Souscription payée directement depuis le solde du portefeuille { planKey, zone, pin }
+  subscribeWallet: (payload) => api.post('/shareholders/subscribe-wallet', payload),
   adminConfig: () => api.get('/shareholders/admin/config'),
   adminUpdateConfig: (payload) => api.put('/shareholders/admin/config', payload),
   adminList: (params = {}) => {

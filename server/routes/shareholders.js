@@ -158,6 +158,76 @@ router.post('/subscribe', protect, async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
 
+// POST /api/shareholders/subscribe-wallet — souscrit à un plan en payant DIRECTEMENT
+// depuis le solde du portefeuille (pas de Mobile Money). Body: { planKey, zone, pin }.
+// Le PRIX est résolu côté serveur. L'actionnariat est créé immédiatement (pas de webhook).
+router.post('/subscribe-wallet', protect, async (req, res) => {
+  try {
+    const { planKey, zone, pin } = req.body
+    if (!planKey) return res.status(400).json({ message: 'Plan requis' })
+    if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
+
+    const cfg = await ShareholderConfig.getOrCreate()
+    const plan = (cfg.plans || []).find((p) => p.key === planKey && p.isActive !== false)
+    if (!plan) return res.status(404).json({ message: 'Plan introuvable ou désactivé' })
+
+    // Zone requise sauf pour le plan international
+    const z = String(zone || '').trim()
+    if (planKey !== 'international' && !z) return res.status(400).json({ message: 'Zone d\'attribution requise pour ce plan' })
+
+    // Un même plan ne peut être souscrit qu'une fois par utilisateur (tant qu'il est actif)
+    const existing = await Shareholding.findOne({ user: req.user._id, planKey, status: 'active' })
+    if (existing) return res.status(400).json({ message: 'Vous avez déjà souscrit à ce plan' })
+
+    // Vérifie le PIN du portefeuille
+    const bcrypt = require('bcryptjs')
+    const u = await User.findById(req.user._id).select('+walletPin')
+    if (!u.walletPin) return res.status(400).json({ message: "Veuillez d'abord créer votre code PIN dans votre portefeuille" })
+    const pinOk = await bcrypt.compare(String(pin), u.walletPin)
+    if (!pinOk) return res.status(401).json({ message: 'Code PIN incorrect' })
+
+    // Vérifie le solde
+    const wallet = require('../services/walletService')
+    const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
+    const price = Number(plan.price)
+    if (w.balance < price) return res.status(400).json({ message: 'Solde insuffisant sur votre portefeuille. Effectuez d\'abord un dépôt.' })
+
+    const years = Number(plan.durationYears) || 35
+    const startAt = new Date()
+    const endAt = new Date(startAt)
+    endAt.setFullYear(endAt.getFullYear() + years)
+
+    // Débit du souscripteur
+    await wallet.debit(req.user._id, {
+      amount: price, type: 'shareholder_payment',
+      description: 'Souscription actionnaire — ' + (plan.label || plan.key),
+      meta: { planKey: plan.key, zone: z },
+    })
+
+    // Création de l'actionnariat
+    const shareholding = await Shareholding.create({
+      user: req.user._id, planKey: plan.key, planLabel: plan.label || '',
+      percent: Number(plan.percent) || 1, amount: price, durationYears: years,
+      zone: z, startAt, endAt, status: 'active', paymentIntent: null,
+    })
+
+    // Crédit de l'admin plateforme (best-effort)
+    try {
+      const admin = await wallet.getPlatformAdmin()
+      if (admin) {
+        await wallet.credit(admin._id, {
+          amount: price, type: 'shareholder_subscription', role: 'admin',
+          counterparty: req.user._id,
+          description: 'Souscription actionnaire (portefeuille) — ' + (plan.label || plan.key),
+          meta: { planKey: plan.key, zone: z, method: 'wallet' },
+        })
+      }
+    } catch (e) {}
+
+    res.json({ success: true, message: 'Souscription confirmée. Bienvenue parmi les actionnaires !', shareholding, balance: w.balance - price })
+  } catch (err) { res.status(err.status || 400).json({ message: err.message }) }
+})
+
 // ───────────────────────── SUPER ADMIN ─────────────────────────
 
 // GET /api/shareholders/admin/config — config complète (y compris plans désactivés)
