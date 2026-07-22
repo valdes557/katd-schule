@@ -1,16 +1,16 @@
 # ---------------------------------------------------------------------------
 # Déploiement automatique KATD-SCHÜLE sur le VPS Hostinger
 #
-# À chaque push sur la branche `main`, GitHub se connecte en SSH au VPS
-# et exécute le script deploy.sh (git pull → build → PM2 reload → nginx).
+# À chaque push sur `main` :
+#   1. Le client React/Vite est COMPILÉ SUR LE RUNNER GITHUB (beaucoup de RAM)
+#      — le petit VPS ne fait plus le build (fini les échecs « Killed » / OOM).
+#   2. Le résultat (client/dist) est archivé et copié sur le VPS.
+#   3. En SSH : mise à jour du code serveur + dépendances, bascule ATOMIQUE du
+#      nouveau build, reload PM2 et Nginx.
 #
-# Secrets à définir dans GitHub (Settings ▸ Secrets and variables ▸ Actions) :
-#   VPS_HOST     → IP publique ou domaine du VPS   (ex. 82.180.xxx.xxx)
-#   VPS_USER     → utilisateur SSH                  (ex. root ou deploy)
-#   VPS_SSH_KEY  → clé privée SSH (contenu complet, format OpenSSH)
-#   VPS_PORT     → port SSH                         (généralement 22)
-#
-# Voir AUTO-DEPLOY.md pour la procédure de mise en place détaillée.
+# Secrets requis (Settings ▸ Secrets and variables ▸ Actions) :
+#   VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_PORT
+# Voir AUTO-DEPLOY.md pour la mise en place détaillée.
 # ---------------------------------------------------------------------------
 name: Deploy to Hostinger VPS
 
@@ -19,30 +19,89 @@ on:
     branches: [main]
   workflow_dispatch: {}   # permet aussi de lancer le déploiement à la main
 
-# Un seul déploiement à la fois ; annule un déploiement en cours si un nouveau
-# push arrive, pour toujours déployer le dernier commit.
+# Un seul déploiement à la fois ; annule celui en cours si un nouveau push arrive.
 concurrency:
   group: deploy-production
   cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Déploiement SSH
+    name: Build client (CI) + déploiement VPS
     runs-on: ubuntu-latest
     steps:
-      - name: Connexion SSH et exécution de deploy.sh
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Installation de Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build du client React/Vite (sur le runner GitHub)
+        working-directory: client
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          npm install --no-audit --no-fund
+          npx vite build
+          test -f dist/index.html || (echo "Build client échoué : dist/index.html manquant" && exit 1)
+
+      - name: Archivage du build
+        run: tar -czf client-dist.tgz -C client/dist .
+
+      - name: Copie de l'archive vers le VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          source: "client-dist.tgz"
+          target: "/var/www/katd-schule"
+
+      - name: Mise à jour serveur + bascule du build (SSH)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          command_timeout: 20m
-          script_stop: true          # arrête au premier échec de commande
+          command_timeout: 10m
+          script_stop: true
           script: |
             set -e
             cd /var/www/katd-schule
+
+            echo "==> 1/4  Code serveur à jour"
             git fetch --all --prune
             git reset --hard origin/main
-            chmod +x deploy.sh
-            ./deploy.sh
+
+            echo "==> 2/4  Dépendances backend"
+            cd /var/www/katd-schule/server
+            npm install --production --no-audit --no-fund
+
+            echo "==> 3/4  Bascule du build client (compilé sur GitHub)"
+            cd /var/www/katd-schule
+            test -f client-dist.tgz || { echo "Archive client-dist.tgz absente — abandon."; exit 1; }
+            rm -rf client/dist.ci
+            mkdir -p client/dist.ci
+            tar -xzf client-dist.tgz -C client/dist.ci
+            test -f client/dist.ci/index.html || { echo "Archive invalide (index.html manquant) — abandon."; exit 1; }
+            rm -rf client/dist.old
+            [ -d client/dist ] && mv client/dist client/dist.old
+            mv client/dist.ci client/dist
+            rm -rf client/dist.old client-dist.tgz
+            echo "   Build client déployé (bascule atomique)."
+
+            echo "==> 4/4  Reload API (PM2) + Nginx"
+            cd /var/www/katd-schule/server
+            mkdir -p logs
+            pm2 startOrReload ecosystem.config.js
+            pm2 save
+            if sudo -n nginx -t 2>/dev/null; then
+              sudo -n systemctl reload nginx && echo "   Nginx rechargé."
+            else
+              echo "   ⚠️  Nginx non rechargé (sudo non-interactif) — utile seulement si la conf a changé."
+            fi
+
+            echo "✅ Déploiement terminé — https://katdschool.com"
