@@ -59,8 +59,15 @@ export default function DownloadPdfButton({ containerRef, filename = 'document.p
         ${subtitle ? `<p style="font-size:12px;color:#6B7280;margin:6px 0 0">${subtitle}</p>` : ''}
       `
 
+      // Le clone est rendu HORS écran mais dans le flux normal (position:absolute à
+      // gauche, PAS de z-index négatif) : html2canvas capture alors correctement le
+      // contenu. L'ancienne approche (position:fixed + z-index:-1 + windowWidth =
+      // scrollWidth) gonflait la zone de capture → PDF blanc (surtout sur mobile où
+      // la taille max du canvas est dépassée). Les bulletins fonctionnaient car ils
+      // capturent l'élément visible avec des options minimales : on s'aligne dessus.
+      const width = source.offsetWidth || 800
       wrapper = document.createElement('div')
-      wrapper.style.cssText = `background:#ffffff;padding:4px;position:fixed;left:0;top:0;z-index:-1;pointer-events:none;width:${source.offsetWidth || 800}px`
+      wrapper.style.cssText = `background:#ffffff;padding:4px;position:absolute;left:-100000px;top:0;width:${width}px`
       wrapper.appendChild(header)
       wrapper.appendChild(clone)
       document.body.appendChild(wrapper)
@@ -69,11 +76,29 @@ export default function DownloadPdfButton({ containerRef, filename = 'document.p
         margin: [10, 10, 10, 10],
         filename,
         image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: document.documentElement.scrollWidth },
+        // Options minimales identiques aux bulletins (qui fonctionnent). scale:2 pour
+        // la netteté, useCORS pour les images distantes (Cloudinary), fond blanc.
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pageBreak: { mode: ['avoid-all', 'css', 'legacy'] },
       }
-      await html2pdf().set(opt).from(wrapper).save()
+
+      // Génère le PDF en Blob puis déclenche un vrai téléchargement (fiable sur
+      // mobile et desktop), avec repli sur le save() intégré si besoin.
+      const worker = html2pdf().set(opt).from(wrapper)
+      try {
+        const blob = await worker.outputPdf('blob')
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        setTimeout(() => URL.revokeObjectURL(url), 2000)
+      } catch {
+        await html2pdf().set(opt).from(wrapper).save()
+      }
     } catch (err) {
       // Les erreurs d'import sont généralement fatales (réseau offline…)
       if (!(err instanceof TypeError)) console.error('Erreur PDF:', err)

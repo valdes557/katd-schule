@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { ArrowLeft, Circle, Send, Search, Smile, Paperclip, Mic, Check, CheckCheck, MoreVertical, Trash2, Ban } from 'lucide-react'
+import { ArrowLeft, Circle, Send, Search, Smile, Paperclip, Mic, Check, CheckCheck, MoreVertical, Trash2, Ban, SquarePen, X } from 'lucide-react'
 import { messagesApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { assertVideoWithinLimit } from '../../lib/videoValidation'
@@ -47,6 +47,10 @@ export default function UserMessengerPage() {
   const [conversations, setConversations] = useState([])
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(null)
+  // Mode « Nouveau message » : affiche la liste de TOUS les utilisateurs pour démarrer
+  // une nouvelle conversation (restaure l'option retirée quand on est passé à la vue
+  // « conversations récentes »).
+  const [compose, setCompose] = useState(false)
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
@@ -73,6 +77,15 @@ export default function UserMessengerPage() {
   const usersById = {}
   for (const u of users) usersById[String(u._id)] = u
 
+  // Map userId -> conversationId RÉEL d'une discussion existante. Permet, quand on
+  // démarre un fil depuis la recherche / le sélecteur, de viser la vraie conversation
+  // (donc afficher les messages reçus ET marquer « lu » -> le compteur se décrémente).
+  const convIdByUser = {}
+  for (const c of conversations) {
+    const cid = c.contact && c.contact._id
+    if (cid) convIdByUser[String(cid)] = c.conversationId
+  }
+
   const loadUsers = useCallback(async () => {
     try { const r = await messagesApi.allUsers(); setUsers(r.data || r || []) } catch { /* garde l'existant */ }
   }, [])
@@ -87,7 +100,10 @@ export default function UserMessengerPage() {
 
   const loadThread = useCallback(async (other) => {
     if (!other) return
-    try { const r = await messagesApi.conversation(convId(other._id)); setMessages(r.data || r.messages || r || []) }
+    // Utilise l'ID de conversation RÉEL fourni par la liste si dispo (évite tout
+    // décalage avec un ID recalculé -> sinon messages reçus invisibles + compteur figé).
+    const cid = other.conversationId || convId(other._id)
+    try { const r = await messagesApi.conversation(cid); setMessages(r.data || r.messages || r || []) }
     catch { setMessages([]) }
     // L'ouverture marque les messages comme lus côté serveur -> on rafraîchit compteurs + liste.
     refreshBadges?.()
@@ -230,16 +246,23 @@ export default function UserMessengerPage() {
   const senderId = (m) => String((m.sender && m.sender._id) || m.sender || '')
 
   // Ouvre un fil : on enrichit le contact avec avatar / statut depuis la liste des users.
-  const openThread = (contact) => {
+  // conversationId (optionnel) = l'ID RÉEL de la conversation existante (depuis la liste).
+  const openThread = (contact, conversationId) => {
     const u = usersById[String(contact._id)]
-    setActive({ ...contact, avatar: contact.avatar || u?.avatar || '', online: u?.online ?? contact.online ?? false })
+    // Si aucun conversationId explicite, on retrouve celui d'une discussion existante.
+    const cid = conversationId || convIdByUser[String(contact._id)]
+    setActive({ ...contact, conversationId: cid, avatar: contact.avatar || u?.avatar || '', online: u?.online ?? contact.online ?? false })
     setMessages([])
     setQuery('')
+    setCompose(false)
   }
 
-  // Liste affichée : soit résultats de recherche (utilisateurs), soit conversations récentes.
+  // Liste affichée : soit la liste des utilisateurs (recherche OU « Nouveau message »),
+  // soit les conversations récentes.
   const searching = query.trim().length > 0
   const filteredUsers = users.filter((u) => u.name?.toLowerCase().includes(query.toLowerCase()))
+  const showUsers = searching || compose
+  const listUsers = searching ? filteredUsers : users
 
   // Vue conversation (mobile : remplace la liste)
   if (active) {
@@ -354,21 +377,28 @@ export default function UserMessengerPage() {
   // Liste : conversations récentes (façon Messenger) + recherche pour démarrer une discussion.
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-4">Messagerie</h1>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h1 className="text-xl font-bold text-gray-900">Messagerie</h1>
+        {compose ? (
+          <button onClick={() => { setCompose(false); setQuery('') }} className="btn-ghost text-sm border border-gray-200"><X size={15} /> Annuler</button>
+        ) : (
+          <button onClick={() => { setCompose(true); setQuery('') }} className="btn-primary text-sm"><SquarePen size={15} /> Nouveau message</button>
+        )}
+      </div>
       <div className="relative mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un utilisateur..." className="input pl-9 w-full" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={compose ? 'Rechercher un destinataire...' : 'Rechercher un utilisateur...'} className="input pl-9 w-full" />
       </div>
 
       {loading ? (
         <p className="text-center text-gray-400 py-10">Chargement...</p>
-      ) : searching ? (
-        filteredUsers.length === 0 ? (
+      ) : showUsers ? (
+        listUsers.length === 0 ? (
           <p className="text-center text-gray-400 py-10">Aucun utilisateur trouvé.</p>
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-50">
-            {filteredUsers.map((u) => (
-              <button key={u._id} onClick={() => openThread(u)} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left">
+            {listUsers.map((u) => (
+              <button key={u._id} onClick={() => openThread(u, convIdByUser[String(u._id)])} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left">
                 <div className="relative">
                   <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold overflow-hidden">
                     {u.avatar ? <img src={asset(u.avatar)} alt="" className="w-full h-full object-cover" /> : (u.name || '?').charAt(0).toUpperCase()}
@@ -387,7 +417,7 @@ export default function UserMessengerPage() {
       ) : conversations.length === 0 ? (
         <div className="text-center text-gray-400 py-16">
           <p>Aucune discussion pour le moment.</p>
-          <p className="text-xs mt-1">Recherchez un utilisateur ci-dessus pour démarrer une conversation.</p>
+          <p className="text-xs mt-1">Appuyez sur « Nouveau message » pour démarrer une conversation.</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-50">
@@ -399,7 +429,7 @@ export default function UserMessengerPage() {
             const last = c.lastMessage
             const unreadInc = c.unread > 0
             return (
-              <button key={c.conversationId} onClick={() => openThread(contact)} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left">
+              <button key={c.conversationId} onClick={() => openThread(contact, c.conversationId)} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left">
                 <div className="relative">
                   <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold overflow-hidden">
                     {avatar ? <img src={asset(avatar)} alt="" className="w-full h-full object-cover" /> : (contact.name || '?').charAt(0).toUpperCase()}
