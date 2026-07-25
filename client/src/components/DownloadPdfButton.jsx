@@ -28,6 +28,24 @@ function titleFromFilename(filename = '') {
   return base.charAt(0).toUpperCase() + base.slice(1)
 }
 
+// Attend le chargement (ou l'échec) de toutes les images d'un conteneur avant de
+// lancer la capture — sinon html2canvas fige un rendu partiel/vide (« page vide »).
+function waitForImages(root, timeout = 4000) {
+  const imgs = Array.from(root.querySelectorAll('img'))
+  const pending = imgs.filter((im) => !im.complete || im.naturalWidth === 0)
+  if (!pending.length) return Promise.resolve()
+  return new Promise((resolve) => {
+    let done = 0
+    const finish = () => { if (++done >= pending.length) resolve() }
+    pending.forEach((im) => {
+      im.addEventListener('load', finish, { once: true })
+      im.addEventListener('error', finish, { once: true })
+    })
+    // Filet de sécurité : on ne bloque jamais plus que `timeout`.
+    setTimeout(resolve, timeout)
+  })
+}
+
 export default function DownloadPdfButton({ containerRef, filename = 'document.pdf', title, subtitle = '', label = 'Télécharger PDF', iconOnly = false, className = '' }) {
   const busyRef = useRef(false)
 
@@ -37,7 +55,7 @@ export default function DownloadPdfButton({ containerRef, filename = 'document.p
     if (busyRef.current || !containerRef?.current) return
     busyRef.current = true
 
-    let wrapper
+    let wrapper, overlay
     try {
       // Chargement dynamique de html2pdf.js pour ne pas alourdir le bundle initial
       const html2pdf = (await import('html2pdf.js')).default
@@ -51,6 +69,18 @@ export default function DownloadPdfButton({ containerRef, filename = 'document.p
       // Retire le ou les titres d'origine de la page (remplacés par l'en-tête propre)
       clone.querySelectorAll('h1').forEach((el) => el.remove())
 
+      // Neutralise les animations d'apparition (ex. `animate-fade-in`, opacity 0→1).
+      // Rejouées sur le clone, elles pouvaient être capturées en plein fondu par
+      // html2canvas → PDF vide de façon intermittente.
+      clone.style.animation = 'none'
+      clone.style.opacity = '1'
+      clone.style.transform = 'none'
+      clone.querySelectorAll('[class*="animate-"]').forEach((el) => {
+        el.style.animation = 'none'
+        el.style.opacity = '1'
+        el.style.transform = 'none'
+      })
+
       // En-tête propre : uniquement le nom du document
       const header = document.createElement('div')
       header.style.cssText = 'border-bottom:2px solid #2563EB;padding-bottom:10px;margin-bottom:16px;font-family:Arial,Helvetica,sans-serif'
@@ -59,18 +89,26 @@ export default function DownloadPdfButton({ containerRef, filename = 'document.p
         ${subtitle ? `<p style="font-size:12px;color:#6B7280;margin:6px 0 0">${subtitle}</p>` : ''}
       `
 
-      // Le clone est rendu HORS écran mais dans le flux normal (position:absolute à
-      // gauche, PAS de z-index négatif) : html2canvas capture alors correctement le
-      // contenu. L'ancienne approche (position:fixed + z-index:-1 + windowWidth =
-      // scrollWidth) gonflait la zone de capture → PDF blanc (surtout sur mobile où
-      // la taille max du canvas est dépassée). Les bulletins fonctionnaient car ils
-      // capturent l'élément visible avec des options minimales : on s'aligne dessus.
+      // IMPORTANT : le clone est rendu RÉELLEMENT DANS LE VIEWPORT (position:fixed en
+      // haut-gauche), comme le bulletin qui fonctionne. Le rendre hors écran
+      // (left:-100000px) ou en z-index négatif faisait produire à html2canvas une
+      // capture VIDE sur certains appareils. Pour éviter tout clignotement visible,
+      // on le masque derrière un overlay blanc opaque (élément séparé, donc NON
+      // capturé) affichant « Génération du PDF… ».
       const width = source.offsetWidth || 800
       wrapper = document.createElement('div')
-      wrapper.style.cssText = `background:#ffffff;padding:4px;position:absolute;left:-100000px;top:0;width:${width}px`
+      wrapper.style.cssText = `position:fixed;left:0;top:0;z-index:2147483646;background:#ffffff;padding:16px;width:${width}px`
       wrapper.appendChild(header)
       wrapper.appendChild(clone)
       document.body.appendChild(wrapper)
+
+      overlay = document.createElement('div')
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#ffffff;display:flex;align-items:center;justify-content:center;color:#2563EB;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600'
+      overlay.textContent = 'Génération du PDF…'
+      document.body.appendChild(overlay)
+
+      // Attend le chargement des images du clone avant de capturer (évite le vide).
+      await waitForImages(wrapper, 4000)
 
       const opt = {
         margin: [10, 10, 10, 10],
@@ -103,6 +141,7 @@ export default function DownloadPdfButton({ containerRef, filename = 'document.p
       // Les erreurs d'import sont généralement fatales (réseau offline…)
       if (!(err instanceof TypeError)) console.error('Erreur PDF:', err)
     } finally {
+      if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay)
       if (wrapper && wrapper.parentNode) wrapper.parentNode.removeChild(wrapper)
       busyRef.current = false
     }
