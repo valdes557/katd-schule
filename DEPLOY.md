@@ -1,7 +1,13 @@
-# Déploiement KATD-SCHÜLE sur VPS Hostinger + domaine katdschool.com
+# Déploiement KATD-SCHÜLE sur VPS Contabo + domaine katdschool.com
 
 Architecture cible : **Nginx** sert le front React (`client/dist`) et fait proxy de `/api` + `/uploads`
-vers **Node (PM2, port 5000)**. **MongoDB 8.0** tourne en local sur le VPS. **HTTPS** via Let's Encrypt.
+vers **Node (PM2, port 5000)**. **HTTPS** via Let's Encrypt.
+
+> **Note (migration Contabo, juillet 2026)** : la base est restée sur **MongoDB Atlas**
+> (le `MONGO_URI` du `server/.env` pointe sur le cluster Atlas). Les **phases 4 et 5**
+> ci-dessous (installer MongoDB en local + migrer les données) ont donc été **SAUTÉES**.
+> Pensez juste à autoriser l'IP du VPS dans **Atlas ▸ Network Access**.
+> Pour repasser à un Mongo local un jour, suivez les phases 4-5 et changez le `MONGO_URI`.
 
 ```
 Internet → katdschool.com (DNS LWS → IP VPS) → Nginx (80/443)
@@ -13,10 +19,11 @@ Internet → katdschool.com (DNS LWS → IP VPS) → Nginx (80/443)
 
 ## Phase 0 — Récupérer les infos
 
-- **IP publique du VPS** : Hostinger → VPS → Aperçu (ex. `82.x.x.x`)
-- **Mot de passe root** (ou clé SSH) : Hostinger → VPS → Paramètres
-- **Variables d'environnement actuelles** : Render → service `katd-schule-api` → Environment
-  (récupérez `JWT_SECRET`, `CLOUDINARY_*`, `SMTP_USER`, `SMTP_PASS`, et l'ancienne `MONGO_URI` Atlas)
+- **IP publique du VPS** : espace client Contabo → Cloud VPS → Aperçu
+- **Mot de passe root** (ou clé SSH) : espace client Contabo → identifiants du VPS
+- **Variables d'environnement** : le fichier `server/.env` (non versionné) contient toutes
+  les clés — `MONGO_URI` (Atlas), `JWT_SECRET`, `CLOUDINARY_*`, `SMTP_*`, `ENCRYPTION_KEY`, etc.
+  Recopiez-le tel quel sur le VPS (voir Phase 6), puis passez `NODE_ENV=production` et `CLIENT_URL=https://katdschool.com`.
 
 ---
 

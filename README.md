@@ -8,7 +8,7 @@ Espace public (vitrine multimédia) + Tableau de bord privé (gestion complète)
 ## 🛠 Stack
 - **Front** : React 18 · Vite · TailwindCSS · Recharts · Lucide
 - **Back** : Node.js · Express · MongoDB (Atlas) · JWT · Mongoose
-- **Déploiement** : Vercel (front) + Render (back)
+- **Déploiement** : VPS Contabo (Nginx + PM2) · GitHub Actions · HTTPS Let's Encrypt
 
 ---
 
@@ -58,28 +58,17 @@ Après `npm run seed` côté serveur, ces comptes sont actifs en base :
 
 ## 🌐 Déploiement
 
-### Backend → Render
+Le site tourne sur un **VPS Contabo** : Nginx sert le front (`client/dist`) et
+fait proxy de `/api` vers Node (PM2, port 5000). La base reste sur **MongoDB Atlas**.
+HTTPS via Let's Encrypt. Domaine `katdschool.com` (DNS chez LWS).
 
-1. Push le repo sur GitHub.
-2. Sur [render.com](https://render.com) → **New → Blueprint** → connecte le repo (le `render.yaml` est détecté automatiquement).
-3. Renseigne les variables d'env dans le dashboard Render :
-   - `MONGO_URI` = `mongodb+srv://...mongodb.net/katd_schule?retryWrites=true&w=majority`
-   - `JWT_SECRET` = chaîne aléatoire (64+ caractères)
-   - `CLIENT_URL` = `https://<votre-app>.vercel.app` (séparer plusieurs URL par virgules)
-4. Deploy → l'API est dispo sur `https://katd-schule-api.onrender.com`.
-5. (1 fois) Lance le seed via Render Shell : `npm run seed`.
-
-### Frontend → Vercel
-
-1. Sur [vercel.com](https://vercel.com) → **Add New Project** → import du repo.
-2. **Root Directory** : `client`
-3. Framework détecté : **Vite** (le `vercel.json` gère les rewrites SPA).
-4. Variable d'env :
-   - `VITE_API_URL` = `https://katd-schule-api.onrender.com/api`
-5. Deploy.
+- Mise en place complète (première install VPS) : voir **DEPLOY.md**.
+- Déploiement automatique à chaque push : voir **AUTO-DEPLOY.md**.
 
 ### CI/CD automatique
-Chaque `git push` sur `main` redéploie front + back automatiquement.
+Chaque `git push` sur `main` déclenche le workflow **Deploy to Contabo VPS**
+(`.github/workflows/deploy.yml`) : build du client sur le runner GitHub, copie
+sur le VPS, `git reset` du serveur, reload PM2 + Nginx.
 
 ---
 
@@ -94,7 +83,7 @@ katd-schule/
 │   │   ├── context/             # AuthContext
 │   │   ├── data/                # Données mock
 │   │   └── lib/                 # api.js, utils
-│   └── vercel.json
+│   └── dist/                    # build de prod (généré par `vite build`)
 ├── server/                      # API Express
 │   ├── config/db.js
 │   ├── models/                  # User, School, Student, Media
@@ -102,7 +91,9 @@ katd-schule/
 │   ├── middleware/auth.js
 │   ├── scripts/seed.js          # ← npm run seed
 │   └── server.js
-├── render.yaml                  # Blueprint Render
+├── nginx-katdschool.conf        # Config Nginx (VPS)
+├── deploy.sh                    # Déploiement manuel sur le VPS
+├── DEPLOY.md / AUTO-DEPLOY.md   # Docs de déploiement
 └── README.md
 ```
 

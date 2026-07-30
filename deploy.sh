@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Script de déploiement KATD-SCHÜLE sur le VPS Hostinger
+# Script de déploiement KATD-SCHÜLE sur le VPS Contabo
 # Usage (sur le VPS, dans /var/www/katd-schule) :  ./deploy.sh
 # ---------------------------------------------------------------------------
 set -e  # stoppe au premier échec

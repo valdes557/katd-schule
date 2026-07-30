@@ -44,3 +44,8 @@ coverage/
 # Secrets de sauvegarde (surcharge locale du VPS, jamais versionnée)
 backup-mongo.conf
 backup-mongo.sh.save*
+
+# Backups Atlas/Mongo (données personnelles élèves — JAMAIS versionnées)
+backups/
+*.bson
+*.archive.gz

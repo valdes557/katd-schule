@@ -1,26 +1,22 @@
 # Suivi de progression du déploiement
 
-> Cochez `[x]` au fur et à mesure. En cas de coupure, reprenez à la première case non cochée.
-> Le détail de chaque phase est dans **DEPLOY.md**.
+> Migration réalisée en juillet 2026 : ancien VPS **Hostinger** → nouveau VPS **Contabo**.
+> La base est restée sur **MongoDB Atlas** (pas de Mongo local). Détail des phases dans **DEPLOY.md**.
 
-## État
+## État (migration Contabo — 2026-07-30)
 
-- [ ] **Phase 0** — Infos rassemblées (IP VPS, mot de passe root, variables Render/Atlas)
-- [ ] **Phase 1** — DNS LWS : enregistrements A `@` et `www` vers l'IP du VPS, anciens Vercel supprimés
-- [ ] **Phase 2** — Connexion SSH au VPS réussie (`ssh root@IP`)
-- [ ] **Phase 3** — Node + Nginx + PM2 + pare-feu (ufw) installés
-- [ ] **Phase 4** — MongoDB 8.0 installé, utilisateur `katdadmin` créé, auth activée
-- [ ] **Phase 5** — Données Atlas migrées vers le MongoDB local + vérifiées (countDocuments)
-- [ ] **Phase 6** — Code cloné dans `/var/www/katd-schule`, `server/.env` créé
-- [ ] **Phase 7** — Frontend buildé (`client/dist` généré)
-- [ ] **Phase 8** — Nginx configuré et rechargé (site visible en http)
-- [ ] **Phase 9** — API lancée avec PM2 (`/api/health` répond ok)
-- [ ] **Phase 10** — HTTPS activé via certbot (https://katdschool.com)
-- [ ] **Phase 11** — Sauvegardes MongoDB programmées (cron + test manuel ok)
-- [ ] **Phase 12** — Vercel/Render/Atlas coupés
+- [x] **Backup Atlas** — export JSON de sécurité de toutes les collections (1707 docs)
+- [x] **Stack VPS** — Node 20 + Nginx + PM2 + pare-feu ufw installés sur Contabo
+- [x] **Code + .env** — repo cloné dans `/var/www/katd-schule`, `server/.env` recopié (MONGO_URI Atlas, NODE_ENV=production, CLIENT_URL=https://katdschool.com)
+- [x] **API (PM2)** — `katd-api` online, connexion Atlas OK, `/api/health` répond
+- [x] **Frontend** — `client/dist` buildé, Nginx configuré et rechargé
+- [x] **DNS LWS** — A `@` et `www` → IP Contabo `169.58.96.69`, propagé
+- [x] **HTTPS** — certbot OK sur katdschool.com + www.katdschool.com
+- [ ] **Secrets GitHub Actions** — VPS_HOST/USER/PORT/SSH_KEY repointés vers Contabo + déploiement test validé
+- [ ] **Sauvegardes** — cron de backup programmé sur le VPS
+- [ ] **Ancien hébergement** — Hostinger résilié / non renouvelé
 
 ## Notes / blocages rencontrés
 
-> (Écrivez ici tout souci pour en reparler à la reprise)
-
--
+- La base n'a jamais été sur le VPS Hostinger : elle est chez MongoDB Atlas, donc la coupure de Hostinger n'a détruit aucune donnée.
+- Penser à garder l'IP du VPS autorisée dans **Atlas ▸ Network Access**.

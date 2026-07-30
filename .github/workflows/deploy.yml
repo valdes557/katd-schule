@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Déploiement automatique KATD-SCHÜLE sur le VPS Hostinger
+# Déploiement automatique KATD-SCHÜLE sur le VPS Contabo
 #
 # À chaque push sur `main` :
 #   1. Le client React/Vite est COMPILÉ SUR LE RUNNER GITHUB (beaucoup de RAM)
@@ -12,7 +12,7 @@
 #   VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_PORT
 # Voir AUTO-DEPLOY.md pour la mise en place détaillée.
 # ---------------------------------------------------------------------------
-name: Deploy to Hostinger VPS
+name: Deploy to Contabo VPS
 
 on:
   push:

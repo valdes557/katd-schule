@@ -1,4 +1,4 @@
-# Déploiement automatique — GitHub → VPS Hostinger
+# Déploiement automatique — GitHub → VPS Contabo
 
 À chaque `git push` sur la branche **`main`**, GitHub Actions se connecte en SSH
 au VPS et lance `deploy.sh` (pull → build → PM2 reload → nginx). Le site
@@ -88,13 +88,13 @@ sudo visudo -c   # vérifie la syntaxe
    ```bash
    git add -A && git commit -m "test auto-deploy" && git push
    ```
-2. Sur GitHub : onglet **Actions** → tu vois le workflow **Deploy to Hostinger VPS**
+2. Sur GitHub : onglet **Actions** → tu vois le workflow **Deploy to Contabo VPS**
    s'exécuter. Clique dessus pour voir les logs en direct.
 3. Vert ✅ = le site est à jour sur https://katdschool.com.
 
 ### Lancer un déploiement manuellement (sans push)
 
-Onglet **Actions ▸ Deploy to Hostinger VPS ▸ Run workflow** (bouton à droite).
+Onglet **Actions ▸ Deploy to Contabo VPS ▸ Run workflow** (bouton à droite).
 Utile pour re-déployer sans nouveau commit.
 
 ---
