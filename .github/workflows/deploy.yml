@@ -8,9 +8,10 @@
 #   3. En SSH : mise à jour du code serveur + dépendances, bascule ATOMIQUE du
 #      nouveau build, reload PM2 et Nginx.
 #
-# Secrets requis (Settings ▸ Secrets and variables ▸ Actions) :
-#   VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_PORT
-# Voir AUTO-DEPLOY.md pour la mise en place détaillée.
+# Secret requis (Settings ▸ Secrets and variables ▸ Actions) :
+#   VPS_SSH_KEY  -> clé privée SSH autorisée sur le VPS (root@169.58.96.69).
+# L'hôte (169.58.96.69), l'utilisateur (root) et le port (22) sont en dur ci-dessous
+# (l'IP est publique, rien de sensible). Voir AUTO-DEPLOY.md pour la mise en place.
 # ---------------------------------------------------------------------------
 name: Deploy to Contabo VPS
 
@@ -57,10 +58,10 @@ jobs:
       - name: Copie de l'archive vers le VPS
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
+          host: 169.58.96.69
+          username: root
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
+          port: 22
           source: "client-dist.tgz"
           target: "/var/www/katd-schule"
 
@@ -71,10 +72,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
+          host: 169.58.96.69
+          username: root
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
+          port: 22
           command_timeout: 10m
           script_stop: true
           envs: GH_TOKEN,GH_REPO
