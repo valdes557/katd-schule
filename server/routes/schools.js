@@ -6,6 +6,7 @@ const SchoolRegistration = require('../models/SchoolRegistration')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
 const { sendSubscriptionSuspendedEmail, sendSubscriptionReactivatedEmail } = require('../utils/emailService')
+const { deleteSchoolCascade } = require('../services/schoolCascade')
 
 // @route  GET /api/schools  (public)
 router.get('/', async (req, res) => {
@@ -166,23 +167,22 @@ router.put('/:id/subscription-status', protect, authorize('super_admin'), async 
 })
 
 // @route  DELETE /api/schools/:id  (super_admin)
-// Supprime l'école ET le compte directeur, et libère son email (suppression des
-// demandes de souscription liées) pour qu'il puisse être réutilisé.
+// Supprime l'école EN CASCADE : compte directeur, enseignants, élèves, classes,
+// notes, wallets, messages... (voir services/schoolCascade.js). Libère tous les
+// emails pour qu'ils puissent être réutilisés (nouvelle école, mêmes enseignants).
 router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
   try {
-    const school = await School.findByIdAndDelete(req.params.id)
-    if (!school) return res.status(404).json({ message: 'École non trouvée' })
+    const result = await deleteSchoolCascade(req.params.id)
+    if (!result) return res.status(404).json({ message: 'École non trouvée' })
 
-    // Supprimer définitivement le compte directeur (libère l'email)
-    let directorEmail = school.email
-    if (school.director) {
-      const director = await User.findByIdAndDelete(school.director)
-      if (director?.email) directorEmail = director.email
-    }
-    // Purger toutes les demandes de souscription portant cet email → email réutilisable
-    if (directorEmail) await SchoolRegistration.deleteMany({ email: directorEmail })
+    console.log(`[schoolCascade] École ${req.params.id} supprimée :`, JSON.stringify(result.deleted))
+    if (result.errors.length) console.error('[schoolCascade] Erreurs :', result.errors)
 
-    res.json({ success: true, message: 'École et compte directeur supprimés. L\'email est de nouveau disponible pour une nouvelle souscription.' })
+    res.json({
+      success: true,
+      message: 'École, comptes liés (directeur, enseignants, élèves...) et toutes les données associées supprimés. Les emails sont de nouveau disponibles.',
+      data: { deleted: result.deleted, errors: result.errors },
+    })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

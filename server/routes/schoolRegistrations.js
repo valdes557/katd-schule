@@ -7,6 +7,7 @@ const Location = require('../models/Location')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
 const { upload } = require('../config/cloudinary')
+const { deleteSchoolCascade } = require('../services/schoolCascade')
 
 // POST /api/school-registrations — Public: submit school registration
 router.post('/', upload.single('paymentProof'), async (req, res) => {
@@ -415,27 +416,33 @@ router.post('/:id/resend-credentials', protect, authorize('super_admin'), async 
   }
 })
 
-// DELETE /api/school-registrations/:id/revoke — Revoke: delete User + School + Registration
+// DELETE /api/school-registrations/:id/revoke — Revoke: cascade complet (école + comptes + données)
 router.delete('/:id/revoke', protect, authorize('super_admin'), async (req, res) => {
   try {
     const reg = await SchoolRegistration.findById(req.params.id)
     if (!reg) return res.status(404).json({ message: 'Demande non trouvée' })
 
-    // Delete user by email (primary — guarantees removal even if userCreated ref is missing)
-    await User.findOneAndDelete({ email: reg.email })
-    // Also delete by ID just in case email changed
-    if (reg.userCreated) await User.findByIdAndDelete(reg.userCreated)
-
-    // Delete school
+    // Si une école a été créée : suppression EN CASCADE (directeur, enseignants,
+    // élèves, classes, wallets... — voir services/schoolCascade.js)
+    let result = null
     if (reg.schoolCreated) {
-      const School = require('../models/School')
-      await School.findByIdAndDelete(reg.schoolCreated)
+      result = await deleteSchoolCascade(reg.schoolCreated, { email: reg.email })
+      if (result?.errors?.length) console.error('[schoolCascade] Erreurs revoke :', result.errors)
+    }
+    // Cas sans école créée (ou déjà supprimée) : nettoyage minimal du compte
+    if (!result) {
+      await User.findOneAndDelete({ email: reg.email, role: { $ne: 'super_admin' } })
+      if (reg.userCreated) await User.findByIdAndDelete(reg.userCreated)
     }
 
     // Delete ALL registrations with this email (approved or otherwise) to allow clean resubmission
     await SchoolRegistration.deleteMany({ email: reg.email })
 
-    res.json({ success: true, message: 'Compte directeur, école et tous les dossiers liés à cet email ont été supprimés. Une nouvelle souscription peut être soumise.' })
+    res.json({
+      success: true,
+      message: 'Compte directeur, école et toutes les données liées à cet email ont été supprimés. Une nouvelle souscription peut être soumise.',
+      data: result ? { deleted: result.deleted, errors: result.errors } : null,
+    })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
