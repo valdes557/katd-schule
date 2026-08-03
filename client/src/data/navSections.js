@@ -115,6 +115,7 @@ export const navSections = [
       { label: 'Notes & examens', icon: FileText, path: '/dashboard/notes' },
       { label: 'Rendez-vous parents', icon: CalendarCheck, path: '/dashboard/rendez-vous-ecole' },
       { label: 'Rapports reçus', icon: FolderOpen, path: '/dashboard/rapports-recus' },
+      { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
   {
@@ -125,6 +126,7 @@ export const navSections = [
       { label: 'Appels des professeurs', icon: ClipboardList, path: '/dashboard/presence' },
       { label: 'Permissions', icon: Bell, path: '/dashboard/permissions' },
       { label: 'Contacts parents', icon: Users, path: '/dashboard/contacts-parents' },
+      { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
   {
@@ -147,6 +149,7 @@ export const navSections = [
       { label: 'Dossiers enseignants', icon: FolderOpen, path: '/dashboard/documents' },
       { label: 'Mes rapports', icon: FileText, path: '/dashboard/mes-rapports' },
       { label: 'Informations générales', icon: Info, path: '/dashboard/infos' },
+      { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
   {
@@ -156,6 +159,7 @@ export const navSections = [
       { label: 'Scanner un QR', icon: QrCode, path: '/dashboard/portier/scan' },
       { label: 'Entrées & sorties du jour', icon: CalendarCheck, path: '/dashboard/portier/journal' },
       { label: 'Permissions autorisées', icon: Bell, path: '/dashboard/permissions' },
+      { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
   {
@@ -166,6 +170,7 @@ export const navSections = [
       { label: 'Mon emploi du temps', icon: Clock, path: '/dashboard/eleve/emploi-du-temps' },
       { label: 'Mes devoirs', icon: ClipboardList, path: '/dashboard/eleve/devoirs' },
       { label: 'Mon QR de présence', icon: QrCode, path: '/dashboard/eleve/mon-qr' },
+      { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
   {

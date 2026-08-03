@@ -73,10 +73,30 @@ const userSchema = new mongoose.Schema(
 )
 
 userSchema.pre('save', async function (next) {
+  // Mémorise si le document est nouveau (pour le hook post-save de création du wallet)
+  this.$locals.wasNew = this.isNew
   if (!this.isModified('password')) return next()
   const salt = await bcrypt.genSalt(10)
   this.password = await bcrypt.hash(this.password, salt)
   next()
+})
+
+// Rôle User → rôle Wallet (le portefeuille n'a pas de rôle 'super_admin')
+const WALLET_ROLE = (role) => (role === 'super_admin' ? 'admin' : role || 'autre')
+
+// Le portefeuille doit être présent dans les comptes de TOUS les utilisateurs
+// (parents, élèves, personnel...) : créé automatiquement à la création du compte,
+// quel que soit le chemin (inscription, provisioning, routes admin...).
+// Best-effort : n'échoue jamais la création du compte.
+userSchema.post('save', async function (doc) {
+  if (!doc.$locals?.wasNew) return
+  try {
+    const Wallet = require('./Wallet')
+    const exists = await Wallet.exists({ owner: doc._id })
+    if (!exists) {
+      await Wallet.create({ owner: doc._id, role: WALLET_ROLE(doc.role), school: doc.school || null, currency: 'XOF' })
+    }
+  } catch (e) { console.error('[wallet:autoCreate] ' + doc._id + ' :', e.message) }
 })
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
