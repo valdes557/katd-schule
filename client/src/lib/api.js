@@ -182,12 +182,16 @@ export const gradesApi = {
   create: (data) => api.post('/grades', data),
   update: (id, data) => api.put(`/grades/${id}`, data),
   remove: (id) => api.del(`/grades/${id}`),
+  // Workflow de publication : publie un lot de notes en brouillon
+  publishBatch: (ids) => api.put('/grades/publish/batch', { ids }),
 }
 
 export const attendanceApi = {
   list: (params = '') => api.get(`/attendance?${params}`),
   stats: (params = '') => api.get(`/attendance/stats?${params}`),
   save: (data) => api.post('/attendance', data),
+  // Appel par QR (le professeur scanne les QR des élèves de sa classe)
+  resolveQr: (qrId, classId) => api.post('/attendance/resolve-qr', { qrId, classId }),
 }
 
 export const messagesApi = {
@@ -705,6 +709,16 @@ export const permissionsApi = {
   create: (data) => api.post('/permissions', data),
   approve: (id, note = '') => api.put(`/permissions/${id}/approve`, { note }),
   reject: (id, note = '') => api.put(`/permissions/${id}/reject`, { note }),
+}
+
+// Cahier de texte (cycle Secondaire) : le professeur remplit chaque séance,
+// VP/directeur visent, élèves/parents consultent celui de la classe.
+export const lessonLogsApi = {
+  list: (params = {}) => api.get(`/lesson-logs?${new URLSearchParams(params).toString()}`),
+  create: (data) => api.post('/lesson-logs', data),
+  update: (id, data) => api.put(`/lesson-logs/${id}`, data),
+  visa: (id) => api.put(`/lesson-logs/${id}/visa`),
+  remove: (id) => api.del(`/lesson-logs/${id}`),
 }
 
 // Rapports internes (membres → principal / professeurs → vice-principal)

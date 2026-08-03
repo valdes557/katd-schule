@@ -86,6 +86,44 @@ router.get('/stats', protect, async (req, res) => {
   }
 })
 
+// POST /api/attendance/resolve-qr — appel par QR : résout le QR d'un élève {qrId, classId}
+// Le professeur scanne les QR individuels de SA classe pour faire l'appel de séance.
+router.post('/resolve-qr', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = req.user.school._id || req.user.school
+    const qrId = (req.body.qrId || '').trim()
+    const { classId } = req.body
+    if (!qrId) return res.status(400).json({ message: 'QR invalide' })
+    if (!classId) return res.status(400).json({ message: 'Classe requise' })
+
+    // Le professeur ne peut faire l'appel que dans ses classes assignées
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher) return res.status(403).json({ message: 'Profil enseignant non trouvé' })
+      const teacherClassIds = (teacher.classes || []).map((c) => c.toString())
+      if (!teacherClassIds.includes(classId.toString())) {
+        return res.status(403).json({ message: "Vous ne pouvez faire l'appel que pour vos classes assignées" })
+      }
+    }
+
+    const student = await Student.findOne({ attendanceQrId: qrId }).populate('class', 'name')
+    if (!student) return res.status(404).json({ message: 'QR inconnu' })
+    if (String(student.school) !== String(schoolId)) return res.status(403).json({ message: "QR d'un autre établissement" })
+    if (String(student.class?._id || student.class) !== String(classId)) {
+      return res.status(400).json({
+        message: `${student.lastName} ${student.firstName} n'est pas dans cette classe${student.class?.name ? ` (classe : ${student.class.name})` : ''}`,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: { id: student._id, name: `${student.lastName} ${student.firstName}`, matricule: student.matricule || '', className: student.class?.name || '' },
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // POST /api/attendance
 router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
   try {

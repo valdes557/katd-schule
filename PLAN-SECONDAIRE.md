@@ -1,3 +1,4 @@
+
 # PLAN DE TRAVAIL — MODULE SECONDAIRE KATD-SCHÜLE
 
 > Enregistré le 2026-08-03. Cahier des charges : dashboards Secrétaire, Professeur, Élève, Parent, Portier + fonctionnalités communes.
@@ -29,11 +30,11 @@
 
 ## PHASE B — Dashboard Professeur
 
-- ⬜ B1. Appel de classe via QR : le prof scanne les QR élèves de SA classe → alimente `Attendance` (séance) — réutiliser html5-qrcode + `attendanceQrId`
-- ⬜ B2. Workflow notes : champ `status` sur `Grade` (`brouillon → publie`), modifiable uniquement avant validation, validation par VP/Directeur, publication visible élèves/parents
-- ⬜ B3. Modèle `LessonLog` (cahier de texte) : classe, matière, date/séance, contenu de la leçon, devoirs donnés, lien avec `Homework`
-- ⬜ B4. Routes `/api/lesson-logs` + page `TeacherLessonLogPage` (remplir chaque séance) + vue consultation VP/Directeur/élève
-- ⬜ B5. Restriction stricte : le prof ne voit QUE ses classes et matières attribuées (audit des routes grades/homework/attendance)
+- ✅ B1. Appel de classe via QR : bouton "Appel par QR" dans `PresencePage` (caméra html5-qrcode), route `POST /api/attendance/resolve-qr` (vérifie classe du prof + école), scan → présent, non scannés → absents
+- ✅ B2. Workflow notes : champ `status` (`brouillon`/`publie`) sur `Grade`, prof modifie/supprime uniquement ses brouillons, `PUT /api/grades/publish/batch` publie en lot + notifie les parents, élèves/parents/bulletin ne voient que les notes publiées
+- ✅ B3. Modèle `LessonLog` (cahier de texte) : classe, matière, date/créneau, titre leçon, contenu, devoirs donnés, visa VP/directeur
+- ✅ B4. Routes `/api/lesson-logs` + page `LessonLogPage` (`/dashboard/cahier-de-texte`) : prof remplit/modifie, VP/directeur visent, élève/parent lecture seule (menus prof, VP, directeur, élève)
+- ✅ B5. Restriction stricte : classes déjà scopées (classes.js), notes scopées (grades.js), devoirs → contrôle classe assignée ajouté dans `POST /teacher/homeworks`, appel QR contrôlé
 
 ## PHASE C — Dashboard Élève
 
@@ -83,3 +84,4 @@
 |---|---|---|
 | 2026-08-03 | Plan enregistré | ✅ |
 | 2026-08-03 | F1 Wallet pour tous (hook + backfill + menus) | ✅ |
+| 2026-08-03 | B1 Appel par QR · B2 Workflow notes · B3-B4 Cahier de texte · B5 Restrictions prof | ✅ |

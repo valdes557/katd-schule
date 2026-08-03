@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { FileText, Plus, Search, TrendingUp, Loader2, AlertCircle, X } from 'lucide-react'
+import { FileText, Plus, Search, TrendingUp, Loader2, AlertCircle, X, Send } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { gradesApi, classesApi, studentsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -17,7 +17,8 @@ export default function NotesPage() {
   const [selectedSeq, setSelectedSeq] = useState('')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1 })
+  const [publishing, setPublishing] = useState(false)
+  const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'brouillon' })
 
   const params = new URLSearchParams()
   if (selectedClass) params.set('classId', selectedClass)
@@ -49,9 +50,22 @@ export default function NotesPage() {
         class: student?.class?._id || student?.class || selectedClass,
       })
       setShowModal(false)
-      setForm({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1 })
+      setForm({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'brouillon' })
       refreshGrades()
     } catch (e) { alert(e.message) }
+  }
+
+  // Publie tous les brouillons affichés (les notes deviennent visibles élèves/parents)
+  const draftGrades = grades.filter((g) => g.status === 'brouillon')
+  const handlePublishDrafts = async () => {
+    if (draftGrades.length === 0) return
+    if (!confirm(`Publier ${draftGrades.length} note(s) en brouillon ? Elles deviendront visibles par les élèves et les parents.`)) return
+    setPublishing(true)
+    try {
+      await gradesApi.publishBatch(draftGrades.map((g) => g._id))
+      refreshGrades()
+    } catch (e) { alert(e.message) }
+    setPublishing(false)
   }
 
   const handleDelete = async (id) => {
@@ -81,6 +95,12 @@ export default function NotesPage() {
         </div>
         <div className="flex gap-2">
           <DownloadPdfButton containerRef={pdfRef} filename="notes.pdf" title="Notes" label="Notes PDF" />
+          {draftGrades.length > 0 && (
+            <button onClick={handlePublishDrafts} disabled={publishing} className="btn-ghost border border-amber-300 text-amber-700 text-sm self-start flex items-center gap-1.5">
+              {publishing ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+              Publier {draftGrades.length} brouillon(s)
+            </button>
+          )}
           <button onClick={() => setShowModal(true)} className="btn-primary text-sm self-start">
             <Plus size={15} /> Ajouter une note
           </button>
@@ -128,7 +148,7 @@ export default function NotesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  {['Élève', 'Matière', 'Type', 'Note', 'Coeff', 'Trimestre', 'Séquence', ''].map((h) => (
+                  {['Élève', 'Matière', 'Type', 'Note', 'Coeff', 'Trimestre', 'Séquence', 'Statut', ''].map((h) => (
                     <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
                   ))}
                 </tr>
@@ -143,6 +163,11 @@ export default function NotesPage() {
                     <td className="px-4 py-3 text-sm text-gray-500">{g.coefficient}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{g.term}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{g.sequence || '—'}</td>
+                    <td className="px-4 py-3">
+                      {g.status === 'brouillon'
+                        ? <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Brouillon</span>
+                        : <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">Publiée</span>}
+                    </td>
                     <td className="px-4 py-3">
                       <button onClick={() => handleDelete(g._id)} className="p-1 rounded hover:bg-red-50 text-red-500 text-xs">Suppr.</button>
                     </td>
@@ -253,6 +278,13 @@ export default function NotesPage() {
                   </select>
                 </div>
                 <div><label className="text-xs font-medium text-gray-600">Coeff</label><input type="number" min="1" max="10" value={form.coefficient} onChange={(e) => setForm({ ...form, coefficient: e.target.value })} className="input text-sm mt-1" /></div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Publication</label>
+                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="input text-sm mt-1">
+                  <option value="brouillon">Brouillon (modifiable, invisible élèves/parents)</option>
+                  <option value="publie">Publier immédiatement</option>
+                </select>
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>

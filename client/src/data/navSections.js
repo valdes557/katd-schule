@@ -94,6 +94,7 @@ export const navSections = [
     roles: ['directeur', 'enseignant'],
     items: [
       { label: 'Devoirs & Évaluations', icon: ClipboardList, path: '/dashboard/devoirs' },
+      { label: 'Cahier de texte', icon: BookOpen, path: '/dashboard/cahier-de-texte' },
       { label: 'Notes & Bulletins', icon: FileText, path: '/dashboard/notes' },
       { label: 'Bulletins (PDF)', icon: Receipt, path: '/dashboard/bulletin' },
       { label: 'Présence', icon: CalendarCheck, path: '/dashboard/presence' },
@@ -112,6 +113,7 @@ export const navSections = [
       { label: 'Classes & Salles', icon: BookOpen, path: '/dashboard/classes' },
       { label: 'Matières & Programmes', icon: ClipboardList, path: '/dashboard/matieres' },
       { label: 'Suivi des devoirs', icon: ClipboardList, path: '/dashboard/devoirs' },
+      { label: 'Cahier de texte', icon: BookOpen, path: '/dashboard/cahier-de-texte' },
       { label: 'Notes & examens', icon: FileText, path: '/dashboard/notes' },
       { label: 'Rendez-vous parents', icon: CalendarCheck, path: '/dashboard/rendez-vous-ecole' },
       { label: 'Rapports reçus', icon: FolderOpen, path: '/dashboard/rapports-recus' },
@@ -169,6 +171,7 @@ export const navSections = [
       { label: 'Mes notes', icon: FileText, path: '/dashboard/eleve/notes' },
       { label: 'Mon emploi du temps', icon: Clock, path: '/dashboard/eleve/emploi-du-temps' },
       { label: 'Mes devoirs', icon: ClipboardList, path: '/dashboard/eleve/devoirs' },
+      { label: 'Cahier de texte', icon: BookOpen, path: '/dashboard/cahier-de-texte' },
       { label: 'Mon QR de présence', icon: QrCode, path: '/dashboard/eleve/mon-qr' },
       { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],

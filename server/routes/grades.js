@@ -31,6 +31,8 @@ router.get('/', protect, async (req, res) => {
       }
       if (!classId) query.class = { $in: teacherClassIds }
     } else if (req.user.role === 'parent') {
+      // Les parents ne voient que les notes PUBLIÉES de leurs enfants
+      query.status = { $ne: 'brouillon' }
       const children = await Student.find({ parentUser: req.user._id }).select('_id')
       const childIds = children.map((s) => s._id)
       if (childIds.length === 0) return res.json({ success: true, total: 0, data: [] })
@@ -42,7 +44,8 @@ router.get('/', protect, async (req, res) => {
         query.student = { $in: childIds }
       }
     } else if (req.user.role === 'eleve') {
-      // L'élève (Secondaire) ne voit que SES propres notes
+      // L'élève (Secondaire) ne voit que SES propres notes PUBLIÉES
+      query.status = { $ne: 'brouillon' }
       const me = await Student.findOne({ user: req.user._id }).select('_id')
       if (!me) return res.json({ success: true, total: 0, data: [] })
       query.student = me._id
@@ -147,14 +150,15 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
     const year = academicYear || student.academicYear || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
 
     // 2. All grades for this student (filtered by term)
-    const gradeQuery = { student: studentId }
+    // Le bulletin est un document officiel : seules les notes PUBLIÉES y figurent.
+    const gradeQuery = { student: studentId, status: { $ne: 'brouillon' } }
     if (term) gradeQuery.term = term
     if (academicYear) gradeQuery.academicYear = academicYear
     const grades = await Grade.find(gradeQuery).lean()
 
     // Which terms actually have grades for this student (used by the UI to avoid
     // showing an empty bulletin when notes exist in another term).
-    const availableTerms = await Grade.distinct('term', { student: studentId })
+    const availableTerms = await Grade.distinct('term', { student: studentId, status: { $ne: 'brouillon' } })
 
     // 3. All subjects + their coefficient (from Subject model when available)
     const subjectDocs = classId ? await Subject.find({ classes: classId }).lean() : []
@@ -220,6 +224,7 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
       const ids = classmates.map((c) => c._id)
       const allClassGrades = await Grade.find({
         student: { $in: ids },
+        status: { $ne: 'brouillon' },
         ...(term ? { term } : {}),
         ...(academicYear ? { academicYear } : {}),
       }).lean()
@@ -314,13 +319,14 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
     }
 
     if (Array.isArray(req.body)) {
-      const grades = await Grade.insertMany(req.body.map((g) => ({ ...g, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}) })))
+      const grades = await Grade.insertMany(req.body.map((g) => ({ ...g, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}), ...(g.status === 'publie' ? { publishedAt: new Date(), publishedBy: req.user._id } : {}) })))
       return res.status(201).json({ success: true, data: grades })
     }
-    const grade = await Grade.create({ ...req.body, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}) })
+    const grade = await Grade.create({ ...req.body, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}), ...(req.body.status === 'publie' ? { publishedAt: new Date(), publishedBy: req.user._id } : {}) })
     res.status(201).json({ success: true, data: grade })
 
-    // Notify parent (async, non-blocking)
+    // Notify parent (async, non-blocking) — seulement si la note est PUBLIÉE
+    if (grade.status === 'brouillon') return
     Student.findById(grade.student).populate('parentUser', 'email name').then((student) => {
       if (student?.parentUser?.email) {
         const periodLabel = grade.sequence || grade.term || ''
@@ -336,21 +342,81 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
   }
 })
 
-// PUT /api/grades/:id
+// PUT /api/grades/:id — l'enseignant ne peut modifier que SES notes NON publiées
 router.put('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
   try {
-    const grade = await Grade.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+    const grade = await Grade.findById(req.params.id)
     if (!grade) return res.status(404).json({ message: 'Note non trouvée' })
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher || String(grade.teacher || '') !== String(teacher._id)) {
+        return res.status(403).json({ message: 'Vous ne pouvez modifier que vos propres notes' })
+      }
+      if (grade.status === 'publie') {
+        return res.status(403).json({ message: 'Note déjà publiée : demandez au directeur pour toute correction' })
+      }
+    }
+    // Publication via PUT : horodate et signe
+    if (req.body.status === 'publie' && grade.status !== 'publie') {
+      req.body.publishedAt = new Date()
+      req.body.publishedBy = req.user._id
+    }
+    Object.assign(grade, req.body)
+    await grade.save()
     res.json({ success: true, data: grade })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
 })
 
-// DELETE /api/grades/:id
-router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+// PUT /api/grades/publish/batch — publie un lot de notes en brouillon {ids: []}
+// L'enseignant publie ses propres notes ; le directeur peut tout publier.
+router.put('/publish/batch', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
   try {
-    await Grade.findByIdAndDelete(req.params.id)
+    const schoolId = req.user.school._id || req.user.school
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : []
+    if (ids.length === 0) return res.status(400).json({ message: 'Aucune note à publier' })
+    const query = { _id: { $in: ids }, school: schoolId, status: 'brouillon' }
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher) return res.status(403).json({ message: 'Profil enseignant non trouvé' })
+      query.teacher = teacher._id
+    }
+    const r = await Grade.updateMany(query, { $set: { status: 'publie', publishedAt: new Date(), publishedBy: req.user._id } })
+    res.json({ success: true, published: r.modifiedCount })
+
+    // Notifie les parents des notes publiées (async, best-effort)
+    Grade.find({ _id: { $in: ids }, status: 'publie' }).then(async (grades) => {
+      for (const grade of grades) {
+        try {
+          const student = await Student.findById(grade.student).populate('parentUser', 'email name')
+          if (!student?.parentUser?.email) continue
+          const periodLabel = grade.sequence || grade.term || ''
+          sendEmail({
+            to: student.parentUser.email,
+            subject: `📊 Nouvelle note — ${grade.subject} (${grade.value}/20)`,
+            html: `<p>Bonjour <strong>${student.parentUser.name}</strong>,</p><p>Votre enfant <strong>${student.lastName} ${student.firstName}</strong> a reçu une note en <strong>${grade.subject}</strong> : <strong style="color:${grade.value >= 10 ? '#16A34A' : '#DC2626'}">${grade.value}/20</strong>${periodLabel ? ` (${periodLabel})` : ''}.</p><p>Connectez-vous à votre espace parent pour voir le détail.</p><p style="color:#6B7280;font-size:12px">— KATD-SCHÜLE</p>`,
+          }).catch(() => {})
+        } catch (e) { /* notification best-effort */ }
+      }
+    }).catch(() => {})
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// DELETE /api/grades/:id — le directeur supprime tout ; l'enseignant, ses brouillons uniquement
+router.delete('/:id', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
+  try {
+    const grade = await Grade.findById(req.params.id)
+    if (!grade) return res.status(404).json({ message: 'Note non trouvée' })
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher || String(grade.teacher || '') !== String(teacher._id) || grade.status === 'publie') {
+        return res.status(403).json({ message: 'Vous ne pouvez supprimer que vos notes non publiées' })
+      }
+    }
+    await grade.deleteOne()
     res.json({ success: true, message: 'Note supprimée' })
   } catch (err) {
     res.status(500).json({ message: err.message })

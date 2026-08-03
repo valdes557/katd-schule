@@ -15,6 +15,12 @@ const gradeSchema = new mongoose.Schema(
     academicYear: { type: String },
     date: { type: Date, default: Date.now },
     comment: { type: String },
+    // Workflow de publication (Secondaire) : le professeur saisit en brouillon,
+    // modifie tant que non publié, puis publie → visible élèves/parents.
+    // Les notes existantes (sans champ) sont considérées publiées.
+    status: { type: String, enum: ['brouillon', 'publie'], default: 'publie' },
+    publishedAt: { type: Date },
+    publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 )

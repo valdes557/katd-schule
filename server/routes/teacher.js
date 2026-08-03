@@ -331,6 +331,12 @@ router.post('/homeworks', protect, teacherOnly, async (req, res) => {
     const teacher = await getTeacherProfile(req.user._id)
     if (!teacher) return res.status(404).json({ message: 'Profil enseignant non trouvé' })
 
+    // Le professeur ne peut donner des devoirs qu'à SES classes assignées
+    const teacherClassIds = (teacher.classes || []).map((c) => c.toString())
+    if (!req.body.class || !teacherClassIds.includes(req.body.class.toString())) {
+      return res.status(403).json({ message: 'Vous ne pouvez donner des devoirs qu\'à vos classes assignées' })
+    }
+
     const hw = await Homework.create({
       ...req.body,
       teacher: teacher._id,

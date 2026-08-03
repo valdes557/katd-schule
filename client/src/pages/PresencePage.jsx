@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { CalendarCheck, Check, X, Clock, AlertCircle, Loader2, Save } from 'lucide-react'
+import { Html5Qrcode } from 'html5-qrcode'
+import { CalendarCheck, Check, X, Clock, AlertCircle, Loader2, Save, QrCode, Camera, CheckCircle2 } from 'lucide-react'
 import { attendanceApi, classesApi, studentsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { cn } from '../lib/utils'
 import DownloadPdfButton from '../components/DownloadPdfButton'
+
+const QR_SCANNER_ID = 'presence-qr-region'
 
 const statusOptions = [
   { key: 'present', label: 'Présent', icon: Check, color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-300' },
@@ -21,6 +24,13 @@ export default function PresencePage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [filterStatus, setFilterStatus] = useState('')
+  // Appel par QR : le professeur scanne les QR individuels des élèves de la classe
+  const [qrMode, setQrMode] = useState(false)
+  const [qrLast, setQrLast] = useState(null) // { ok, name, message, at }
+  const [qrScanned, setQrScanned] = useState([]) // élèves scannés durant la session
+  const qrScannerRef = useRef(null)
+  const qrRecentRef = useRef(new Map()) // anti-rebond : qrId → timestamp
+  const qrClassRef = useRef('') // classe active côté callback caméra
 
   const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
   const classes = classesQ.data || []
@@ -84,6 +94,65 @@ export default function PresencePage() {
     setSaving(false)
   }
 
+  // ── Appel par QR ──
+  useEffect(() => { qrClassRef.current = selectedClass }, [selectedClass])
+  useEffect(() => () => { stopQrScanner() }, [])
+
+  const stopQrScanner = async () => {
+    const s = qrScannerRef.current
+    if (s) {
+      try { await s.stop() } catch (_) {}
+      try { await s.clear() } catch (_) {}
+      qrScannerRef.current = null
+    }
+    setQrMode(false)
+  }
+
+  const onQrScan = async (decodedText) => {
+    const qrId = (decodedText || '').trim()
+    if (!qrId) return
+    // Anti-rebond : ignore le même QR pendant 5 secondes (la caméra lit en continu)
+    const lastSeen = qrRecentRef.current.get(qrId)
+    if (lastSeen && Date.now() - lastSeen < 5000) return
+    qrRecentRef.current.set(qrId, Date.now())
+
+    try {
+      const r = await attendanceApi.resolveQr(qrId, qrClassRef.current)
+      const d = r.data || {}
+      // Marque l'élève présent dans la grille d'appel
+      setRecords((prev) => ({ ...prev, [d.id]: 'present' }))
+      const entry = { ok: true, name: d.name, at: new Date() }
+      setQrLast(entry)
+      setQrScanned((prev) => [entry, ...prev.filter((p) => p.name !== d.name)].slice(0, 40))
+    } catch (e) {
+      setQrLast({ ok: false, message: e.message, at: new Date() })
+    }
+  }
+
+  const startQrScanner = async () => {
+    if (!selectedClass) { alert("Sélectionnez d'abord une classe"); return }
+    // Démarre l'appel : tout le monde absent, chaque scan repasse l'élève en présent
+    setRecords((prev) => Object.fromEntries(Object.keys(prev).map((id) => [id, 'absent'])))
+    setQrLast(null)
+    setQrScanned([])
+    setQrMode(true)
+    setTimeout(async () => {
+      try {
+        const html5 = new Html5Qrcode(QR_SCANNER_ID)
+        qrScannerRef.current = html5
+        await html5.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          onQrScan,
+          () => {} // ignore les échecs de lecture intermédiaires
+        )
+      } catch (e) {
+        setQrMode(false)
+        setQrLast({ ok: false, message: "Impossible d'accéder à la caméra. Autorisez l'accès et réessayez." })
+      }
+    }, 100)
+  }
+
   const summary = {
     present: Object.values(records).filter((v) => v === 'present').length,
     absent: Object.values(records).filter((v) => v === 'absent').length,
@@ -114,7 +183,37 @@ export default function PresencePage() {
           {classes.map((c) => <option key={c._id} value={c._id}>{c.name} ({c.level})</option>)}
         </select>
         <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="input text-sm w-auto" />
+        {!qrMode && (
+          <button onClick={startQrScanner} className="btn-ghost border border-indigo-200 text-indigo-600 text-sm flex items-center gap-1.5">
+            <QrCode size={15} /> Appel par QR
+          </button>
+        )}
       </div>
+
+      {/* Appel par QR : caméra + feedback */}
+      {(qrMode || qrLast) && (
+        <div className="card p-4 space-y-3">
+          {qrLast && (
+            <div className={`flex items-center gap-2 border-l-4 pl-3 py-1 ${qrLast.ok ? 'border-l-green-500' : 'border-l-red-500'}`}>
+              {qrLast.ok
+                ? <><CheckCircle2 size={18} className="text-green-600" /><p className="text-sm font-semibold text-gray-900">{qrLast.name} <span className="text-green-600 font-bold">présent(e)</span></p></>
+                : <><AlertCircle size={18} className="text-red-500" /><p className="text-sm text-red-600">{qrLast.message}</p></>}
+            </div>
+          )}
+          {qrMode && (
+            <div>
+              <div id={QR_SCANNER_ID} className="w-full max-w-md mx-auto rounded-xl overflow-hidden" />
+              <p className="text-center text-xs text-gray-400 mt-2">
+                Scannez le QR de chaque élève : il est marqué présent. Les non-scannés restent absents.
+                {qrScanned.length > 0 && <span className="font-semibold text-gray-600"> {qrScanned.length} scanné(s)</span>}
+              </p>
+              <button onClick={stopQrScanner} className="btn-ghost border border-gray-200 w-full justify-center text-sm mt-3 flex items-center gap-1.5">
+                <Camera size={14} /> Arrêter le scan (puis Enregistrer l'appel)
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
