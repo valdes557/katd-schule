@@ -169,9 +169,12 @@ export const navSections = [
     roles: ['eleve'],
     items: [
       { label: 'Mes notes', icon: FileText, path: '/dashboard/eleve/notes' },
+      { label: 'Mon bulletin', icon: Receipt, path: '/dashboard/bulletin' },
       { label: 'Mon emploi du temps', icon: Clock, path: '/dashboard/eleve/emploi-du-temps' },
       { label: 'Mes devoirs', icon: ClipboardList, path: '/dashboard/eleve/devoirs' },
       { label: 'Cahier de texte', icon: BookOpen, path: '/dashboard/cahier-de-texte' },
+      { label: 'Ma discipline', icon: Shield, path: '/dashboard/eleve/discipline' },
+      { label: 'Mes paiements', icon: CreditCard, path: '/dashboard/eleve/paiements' },
       { label: 'Mon QR de présence', icon: QrCode, path: '/dashboard/eleve/mon-qr' },
       { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],

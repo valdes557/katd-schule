@@ -134,9 +134,14 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
       .lean()
     if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
 
-    // Permission: parent can only see own children; teacher/director must share school
+    // Permission: parent can only see own children; student only HIS own bulletin;
+    // teacher/director must share school
     if (req.user.role === 'parent') {
       if (!student.parentUser || student.parentUser.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: 'Accès refusé' })
+      }
+    } else if (req.user.role === 'eleve') {
+      if (!student.user || student.user.toString() !== req.user._id.toString()) {
         return res.status(403).json({ message: 'Accès refusé' })
       }
     } else if (['directeur', 'enseignant'].includes(req.user.role)) {

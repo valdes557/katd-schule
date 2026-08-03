@@ -220,6 +220,8 @@ const EleveNotesPage = lazyPage(() => import('./pages/secondary/EleveNotesPage')
 const EleveTimetablePage = lazyPage(() => import('./pages/secondary/EleveTimetablePage'))
 const EleveHomeworksPage = lazyPage(() => import('./pages/secondary/EleveHomeworksPage'))
 const LessonLogPage = lazyPage(() => import('./pages/secondary/LessonLogPage'))
+const EleveDisciplinePage = lazyPage(() => import('./pages/secondary/EleveDisciplinePage'))
+const ElevePaiementsPage = lazyPage(() => import('./pages/secondary/ElevePaiementsPage'))
 
 function PageFallback() {
   return (
@@ -376,6 +378,8 @@ export default function App() {
         <Route path="eleve/notes" element={<EleveNotesPage />} />
         <Route path="eleve/emploi-du-temps" element={<EleveTimetablePage />} />
         <Route path="eleve/devoirs" element={<EleveHomeworksPage />} />
+        <Route path="eleve/discipline" element={<EleveDisciplinePage />} />
+        <Route path="eleve/paiements" element={<ElevePaiementsPage />} />
         <Route path="cahier-de-texte" element={<LessonLogPage />} />
 
         {/* Teacher routes */}

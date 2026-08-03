@@ -122,6 +122,9 @@ export const studentsApi = {
   createStudentAccount: (studentId, data) => api.post(`/students/${studentId}/student-account`, data),
   myProfile: () => api.get('/students/me/profile'),
   myHomeworks: () => api.get('/students/me/homeworks'),
+  // Espace élève (Secondaire) : discipline + frais en lecture seule
+  myDiscipline: () => api.get('/students/me/discipline'),
+  myFees: () => api.get('/students/me/fees'),
   linkParent: (email, studentIds) => api.post('/students/link-parent', { email, studentIds }),
 }
 

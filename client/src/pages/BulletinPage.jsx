@@ -42,6 +42,12 @@ export default function BulletinPage() {
           setStudents(r.data || [])
           if (!studentId && r.data?.length > 0) setStudentId(r.data[0]._id)
         } catch (_) {}
+      } else if (user?.role === 'eleve') {
+        // L'élève consulte SON bulletin : sa fiche donne son studentId
+        try {
+          const r = await studentsApi.myProfile()
+          if (r.data?._id) setStudentId(r.data._id)
+        } catch (_) {}
       }
     })()
   }, [user?.role])

@@ -38,10 +38,10 @@
 
 ## PHASE C — Dashboard Élève
 
-- ⬜ C1. Vue Discipline (sanctions, retards, absences le concernant)
-- ⬜ C2. Vue Paiements : frais, solde restant, historique (lecture seule depuis `Fee`)
-- ⬜ C3. Bulletin PDF téléchargeable depuis l'espace élève
-- ⬜ C4. Consultation cahier de texte de sa classe
+- ✅ C1. Vue Discipline : `GET /api/students/me/discipline` (retards portier, absences/retards en classe, permissions) + page `/dashboard/eleve/discipline`
+- ✅ C2. Vue Paiements : `GET /api/students/me/fees` (frais, payé, solde, tranches) + page `/dashboard/eleve/paiements` (lecture seule)
+- ✅ C3. Bulletin PDF : rôle `eleve` autorisé sur `/grades/bulletin/:id` (uniquement SA fiche) + BulletinPage résout le studentId via `myProfile()` + lien "Mon bulletin" au menu
+- ✅ C4. Consultation cahier de texte de sa classe (fait en B4)
 
 ## PHASE D — Dashboard Parent
 
@@ -85,3 +85,4 @@
 | 2026-08-03 | Plan enregistré | ✅ |
 | 2026-08-03 | F1 Wallet pour tous (hook + backfill + menus) | ✅ |
 | 2026-08-03 | B1 Appel par QR · B2 Workflow notes · B3-B4 Cahier de texte · B5 Restrictions prof | ✅ |
+| 2026-08-03 | C1 Discipline · C2 Paiements · C3 Bulletin PDF élève | ✅ |
