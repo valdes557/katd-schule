@@ -105,7 +105,7 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
         {
           $group: {
             _id: null,
-            totalDue: { $sum: '$amount' },
+            totalDue: { $sum: { $subtract: ['$amount', { $ifNull: ['$discount.amount', 0] }] } },
             totalPaid: { $sum: '$paid' },
             pending: { $sum: { $cond: [{ $ne: ['$status', 'paid'] }, 1, 0] } },
           },
@@ -249,25 +249,30 @@ router.get('/children/:studentId', protect, parentOnly, async (req, res) => {
     }
 
     // Fee installments summary
-    const feeSummary = childFees.map((f) => ({
-      _id: f._id,
-      label: f.label,
-      amount: f.amount,
-      paid: f.paid,
-      remaining: f.amount - f.paid,
-      status: f.status,
-      dueDate: f.dueDate,
-      paymentMode: f.paymentMode,
-      installments: f.installments.map((i) => ({
-        label: i.label,
-        amount: i.amount,
-        dueDate: i.dueDate,
-        paid: i.paid,
-        paidAt: i.paidAt,
-      })),
-      pendingInstallments: f.installments.filter((i) => !i.paid).length,
-      totalInstallments: f.installments.length,
-    }))
+    const feeSummary = childFees.map((f) => {
+      const net = Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+      return {
+        _id: f._id,
+        label: f.label,
+        amount: f.amount,
+        netAmount: net,
+        discount: f.discount?.amount > 0 ? f.discount : null,
+        paid: f.paid,
+        remaining: Math.max(0, net - f.paid),
+        status: f.status,
+        dueDate: f.dueDate,
+        paymentMode: f.paymentMode,
+        installments: f.installments.map((i) => ({
+          label: i.label,
+          amount: i.amount,
+          dueDate: i.dueDate,
+          paid: i.paid,
+          paidAt: i.paidAt,
+        })),
+        pendingInstallments: f.installments.filter((i) => !i.paid).length,
+        totalInstallments: f.installments.length,
+      }
+    })
 
     // Grades by subject (include sequence)
     const gradesBySubject = {}
@@ -398,9 +403,11 @@ router.get('/fees', protect, parentOnly, async (req, res) => {
     const children = await getChildren(req.user._id)
     const childIds = children.map((c) => c._id)
     const fees = await Fee.find({ student: { $in: childIds } }).populate('student', 'firstName lastName matricule').sort({ createdAt: -1 })
-    const totalDue = fees.reduce((s, f) => s + f.amount, 0)
+    const netOf = (f) => Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+    const totalDue = fees.reduce((s, f) => s + netOf(f), 0)
     const totalPaid = fees.reduce((s, f) => s + f.paid, 0)
-    res.json({ success: true, data: fees, summary: { totalDue, totalPaid, remaining: totalDue - totalPaid } })
+    const totalDiscount = fees.reduce((s, f) => s + (f.discount?.amount || 0), 0)
+    res.json({ success: true, data: fees, summary: { totalDue, totalPaid, totalDiscount, remaining: Math.max(0, totalDue - totalPaid) } })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -431,11 +438,13 @@ router.post('/fees/:feeId/pay', protect, parentOnly, async (req, res) => {
 
     const { amount, method = 'cash', reference = '', note = '' } = req.body
     if (!amount || amount <= 0) return res.status(400).json({ message: 'Montant invalide' })
+    const net = Math.max(0, (fee.amount || 0) - (fee.discount?.amount || 0))
+    const remaining = Math.max(0, net - (fee.paid || 0))
+    if (amount > remaining) return res.status(400).json({ message: `Le montant dépasse le reste à payer (${remaining.toLocaleString('fr-FR')} F CFA)` })
 
     fee.payments.push({ amount, method, reference, note })
     fee.paid += amount
-    fee.status = fee.paid >= fee.amount ? 'paid' : 'partial'
-    await fee.save()
+    await fee.save() // le pre-save recalcule le status (tient compte de la remise)
 
     res.json({ success: true, data: fee })
   } catch (err) {

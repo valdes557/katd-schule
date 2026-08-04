@@ -14,6 +14,9 @@ const PDFDocument = require('pdfkit')
 // Helper: ensure school match
 function schoolId(req) { return req.user.school?._id || req.user.school }
 
+// Helper: montant net d'un frais après remise
+const netOf = (f) => Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+
 // GET /api/fees — List all fees for the school (director)
 router.get('/', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
@@ -53,8 +56,9 @@ router.get('/payment-status', protect, authorize('directeur', 'super_admin', 'ca
 
     const result = students.map((s) => {
       const studentFees = fees.filter((f) => f.student.toString() === s._id.toString())
-      const totalDue = studentFees.reduce((sum, f) => sum + f.amount, 0)
+      const totalDue = studentFees.reduce((sum, f) => sum + netOf(f), 0)
       const totalPaid = studentFees.reduce((sum, f) => sum + f.paid, 0)
+      const totalDiscount = studentFees.reduce((sum, f) => sum + (f.discount?.amount || 0), 0)
       const allInstallmentsPaid = studentFees.every((f) =>
         f.paymentMode === 'complet'
           ? f.status === 'paid'
@@ -66,15 +70,22 @@ router.get('/payment-status', protect, authorize('directeur', 'super_admin', 'ca
         matricule: s.matricule,
         totalDue,
         totalPaid,
-        remaining: totalDue - totalPaid,
-        fullyPaid: totalDue > 0 && totalDue === totalPaid,
+        totalDiscount,
+        remaining: Math.max(0, totalDue - totalPaid),
+        fullyPaid: totalDue > 0 && totalPaid >= totalDue,
         allInstallmentsPaid,
         fees: studentFees.map((f) => ({
           _id: f._id,
           label: f.label,
+          type: f.type,
           amount: f.amount,
+          netAmount: netOf(f),
+          discount: f.discount?.amount > 0 ? f.discount : null,
           paid: f.paid,
           status: f.status,
+          dueDate: f.dueDate,
+          term: f.term,
+          academicYear: f.academicYear,
           paymentMode: f.paymentMode,
           installments: f.installments,
         })),
@@ -115,13 +126,27 @@ router.get('/payment-history', protect, authorize('directeur', 'super_admin', 'c
           parentPhone: s.parent?.phone || '',
           totalDue: 0,
           totalPaid: 0,
+          totalDiscount: 0,
           remaining: 0,
           payments: [],
+          discounts: [],
         })
       }
       const entry = byStudent.get(key)
-      entry.totalDue += f.amount || 0
+      entry.totalDue += netOf(f)
       entry.totalPaid += f.paid || 0
+      if (f.discount?.amount > 0) {
+        entry.totalDiscount += f.discount.amount
+        entry.discounts.push({
+          feeId: f._id,
+          label: f.label,
+          amount: f.discount.amount,
+          type: f.discount.type,
+          value: f.discount.value,
+          reason: f.discount.reason,
+          date: f.discount.date,
+        })
+      }
       ;(f.payments || []).forEach((p, idx) => {
         entry.payments.push({
           feeId: f._id,
@@ -145,6 +170,7 @@ router.get('/payment-history', protect, authorize('directeur', 'super_admin', 'c
     const summary = {
       totalDue: data.reduce((s, e) => s + e.totalDue, 0),
       totalPaid: data.reduce((s, e) => s + e.totalPaid, 0),
+      totalDiscount: data.reduce((s, e) => s + e.totalDiscount, 0),
       remaining: data.reduce((s, e) => s + e.remaining, 0),
       studentCount: data.length,
     }
@@ -376,15 +402,90 @@ router.post('/modalities/:id/assign', protect, authorize('directeur', 'super_adm
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// PUT /api/fees/:id — Update fee
+// PUT /api/fees/:id — Update fee (champs autorisés uniquement)
 router.put('/:id', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
     const fee = await Fee.findOne({ _id: req.params.id, school: schoolId(req) })
     if (!fee) return res.status(404).json({ message: 'Frais non trouvé' })
-    Object.assign(fee, req.body)
+
+    const ALLOWED = ['label', 'type', 'amount', 'dueDate', 'term', 'academicYear', 'paymentMode', 'installments']
+    for (const k of ALLOWED) {
+      if (req.body[k] !== undefined) fee[k] = req.body[k]
+    }
+    if (req.body.amount !== undefined) {
+      const amt = Number(req.body.amount)
+      if (!(amt > 0)) return res.status(400).json({ message: 'Montant invalide' })
+      if (amt < (fee.paid || 0)) {
+        return res.status(400).json({ message: `Le montant ne peut être inférieur au total déjà payé (${(fee.paid || 0).toLocaleString('fr-FR')} F CFA)` })
+      }
+      fee.amount = amt
+      // La remise en pourcentage est recalculée sur le nouveau montant
+      if (fee.discount?.amount > 0 && fee.discount.type === 'percentage') {
+        fee.discount.amount = Math.round((amt * fee.discount.value) / 100)
+        fee.markModified('discount')
+      }
+    }
+    if (fee.paymentMode === 'complet') fee.installments = []
     await fee.save()
     await fee.populate('student', 'firstName lastName matricule')
     res.json({ success: true, data: fee })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/fees/:id/discount — Attribuer une remise/réduction sur un frais (motif obligatoire)
+router.post('/:id/discount', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const fee = await Fee.findOne({ _id: req.params.id, school: schoolId(req) })
+      .populate({ path: 'student', select: 'firstName lastName parentUser', populate: { path: 'parentUser', select: 'email name' } })
+    if (!fee) return res.status(404).json({ message: 'Frais non trouvé' })
+
+    const { type, value, reason } = req.body
+    if (!['fixed', 'percentage'].includes(type)) return res.status(400).json({ message: 'Type de remise invalide' })
+    const v = Number(value)
+    if (!(v > 0)) return res.status(400).json({ message: 'Valeur de remise invalide' })
+    if (type === 'percentage' && v > 100) return res.status(400).json({ message: 'Le pourcentage ne peut dépasser 100%' })
+    if (!reason || !String(reason).trim()) return res.status(400).json({ message: 'Le motif de la remise est obligatoire' })
+
+    const amount = type === 'percentage' ? Math.round((fee.amount * v) / 100) : v
+    if (amount > fee.amount) return res.status(400).json({ message: 'La remise dépasse le montant du frais' })
+
+    fee.discount = { type, value: v, amount, reason: String(reason).trim(), date: new Date(), grantedBy: req.user._id }
+    await fee.save() // le pre-save recalcule le status
+
+    // Notifie le parent (best-effort)
+    const fullName = `${fee.student?.lastName || ''} ${fee.student?.firstName || ''}`.trim()
+    if (fee.student?.parentUser?._id) {
+      try {
+        const push = require('../services/pushService')
+        push.sendToUser(fee.student.parentUser._id, {
+          title: '🎁 Réduction accordée',
+          body: `Une réduction de ${amount.toLocaleString('fr-FR')} F a été accordée pour ${fullName} (${fee.label}). Motif : ${fee.discount.reason}`,
+          url: '/dashboard/parent/finances',
+        }).catch(() => {})
+      } catch (e) { /* push best-effort */ }
+    }
+    if (fee.student?.parentUser?.email) {
+      sendEmail({
+        to: fee.student.parentUser.email,
+        subject: `🎁 Réduction accordée — ${fee.label}`,
+        html: `<p>Bonjour,</p><p>Une réduction de <strong>${amount.toLocaleString('fr-FR')} F CFA</strong> a été accordée pour <strong>${fullName}</strong> concernant : ${fee.label}.</p><p>Motif : <strong>${fee.discount.reason}</strong></p><p>Nouveau montant à payer : <strong>${netOf(fee).toLocaleString('fr-FR')} F CFA</strong>.</p>`,
+      }).catch(() => {})
+    }
+
+    res.json({ success: true, message: 'Remise appliquée', data: fee })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// DELETE /api/fees/:id/discount — Retirer la remise d'un frais
+router.delete('/:id/discount', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const fee = await Fee.findOne({ _id: req.params.id, school: schoolId(req) })
+    if (!fee) return res.status(404).json({ message: 'Frais non trouvé' })
+    if (!fee.discount?.amount) return res.status(400).json({ message: 'Aucune remise sur ce frais' })
+    fee.discount = undefined
+    fee.markModified('discount')
+    await fee.save() // le pre-save recalcule le status (peut repasser partial)
+    res.json({ success: true, message: 'Remise retirée', data: fee })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -411,8 +512,7 @@ router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin'
     // Add to payments history
     fee.payments.push({ amount, method, reference, note })
     fee.paid = (fee.paid || 0) + Number(amount)
-    fee.status = fee.paid >= fee.amount ? 'paid' : fee.paid > 0 ? 'partial' : 'pending'
-    await fee.save()
+    await fee.save() // le pre-save recalcule le status (tient compte de la remise)
 
     // Notify parent by email + push
     const parentEmail = fee.student?.parentUser?.email
@@ -421,7 +521,7 @@ router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin'
         const push = require('../services/pushService')
         push.sendToUser(fee.student.parentUser._id, {
           title: '✅ Paiement enregistré',
-          body: `${Number(amount).toLocaleString('fr-FR')} F reçus pour ${fee.student?.lastName} ${fee.student?.firstName} (${fee.label}). Reste : ${Math.max(0, fee.amount - fee.paid).toLocaleString('fr-FR')} F`,
+          body: `${Number(amount).toLocaleString('fr-FR')} F reçus pour ${fee.student?.lastName} ${fee.student?.firstName} (${fee.label}). Reste : ${Math.max(0, netOf(fee) - fee.paid).toLocaleString('fr-FR')} F`,
           url: '/dashboard/parent/finances',
         }).catch(() => {})
       } catch (e) { /* push best-effort */ }
@@ -430,7 +530,7 @@ router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin'
       sendEmail({
         to: parentEmail,
         subject: `✅ Paiement enregistré — ${fee.label}`,
-        html: `<p>Bonjour,</p><p>Un paiement de <strong>${Number(amount).toLocaleString()} F CFA</strong> a été enregistré pour <strong>${fee.student?.lastName} ${fee.student?.firstName}</strong> concernant : ${fee.label}.</p><p>Solde restant : <strong>${Math.max(0, fee.amount - fee.paid).toLocaleString()} F CFA</strong>.</p>`,
+        html: `<p>Bonjour,</p><p>Un paiement de <strong>${Number(amount).toLocaleString()} F CFA</strong> a été enregistré pour <strong>${fee.student?.lastName} ${fee.student?.firstName}</strong> concernant : ${fee.label}.</p><p>Solde restant : <strong>${Math.max(0, netOf(fee) - fee.paid).toLocaleString()} F CFA</strong>.</p>`,
       }).catch(() => {})
     }
 
@@ -470,10 +570,15 @@ router.post('/:id/pay-wallet', protect, authorize('parent'), async (req, res) =>
     }
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
 
-    // Ne pas payer plus que le reste dû
-    const remaining = Math.max(0, (fee.amount || 0) - (fee.paid || 0))
+    // Ne pas payer plus que le reste dû (après remise éventuelle)
+    const remaining = Math.max(0, netOf(fee) - (fee.paid || 0))
     if (remaining <= 0) return res.status(400).json({ message: 'Ce frais est déjà entièrement payé' })
-    if (amt > remaining) return res.status(400).json({ message: `Le montant dépasse le reste à payer (${remaining.toLocaleString('fr-FR')} F CFA)` })
+    if (instIdx !== null) {
+      // La remise peut rendre la somme des tranches supérieure au reste net : on cappe la tranche
+      amt = Math.min(amt, remaining)
+    } else if (amt > remaining) {
+      return res.status(400).json({ message: `Le montant dépasse le reste à payer (${remaining.toLocaleString('fr-FR')} F CFA)` })
+    }
 
     // Vérifie le PIN du parent
     const u = await User.findById(req.user._id).select('+walletPin')
@@ -514,8 +619,7 @@ router.post('/:id/pay-wallet', protect, authorize('parent'), async (req, res) =>
       fee.installments[instIdx].method = 'wallet'
     }
     fee.paid = (fee.paid || 0) + amt
-    fee.status = fee.paid >= fee.amount ? 'paid' : fee.paid > 0 ? 'partial' : 'pending'
-    await fee.save()
+    await fee.save() // le pre-save recalcule le status (tient compte de la remise)
     const paymentIndex = fee.payments.length - 1
 
     // Notifie le directeur (best-effort)
@@ -559,7 +663,7 @@ router.get('/:id/receipt/:paymentIndex', protect, async (req, res) => {
   try {
     const fee = await Fee.findById(req.params.id)
       .populate('student', 'firstName lastName matricule class school')
-      .populate({ path: 'student', populate: [{ path: 'class', select: 'name level' }, { path: 'school', select: 'name address' }] })
+      .populate({ path: 'student', populate: [{ path: 'class', select: 'name level' }, { path: 'school', select: 'name address logo phone email' }] })
     if (!fee) return res.status(404).json({ message: 'Frais non trouvé' })
 
     const userRole = req.user.role
@@ -580,46 +684,151 @@ router.get('/:id/receipt/:paymentIndex', protect, async (req, res) => {
     }
     const p = fee.payments[idx]
 
+    // Logo de l'école (best-effort, jamais bloquant)
+    const school = fee.student?.school || {}
+    let logoBuf = null
+    if (school.logo && /^https?:\/\//.test(school.logo)) {
+      try {
+        logoBuf = await new Promise((resolve) => {
+          const https = school.logo.startsWith('https') ? require('https') : require('http')
+          const request = https.get(school.logo, { timeout: 3000 }, (r) => {
+            if (r.statusCode !== 200) { r.resume(); return resolve(null) }
+            const chunks = []
+            r.on('data', (c) => chunks.push(c))
+            r.on('end', () => resolve(Buffer.concat(chunks)))
+            r.on('error', () => resolve(null))
+          })
+          request.on('timeout', () => { request.destroy(); resolve(null) })
+          request.on('error', () => resolve(null))
+        })
+      } catch (e) { logoBuf = null }
+    }
+
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `attachment; filename="recu-${fee._id}-${idx + 1}.pdf"`)
 
-    const doc = new PDFDocument({ size: 'A4', margin: 50 })
+    const doc = new PDFDocument({ size: 'A4', margin: 0 })
     doc.pipe(res)
-
-    const schoolName = fee.student?.school?.name || req.user.school?.name || 'Établissement scolaire'
-    const addr = fee.student?.school?.address || {}
-    const addrStr = [addr.address, addr.neighborhood, addr.city, addr.country].filter(Boolean).join(', ')
-
-    doc.fontSize(18).fillColor('#111827').text(schoolName)
-    if (addrStr) doc.moveDown(0.2).fontSize(10).fillColor('#6b7280').text(addrStr)
-    doc.moveDown()
-
-    doc.fillColor('#111827').fontSize(16).text('Reçu de Paiement', { align: 'right' })
-    doc.fontSize(10).fillColor('#6b7280').text(`Date: ${new Date(p.date || Date.now()).toLocaleDateString('fr-FR')}`, { align: 'right' })
-    doc.moveDown()
-
-    const fullName = `${fee.student?.lastName || ''} ${fee.student?.firstName || ''}`.trim()
-    doc.fillColor('#111827').fontSize(12).text(`Élève: ${fullName || '—'}`)
-    if (fee.student?.matricule) doc.fontSize(12).text(`Matricule: ${fee.student.matricule}`)
-    if (fee.student?.class?.name) doc.fontSize(12).text(`Classe: ${fee.student.class.name}`)
-    doc.moveDown()
-
-    doc.fontSize(12).fillColor('#111827').text(`Libellé: ${fee.label}`)
-    doc.text(`Montant payé: ${Number(p.amount || 0).toLocaleString('fr-FR')} F CFA`)
-    doc.text(`Méthode: ${p.method || 'cash'}`)
-    if (p.reference) doc.text(`Référence: ${p.reference}`)
-    if (p.note) doc.text(`Note: ${p.note}`)
-    const remaining = Math.max(0, (fee.amount || 0) - (fee.paid || 0))
-    doc.moveDown(0.5)
-    doc.text(`Total dû: ${Number(fee.amount || 0).toLocaleString('fr-FR')} F CFA`)
-    doc.text(`Total déjà payé: ${Number(fee.paid || 0).toLocaleString('fr-FR')} F CFA`)
-    doc.text(`Reste à payer: ${Number(remaining).toLocaleString('fr-FR')} F CFA`)
-
-    doc.moveDown()
-    doc.fontSize(10).fillColor('#6b7280').text('Merci pour votre paiement.', { align: 'center' })
+    renderReceiptPdf(doc, { fee, payment: p, idx, school, reqUser: req.user, logoBuf })
     doc.end()
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
+
+// ───────────── Rendu du reçu PDF (design facture) ─────────────
+const METHOD_LABELS = { cash: 'Espèces', mobile_money: 'Mobile Money', bank: 'Banque', online: 'En ligne', wallet: 'Portefeuille' }
+const FCFA = (n) => `${Number(n || 0).toLocaleString('fr-FR')} F CFA`
+
+function renderReceiptPdf(doc, { fee, payment: p, idx, school, reqUser, logoBuf }) {
+  const PAGE_W = 595
+  const M = 50 // marge de contenu
+  const CONTENT_W = PAGE_W - 2 * M
+
+  const schoolName = school?.name || reqUser.school?.name || 'Établissement scolaire'
+  const addr = school?.address || {}
+  const addrStr = [addr.address, addr.neighborhood, addr.city, addr.country].filter(Boolean).join(', ')
+  const net = Math.max(0, (fee.amount || 0) - (fee.discount?.amount || 0))
+  const remaining = Math.max(0, net - (fee.paid || 0))
+  const receiptNo = `REC-${String(fee._id).slice(-6).toUpperCase()}-${idx + 1}`
+
+  // ── Bandeau d'en-tête bleu ──
+  doc.rect(0, 0, PAGE_W, 110).fill('#1d4ed8')
+  let headerTextX = M
+  if (logoBuf) {
+    try {
+      doc.image(logoBuf, M, 25, { fit: [60, 60] })
+      headerTextX = M + 75
+    } catch (e) { /* logo illisible : on continue sans */ }
+  }
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(20)
+    .text(schoolName, headerTextX, 30, { width: 330 })
+  doc.font('Helvetica').fontSize(9).fillColor('#bfdbfe')
+  if (addrStr) doc.text(addrStr, headerTextX, doc.y + 2, { width: 330 })
+  const contactStr = [school?.phone, school?.email].filter(Boolean).join(' · ')
+  if (contactStr) doc.text(contactStr, headerTextX, doc.y + 2, { width: 330 })
+
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(14)
+    .text('REÇU DE PAIEMENT', 375, 32, { width: 170, align: 'right' })
+  doc.font('Helvetica').fontSize(9).fillColor('#bfdbfe')
+    .text(`N° ${receiptNo}`, 375, 54, { width: 170, align: 'right' })
+    .text(`Date : ${new Date(p.date || Date.now()).toLocaleDateString('fr-FR')}`, 375, 68, { width: 170, align: 'right' })
+
+  // ── Encadrés Élève / Paiement ──
+  const boxY = 135
+  const boxH = 88
+  const boxW = 240
+  const fullName = `${fee.student?.lastName || ''} ${fee.student?.firstName || ''}`.trim()
+
+  doc.roundedRect(M, boxY, boxW, boxH, 8).fill('#f3f4f6')
+  doc.fillColor('#1d4ed8').font('Helvetica-Bold').fontSize(9).text('ÉLÈVE', M + 14, boxY + 12)
+  doc.fillColor('#111827').font('Helvetica-Bold').fontSize(11).text(fullName || '—', M + 14, boxY + 28, { width: boxW - 28 })
+  doc.font('Helvetica').fontSize(9).fillColor('#4b5563')
+  if (fee.student?.matricule) doc.text(`Matricule : ${fee.student.matricule}`, M + 14, doc.y + 4)
+  if (fee.student?.class?.name) doc.text(`Classe : ${fee.student.class.name}`, M + 14, doc.y + 2)
+
+  const box2X = M + boxW + 15
+  doc.roundedRect(box2X, boxY, boxW, boxH, 8).fill('#f3f4f6')
+  doc.fillColor('#1d4ed8').font('Helvetica-Bold').fontSize(9).text('PAIEMENT', box2X + 14, boxY + 12)
+  doc.fillColor('#111827').font('Helvetica-Bold').fontSize(11)
+    .text(FCFA(p.amount), box2X + 14, boxY + 28, { width: boxW - 28 })
+  doc.font('Helvetica').fontSize(9).fillColor('#4b5563')
+  doc.text(`Méthode : ${METHOD_LABELS[p.method] || p.method || 'Espèces'}`, box2X + 14, doc.y + 4)
+  if (p.reference) doc.text(`Référence : ${p.reference}`, box2X + 14, doc.y + 2)
+  if (p.note) doc.text(`Note : ${p.note}`, box2X + 14, doc.y + 2, { width: boxW - 28 })
+
+  // ── Tableau récapitulatif ──
+  let y = boxY + boxH + 25
+  const col2X = 400 // début colonne Montant
+  const rowH = 26
+
+  // En-tête du tableau
+  doc.rect(M, y, CONTENT_W, rowH).fill('#1e40af')
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10)
+    .text('DÉSIGNATION', M + 12, y + 8)
+    .text('MONTANT', col2X, y + 8, { width: PAGE_W - M - col2X - 12, align: 'right' })
+  y += rowH
+
+  const detail = [fee.term, fee.academicYear].filter(Boolean).join(' — ')
+  const rows = []
+  rows.push({ label: `${fee.label}${detail ? ` (${detail})` : ''}`, value: FCFA(fee.amount), color: '#111827' })
+  if (fee.discount?.amount > 0) {
+    rows.push({ label: `Remise (${fee.discount.reason || 'réduction'})`, value: `−${FCFA(fee.discount.amount)}`, color: '#059669' })
+    rows.push({ label: 'Net à payer', value: FCFA(net), color: '#111827', bold: true })
+  }
+  rows.push({ label: 'Montant de ce versement', value: FCFA(p.amount), color: '#111827', bold: true })
+  rows.push({ label: 'Total déjà payé', value: FCFA(fee.paid), color: '#111827' })
+  rows.push({ label: 'Reste à payer', value: FCFA(remaining), color: remaining > 0 ? '#dc2626' : '#059669', bold: true })
+
+  rows.forEach((r, i) => {
+    if (i % 2 === 1) doc.rect(M, y, CONTENT_W, rowH).fill('#f9fafb')
+    doc.fillColor(r.color).font(r.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10)
+      .text(r.label, M + 12, y + 8, { width: col2X - M - 24 })
+      .text(r.value, col2X, y + 8, { width: PAGE_W - M - col2X - 12, align: 'right' })
+    y += rowH
+  })
+  // Bordure du tableau
+  doc.lineWidth(0.5).strokeColor('#e5e7eb').rect(M, y - rows.length * rowH - rowH, CONTENT_W, (rows.length + 1) * rowH).stroke()
+
+  // ── Bandeau de statut ──
+  y += 20
+  const solded = (fee.paid || 0) >= net && net > 0
+  doc.roundedRect(M, y, CONTENT_W, 36, 8).fill(solded ? '#dcfce7' : '#fef3c7')
+  doc.fillColor(solded ? '#166534' : '#92400e').font('Helvetica-Bold').fontSize(11)
+    .text(
+      solded ? '✓ FRAIS ENTIÈREMENT SOLDÉ' : `PAIEMENT PARTIEL — Reste ${FCFA(remaining)}`,
+      M, y + 12, { width: CONTENT_W, align: 'center' }
+    )
+
+  // ── Pied de page ──
+  const footY = 720
+  doc.lineWidth(0.5).strokeColor('#e5e7eb').moveTo(M, footY).lineTo(PAGE_W - M, footY).stroke()
+  doc.font('Helvetica').fontSize(8).fillColor('#9ca3af')
+    .text('Reçu généré électroniquement par KATD-SCHÜLE — fait foi de paiement.', M, footY + 10, { width: 280 })
+  // Cadre signature
+  doc.lineWidth(0.8).strokeColor('#d1d5db').dash(3, { space: 3 })
+    .roundedRect(370, footY + 8, 175, 70, 6).stroke().undash()
+  doc.fontSize(8).fillColor('#9ca3af')
+    .text("Signature & cachet de l'établissement", 370, footY + 84, { width: 175, align: 'center' })
+}
 
 // DELETE /api/fees/:id
 router.delete('/:id', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {

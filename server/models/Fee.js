@@ -21,6 +21,15 @@ const feeSchema = new mongoose.Schema(
         note: { type: String },
       },
     ],
+    // Remise / réduction accordée par le directeur sur ce frais
+    discount: {
+      type: { type: String, enum: ['fixed', 'percentage'] },
+      value: { type: Number }, // valeur saisie (F CFA ou %)
+      amount: { type: Number, default: 0 }, // montant calculé en F CFA (source de vérité)
+      reason: { type: String, trim: true }, // motif de la réduction
+      date: { type: Date },
+      grantedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    },
     paymentMode: { type: String, enum: ['complet', 'tranches'], default: 'complet' },
     installments: [
       {
@@ -40,5 +49,24 @@ const feeSchema = new mongoose.Schema(
 )
 
 feeSchema.index({ student: 1, school: 1, academicYear: 1 })
+
+// Montant net à payer après remise
+feeSchema.methods.netAmount = function () {
+  return Math.max(0, (this.amount || 0) - (this.discount?.amount || 0))
+}
+feeSchema.virtual('net').get(function () {
+  return this.netAmount()
+})
+feeSchema.set('toJSON', { virtuals: true })
+feeSchema.set('toObject', { virtuals: true })
+
+// Recalcule le statut à chaque save (paiement, changement de montant ou de remise)
+feeSchema.pre('save', function (next) {
+  if (this.isModified('paid') || this.isModified('amount') || this.isModified('discount')) {
+    const net = this.netAmount()
+    this.status = this.paid >= net ? 'paid' : this.paid > 0 ? 'partial' : 'pending'
+  }
+  next()
+})
 
 module.exports = mongoose.model('Fee', feeSchema)

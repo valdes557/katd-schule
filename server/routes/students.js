@@ -408,9 +408,12 @@ router.get('/me/fees', protect, authorize('eleve'), async (req, res) => {
     if (!student) return res.status(404).json({ message: 'Aucune fiche élève liée à ce compte' })
     const Fee = require('../models/Fee')
     const fees = await Fee.find({ student: student._id }).sort({ createdAt: -1 }).lean()
-    const totalDue = fees.reduce((s, f) => s + (f.amount || 0), 0)
+    // .lean() : pas de virtuals -> calcul manuel du net après remise
+    fees.forEach((f) => { f.netAmount = Math.max(0, (f.amount || 0) - (f.discount?.amount || 0)) })
+    const totalDue = fees.reduce((s, f) => s + f.netAmount, 0)
     const totalPaid = fees.reduce((s, f) => s + (f.paid || 0), 0)
-    res.json({ success: true, data: { fees, totalDue, totalPaid, remaining: totalDue - totalPaid } })
+    const totalDiscount = fees.reduce((s, f) => s + (f.discount?.amount || 0), 0)
+    res.json({ success: true, data: { fees, totalDue, totalPaid, totalDiscount, remaining: Math.max(0, totalDue - totalPaid) } })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
