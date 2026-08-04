@@ -78,7 +78,7 @@ export default function AnnoncesPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-gray-400">{new Date(a.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                      <p className="text-[11px] text-gray-400">{new Date(a.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}{a.onBehalfOf ? ` · Publiée au nom de ${a.onBehalfOf}` : ''}</p>
                     </div>
                     {isDirector && (
                       <button type="button" onClick={() => handleDelete(a._id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500 flex-shrink-0"><Trash2 size={14} /></button>

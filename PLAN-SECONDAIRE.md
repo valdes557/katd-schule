@@ -20,13 +20,13 @@
 
 ## PHASE A — Dashboard Secrétaire
 
-- ⬜ A1. Modèle `TeacherFile` (dossier enseignant) : pièces jointes, statut `recu → verifie → transmis → valide/rejete`, transmission au Principal (directeur)
-- ⬜ A2. Routes `/api/teacher-files` (CRUD + workflow statuts, authorize secretaire/directeur)
-- ⬜ A3. Page `SecretaireDossiersPage` : réception, vérification (checklist pièces), transmission
-- ⬜ A4. Modèle `Mail` (courrier) : entrant/sortant, expéditeur, objet, catégorie, pièce scannée, statut archivé
-- ⬜ A5. Routes `/api/mails` + page `SecretaireCourrierPage` (réception, classement, archivage, recherche)
-- ⬜ A6. Publication d'annonces par la secrétaire (extension `announcements` : authorize secretaire, champ `onBehalfOf` Direction)
-- ⬜ A7. Documents : upload/scan (Cloudinary), archivage par catégorie, impression (vue print), téléchargement
+- ✅ A1. Modèle `TeacherFile` (dossier enseignant) : pièces jointes avec checklist, statut `recu → verifie → transmis → valide/rejete`, historique du workflow
+- ✅ A2. Routes `/api/teacher-files` (CRUD + upload pièces Cloudinary + workflow statuts, authorize secretaire/directeur, push transmission/décision)
+- ✅ A3. Page `SecretaireDossiersPage` (`/dashboard/secretariat/dossiers`) : réception, checklist pièces, transmission, validation/rejet par le principal — menus secrétaire + directeur
+- ✅ A4. Modèle `Mail` (courrier) : entrant/sortant, correspondant, objet, catégorie, référence, pièce scannée, statut archivé
+- ✅ A5. Routes `/api/mails` + page `SecretaireCourrierPage` (`/dashboard/secretariat/courrier`) : réception, classement par catégorie, archivage, recherche
+- ✅ A6. Publication d'annonces par la secrétaire : déjà autorisée (announcements.js) + champ `onBehalfOf` "La Direction" ajouté et affiché
+- ✅ A7. Documents : upload/scan Cloudinary + archivage par catégorie déjà couverts par `/dashboard/documents` (secrétaire autorisée) ; pièces scannées dans dossiers + courrier
 
 ## PHASE B — Dashboard Professeur
 
@@ -88,3 +88,4 @@
 | 2026-08-03 | C1 Discipline · C2 Paiements · C3 Bulletin PDF élève | ✅ |
 | 2026-08-04 | D1 Notifications push parent · D2 Discipline par enfant · D3 Solde frais par enfant | ✅ |
 | 2026-08-04 | E1-E2 Registre visiteurs · E3 Alertes QR invalide · E4 Onglet visiteurs surveillance | ✅ |
+| 2026-08-04 | A1-A3 Dossiers enseignants · A4-A5 Courrier · A6 onBehalfOf annonces · A7 Documents | ✅ |

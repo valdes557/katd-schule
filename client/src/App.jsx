@@ -210,6 +210,8 @@ const StaffAccountsPage = lazyPage(() => import('./pages/secondary/StaffAccounts
 const PresenceQrPage = lazyPage(() => import('./pages/secondary/PresenceQrPage'))
 const PortierScanPage = lazyPage(() => import('./pages/secondary/PortierScanPage'))
 const PortierVisitorsPage = lazyPage(() => import('./pages/secondary/PortierVisitorsPage'))
+const SecretaireDossiersPage = lazyPage(() => import('./pages/secondary/SecretaireDossiersPage'))
+const SecretaireCourrierPage = lazyPage(() => import('./pages/secondary/SecretaireCourrierPage'))
 const SurveillantPresencePage = lazyPage(() => import('./pages/secondary/SurveillantPresencePage'))
 const MyQrPage = lazyPage(() => import('./pages/secondary/MyQrPage'))
 const PermissionsPage = lazyPage(() => import('./pages/secondary/PermissionsPage'))
@@ -370,6 +372,8 @@ export default function App() {
         <Route path="portier/scan" element={<PortierScanPage />} />
         <Route path="portier/journal" element={<SurveillantPresencePage />} />
         <Route path="portier/visiteurs" element={<PortierVisitorsPage />} />
+        <Route path="secretariat/dossiers" element={<SecretaireDossiersPage />} />
+        <Route path="secretariat/courrier" element={<SecretaireCourrierPage />} />
         <Route path="surveillance" element={<SurveillantPresencePage />} />
         <Route path="eleve/mon-qr" element={<MyQrPage />} />
         <Route path="permissions" element={<PermissionsPage />} />

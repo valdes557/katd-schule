@@ -64,6 +64,8 @@ router.post('/', protect, authorize('directeur', 'super_admin', 'secretaire'), a
       title: title?.trim() || '',
       content: content.trim(),
       audience: finalAudience,
+      // La secrétaire publie au nom de la Direction
+      onBehalfOf: req.user.role === 'secretaire' ? 'La Direction' : '',
       createdBy: req.user._id,
     })
 

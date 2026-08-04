@@ -715,6 +715,53 @@ export const visitorsApi = {
   checkout: (id) => api.put(`/visitors/${id}/checkout`),
 }
 
+// Dossiers administratifs des enseignants (secrétariat → principal)
+export const teacherFilesApi = {
+  list: (params = {}) => api.get(`/teacher-files?${new URLSearchParams(params).toString()}`),
+  create: (data) => api.post('/teacher-files', data),
+  addAttachment: async (id, label, file) => {
+    const fd = new FormData()
+    fd.append('label', label || '')
+    fd.append('file', file)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/teacher-files/${id}/attachments`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+  checkAttachment: (id, attId, checked) => api.put(`/teacher-files/${id}/attachments/${attId}/check`, { checked }),
+  setStatus: (id, status, note = '') => api.put(`/teacher-files/${id}/status`, { status, note }),
+  remove: (id) => api.del(`/teacher-files/${id}`),
+}
+
+// Registre du courrier (secrétariat)
+export const mailsApi = {
+  list: (params = {}) => api.get(`/mails?${new URLSearchParams(params).toString()}`),
+  create: async (data) => {
+    const fd = new FormData()
+    for (const k of ['direction', 'reference', 'subject', 'correspondent', 'category', 'mailDate', 'note']) {
+      if (data[k] !== undefined && data[k] !== null) fd.append(k, data[k])
+    }
+    if (data.file) fd.append('file', data.file)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/mails`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+  update: (id, data) => api.put(`/mails/${id}`, data),
+  archive: (id, archived) => api.put(`/mails/${id}/archive`, { archived }),
+  remove: (id) => api.del(`/mails/${id}`),
+}
+
 // Demandes de permission (cycle Secondaire)
 export const permissionsApi = {
   list: (status = '') => api.get(`/permissions${status ? `?status=${status}` : ''}`),

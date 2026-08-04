@@ -8,6 +8,8 @@ const announcementSchema = new mongoose.Schema(
     content: { type: String, required: true, trim: true },
     // Cible de l'annonce : tout le monde, les parents uniquement, ou les enseignants uniquement
     audience: { type: String, enum: ['all', 'parents', 'teachers'], default: 'all' },
+    // Publiée par la secrétaire au nom de la Direction ("La Direction" affiché aux lecteurs)
+    onBehalfOf: { type: String, default: '' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
