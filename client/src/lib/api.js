@@ -822,6 +822,9 @@ export const feesApi = {
   recordPayment: (id, data) => api.post(`/fees/${id}/record-payment`, data),
   payWallet: (id, data) => api.post(`/fees/${id}/pay-wallet`, data),
   notifyInstallment: (id, installmentIndex) => api.post(`/fees/${id}/notify-installment`, { installmentIndex }),
+  // Remise/réduction sur un frais (montant fixe ou %) avec motif obligatoire
+  setDiscount: (id, data) => api.post(`/fees/${id}/discount`, data),
+  removeDiscount: (id) => api.del(`/fees/${id}/discount`),
   // Barèmes de pension par classe (prix + tranches) — définition puis assignation aux élèves
   modalities: () => api.get('/fees/modalities'),
   createModality: (data) => api.post('/fees/modalities', data),

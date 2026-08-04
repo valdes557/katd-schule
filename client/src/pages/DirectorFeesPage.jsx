@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import {
   CreditCard, Plus, Trash2, Loader2, CheckCircle2, Bell,
   AlertCircle, X, ChevronDown, ChevronUp, Users, Search,
-  Layers, Pencil, Send, ListChecks,
+  Layers, Pencil, Send, ListChecks, BadgePercent,
 } from 'lucide-react'
 import { feesApi, classesApi, studentsApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
@@ -35,6 +35,7 @@ export default function DirectorFeesPage() {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [showFeeModal, setShowFeeModal] = useState(null) // student object
+  const [editingFeeId, setEditingFeeId] = useState(null) // frais en cours de modification
   const [feeForm, setFeeForm] = useState(EMPTY_FEE)
   const [installments, setInstallments] = useState([])
   const [saving, setSaving] = useState(false)
@@ -42,6 +43,9 @@ export default function DirectorFeesPage() {
   const [payModal, setPayModal] = useState(null) // { feeId, installmentIndex?, total }
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', reference: '', note: '' })
   const [paying, setPaying] = useState(false)
+  const [discountModal, setDiscountModal] = useState(null) // { fee, student }
+  const [discountForm, setDiscountForm] = useState({ type: 'fixed', value: '', reason: '' })
+  const [discountSaving, setDiscountSaving] = useState(false)
   const [bulkModal, setBulkModal] = useState(false)
   const [bulkForm, setBulkForm] = useState({ scope: 'all', source: 'modality', label: 'Frais de scolarité', type: 'scolarite', amount: '', dueDate: '', term: '' })
   const [bulkInstallments, setBulkInstallments] = useState([])
@@ -79,15 +83,75 @@ export default function DirectorFeesPage() {
         amount: Number(feeForm.amount),
         installments: feeForm.paymentMode === 'tranches' ? installments.map((inst) => ({ ...inst, amount: Number(inst.amount) })) : [],
       }
-      const r = await feesApi.create(payload)
+      const r = editingFeeId ? await feesApi.update(editingFeeId, payload) : await feesApi.create(payload)
       if (r.success) {
         setShowFeeModal(null)
+        setEditingFeeId(null)
         setFeeForm(EMPTY_FEE)
         setInstallments([])
         loadPaymentStatus(selectedClass)
       } else alert(r.message || 'Erreur')
     } catch (err) { alert(err.message) }
     setSaving(false)
+  }
+
+  // Ouvre la modale de création en mode édition, pré-remplie depuis le frais
+  const openEditFee = (student, fee) => {
+    setEditingFeeId(fee._id)
+    setFeeForm({
+      label: fee.label || '',
+      type: fee.type || 'scolarite',
+      amount: String(fee.amount ?? ''),
+      dueDate: fee.dueDate ? String(fee.dueDate).slice(0, 10) : '',
+      paymentMode: fee.paymentMode || 'complet',
+      term: fee.term || '',
+      academicYear: fee.academicYear || EMPTY_FEE.academicYear,
+    })
+    setInstallments((fee.installments || []).map((i) => ({
+      label: i.label || '',
+      amount: String(i.amount ?? ''),
+      dueDate: i.dueDate ? String(i.dueDate).slice(0, 10) : '',
+    })))
+    setShowFeeModal(student)
+  }
+
+  const handleDeleteFee = async (fee) => {
+    if (!confirm(`Supprimer le frais « ${fee.label} » ?${fee.paid > 0 ? ' Les paiements enregistrés seront perdus.' : ''}`)) return
+    try {
+      const r = await feesApi.remove(fee._id)
+      if (r.success) loadPaymentStatus(selectedClass)
+      else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+  }
+
+  const handleApplyDiscount = async (e) => {
+    e.preventDefault()
+    if (!discountModal) return
+    setDiscountSaving(true)
+    try {
+      const r = await feesApi.setDiscount(discountModal.fee._id, {
+        type: discountForm.type,
+        value: Number(discountForm.value),
+        reason: discountForm.reason.trim(),
+      })
+      if (r.success) {
+        setDiscountModal(null)
+        setDiscountForm({ type: 'fixed', value: '', reason: '' })
+        loadPaymentStatus(selectedClass)
+      } else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
+    setDiscountSaving(false)
+  }
+
+  const handleRemoveDiscount = async (fee) => {
+    if (!confirm('Retirer la remise appliquée sur ce frais ?')) return
+    try {
+      const r = await feesApi.removeDiscount(fee._id)
+      if (r.success) {
+        setDiscountModal(null)
+        loadPaymentStatus(selectedClass)
+      } else alert(r.message || 'Erreur')
+    } catch (err) { alert(err.message) }
   }
 
   const handleRecordPayment = async (e) => {
@@ -228,6 +292,7 @@ export default function DirectorFeesPage() {
                 </div>
                 <div className="text-right hidden sm:block">
                   <p className="text-xs font-bold text-gray-900">{FMT(s.totalPaid)} / {FMT(s.totalDue)} F CFA</p>
+                  {s.totalDiscount > 0 && <p className="text-xs text-purple-600 font-medium">Remises : −{FMT(s.totalDiscount)} F</p>}
                   <p className="text-xs text-red-500">Reste : {FMT(s.remaining)} F</p>
                 </div>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${s.fullyPaid ? 'bg-green-100 text-green-700' : s.totalPaid > 0 ? 'bg-amber-100 text-amber-700' : s.totalDue > 0 ? 'bg-red-100 text-red-500' : 'bg-gray-100 text-gray-500'}`}>
@@ -239,7 +304,7 @@ export default function DirectorFeesPage() {
               {expanded === s.studentId && (
                 <div className="border-t border-gray-100 p-4 space-y-3">
                   <div className="flex justify-end">
-                    <button onClick={() => { setShowFeeModal(s); setFeeForm(EMPTY_FEE); setInstallments([]) }} className="btn-primary text-xs">
+                    <button onClick={() => { setShowFeeModal(s); setEditingFeeId(null); setFeeForm(EMPTY_FEE); setInstallments([]) }} className="btn-primary text-xs">
                       <Plus size={12} /> Ajouter des frais
                     </button>
                   </div>
@@ -247,18 +312,36 @@ export default function DirectorFeesPage() {
                   {s.fees.length === 0 ? (
                     <p className="text-xs text-gray-400 text-center py-2">Aucun frais enregistré</p>
                   ) : (
-                    s.fees.map((fee) => (
+                    s.fees.map((fee) => {
+                      const net = fee.netAmount ?? fee.amount
+                      return (
                       <div key={fee._id} className="bg-gray-50 rounded-xl p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
                             <p className="text-sm font-semibold text-gray-800">{fee.label}</p>
-                            <p className="text-xs text-gray-500">{FMT(fee.paid)} / {FMT(fee.amount)} F CFA · {fee.paymentMode === 'tranches' ? 'En tranches' : 'Paiement complet'}</p>
+                            <p className="text-xs text-gray-500">
+                              {FMT(fee.paid)} / {fee.discount ? (
+                                <><span className="line-through text-gray-400">{FMT(fee.amount)}</span> <span className="font-semibold text-gray-700">{FMT(net)}</span></>
+                              ) : FMT(fee.amount)} F CFA · {fee.paymentMode === 'tranches' ? 'En tranches' : 'Paiement complet'}
+                            </p>
+                            {fee.discount && (
+                              <span className="inline-flex items-center gap-1 mt-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
+                                <BadgePercent size={10} /> Remise −{FMT(fee.discount.amount)} F{fee.discount.type === 'percentage' ? ` (${fee.discount.value}%)` : ''} · {fee.discount.reason}
+                              </span>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[fee.status] || 'bg-gray-100 text-gray-500'}`}>{STATUS_LABELS[fee.status] || fee.status}</span>
                             {fee.status !== 'paid' && (
-                              <button onClick={() => { setPayModal({ feeId: fee._id, total: fee.amount - fee.paid }); setPayForm({ amount: '', method: 'cash', reference: '', note: '' }) }} className="btn-ghost text-xs py-1 px-2">Payer</button>
+                              <button onClick={() => { setPayModal({ feeId: fee._id, total: Math.max(0, net - fee.paid) }); setPayForm({ amount: '', method: 'cash', reference: '', note: '' }) }} className="btn-ghost text-xs py-1 px-2">Payer</button>
                             )}
+                            <button
+                              onClick={() => { setDiscountModal({ fee, student: s }); setDiscountForm({ type: fee.discount?.type || 'fixed', value: fee.discount ? String(fee.discount.value) : '', reason: fee.discount?.reason || '' }) }}
+                              title={fee.discount ? 'Modifier la remise' : 'Accorder une remise'}
+                              className={`p-1.5 rounded hover:bg-purple-100 ${fee.discount ? 'text-purple-600 bg-purple-50' : 'text-gray-400'}`}
+                            ><BadgePercent size={14} /></button>
+                            <button onClick={() => openEditFee(s, fee)} title="Modifier le frais" className="p-1.5 rounded text-gray-400 hover:bg-blue-50 hover:text-blue-600"><Pencil size={14} /></button>
+                            <button onClick={() => handleDeleteFee(fee)} title="Supprimer le frais" className="p-1.5 rounded text-gray-400 hover:bg-red-50 hover:text-red-500"><Trash2 size={14} /></button>
                           </div>
                         </div>
 
@@ -283,7 +366,8 @@ export default function DirectorFeesPage() {
                           </div>
                         )}
                       </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               )}
@@ -298,8 +382,8 @@ export default function DirectorFeesPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-gray-900">Frais pour {showFeeModal.name}</h3>
-              <button onClick={() => setShowFeeModal(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+              <h3 className="text-base font-bold text-gray-900">{editingFeeId ? `Modifier le frais — ${showFeeModal.name}` : `Frais pour ${showFeeModal.name}`}</h3>
+              <button onClick={() => { setShowFeeModal(null); setEditingFeeId(null) }} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
             </div>
             <form onSubmit={handleCreateFee} className="space-y-3">
               <div>
@@ -354,9 +438,9 @@ export default function DirectorFeesPage() {
               )}
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowFeeModal(null)} className="btn-ghost flex-1 justify-center">Annuler</button>
+                <button type="button" onClick={() => { setShowFeeModal(null); setEditingFeeId(null) }} className="btn-ghost flex-1 justify-center">Annuler</button>
                 <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
-                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Enregistrer
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : editingFeeId ? <CheckCircle2 size={14} /> : <Plus size={14} />} {editingFeeId ? 'Mettre à jour' : 'Enregistrer'}
                 </button>
               </div>
             </form>
@@ -404,6 +488,74 @@ export default function DirectorFeesPage() {
           </div>
         </div>
       )}
+
+      {/* Discount Modal */}
+      {discountModal && (() => {
+        const dFee = discountModal.fee
+        const preview = discountForm.value
+          ? (discountForm.type === 'percentage'
+            ? Math.round((dFee.amount * Number(discountForm.value)) / 100)
+            : Number(discountForm.value))
+          : 0
+        const previewNet = Math.max(0, dFee.amount - preview)
+        const invalid = preview > dFee.amount || (discountForm.type === 'percentage' && Number(discountForm.value) > 100)
+        return (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2"><BadgePercent size={18} className="text-purple-600" /> Remise / Réduction</h3>
+              <button onClick={() => setDiscountModal(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              {discountModal.student.name} · <strong>{dFee.label}</strong> · {FMT(dFee.amount)} F CFA
+            </p>
+            {dFee.discount && (
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 mb-3 flex items-center justify-between gap-2">
+                <p className="text-xs text-purple-700">
+                  Remise actuelle : <strong>−{FMT(dFee.discount.amount)} F</strong>{dFee.discount.type === 'percentage' ? ` (${dFee.discount.value}%)` : ''}<br />
+                  Motif : {dFee.discount.reason}
+                </p>
+                <button type="button" onClick={() => handleRemoveDiscount(dFee)} className="text-xs text-red-500 hover:bg-red-50 border border-red-200 rounded-lg px-2 py-1 flex-shrink-0">Retirer</button>
+              </div>
+            )}
+            <form onSubmit={handleApplyDiscount} className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {[{ v: 'fixed', l: 'Montant fixe (F CFA)' }, { v: 'percentage', l: 'Pourcentage (%)' }].map((opt) => (
+                  <button key={opt.v} type="button" onClick={() => setDiscountForm({ ...discountForm, type: opt.v })}
+                    className={`text-sm py-2 rounded-xl border transition-colors ${discountForm.type === opt.v ? 'bg-purple-50 border-purple-300 text-purple-700 font-semibold' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    {opt.l}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">{discountForm.type === 'percentage' ? 'Pourcentage de réduction *' : 'Montant de la réduction (F CFA) *'}</label>
+                <input required type="number" min="1" max={discountForm.type === 'percentage' ? 100 : dFee.amount}
+                  value={discountForm.value} onChange={(e) => setDiscountForm({ ...discountForm, value: e.target.value })}
+                  className="input text-sm mt-1 w-full" placeholder={discountForm.type === 'percentage' ? 'Ex : 10' : 'Ex : 10 000'} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Motif de la réduction *</label>
+                <input required value={discountForm.reason} onChange={(e) => setDiscountForm({ ...discountForm, reason: e.target.value })}
+                  className="input text-sm mt-1 w-full" placeholder="Ex : Bourse, cas social, fratrie..." />
+              </div>
+              {preview > 0 && (
+                <div className={`rounded-xl p-3 text-xs ${invalid ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
+                  {invalid
+                    ? 'La remise dépasse le montant du frais.'
+                    : <>Remise : <strong>−{FMT(preview)} F CFA</strong> · Net à payer : <strong>{FMT(previewNet)} F CFA</strong></>}
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setDiscountModal(null)} className="btn-ghost flex-1 justify-center">Annuler</button>
+                <button type="submit" disabled={discountSaving || invalid} className="btn-primary flex-1 justify-center">
+                  {discountSaving ? <Loader2 size={14} className="animate-spin" /> : <BadgePercent size={14} />} Appliquer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        )
+      })()}
 
       {/* Bulk Assign Modal */}
       {bulkModal && (
