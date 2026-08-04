@@ -52,7 +52,8 @@ export default function ElevePaiementsPage() {
         <div className="space-y-3">
           {fees.map((f) => {
             const st = STATUS[f.status] || STATUS.pending
-            const rest = (f.amount || 0) - (f.paid || 0)
+            const net = f.netAmount ?? Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+            const rest = Math.max(0, net - (f.paid || 0))
             return (
               <div key={f._id} className="card p-4">
                 <div className="flex items-center justify-between gap-2">
@@ -62,16 +63,19 @@ export default function ElevePaiementsPage() {
                       {f.term || ''}{f.academicYear ? ` · ${f.academicYear}` : ''}
                       {f.dueDate ? ` · échéance ${new Date(f.dueDate).toLocaleDateString('fr-FR')}` : ''}
                     </p>
+                    {f.discount?.amount > 0 && (
+                      <p className="text-[11px] text-purple-600 font-medium mt-0.5">🎁 Remise −{fmt(f.discount.amount)} F · {f.discount.reason}</p>
+                    )}
                   </div>
                   <span className={`text-xs font-semibold border rounded-full px-2 py-0.5 shrink-0 ${st.cls}`}>{st.label}</span>
                 </div>
                 <div className="flex items-center justify-between mt-2 text-sm">
-                  <span className="text-gray-600">Payé : <b className="text-green-600">{fmt(f.paid)} F</b> / {fmt(f.amount)} F</span>
+                  <span className="text-gray-600">Payé : <b className="text-green-600">{fmt(f.paid)} F</b> / {f.discount?.amount > 0 ? <><span className="line-through text-gray-400">{fmt(f.amount)}</span> {fmt(net)} F</> : `${fmt(f.amount)} F`}</span>
                   {rest > 0 && <span className="text-red-600 text-xs font-semibold">Reste {fmt(rest)} F</span>}
                 </div>
                 {/* Barre de progression */}
                 <div className="h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${f.amount ? Math.min(100, Math.round(((f.paid || 0) / f.amount) * 100)) : 0}%` }} />
+                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${net ? Math.min(100, Math.round(((f.paid || 0) / net) * 100)) : 0}%` }} />
                 </div>
                 {/* Tranches */}
                 {(f.installments || []).length > 0 && (

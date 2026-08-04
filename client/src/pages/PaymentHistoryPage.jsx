@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { feesApi, parentApi, classesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
-import { History, Loader2, ChevronDown, ChevronRight, Wallet, CheckCircle2, AlertCircle, Download } from 'lucide-react'
+import { History, Loader2, ChevronDown, ChevronRight, Wallet, CheckCircle2, AlertCircle, Download, BadgePercent } from 'lucide-react'
 import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} F CFA`
@@ -33,7 +33,7 @@ function DirectorView() {
     [classId],
   )
   const rows = historyQ.data?.data || []
-  const summary = historyQ.data?.summary || { totalDue: 0, totalPaid: 0, remaining: 0, studentCount: 0 }
+  const summary = historyQ.data?.summary || { totalDue: 0, totalPaid: 0, totalDiscount: 0, remaining: 0, studentCount: 0 }
   const loading = historyQ.loading
 
   const toggle = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }))
@@ -52,11 +52,12 @@ function DirectorView() {
         <DownloadPdfButton containerRef={pdfRef} filename="historique-paiements.pdf" title="Historique des paiements" label="Paiements PDF" />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard label="Total dû" value={fmt(summary.totalDue)} icon={Wallet} color={{ bg: 'bg-blue-100', text: 'text-blue-600' }} />
         <StatCard label="Total payé" value={fmt(summary.totalPaid)} icon={CheckCircle2} color={{ bg: 'bg-green-100', text: 'text-green-600' }} />
+        <StatCard label="Remises accordées" value={fmt(summary.totalDiscount)} icon={BadgePercent} color={{ bg: 'bg-purple-100', text: 'text-purple-600' }} />
         <StatCard label="Reste à payer" value={fmt(summary.remaining)} icon={AlertCircle} color={{ bg: 'bg-amber-100', text: 'text-amber-600' }} />
-        <StatCard label="Élèves" value={summary.studentCount} icon={History} color={{ bg: 'bg-purple-100', text: 'text-purple-600' }} />
+        <StatCard label="Élèves" value={summary.studentCount} icon={History} color={{ bg: 'bg-gray-100', text: 'text-gray-600' }} />
       </div>
 
       <div className="card p-4 flex items-center gap-3">
@@ -87,6 +88,7 @@ function DirectorView() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className="text-xs text-gray-500">Payé <span className="font-semibold text-green-600">{fmt(r.totalPaid)}</span></div>
+                      {r.totalDiscount > 0 && <div className="text-xs text-gray-500">Remise <span className="font-semibold text-purple-600">−{fmt(r.totalDiscount)}</span></div>}
                       <div className="text-xs text-gray-500">Reste <span className={`font-semibold ${r.remaining > 0 ? 'text-amber-600' : 'text-gray-400'}`}>{fmt(r.remaining)}</span></div>
                     </div>
                     <div className="hidden sm:block w-24 flex-shrink-0">
@@ -112,6 +114,23 @@ function DirectorView() {
                             ))}
                           </tbody>
                         </table>
+                      )}
+                      {r.discounts?.length > 0 && (
+                        <div className="mt-3 pl-7">
+                          <p className="text-[11px] font-bold text-purple-700 uppercase tracking-wide flex items-center gap-1 mb-1"><BadgePercent size={12} /> Réductions accordées</p>
+                          <div className="space-y-1">
+                            {r.discounts.map((d, i) => (
+                              <div key={i} className="flex items-center justify-between text-xs bg-purple-50 rounded-lg px-2 py-1.5">
+                                <div className="min-w-0">
+                                  <span className="text-gray-700 font-medium">{d.label}</span>
+                                  <span className="text-gray-500"> · {d.reason}</span>
+                                  {d.date && <span className="text-gray-400"> · {new Date(d.date).toLocaleDateString('fr-FR')}</span>}
+                                </div>
+                                <span className="font-semibold text-purple-600 flex-shrink-0 ml-2">−{fmt(d.amount)}{d.type === 'percentage' ? ` (${d.value}%)` : ''}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
@@ -175,15 +194,19 @@ function ParentView() {
         ) : (
           <div className="space-y-2">
             {fees.map((f) => {
-              const remaining = Math.max(0, (f.amount || 0) - (f.paid || 0))
+              const net = Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+              const remaining = Math.max(0, net - (f.paid || 0))
               return (
                 <div key={f._id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{f.label}</p>
                     <p className="text-xs text-gray-400">{f.student?.lastName} {f.student?.firstName}</p>
+                    {f.discount?.amount > 0 && (
+                      <p className="text-[11px] text-purple-600 font-medium">Remise −{fmt(f.discount.amount)} · {f.discount.reason}</p>
+                    )}
                   </div>
                   <div className="text-right flex-shrink-0 ml-3">
-                    <p className="text-xs text-gray-500">Payé <span className="font-semibold text-green-600">{fmt(f.paid)}</span> / {fmt(f.amount)}</p>
+                    <p className="text-xs text-gray-500">Payé <span className="font-semibold text-green-600">{fmt(f.paid)}</span> / {f.discount?.amount > 0 ? <><span className="line-through text-gray-400">{fmt(f.amount)}</span> {fmt(net)}</> : fmt(f.amount)}</p>
                     <p className="text-xs text-gray-500">Reste <span className={`font-semibold ${remaining > 0 ? 'text-amber-600' : 'text-gray-400'}`}>{fmt(remaining)}</span></p>
                   </div>
                 </div>

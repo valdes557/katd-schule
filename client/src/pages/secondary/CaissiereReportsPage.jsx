@@ -36,11 +36,12 @@ export default function CaissiereReportsPage() {
     const key = f.student?.class?.name || 'Sans classe'
     if (!byClass.has(key)) { byClass.set(key, { expected: 0, paid: 0, students: 0 }); seenStudents.set(key, new Set()) }
     const c = byClass.get(key)
-    c.expected += f.amount || 0
+    const net = Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+    c.expected += net
     c.paid += f.paid || 0
     const sid = f.student?._id || f.student
     if (sid && !seenStudents.get(key).has(String(sid))) { seenStudents.get(key).add(String(sid)); c.students += 1 }
-    totalExpected += f.amount || 0
+    totalExpected += net
     totalPaid += f.paid || 0
   }
   const totalExpenses = expenses.reduce((s, e) => s + (e.amount || 0), 0)

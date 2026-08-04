@@ -130,9 +130,11 @@ export default function ParentFinancesPage() {
       ) : (
         <div className="space-y-4">
           {children.map(({ student, fees: childFees }) => {
-            // Solde par enfant : total / payé / reste sur l'ensemble de ses frais
-            const childTotal = childFees.reduce((s, f) => s + (f.amount || 0), 0)
+            // Solde par enfant : total net (après remise) / payé / reste
+            const netOf = (f) => Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+            const childTotal = childFees.reduce((s, f) => s + netOf(f), 0)
             const childPaid = childFees.reduce((s, f) => s + (f.paid || 0), 0)
+            const childDiscount = childFees.reduce((s, f) => s + (f.discount?.amount || 0), 0)
             const childRemaining = Math.max(0, childTotal - childPaid)
             return (
             <div key={student?._id || 'inconnu'} className="card p-4">
@@ -149,6 +151,7 @@ export default function ParentFinancesPage() {
                 </div>
                 <div className="flex items-center gap-3 text-xs sm:text-right">
                   <span className="text-gray-600">Total : <strong>{FMT(childTotal)} F</strong></span>
+                  {childDiscount > 0 && <span className="text-purple-600">Remise : <strong>−{FMT(childDiscount)} F</strong></span>}
                   <span className="text-green-600">Payé : <strong>{FMT(childPaid)} F</strong></span>
                   <span className={childRemaining > 0 ? 'text-red-600' : 'text-green-600'}>
                     {childRemaining > 0 ? <>Solde : <strong>{FMT(childRemaining)} F</strong></> : <strong>Soldé ✓</strong>}
@@ -159,7 +162,8 @@ export default function ParentFinancesPage() {
               <div className="space-y-3 mt-3">
                 {childFees.map((f) => {
                   const st = STATUS_LABELS[f.status] || STATUS_LABELS.pending
-                  const remaining = f.amount - f.paid
+                  const net = Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+                  const remaining = Math.max(0, net - (f.paid || 0))
                   const isTranches = f.paymentMode === 'tranches' && f.installments?.length > 0
                   return (
                     <div key={f._id} className="bg-gray-50 rounded-xl p-3">
@@ -167,8 +171,11 @@ export default function ParentFinancesPage() {
                         <p className="text-sm font-semibold text-gray-800">{f.label}</p>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${st.cls}`}>{st.label}</span>
                       </div>
+                      {f.discount?.amount > 0 && (
+                        <p className="text-[11px] text-purple-600 font-medium mt-1">🎁 Remise : −{FMT(f.discount.amount)} F · {f.discount.reason}</p>
+                      )}
                       <div className="flex items-center gap-4 mt-1 text-xs">
-                        <span className="text-gray-600">Total : <strong>{FMT(f.amount)} F</strong></span>
+                        <span className="text-gray-600">Total : {f.discount?.amount > 0 ? <><span className="line-through text-gray-400">{FMT(f.amount)}</span> <strong>{FMT(net)} F</strong></> : <strong>{FMT(f.amount)} F</strong>}</span>
                         <span className="text-green-600">Payé : <strong>{FMT(f.paid)} F</strong></span>
                         {remaining > 0 && <span className="text-red-600">Reste : <strong>{FMT(remaining)} F</strong></span>}
                       </div>
@@ -243,7 +250,7 @@ function PayWalletModal({ ctx, onClose, onPaid }) {
   const { fee, student, installmentIndex } = ctx
   const isTranche = installmentIndex !== undefined && installmentIndex !== null
   const tranche = isTranche ? fee.installments[installmentIndex] : null
-  const remaining = Math.max(0, (fee.amount || 0) - (fee.paid || 0))
+  const remaining = Math.max(0, (fee.amount || 0) - (fee.discount?.amount || 0) - (fee.paid || 0))
   const [amount, setAmount] = useState(isTranche ? String(tranche.amount) : String(remaining))
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
