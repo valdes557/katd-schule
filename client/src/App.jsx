@@ -222,6 +222,7 @@ const EleveHomeworksPage = lazyPage(() => import('./pages/secondary/EleveHomewor
 const LessonLogPage = lazyPage(() => import('./pages/secondary/LessonLogPage'))
 const EleveDisciplinePage = lazyPage(() => import('./pages/secondary/EleveDisciplinePage'))
 const ElevePaiementsPage = lazyPage(() => import('./pages/secondary/ElevePaiementsPage'))
+const ParentDisciplinePage = lazyPage(() => import('./pages/ParentDisciplinePage'))
 
 function PageFallback() {
   return (
@@ -401,6 +402,7 @@ export default function App() {
         <Route path="parent/emploi-du-temps" element={<ParentSectionPage section="timetable" />} />
         <Route path="parent/matieres" element={<ParentSectionPage section="subjects" />} />
         <Route path="parent/frais" element={<ParentSectionPage section="fees" />} />
+        <Route path="parent/discipline" element={<ParentDisciplinePage />} />
         <Route path="bulletin" element={<BulletinPage />} />
         <Route path="bulletin/:studentId" element={<BulletinPage />} />
         <Route path="parent/finances" element={<ParentFinancesPage />} />

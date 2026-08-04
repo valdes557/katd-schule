@@ -392,11 +392,19 @@ router.put('/publish/batch', protect, authorize('directeur', 'enseignant', 'supe
 
     // Notifie les parents des notes publiées (async, best-effort)
     Grade.find({ _id: { $in: ids }, status: 'publie' }).then(async (grades) => {
+      const push = require('../services/pushService')
       for (const grade of grades) {
         try {
           const student = await Student.findById(grade.student).populate('parentUser', 'email name')
-          if (!student?.parentUser?.email) continue
+          if (!student?.parentUser) continue
           const periodLabel = grade.sequence || grade.term || ''
+          // Push temps réel au parent
+          push.sendToUser(student.parentUser._id, {
+            title: `📊 Nouvelle note — ${grade.subject}`,
+            body: `${student.lastName} ${student.firstName} : ${grade.value}/20${periodLabel ? ` (${periodLabel})` : ''}`,
+            url: '/dashboard/parent/notes',
+          }).catch(() => {})
+          if (!student.parentUser.email) continue
           sendEmail({
             to: student.parentUser.email,
             subject: `📊 Nouvelle note — ${grade.subject} (${grade.value}/20)`,

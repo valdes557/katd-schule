@@ -135,6 +135,19 @@ router.post('/scan', protect, authorize('portier', 'surveillant_general', 'direc
       } catch (e) { /* push best-effort */ }
     }
 
+    // Push best-effort au PARENT : entrée (retard ou à l'heure) et sortie de son enfant
+    if (personKind === 'student' && person.parentUser) {
+      try {
+        const push = require('../services/pushService')
+        const payload = direction === 'out'
+          ? { title: '🏫 Sortie de l\'école', body: `${name} a quitté l'école à ${fmtTime(record.checkOutAt)}`, url: '/dashboard/parent/presence' }
+          : record.status === 'late'
+            ? { title: '⏰ Retard de votre enfant', body: `${name} est arrivé(e) en retard de ${record.lateMinutes} min (${fmtTime(record.checkInAt)})`, url: '/dashboard/parent/presence' }
+            : { title: '✅ Arrivée à l\'école', body: `${name} est arrivé(e) à ${fmtTime(record.checkInAt)}`, url: '/dashboard/parent/presence' }
+        push.sendToUser(person.parentUser, payload).catch(() => {})
+      } catch (e) { /* push best-effort */ }
+    }
+
     res.json({
       success: true,
       data: {

@@ -30,6 +30,7 @@ export const navSections = [
       { label: 'Bulletin trimestriel', icon: Receipt, path: '/dashboard/bulletin' },
       { label: 'Présence (mon enfant)', icon: CalendarCheck, path: '/dashboard/parent/presence' },
       { label: 'Présence de la classe', icon: Users, path: '/dashboard/parent/presence-classe' },
+      { label: 'Discipline', icon: Shield, path: '/dashboard/parent/discipline' },
       { label: 'Devoirs assignés', icon: BookOpen, path: '/dashboard/parent/devoirs' },
       { label: 'Complétion devoirs', icon: ClipboardList, path: '/dashboard/parent/completion' },
       { label: 'Emploi du temps', icon: Clock, path: '/dashboard/parent/emploi-du-temps' },

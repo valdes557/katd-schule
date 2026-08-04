@@ -105,8 +105,14 @@ async function decide(req, res, status) {
     request.decisionNote = req.body.note || ''
     await request.save()
 
-    // Notifie le demandeur + le portier (si approuvée)
+    // Notifie le demandeur + le parent de l'élève concerné + le portier (si approuvée)
     const targets = [request.requester]
+    if (request.student) {
+      const child = await Student.findById(request.student).select('parentUser')
+      if (child?.parentUser && String(child.parentUser) !== String(request.requester)) {
+        targets.push(child.parentUser)
+      }
+    }
     if (status === 'approved') {
       const porters = await User.find({ school: schoolId(req), role: 'portier', isActive: { $ne: false } }).select('_id')
       targets.push(...porters.map((u) => u._id))

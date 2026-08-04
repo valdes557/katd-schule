@@ -129,16 +129,30 @@ export default function ParentFinancesPage() {
         <div className="text-center py-12 text-gray-400"><FileText size={36} className="mx-auto mb-3 opacity-30" /><p>Aucune pension enregistrée pour vos enfants</p></div>
       ) : (
         <div className="space-y-4">
-          {children.map(({ student, fees: childFees }) => (
+          {children.map(({ student, fees: childFees }) => {
+            // Solde par enfant : total / payé / reste sur l'ensemble de ses frais
+            const childTotal = childFees.reduce((s, f) => s + (f.amount || 0), 0)
+            const childPaid = childFees.reduce((s, f) => s + (f.paid || 0), 0)
+            const childRemaining = Math.max(0, childTotal - childPaid)
+            return (
             <div key={student?._id || 'inconnu'} className="card p-4">
-              {/* En-tête enfant : nom + matricule */}
-              <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                  <GraduationCap size={18} className="text-indigo-600" />
+              {/* En-tête enfant : nom + matricule + solde */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                    <GraduationCap size={18} className="text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{student?.firstName} {student?.lastName}</p>
+                    <p className="text-xs text-gray-500">Matricule : <span className="font-mono font-semibold">{student?.matricule || '—'}</span></p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-gray-900">{student?.firstName} {student?.lastName}</p>
-                  <p className="text-xs text-gray-500">Matricule : <span className="font-mono font-semibold">{student?.matricule || '—'}</span></p>
+                <div className="flex items-center gap-3 text-xs sm:text-right">
+                  <span className="text-gray-600">Total : <strong>{FMT(childTotal)} F</strong></span>
+                  <span className="text-green-600">Payé : <strong>{FMT(childPaid)} F</strong></span>
+                  <span className={childRemaining > 0 ? 'text-red-600' : 'text-green-600'}>
+                    {childRemaining > 0 ? <>Solde : <strong>{FMT(childRemaining)} F</strong></> : <strong>Soldé ✓</strong>}
+                  </span>
                 </div>
               </div>
 
@@ -212,7 +226,8 @@ export default function ParentFinancesPage() {
                 })}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

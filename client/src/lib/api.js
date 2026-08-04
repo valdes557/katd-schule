@@ -125,6 +125,8 @@ export const studentsApi = {
   // Espace élève (Secondaire) : discipline + frais en lecture seule
   myDiscipline: () => api.get('/students/me/discipline'),
   myFees: () => api.get('/students/me/fees'),
+  // Discipline d'un élève (parent : ses enfants ; direction : élèves de l'école)
+  discipline: (studentId) => api.get(`/students/${studentId}/discipline`),
   linkParent: (email, studentIds) => api.post('/students/link-parent', { email, studentIds }),
 }
 

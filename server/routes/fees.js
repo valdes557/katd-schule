@@ -414,8 +414,18 @@ router.post('/:id/record-payment', protect, authorize('directeur', 'super_admin'
     fee.status = fee.paid >= fee.amount ? 'paid' : fee.paid > 0 ? 'partial' : 'pending'
     await fee.save()
 
-    // Notify parent by email
+    // Notify parent by email + push
     const parentEmail = fee.student?.parentUser?.email
+    if (fee.student?.parentUser?._id) {
+      try {
+        const push = require('../services/pushService')
+        push.sendToUser(fee.student.parentUser._id, {
+          title: '✅ Paiement enregistré',
+          body: `${Number(amount).toLocaleString('fr-FR')} F reçus pour ${fee.student?.lastName} ${fee.student?.firstName} (${fee.label}). Reste : ${Math.max(0, fee.amount - fee.paid).toLocaleString('fr-FR')} F`,
+          url: '/dashboard/parent/finances',
+        }).catch(() => {})
+      } catch (e) { /* push best-effort */ }
+    }
     if (parentEmail) {
       sendEmail({
         to: parentEmail,

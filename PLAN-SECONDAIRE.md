@@ -45,9 +45,9 @@
 
 ## PHASE D — Dashboard Parent
 
-- ⬜ D1. Notifications automatiques : déclencheurs serveur sur Absence/Retard (EntryAttendance + Attendance), Sanction, Note publiée, Paiement reçu, Annonce → `Notification` + push + badge in-app
-- ⬜ D2. Vue Discipline par enfant
-- ⬜ D3. Solde des frais par enfant (déjà partiel dans ParentFinancesPage — compléter)
+- ✅ D1. Notifications automatiques : push parent sur Absence/Retard en classe (attendance.js), Entrée/Sortie/Retard portier (entryAttendance.js), Note publiée (grades.js), Paiement reçu (fees.js), Permission décidée (permissions.js) ; Annonces déjà couvertes (announcements.js)
+- ✅ D2. Vue Discipline par enfant : `GET /api/students/:id/discipline` (parent = ses enfants ; direction = école) + composant partagé `DisciplineView` + page `/dashboard/parent/discipline` (sélecteur d'enfant) + menu parent
+- ✅ D3. Solde des frais par enfant : ParentFinancesPage — total/payé/solde affichés dans l'en-tête de chaque enfant
 
 ## PHASE E — Dashboard Portier
 
@@ -86,3 +86,4 @@
 | 2026-08-03 | F1 Wallet pour tous (hook + backfill + menus) | ✅ |
 | 2026-08-03 | B1 Appel par QR · B2 Workflow notes · B3-B4 Cahier de texte · B5 Restrictions prof | ✅ |
 | 2026-08-03 | C1 Discipline · C2 Paiements · C3 Bulletin PDF élève | ✅ |
+| 2026-08-04 | D1 Notifications push parent · D2 Discipline par enfant · D3 Solde frais par enfant | ✅ |

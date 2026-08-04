@@ -174,10 +174,11 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
         .populate('parentUser', 'email name')
         .populate('class', 'name')
         .then((students) => {
+          const push = require('../services/pushService')
           students.forEach((s) => {
             const rec = notifiable.find((r) => r.student.toString() === s._id.toString())
             const status = rec?.status
-            if (!status || !s.parentUser?.email) return
+            if (!status || !s.parentUser) return
 
             let label = 'Présent'
             let adjective = 'présent(e)'
@@ -197,6 +198,16 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
               color = '#4F46E5'
             }
 
+            // Push temps réel (absence/retard uniquement : signal utile, pas de spam "présent")
+            if (['absent', 'late'].includes(status)) {
+              push.sendToUser(s.parentUser._id, {
+                title: status === 'absent' ? '🚨 Absence signalée' : '⏰ Retard signalé',
+                body: `${s.lastName} ${s.firstName} (${s.class?.name || ''}) a été marqué(e) ${adjective} le ${new Date(date).toLocaleDateString('fr-FR')}`,
+                url: '/dashboard/parent/presence',
+              }).catch(() => {})
+            }
+
+            if (!s.parentUser.email) return
             sendEmail({
               to: s.parentUser.email,
               subject: `📋 Présence — ${s.lastName} ${s.firstName} (${label})`,

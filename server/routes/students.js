@@ -331,44 +331,71 @@ router.get('/me/homeworks', protect, authorize('eleve'), async (req, res) => {
   }
 })
 
-// GET /api/students/me/discipline — dossier discipline de l'élève connecté :
-// retards à l'entrée (scan portier), absences/retards en classe (appels), permissions.
+// Construit le dossier discipline d'un élève : retards à l'entrée (scan portier),
+// absences/retards en classe (appels), permissions. Partagé élève / parent.
+async function buildDiscipline(student) {
+  const EntryAttendance = require('../models/EntryAttendance')
+  const Attendance = require('../models/Attendance')
+  const PermissionRequest = require('../models/PermissionRequest')
+
+  const [entries, classAttendance, permissions] = await Promise.all([
+    // Retards à l'entrée de l'école (scan portier)
+    EntryAttendance.find({ student: student._id }).sort({ day: -1 }).limit(200).lean(),
+    // Appels en classe où l'élève figure
+    Attendance.find({ class: student.class, 'records.student': student._id }).sort({ date: -1 }).limit(200).lean(),
+    // Permissions le concernant (sortie / absence / retard justifié)
+    PermissionRequest.find({ student: student._id }).sort({ createdAt: -1 }).limit(100)
+      .populate('decidedBy', 'name role').lean(),
+  ])
+
+  // Extrait le statut de l'élève dans chaque appel
+  const classRecords = classAttendance.map((a) => {
+    const rec = (a.records || []).find((r) => String(r.student) === String(student._id))
+    return { date: a.date, status: rec?.status || null }
+  }).filter((r) => r.status)
+
+  const lateEntries = entries.filter((e) => e.status === 'late')
+  const summary = {
+    entryLate: lateEntries.length,
+    entryLateMinutes: lateEntries.reduce((s, e) => s + (e.lateMinutes || 0), 0),
+    classAbsent: classRecords.filter((r) => r.status === 'absent').length,
+    classLate: classRecords.filter((r) => r.status === 'late').length,
+    classExcused: classRecords.filter((r) => r.status === 'excused').length,
+    permissionsApproved: permissions.filter((p) => p.status === 'approved').length,
+    permissionsPending: permissions.filter((p) => p.status === 'pending').length,
+  }
+
+  return { summary, entries, classRecords, permissions }
+}
+
+// GET /api/students/me/discipline — dossier discipline de l'élève connecté
 router.get('/me/discipline', protect, authorize('eleve'), async (req, res) => {
   try {
     const student = await Student.findOne({ user: req.user._id }).select('class school firstName lastName')
     if (!student) return res.status(404).json({ message: 'Aucune fiche élève liée à ce compte' })
-    const EntryAttendance = require('../models/EntryAttendance')
-    const Attendance = require('../models/Attendance')
-    const PermissionRequest = require('../models/PermissionRequest')
+    const data = await buildDiscipline(student)
+    res.json({ success: true, data })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
 
-    const [entries, classAttendance, permissions] = await Promise.all([
-      // Retards à l'entrée de l'école (scan portier)
-      EntryAttendance.find({ student: student._id }).sort({ day: -1 }).limit(200).lean(),
-      // Appels en classe où l'élève figure
-      Attendance.find({ class: student.class, 'records.student': student._id }).sort({ date: -1 }).limit(200).lean(),
-      // Permissions le concernant (sortie / absence / retard justifié)
-      PermissionRequest.find({ student: student._id }).sort({ createdAt: -1 }).limit(100)
-        .populate('decidedBy', 'name role').lean(),
-    ])
-
-    // Extrait le statut de l'élève dans chaque appel
-    const classRecords = classAttendance.map((a) => {
-      const rec = (a.records || []).find((r) => String(r.student) === String(student._id))
-      return { date: a.date, status: rec?.status || null }
-    }).filter((r) => r.status)
-
-    const lateEntries = entries.filter((e) => e.status === 'late')
-    const summary = {
-      entryLate: lateEntries.length,
-      entryLateMinutes: lateEntries.reduce((s, e) => s + (e.lateMinutes || 0), 0),
-      classAbsent: classRecords.filter((r) => r.status === 'absent').length,
-      classLate: classRecords.filter((r) => r.status === 'late').length,
-      classExcused: classRecords.filter((r) => r.status === 'excused').length,
-      permissionsApproved: permissions.filter((p) => p.status === 'approved').length,
-      permissionsPending: permissions.filter((p) => p.status === 'pending').length,
+// GET /api/students/:id/discipline — dossier discipline d'un enfant (parent) ou d'un
+// élève de l'école (directeur, VP, SG).
+router.get('/:id/discipline', protect, authorize('parent', 'directeur', 'vice_principal', 'surveillant_general', 'super_admin'), async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id).select('class school firstName lastName parentUser')
+    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+    if (req.user.role === 'parent') {
+      if (String(student.parentUser || '') !== String(req.user._id)) {
+        return res.status(403).json({ message: 'Accès refusé' })
+      }
+    } else if (req.user.role !== 'super_admin') {
+      const sid = req.user.school?._id || req.user.school
+      if (String(student.school) !== String(sid)) return res.status(403).json({ message: 'Accès refusé' })
     }
-
-    res.json({ success: true, data: { summary, entries, classRecords, permissions } })
+    const data = await buildDiscipline(student)
+    res.json({ success: true, data: { ...data, student: { _id: student._id, firstName: student.firstName, lastName: student.lastName } } })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
