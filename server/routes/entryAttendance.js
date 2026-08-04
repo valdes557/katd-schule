@@ -64,6 +64,21 @@ router.get('/my-qr', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// Alerte les SG (et le principal en secours) d'une tentative d'accès non autorisée
+async function alertUnauthorized(sid, scanner, detail) {
+  try {
+    const push = require('../services/pushService')
+    const targets = await User.find({ school: sid, role: { $in: ['surveillant_general', 'directeur'] }, isActive: { $ne: false } }).select('_id')
+    if (targets.length) {
+      push.sendToUsers(targets.map((u) => u._id), {
+        title: '🚫 Accès non autorisé à la loge',
+        body: `${detail} (scanné par ${scanner?.name || 'le portier'})`,
+        url: '/dashboard/surveillance',
+      }).catch(() => {})
+    }
+  } catch (e) { /* push best-effort */ }
+}
+
 // POST /api/entry-attendance/scan — le portier scanne un QR {qrId}
 router.post('/scan', protect, authorize('portier', 'surveillant_general', 'directeur', 'super_admin'), async (req, res) => {
   try {
@@ -75,12 +90,21 @@ router.post('/scan', protect, authorize('portier', 'surveillant_general', 'direc
     let person = null, personKind = null, role = '', name = '', className = ''
     const user = await User.findOne({ attendanceQrId: qrId })
     if (user) {
-      if (String(user.school || '') !== String(sid)) return res.status(403).json({ message: 'QR d\'un autre établissement' })
+      if (String(user.school || '') !== String(sid)) {
+        alertUnauthorized(sid, req.user, `QR d'un autre établissement présenté à l'entrée (${user.name})`)
+        return res.status(403).json({ message: 'QR d\'un autre établissement' })
+      }
       person = user; personKind = 'staff'; role = user.role; name = user.name
     } else {
       const student = await Student.findOne({ attendanceQrId: qrId }).populate('class', 'name')
-      if (!student) return res.status(404).json({ message: 'QR inconnu' })
-      if (String(student.school) !== String(sid)) return res.status(403).json({ message: 'QR d\'un autre établissement' })
+      if (!student) {
+        alertUnauthorized(sid, req.user, 'QR inconnu présenté à l\'entrée')
+        return res.status(404).json({ message: 'QR inconnu' })
+      }
+      if (String(student.school) !== String(sid)) {
+        alertUnauthorized(sid, req.user, `QR d'un autre établissement présenté à l'entrée (${student.lastName} ${student.firstName})`)
+        return res.status(403).json({ message: 'QR d\'un autre établissement' })
+      }
       person = student; personKind = 'student'; role = 'eleve'
       name = `${student.lastName} ${student.firstName}`
       className = student.class?.name || ''

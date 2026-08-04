@@ -126,6 +126,7 @@ export const navSections = [
     roles: ['surveillant_general'],
     items: [
       { label: 'Présences du jour', icon: CalendarCheck, path: '/dashboard/surveillance' },
+      { label: 'Registre des visiteurs', icon: Users, path: '/dashboard/portier/visiteurs' },
       { label: 'Appels des professeurs', icon: ClipboardList, path: '/dashboard/presence' },
       { label: 'Permissions', icon: Bell, path: '/dashboard/permissions' },
       { label: 'Contacts parents', icon: Users, path: '/dashboard/contacts-parents' },
@@ -161,6 +162,7 @@ export const navSections = [
     items: [
       { label: 'Scanner un QR', icon: QrCode, path: '/dashboard/portier/scan' },
       { label: 'Entrées & sorties du jour', icon: CalendarCheck, path: '/dashboard/portier/journal' },
+      { label: 'Registre des visiteurs', icon: Users, path: '/dashboard/portier/visiteurs' },
       { label: 'Permissions autorisées', icon: Bell, path: '/dashboard/permissions' },
       { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],

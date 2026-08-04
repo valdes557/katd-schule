@@ -708,6 +708,13 @@ export const entryAttendanceApi = {
   history: (params = {}) => api.get(`/entry-attendance/history?${new URLSearchParams(params).toString()}`),
 }
 
+// Registre des visiteurs à la loge (portier ; SG/principal consultent)
+export const visitorsApi = {
+  list: (params = {}) => api.get(`/visitors?${new URLSearchParams(params).toString()}`),
+  create: (data) => api.post('/visitors', data),
+  checkout: (id) => api.put(`/visitors/${id}/checkout`),
+}
+
 // Demandes de permission (cycle Secondaire)
 export const permissionsApi = {
   list: (status = '') => api.get(`/permissions${status ? `?status=${status}` : ''}`),

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   CalendarCheck, Loader2, Users, GraduationCap, Clock, AlertCircle, RefreshCw,
 } from 'lucide-react'
-import { entryAttendanceApi } from '../../lib/api'
+import { entryAttendanceApi, visitorsApi } from '../../lib/api'
 import { roleLabel } from '../../lib/roleLabels'
 import { useAuth } from '../../context/AuthContext'
 
@@ -18,11 +18,16 @@ export default function SurveillantPresencePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [tab, setTab] = useState('students')
+  const [visitors, setVisitors] = useState([])
 
   const load = async (d = day) => {
     try {
-      const res = await entryAttendanceApi.today(d)
+      const [res, vis] = await Promise.all([
+        entryAttendanceApi.today(d),
+        visitorsApi.list(d ? { day: d } : {}).catch(() => ({ data: [] })), // journal visiteurs (E4)
+      ])
       setData(res.data)
+      setVisitors(vis.data || [])
       setError('')
     } catch (e) { setError(e.message) }
     setLoading(false)
@@ -90,9 +95,42 @@ export default function SurveillantPresencePage() {
         <button onClick={() => setTab('staff')} className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 ${tab === 'staff' ? 'bg-white shadow text-indigo-700' : 'text-gray-500'}`}>
           <Users size={13} /> Personnel
         </button>
+        <button onClick={() => setTab('visitors')} className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 ${tab === 'visitors' ? 'bg-white shadow text-indigo-700' : 'text-gray-500'}`}>
+          <Users size={13} /> Visiteurs {visitors.length > 0 && <span className="bg-indigo-100 text-indigo-700 rounded-full px-1.5">{visitors.length}</span>}
+        </button>
       </div>
 
-      {tab === 'students' ? (
+      {tab === 'visitors' ? (
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 border-b">
+                <th className="px-4 py-2">Visiteur</th>
+                <th className="px-4 py-2">Motif</th>
+                <th className="px-4 py-2">Visite à</th>
+                <th className="px-4 py-2">Entrée</th>
+                <th className="px-4 py-2">Sortie</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visitors.map((v) => (
+                <tr key={v._id} className="border-b last:border-0">
+                  <td className="px-4 py-2 font-medium text-gray-900">{v.name}{v.phone ? <span className="text-xs font-normal text-gray-400"> · {v.phone}</span> : null}</td>
+                  <td className="px-4 py-2 text-gray-600">{v.reason}</td>
+                  <td className="px-4 py-2 text-gray-600">{v.visiting || '—'}</td>
+                  <td className="px-4 py-2 text-gray-600">{v.checkInTime || '—'}</td>
+                  <td className="px-4 py-2">
+                    {v.checkOutTime
+                      ? <span className="text-gray-600">{v.checkOutTime}</span>
+                      : <span className="text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full w-fit">Sur place</span>}
+                  </td>
+                </tr>
+              ))}
+              {visitors.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">Aucun visiteur enregistré ce jour</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      ) : tab === 'students' ? (
         <div className="space-y-4">
           {/* Présents / retards par classe */}
           {groupByClass(d.students).map(([className, list]) => (

@@ -51,10 +51,10 @@
 
 ## PHASE E — Dashboard Portier
 
-- ⬜ E1. Modèle `Visitor` : nom, motif, personne visitée, heure entrée/sortie, pièce d'identité
-- ⬜ E2. Routes `/api/visitors` + page `PortierVisitorsPage` (enregistrement + journal)
-- ⬜ E3. Alertes auto : retard (déjà calculé `lateMinutes`) → notification SG + parent ; QR inconnu/invalide → alerte "accès non autorisé" au SG
-- ⬜ E4. Transmission auto au Surveillant Général : le journal du jour + alertes remontent dans `/dashboard/surveillance`
+- ✅ E1. Modèle `Visitor` : nom, téléphone, pièce d'identité (type + n°), motif, personne visitée, heure entrée/sortie, enregistré par
+- ✅ E2. Routes `/api/visitors` (create, checkout, journal filtrable) + page `PortierVisitorsPage` (`/dashboard/portier/visiteurs`) : enregistrement + pointage sortie + journal — menus portier et SG
+- ✅ E3. Alertes auto : retard → push SG (déjà) + parent (D1) ; QR inconnu/autre établissement → alerte "accès non autorisé" aux SG + principal
+- ✅ E4. Transmission au Surveillant Général : onglet "Visiteurs" ajouté à `/dashboard/surveillance` (journal du jour du portier + entrées/sorties déjà visibles)
 
 ## PHASE F — Transversal
 
@@ -87,3 +87,4 @@
 | 2026-08-03 | B1 Appel par QR · B2 Workflow notes · B3-B4 Cahier de texte · B5 Restrictions prof | ✅ |
 | 2026-08-03 | C1 Discipline · C2 Paiements · C3 Bulletin PDF élève | ✅ |
 | 2026-08-04 | D1 Notifications push parent · D2 Discipline par enfant · D3 Solde frais par enfant | ✅ |
+| 2026-08-04 | E1-E2 Registre visiteurs · E3 Alertes QR invalide · E4 Onglet visiteurs surveillance | ✅ |
