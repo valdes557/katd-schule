@@ -3,6 +3,7 @@ import { BarChart2, Loader2, TrendingUp, TrendingDown, Wallet, Receipt } from 'l
 import { feesApi, expensesApi, salariesApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
 import DownloadPdfButton from '../../components/DownloadPdfButton'
+import ExportCsvButton from '../../components/ExportCsvButton'
 
 const fmtF = (n) => `${Number(n || 0).toLocaleString('fr-FR')} F`
 
@@ -46,6 +47,27 @@ export default function CaissiereReportsPage() {
   }
   const totalExpenses = expenses.reduce((s, e) => s + (e.amount || 0), 0)
 
+  // Lignes de l'export Excel : une par classe + une ligne de total
+  const exportRows = [...byClass.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([className, c]) => ({
+      classe: className,
+      eleves: c.students,
+      attendu: c.expected,
+      encaisse: c.paid,
+      reste: Math.max(0, c.expected - c.paid),
+      taux: c.expected > 0 ? Math.round((c.paid / c.expected) * 100) : 0,
+    }))
+  exportRows.push({ classe: 'TOTAL', eleves: '', attendu: totalExpected, encaisse: totalPaid, reste: Math.max(0, totalExpected - totalPaid), taux: totalExpected > 0 ? Math.round((totalPaid / totalExpected) * 100) : 0 })
+  const exportColumns = [
+    { label: 'Classe', key: 'classe' },
+    { label: 'Élèves', key: 'eleves' },
+    { label: 'Attendu (F)', key: 'attendu' },
+    { label: 'Encaissé (F)', key: 'encaisse' },
+    { label: 'Reste (F)', key: 'reste' },
+    { label: 'Taux (%)', key: 'taux' },
+  ]
+
   const kpis = [
     { label: 'Pensions attendues', value: fmtF(totalExpected), icon: Receipt, cls: 'bg-blue-100 text-blue-600' },
     { label: 'Pensions encaissées', value: fmtF(totalPaid), icon: TrendingUp, cls: 'bg-green-100 text-green-600' },
@@ -60,7 +82,10 @@ export default function CaissiereReportsPage() {
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><BarChart2 size={20} className="text-indigo-600" /> Rapports financiers</h1>
           <p className="text-sm text-gray-500">Synthèse des encaissements, dépenses et salaires — à transmettre au principal</p>
         </div>
-        <DownloadPdfButton containerRef={pdfRef} filename="rapport-financier.pdf" title="Rapport financier" />
+        <div className="flex items-center gap-2 self-start no-pdf">
+          <ExportCsvButton filename="rapport-financier.csv" columns={exportColumns} rows={exportRows} disabled={exportRows.length <= 1} />
+          <DownloadPdfButton containerRef={pdfRef} filename="rapport-financier.pdf" title="Rapport financier" />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

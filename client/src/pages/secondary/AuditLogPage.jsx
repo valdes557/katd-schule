@@ -4,6 +4,7 @@ import {
   User, Clock, ShieldAlert,
 } from 'lucide-react'
 import { auditLogsApi } from '../../lib/api'
+import ExportCsvButton from '../../components/ExportCsvButton'
 
 // Journal des actions sensibles (F3 Secondaire).
 // Directeur : son école. Super_admin : toute la plateforme. Lecture seule.
@@ -67,15 +68,52 @@ export default function AuditLogPage() {
   // Un changement de filtre ramène en page 1
   const onFilter = (setter) => (e) => { setter(e.target.value); setPage(1) }
 
+  // Récupère TOUTES les lignes correspondant aux filtres (le backend plafonne
+  // limit à 100 → on dépagine) pour l'export Excel.
+  const fetchAllForExport = useCallback(async () => {
+    const base = {}
+    if (action) base.action = action
+    if (from) base.from = new Date(from).toISOString()
+    if (to) base.to = new Date(to + 'T23:59:59').toISOString()
+    const all = []
+    let p = 1, totalPages = 1
+    do {
+      const r = await auditLogsApi.list({ ...base, page: p, limit: 100 })
+      all.push(...(r.data || []))
+      totalPages = r.pages || 1
+      p += 1
+    } while (p <= totalPages && p <= 100) // garde-fou : 10 000 lignes max
+    return all
+  }, [action, from, to])
+
+  const exportColumns = [
+    { label: 'Date', key: 'createdAt', format: (v) => new Date(v).toLocaleString('fr-FR') },
+    { label: 'Action', key: 'action', format: (v, r) => ACTION_LABELS[v] || r.label || v },
+    { label: 'Auteur', key: 'actorName', format: (v) => v || 'Inconnu' },
+    { label: 'Rôle', key: 'actorRole' },
+    { label: 'Méthode', key: 'method' },
+    { label: 'Chemin', key: 'path' },
+    { label: 'Entité', key: 'entityId' },
+  ]
+
   return (
     <div className="space-y-5 animate-fade-in">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <History size={22} className="text-gray-700" /> Journal des actions
-        </h1>
-        <p className="text-sm text-gray-500">
-          Traçabilité des actions sensibles : finances, comptes, notes, cours IA, suppressions.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <History size={22} className="text-gray-700" /> Journal des actions
+          </h1>
+          <p className="text-sm text-gray-500">
+            Traçabilité des actions sensibles : finances, comptes, notes, cours IA, suppressions.
+          </p>
+        </div>
+        <ExportCsvButton
+          filename="journal-actions.csv"
+          columns={exportColumns}
+          rows={fetchAllForExport}
+          disabled={loading || total === 0}
+          className="shrink-0"
+        />
       </div>
 
       {/* Filtres */}

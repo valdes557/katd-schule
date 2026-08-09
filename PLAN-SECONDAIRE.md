@@ -69,8 +69,8 @@
   - ✅ F2.6 Suivi : transcript conservé (`lessonScript` + `questions`), relecture par les élèves de la classe (statut `termine` → révélation totale)
 - ✅ F3. **Journal des actions/logs** — modèle `AuditLog` + middleware global `auditTrail` (écouteur `res.on('finish')`, ne journalise que les mutations sensibles réussies : finances, comptes, notes, IA, suppressions), route lecture seule `GET /api/audit-logs` (directeur = son école, super_admin = plateforme), page `AuditLogPage` avec filtres (type/dates) + pagination, entrées de nav directeur & super_admin
 - ✅ F4. **Notifications temps réel généralisées** — `pushService` désormais branché sur tous les événements à impact (annonces, présences, notes, frais, messages, permissions, recrutement, rapports, dossiers, tutorat, entrées/sorties, événements, documents, news) — 18 routes couvertes
-- ⬜ F5. Export PDF/Excel généralisé (bulletins et reçus faits ; restent journaux & rapports financiers)
-- ⬜ F6. Vérif responsive mobile/tablette de toutes les nouvelles pages
+- ✅ F5. **Export PDF/Excel généralisé** — PDF déjà présent (bulletins, reçus, rapport financier via `DownloadPdfButton`) ; ajout de l'export **Excel/CSV** (utilitaire `lib/exportCsv.js` sans dépendance, BOM UTF-8 + séparateur « ; » → ouverture directe dans Excel FR ; composant `ExportCsvButton`) branché sur le journal des actions (dépagination complète), le registre des visiteurs et le rapport financier par classe
+- ✅ F6. **Responsive mobile/tablette** — vérifié sur toutes les nouvelles pages : en-têtes `flex-col sm:flex-row`, grilles `grid-cols-2 sm:/lg:`, tableaux enveloppés dans `overflow-x-auto`, bulles de chat `max-w-[85%]`, barres d'action `flex-wrap` ; durcissement de l'en-tête du registre visiteurs (boutons export + création qui s'enroulent sur très petit écran)
 
 ---
 
@@ -98,3 +98,6 @@
 | 2026-08-04 | A1-A3 Dossiers enseignants · A4-A5 Courrier · A6 onBehalfOf annonces · A7 Documents | ✅ |
 | 2026-08-09 | F2 IA enseignante autonome (modèle AiCourse, service+quota, runner ponctuel, routes, pages Cours IA + Live, menus prof/élève/parent/VP/directeur) | ✅ |
 | 2026-08-09 | F3 Journal des actions (AuditLog + middleware auditTrail global + route lecture seule + AuditLogPage + nav directeur/super_admin) · F4 confirmé (push branché sur 18 routes) | ✅ |
+| 2026-08-09 | F5 Export Excel/CSV (exportCsv + ExportCsvButton → journal actions, visiteurs, rapport financier) · F6 vérif responsive nouvelles pages | ✅ |
+
+**🎉 Module secondaire terminé** — toutes les phases A→F sont livrées.

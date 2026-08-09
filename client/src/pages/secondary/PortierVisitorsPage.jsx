@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Users, UserPlus, LogOut, Loader2, Search, X, Clock } from 'lucide-react'
 import { visitorsApi } from '../../lib/api'
+import ExportCsvButton from '../../components/ExportCsvButton'
 
 const ID_TYPES = { cni: 'CNI', passeport: 'Passeport', permis: 'Permis', autre: 'Autre' }
 const EMPTY_FORM = { name: '', phone: '', idType: '', idNumber: '', reason: '', visiting: '', note: '' }
+
+// Colonnes de l'export Excel du journal des visiteurs
+const EXPORT_COLUMNS = [
+  { label: 'Nom', key: 'name' },
+  { label: 'Téléphone', key: 'phone' },
+  { label: 'Pièce', key: 'idType', format: (v) => ID_TYPES[v] || '' },
+  { label: 'N° pièce', key: 'idNumber' },
+  { label: 'Motif', key: 'reason' },
+  { label: 'Personne visitée', key: 'visiting' },
+  { label: 'Entrée', key: 'checkInTime' },
+  { label: 'Sortie', key: 'checkOutTime', format: (v) => v || 'Présent' },
+  { label: 'Note', key: 'note' },
+]
 
 /** Registre des visiteurs (portier) : enregistrement à l'entrée, pointage de sortie,
  *  journal du jour. Le SG et le principal consultent le même journal. */
@@ -62,9 +76,17 @@ export default function PortierVisitorsPage() {
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Users size={20} className="text-indigo-600" /> Registre des visiteurs</h1>
           <p className="text-sm text-gray-500">Enregistrez chaque visiteur à l'entrée et pointez sa sortie.</p>
         </div>
-        <button onClick={() => { setShowForm(true); setErr('') }} className="btn-primary self-start whitespace-nowrap">
-          <UserPlus size={16} /> Nouveau visiteur
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start">
+          <ExportCsvButton
+            filename={`visiteurs-${day || 'jour'}.csv`}
+            columns={EXPORT_COLUMNS}
+            rows={visitors}
+            disabled={loading || visitors.length === 0}
+          />
+          <button onClick={() => { setShowForm(true); setErr('') }} className="btn-primary whitespace-nowrap">
+            <UserPlus size={16} /> Nouveau visiteur
+          </button>
+        </div>
       </div>
 
       {/* Stats + filtres */}
