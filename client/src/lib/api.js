@@ -815,6 +815,12 @@ export const aiCoursesApi = {
   askQuestion: (id, question) => api.post(`/ai-courses/${id}/questions`, { question }),
 }
 
+// Journal des actions sensibles (F3 Secondaire) — lecture seule, directeur / super_admin.
+export const auditLogsApi = {
+  list: (params = {}) => api.get(`/audit-logs?${new URLSearchParams(params).toString()}`),
+  actions: () => api.get('/audit-logs/actions'),
+}
+
 // Rapports internes (membres → principal / professeurs → vice-principal)
 export const reportsApi = {
   send: (data) => api.post('/reports', data),

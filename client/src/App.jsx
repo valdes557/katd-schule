@@ -228,6 +228,7 @@ const ElevePaiementsPage = lazyPage(() => import('./pages/secondary/ElevePaiemen
 const ParentDisciplinePage = lazyPage(() => import('./pages/ParentDisciplinePage'))
 const AiCoursesPage = lazyPage(() => import('./pages/secondary/AiCoursesPage'))
 const AiCourseLivePage = lazyPage(() => import('./pages/secondary/AiCourseLivePage'))
+const AuditLogPage = lazyPage(() => import('./pages/secondary/AuditLogPage'))
 
 function PageFallback() {
   return (
@@ -392,6 +393,7 @@ export default function App() {
         <Route path="cahier-de-texte" element={<LessonLogPage />} />
         <Route path="ia-cours" element={<AiCoursesPage />} />
         <Route path="ia-cours/:id/live" element={<AiCourseLivePage />} />
+        <Route path="journal-actions" element={<AuditLogPage />} />
 
         {/* Teacher routes */}
         <Route path="teacher/eleves" element={<TeacherStudentsPage />} />

@@ -67,9 +67,9 @@
   - ✅ F2.4 L'IA **écrit au fur et à mesure** : révélation progressive pure calée sur l'horloge serveur (`revealedText`), page `AiCourseLivePage` avec polling + curseur clignotant, identique pour tous les spectateurs
   - ✅ F2.5 À la **fin du cours**, les élèves posent leurs **questions** et l'IA **répond après chaque question** (`POST /api/ai-courses/:id/questions`, 3 max/élève, quota IA)
   - ✅ F2.6 Suivi : transcript conservé (`lessonScript` + `questions`), relecture par les élèves de la classe (statut `termine` → révélation totale)
-- ⬜ F3. Journal des actions/logs (modèle `AuditLog` + middleware sur actions sensibles)
-- ⬜ F4. Notifications temps réel généralisées (brancher pushService sur tous les événements)
-- ⬜ F5. Export PDF/Excel généralisé (bulletins, journaux, rapports financiers)
+- ✅ F3. **Journal des actions/logs** — modèle `AuditLog` + middleware global `auditTrail` (écouteur `res.on('finish')`, ne journalise que les mutations sensibles réussies : finances, comptes, notes, IA, suppressions), route lecture seule `GET /api/audit-logs` (directeur = son école, super_admin = plateforme), page `AuditLogPage` avec filtres (type/dates) + pagination, entrées de nav directeur & super_admin
+- ✅ F4. **Notifications temps réel généralisées** — `pushService` désormais branché sur tous les événements à impact (annonces, présences, notes, frais, messages, permissions, recrutement, rapports, dossiers, tutorat, entrées/sorties, événements, documents, news) — 18 routes couvertes
+- ⬜ F5. Export PDF/Excel généralisé (bulletins et reçus faits ; restent journaux & rapports financiers)
 - ⬜ F6. Vérif responsive mobile/tablette de toutes les nouvelles pages
 
 ---
@@ -97,3 +97,4 @@
 | 2026-08-04 | E1-E2 Registre visiteurs · E3 Alertes QR invalide · E4 Onglet visiteurs surveillance | ✅ |
 | 2026-08-04 | A1-A3 Dossiers enseignants · A4-A5 Courrier · A6 onBehalfOf annonces · A7 Documents | ✅ |
 | 2026-08-09 | F2 IA enseignante autonome (modèle AiCourse, service+quota, runner ponctuel, routes, pages Cours IA + Live, menus prof/élève/parent/VP/directeur) | ✅ |
+| 2026-08-09 | F3 Journal des actions (AuditLog + middleware auditTrail global + route lecture seule + AuditLogPage + nav directeur/super_admin) · F4 confirmé (push branché sur 18 routes) | ✅ |

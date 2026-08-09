@@ -42,6 +42,10 @@ app.use(express.urlencoded({ extended: true, limit: '60mb' }))
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
+// Journal des actions sensibles (F3) : écouteur global, n'enregistre que les
+// mutations surveillées ayant réussi. Monté avant les routes.
+app.use(require('./middleware/auditTrail').auditTrail)
+
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/payments', require('./routes/payments'))
 app.use('/api/wallet', require('./routes/wallet'))
@@ -95,6 +99,7 @@ app.use('/api/tutoring', require('./routes/tutoring'))
 app.use('/api/news', require('./routes/news'))
 app.use('/api/push', require('./routes/push'))
 app.use('/api/uploads', require('./routes/uploads'))
+app.use('/api/audit-logs', require('./routes/auditLogs'))
 
 app.get('/api/health', (req, res) => {
   res.json({

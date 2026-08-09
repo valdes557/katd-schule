@@ -231,6 +231,7 @@ export const navSections = [
       { label: 'Rapports des enseignants', icon: FileText, path: '/dashboard/rapports' },
       { label: 'Rapports', icon: LineChart, path: '/dashboard/rapports/detail' },
       { label: 'Statistiques', icon: PieChart, path: '/dashboard/statistiques' },
+      { label: 'Journal des actions', icon: History, path: '/dashboard/journal-actions' },
     ],
   },
   {
@@ -251,6 +252,7 @@ export const navSections = [
       { label: 'Bannières', icon: ImageIcon, path: '/dashboard/bannieres' },
       { label: 'Assistant IA', icon: Bot, path: '/dashboard/ia-admin' },
       { label: 'Suivi des connexions', icon: Activity, path: '/dashboard/suivi-connexions' },
+      { label: 'Journal des actions', icon: History, path: '/dashboard/journal-actions' },
     ],
   },
 ]
