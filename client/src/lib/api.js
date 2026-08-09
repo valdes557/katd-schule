@@ -780,6 +780,41 @@ export const lessonLogsApi = {
   remove: (id) => api.del(`/lesson-logs/${id}`),
 }
 
+// Cours de l'IA enseignante autonome (F2 Secondaire) : le professeur programme
+// un cours (texte ou PDF, heure + durée), l'IA le déroule en direct puis répond
+// aux questions des élèves en fin de cours.
+export const aiCoursesApi = {
+  list: (params = {}) => api.get(`/ai-courses?${new URLSearchParams(params).toString()}`),
+  get: (id) => api.get(`/ai-courses/${id}`),
+  live: (id) => api.get(`/ai-courses/${id}/live`),
+  create: async (data) => {
+    // multipart : champ 'pdf' optionnel (sourceType === 'pdf')
+    const fd = new FormData()
+    fd.append('classId', data.classId)
+    fd.append('subject', data.subject)
+    if (data.subjectRef) fd.append('subjectRef', data.subjectRef)
+    fd.append('title', data.title)
+    fd.append('sourceType', data.sourceType)
+    if (data.sourceText) fd.append('sourceText', data.sourceText)
+    if (data.pdf) fd.append('pdf', data.pdf)
+    fd.append('scheduledAt', data.scheduledAt)
+    fd.append('durationMinutes', data.durationMinutes)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/ai-courses`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
+  update: (id, data) => api.put(`/ai-courses/${id}`, data),
+  cancel: (id) => api.post(`/ai-courses/${id}/cancel`),
+  remove: (id) => api.del(`/ai-courses/${id}`),
+  askQuestion: (id, question) => api.post(`/ai-courses/${id}/questions`, { question }),
+}
+
 // Rapports internes (membres → principal / professeurs → vice-principal)
 export const reportsApi = {
   send: (data) => api.post('/reports', data),

@@ -12,6 +12,9 @@ connectDB()
 // Tâches planifiées in-process (intérêt quotidien directeur + maintenance mensuelle).
 try { require('./jobs/scheduler').start() } catch (e) { console.error('scheduler:', e.message) }
 
+// Diffusion ponctuelle des cours de l'IA enseignante (tick 45 s).
+try { require('./jobs/aiCourseRunner').start() } catch (e) { console.error('aiCourseRunner:', e.message) }
+
 // Gzip/Brotli responses for faster transfers
 app.use(compression())
 
@@ -85,6 +88,7 @@ app.use('/api/lesson-logs', require('./routes/lessonLogs'))
 app.use('/api/notifications', require('./routes/notifications'))
 app.use('/api/presence', require('./routes/presence'))
 app.use('/api/ai', require('./routes/ai'))
+app.use('/api/ai-courses', require('./routes/aiCourses'))
 app.use('/api/banners', require('./routes/banners'))
 app.use('/api/recruitment', require('./routes/recruitment'))
 app.use('/api/tutoring', require('./routes/tutoring'))

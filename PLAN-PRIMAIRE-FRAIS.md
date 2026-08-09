@@ -65,6 +65,7 @@ Côté primaire, le directeur pouvait attribuer des frais de pension aux élève
 
 ## Vérification manuelle
 
+
 1. Directeur : créer → modifier → supprimer un frais.
 2. Remise 10 % (motif « Bourse ») → net visible partout ; payer le net → `paid` ; retirer la remise → `partial`.
 3. Validations : sans motif / remise > montant / % > 100 → 400.

@@ -1,4 +1,5 @@
 
+
 # PLAN DE TRAVAIL — MODULE SECONDAIRE KATD-SCHÜLE
 
 > Enregistré le 2026-08-03. Cahier des charges : dashboards Secrétaire, Professeur, Élève, Parent, Portier + fonctionnalités communes.
@@ -59,7 +60,13 @@
 ## PHASE F — Transversal
 
 - ✅ F1. **Wallet pour tous** : création auto du wallet à la création de tout compte (hook post-save `User.js`) + script de rattrapage `server/scripts/backfillWallets.js` (25 wallets créés le 2026-08-03) + lien "Mon portefeuille" ajouté aux menus élève, VP, SG, secrétaire, portier
-- ⬜ F2. **IA enseignante autonome** : mode "Cours" en plus du chat — l'élève choisit matière/niveau/chapitre, l'IA déroule une leçon structurée (explication → exemples → exercices → correction), suivi de progression (`AiLessonProgress`), aligné sur `Subject.program`
+- ✅ F2. **IA enseignante autonome** — le prof prépare, l'IA enseigne en direct :
+  - ✅ F2.1 Le professeur ajoute le cours **par PDF ou par écrit** (modèle `AiCourse` : classe, matière, titre, contenu texte ou PDF avec extraction du texte via `pdf-parse` dans `aiCourseService`)
+  - ✅ F2.2 Le professeur **programme l'heure de début et la durée d'exécution** du cours (route `POST /api/ai-courses`, page `AiCoursesPage`, contrôle « SES classes assignées »)
+  - ✅ F2.3 L'IA enseignante **respecte la ponctualité** : pré-génération du déroulé à T-5 min + démarrage/fin automatiques à l'heure via `jobs/aiCourseRunner` (tick 45 s, `startedAt = scheduledAt` pour ne jamais décaler)
+  - ✅ F2.4 L'IA **écrit au fur et à mesure** : révélation progressive pure calée sur l'horloge serveur (`revealedText`), page `AiCourseLivePage` avec polling + curseur clignotant, identique pour tous les spectateurs
+  - ✅ F2.5 À la **fin du cours**, les élèves posent leurs **questions** et l'IA **répond après chaque question** (`POST /api/ai-courses/:id/questions`, 3 max/élève, quota IA)
+  - ✅ F2.6 Suivi : transcript conservé (`lessonScript` + `questions`), relecture par les élèves de la classe (statut `termine` → révélation totale)
 - ⬜ F3. Journal des actions/logs (modèle `AuditLog` + middleware sur actions sensibles)
 - ⬜ F4. Notifications temps réel généralisées (brancher pushService sur tous les événements)
 - ⬜ F5. Export PDF/Excel généralisé (bulletins, journaux, rapports financiers)
@@ -89,3 +96,4 @@
 | 2026-08-04 | D1 Notifications push parent · D2 Discipline par enfant · D3 Solde frais par enfant | ✅ |
 | 2026-08-04 | E1-E2 Registre visiteurs · E3 Alertes QR invalide · E4 Onglet visiteurs surveillance | ✅ |
 | 2026-08-04 | A1-A3 Dossiers enseignants · A4-A5 Courrier · A6 onBehalfOf annonces · A7 Documents | ✅ |
+| 2026-08-09 | F2 IA enseignante autonome (modèle AiCourse, service+quota, runner ponctuel, routes, pages Cours IA + Live, menus prof/élève/parent/VP/directeur) | ✅ |
