@@ -7,7 +7,7 @@ const gradeSchema = new mongoose.Schema(
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     subject: { type: String, required: true },
     teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
-    type: { type: String, enum: ['devoir', 'examen', 'composition', 'oral', 'tp'], default: 'devoir' },
+    type: { type: String, enum: ['devoir', 'examen', 'composition', 'oral', 'tp', 'examen_blanc', 'examen_officiel'], default: 'devoir' },
     value: { type: Number, required: true, min: 0, max: 20 },
     coefficient: { type: Number, default: 1 },
     sequence: { type: String, enum: ['Séquence 1', 'Séquence 2', 'Séquence 3', 'Séquence 4', 'Séquence 5', 'Séquence 6'] },

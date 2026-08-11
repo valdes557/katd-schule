@@ -60,6 +60,9 @@ export const authApi = {
   me: () => api.get('/auth/me'),
   forgotPassword: (email, space) => api.post('/auth/forgot-password', { email, space }),
   resetPassword: (email, code, newPassword) => api.post('/auth/reset-password', { email, code, newPassword }),
+  // Réinitialisation par un administrateur (directeur/super_admin) : renvoie le nouveau
+  // mot de passe généré (G3). Le compte cible doit appartenir à l'école de l'admin.
+  adminResetPassword: (email) => api.post('/auth/admin-reset-password', { email }),
   verifyEmail: (email, code) => api.post('/auth/verify-email', { email, code }),
   resendVerification: (email) => api.post('/auth/resend-verification', { email }),
   updateProfile: (data) => api.put('/auth/profile', data),
@@ -120,6 +123,7 @@ export const studentsApi = {
   withParents: () => api.get('/students/with-parents'),
   createParentAccount: (studentId, data) => api.post(`/students/${studentId}/parent-account`, data),
   createStudentAccount: (studentId, data) => api.post(`/students/${studentId}/student-account`, data),
+  toggleActive: (id) => api.put(`/students/${id}/toggle-active`),
   myProfile: () => api.get('/students/me/profile'),
   myHomeworks: () => api.get('/students/me/homeworks'),
   // Espace élève (Secondaire) : discipline + frais en lecture seule
@@ -138,6 +142,7 @@ export const parentsApi = {
   update: (id, data) => api.put(`/parents/${id}`, data),
   remove: (id) => api.del(`/parents/${id}`),
   setStudents: (id, studentIds) => api.put(`/parents/${id}/students`, { studentIds }),
+  toggleActive: (id) => api.put(`/parents/${id}/toggle-active`),
 }
 
 export const teachersApi = {
@@ -146,6 +151,7 @@ export const teachersApi = {
   create: (data) => api.post('/teachers', data),
   update: (id, data) => api.put(`/teachers/${id}`, data),
   remove: (id) => api.del(`/teachers/${id}`),
+  toggleActive: (id) => api.put(`/teachers/${id}/toggle-active`),
 }
 
 export const staffApi = {
@@ -406,6 +412,7 @@ export const timetablesApi = {
   addSlot: (id, data) => api.post(`/timetables/${id}/slots`, data),
   removeSlot: (id, slotId) => api.del(`/timetables/${id}/slots/${slotId}`),
   assignTo: (id, classIds) => api.post(`/timetables/${id}/assign-to`, { classIds }),
+  publish: (id, publish = true) => api.put(`/timetables/${id}/publish`, { publish }),
 }
 
 // Recrutement : annonces (directeur) + job board public « News » + candidatures
@@ -770,6 +777,14 @@ export const permissionsApi = {
   reject: (id, note = '') => api.put(`/permissions/${id}/reject`, { note }),
 }
 
+// Sanctions disciplinaires (cycle Secondaire, G1) : le SG (ou directeur/VP) enregistre
+// avertissements, blâmes, exclusions… ; élève et parent les consultent (dossier discipline).
+export const sanctionsApi = {
+  list: (params = {}) => api.get(`/sanctions?${new URLSearchParams(params).toString()}`),
+  create: (data) => api.post('/sanctions', data),
+  cancel: (id) => api.put(`/sanctions/${id}/cancel`),
+}
+
 // Cahier de texte (cycle Secondaire) : le professeur remplit chaque séance,
 // VP/directeur visent, élèves/parents consultent celui de la classe.
 export const lessonLogsApi = {
@@ -856,6 +871,8 @@ export const feesApi = {
   list: (params = '') => api.get(`/fees?${params}`),
   paymentStatus: (classId) => api.get(`/fees/payment-status?classId=${classId}`),
   paymentHistory: (classId = '') => api.get(`/fees/payment-history${classId ? `?classId=${classId}` : ''}`),
+  // Rapport d'encaissements par période (journalier/hebdo/mensuel/annuel) — G5
+  periodReport: (params = {}) => api.get(`/fees/period-report?${new URLSearchParams(params).toString()}`),
   create: (data) => api.post('/fees', data),
   bulkAssign: (data) => api.post('/fees/bulk-assign', data),
   update: (id, data) => api.put(`/fees/${id}`, data),

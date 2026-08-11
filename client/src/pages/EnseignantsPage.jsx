@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Mail, Phone, Key, Eye, EyeOff } from 'lucide-react'
-import { teachersApi, classesApi } from '../lib/api'
+import { UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Mail, Phone, Key, Eye, EyeOff, Ban, Power, KeyRound } from 'lucide-react'
+import { teachersApi, classesApi, authApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { getInitials } from '../lib/utils'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -71,6 +71,23 @@ export default function EnseignantsPage() {
     try { await teachersApi.remove(id); refreshTeachers() } catch (e) { alert(e.message) }
   }
 
+  // Suspend / réactive le compte de connexion (G3)
+  const handleToggleActive = async (t) => {
+    const suspended = t.user?.isActive === false
+    if (!confirm(suspended ? 'Réactiver le compte de cet enseignant ?' : 'Suspendre le compte de cet enseignant ? Il ne pourra plus se connecter.')) return
+    try { await teachersApi.toggleActive(t._id); refreshTeachers() } catch (e) { alert(e.message) }
+  }
+
+  // Réinitialise le mot de passe (G3) — l'admin communique le nouveau mot de passe
+  const handleResetPassword = async (t) => {
+    if (!t.email) { alert('Cet enseignant n\'a pas d\'adresse e-mail pour la réinitialisation.'); return }
+    if (!confirm(`Réinitialiser le mot de passe de ${t.lastName} ${t.firstName} ?`)) return
+    try {
+      const r = await authApi.adminResetPassword(t.email)
+      alert(`Nouveau mot de passe : ${r.rawPassword}\n(également envoyé à ${r.email})`)
+    } catch (e) { alert(e.message) }
+  }
+
   const openEdit = (t) => {
     setEditing(t)
     setForm({ firstName: t.firstName, lastName: t.lastName, email: t.email || '', phone: t.phone || '', gender: t.gender || 'M', subjects: (t.subjects || []).join(', '), speciality: t.speciality || '', password: '', classes: (t.classes || []).map((c) => c._id || c), cycle: t.cycle || '' })
@@ -117,8 +134,16 @@ export default function EnseignantsPage() {
                 </div>
                 {isDirecteur && (
                   <div className="flex gap-1">
-                    <button onClick={() => openEdit(t)} className="p-1 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={13} /></button>
-                    <button onClick={() => handleDelete(t._id)} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 size={13} /></button>
+                    <button onClick={() => openEdit(t)} title="Modifier" className="p-1 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={13} /></button>
+                    {t.user && (
+                      <>
+                        <button onClick={() => handleResetPassword(t)} title="Réinitialiser le mot de passe" className="p-1 rounded hover:bg-amber-50 text-amber-600"><KeyRound size={13} /></button>
+                        <button onClick={() => handleToggleActive(t)} title={t.user.isActive === false ? 'Réactiver le compte' : 'Suspendre le compte'} className={`p-1 rounded ${t.user.isActive === false ? 'hover:bg-green-50 text-green-600' : 'hover:bg-orange-50 text-orange-500'}`}>
+                          {t.user.isActive === false ? <Power size={13} /> : <Ban size={13} />}
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => handleDelete(t._id)} title="Supprimer" className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 size={13} /></button>
                   </div>
                 )}
               </div>
@@ -142,7 +167,11 @@ export default function EnseignantsPage() {
               <div className="space-y-1 text-xs text-gray-500">
                 {t.email && <div className="flex items-center gap-1.5"><Mail size={11} />{t.email}</div>}
                 {t.phone && <div className="flex items-center gap-1.5"><Phone size={11} />{t.phone}</div>}
-                {t.user && <div className="flex items-center gap-1.5"><Key size={11} className="text-green-500" /><span className="text-green-600">Compte actif</span></div>}
+                {t.user && (
+                  t.user.isActive === false
+                    ? <div className="flex items-center gap-1.5"><Ban size={11} className="text-orange-500" /><span className="text-orange-600 font-medium">Compte suspendu</span></div>
+                    : <div className="flex items-center gap-1.5"><Key size={11} className="text-green-500" /><span className="text-green-600">Compte actif</span></div>
+                )}
               </div>
             </div>
           ))}

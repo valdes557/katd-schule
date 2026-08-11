@@ -177,6 +177,25 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
+// PUT /api/parents/:id/toggle-active — suspend/réactive le compte parent (G3)
+router.put('/:id/toggle-active', async (req, res) => {
+  try {
+    const schoolId = schoolOf(req)
+    const user = await User.findOne({ _id: req.params.id, role: 'parent' })
+    if (!user) return res.status(404).json({ message: 'Parent introuvable' })
+
+    const belongs = (user.school && user.school.toString() === schoolId.toString()) ||
+      (await Student.exists({ school: schoolId, parentUser: user._id }))
+    if (!belongs) return res.status(403).json({ message: 'Accès refusé' })
+
+    user.isActive = user.isActive === false
+    await user.save()
+    res.json({ success: true, isActive: user.isActive, message: user.isActive ? 'Compte réactivé' : 'Compte suspendu' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // PUT /api/parents/:id/students — définit la liste exacte des élèves associés
 router.put('/:id/students', async (req, res) => {
   try {

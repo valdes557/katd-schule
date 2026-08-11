@@ -4,7 +4,7 @@ import {
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
   BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet, QrCode,
   Bot, Sparkles, Image as ImageIcon, Briefcase, Newspaper, KeyRound,
-  ArrowLeftRight, Coins, Store, Landmark,
+  ArrowLeftRight, Coins, Store, Landmark, Gavel,
 } from 'lucide-react'
 
 // roles: array of allowed roles. undefined = all roles.
@@ -123,6 +123,7 @@ export const navSections = [
       { label: 'Notes & examens', icon: FileText, path: '/dashboard/notes' },
       { label: 'Rendez-vous parents', icon: CalendarCheck, path: '/dashboard/rendez-vous-ecole' },
       { label: 'Rapports reçus', icon: FolderOpen, path: '/dashboard/rapports-recus' },
+      { label: 'Mon QR de présence', icon: QrCode, path: '/dashboard/mon-qr' },
       { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
@@ -131,10 +132,12 @@ export const navSections = [
     roles: ['surveillant_general'],
     items: [
       { label: 'Présences du jour', icon: CalendarCheck, path: '/dashboard/surveillance' },
+      { label: 'Discipline & sanctions', icon: Gavel, path: '/dashboard/surveillance/discipline' },
       { label: 'Registre des visiteurs', icon: Users, path: '/dashboard/portier/visiteurs' },
       { label: 'Appels des professeurs', icon: ClipboardList, path: '/dashboard/presence' },
       { label: 'Permissions', icon: Bell, path: '/dashboard/permissions' },
       { label: 'Contacts parents', icon: Users, path: '/dashboard/contacts-parents' },
+      { label: 'Mon QR de présence', icon: QrCode, path: '/dashboard/mon-qr' },
       { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
@@ -147,6 +150,7 @@ export const navSections = [
       { label: 'Rapports financiers', icon: BarChart2, path: '/dashboard/rapports-financiers' },
       { label: 'Salaires (préparation)', icon: Wallet, path: '/dashboard/salaires' },
       { label: 'Factures', icon: Receipt, path: '/dashboard/factures' },
+      { label: 'Mon QR de présence', icon: QrCode, path: '/dashboard/mon-qr' },
       { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
@@ -160,6 +164,7 @@ export const navSections = [
       { label: 'Documents partagés', icon: FolderOpen, path: '/dashboard/documents' },
       { label: 'Mes rapports', icon: FileText, path: '/dashboard/mes-rapports' },
       { label: 'Informations générales', icon: Info, path: '/dashboard/infos' },
+      { label: 'Mon QR de présence', icon: QrCode, path: '/dashboard/mon-qr' },
       { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },
@@ -171,6 +176,7 @@ export const navSections = [
       { label: 'Entrées & sorties du jour', icon: CalendarCheck, path: '/dashboard/portier/journal' },
       { label: 'Registre des visiteurs', icon: Users, path: '/dashboard/portier/visiteurs' },
       { label: 'Permissions autorisées', icon: Bell, path: '/dashboard/permissions' },
+      { label: 'Mon QR de présence', icon: QrCode, path: '/dashboard/mon-qr' },
       { label: 'Mon portefeuille', icon: Wallet, path: '/dashboard/portefeuille' },
     ],
   },

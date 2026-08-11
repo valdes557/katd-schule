@@ -72,6 +72,7 @@ router.get('/', protect, async (req, res) => {
     const total = await Student.countDocuments(query)
     const students = await Student.find(query)
       .populate('class', 'name level cycle room')
+      .populate('user', 'isActive email')
       .skip((page - 1) * limit)
       .limit(Number(limit))
       .sort({ lastName: 1 })
@@ -143,6 +144,28 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin'), async (req
     if (student.user) await User.findByIdAndDelete(student.user)
     await student.deleteOne()
     res.json({ success: true, message: 'Élève supprimé' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// PUT /api/students/:id/toggle-active — suspend/réactive le compte de connexion élève (G3)
+router.put('/:id/toggle-active', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id)
+    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+    if (req.user.role === 'directeur') {
+      const mySchool = req.user.school?._id || req.user.school
+      if (!mySchool || String(student.school) !== String(mySchool)) {
+        return res.status(403).json({ message: 'Vous ne pouvez gérer que les élèves de votre école' })
+      }
+    }
+    if (!student.user) return res.status(400).json({ message: 'Cet élève n\'a pas de compte de connexion' })
+    const account = await User.findById(student.user)
+    if (!account) return res.status(404).json({ message: 'Compte de connexion introuvable' })
+    account.isActive = account.isActive === false
+    await account.save()
+    res.json({ success: true, isActive: account.isActive, message: account.isActive ? 'Compte réactivé' : 'Compte suspendu' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -332,19 +355,23 @@ router.get('/me/homeworks', protect, authorize('eleve'), async (req, res) => {
 })
 
 // Construit le dossier discipline d'un élève : retards à l'entrée (scan portier),
-// absences/retards en classe (appels), permissions. Partagé élève / parent.
+// absences/retards en classe (appels), permissions, sanctions. Partagé élève / parent.
 async function buildDiscipline(student) {
   const EntryAttendance = require('../models/EntryAttendance')
   const Attendance = require('../models/Attendance')
   const PermissionRequest = require('../models/PermissionRequest')
+  const Sanction = require('../models/Sanction')
 
-  const [entries, classAttendance, permissions] = await Promise.all([
+  const [entries, classAttendance, permissions, sanctions] = await Promise.all([
     // Retards à l'entrée de l'école (scan portier)
     EntryAttendance.find({ student: student._id }).sort({ day: -1 }).limit(200).lean(),
     // Appels en classe où l'élève figure
     Attendance.find({ class: student.class, 'records.student': student._id }).sort({ date: -1 }).limit(200).lean(),
     // Permissions le concernant (sortie / absence / retard justifié)
     PermissionRequest.find({ student: student._id }).sort({ createdAt: -1 }).limit(100)
+      .populate('decidedBy', 'name role').lean(),
+    // Sanctions disciplinaires (avertissements, exclusions…)
+    Sanction.find({ student: student._id }).sort({ date: -1 }).limit(100)
       .populate('decidedBy', 'name role').lean(),
   ])
 
@@ -355,6 +382,7 @@ async function buildDiscipline(student) {
   }).filter((r) => r.status)
 
   const lateEntries = entries.filter((e) => e.status === 'late')
+  const activeSanctions = sanctions.filter((s) => !s.canceled)
   const summary = {
     entryLate: lateEntries.length,
     entryLateMinutes: lateEntries.reduce((s, e) => s + (e.lateMinutes || 0), 0),
@@ -363,9 +391,10 @@ async function buildDiscipline(student) {
     classExcused: classRecords.filter((r) => r.status === 'excused').length,
     permissionsApproved: permissions.filter((p) => p.status === 'approved').length,
     permissionsPending: permissions.filter((p) => p.status === 'pending').length,
+    sanctions: activeSanctions.length,
   }
 
-  return { summary, entries, classRecords, permissions }
+  return { summary, entries, classRecords, permissions, sanctions }
 }
 
 // GET /api/students/me/discipline — dossier discipline de l'élève connecté

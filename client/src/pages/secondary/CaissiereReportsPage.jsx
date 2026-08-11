@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { BarChart2, Loader2, TrendingUp, TrendingDown, Wallet, Receipt } from 'lucide-react'
+import { BarChart2, Loader2, TrendingUp, TrendingDown, Wallet, Receipt, CalendarRange } from 'lucide-react'
 import { feesApi, expensesApi, salariesApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
 import DownloadPdfButton from '../../components/DownloadPdfButton'
@@ -7,12 +7,28 @@ import ExportCsvButton from '../../components/ExportCsvButton'
 
 const fmtF = (n) => `${Number(n || 0).toLocaleString('fr-FR')} F`
 
+// Granularités du rapport par période (G5).
+const PERIODS = [
+  { value: 'day', label: 'Journalier' },
+  { value: 'week', label: 'Hebdomadaire' },
+  { value: 'month', label: 'Mensuel' },
+  { value: 'year', label: 'Annuel' },
+]
+// Met en forme la clé de seau (2026-08-10 · 2026-W32 · 2026-08 · 2026) en libellé FR.
+function periodLabel(key, period) {
+  if (period === 'day') { const [y, m, d] = key.split('-'); return `${d}/${m}/${y}` }
+  if (period === 'week') return key.replace('-W', ' — S')
+  if (period === 'month') { const [y, m] = key.split('-'); return `${['', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'][Number(m)]} ${y}` }
+  return key
+}
+
 /**
  * Rapports financiers (caissière + principal) : encaissements de pensions,
  * dépenses et salaires — agrégats prêts à transmettre au principal (export PDF).
  */
 export default function CaissiereReportsPage() {
   const [month, setMonth] = useState('')
+  const [period, setPeriod] = useState('day')
   const pdfRef = useRef(null)
 
   const feesQ = useCachedFetch('/fees?report', async () => (await feesApi.list('limit=2000')).data || [], [])
@@ -21,6 +37,8 @@ export default function CaissiereReportsPage() {
     const r = await salariesApi.list(month ? `month=${month}` : '')
     return r || {}
   }, [month])
+  // Rapport d'encaissements par période — agrégation serveur (G5).
+  const periodQ = useCachedFetch(`/fees/period-report?period=${period}`, async () => (await feesApi.periodReport({ period })), [period])
 
   const loading = feesQ.loading || expensesQ.loading || salariesQ.loading
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
@@ -73,6 +91,18 @@ export default function CaissiereReportsPage() {
     { label: 'Pensions encaissées', value: fmtF(totalPaid), icon: TrendingUp, cls: 'bg-green-100 text-green-600' },
     { label: 'Reste à encaisser', value: fmtF(Math.max(0, totalExpected - totalPaid)), icon: TrendingDown, cls: 'bg-orange-100 text-orange-600' },
     { label: 'Dépenses totales', value: fmtF(totalExpenses), icon: Wallet, cls: 'bg-red-100 text-red-600' },
+  ]
+
+  // Rapport par période (G5) — données d'agrégation serveur + colonnes d'export.
+  const periodReport = periodQ.data || {}
+  const periodRows = periodReport.data || []
+  const periodSummary = periodReport.summary || {}
+  const periodExportColumns = [
+    { label: 'Période', key: 'period', format: (v) => periodLabel(v, period) },
+    { label: 'Encaissé (F)', key: 'collected' },
+    { label: 'Paiements', key: 'count' },
+    { label: 'Dépenses (F)', key: 'expenses' },
+    { label: 'Net (F)', key: 'net' },
   ]
 
   return (
@@ -133,6 +163,64 @@ export default function CaissiereReportsPage() {
             {byClass.size === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-400">Aucune donnée de pension</td></tr>}
           </tbody>
         </table>
+      </div>
+
+      {/* Rapport par période (journalier / hebdomadaire / mensuel / annuel) — G5 */}
+      <div className="card overflow-hidden">
+        <div className="px-4 py-3 border-b bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-1.5"><CalendarRange size={15} className="text-indigo-600" /> Encaissements par période</h3>
+          <div className="flex items-center gap-2 no-pdf">
+            <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+              {PERIODS.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => setPeriod(p.value)}
+                  className={`text-xs px-3 py-1.5 transition-colors ${period === p.value ? 'bg-indigo-600 text-white font-semibold' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <ExportCsvButton filename={`encaissements-${period}.csv`} columns={periodExportColumns} rows={periodRows} disabled={periodRows.length === 0} />
+          </div>
+        </div>
+
+        {/* Résumé de la plage */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 text-center border-b bg-gray-50/50">
+          <div><div className="text-base font-bold text-green-600">{fmtF(periodSummary.totalCollected)}</div><div className="text-[11px] text-gray-500">Total encaissé</div></div>
+          <div><div className="text-base font-bold text-red-600">{fmtF(periodSummary.totalExpenses)}</div><div className="text-[11px] text-gray-500">Total dépenses</div></div>
+          <div><div className={`text-base font-bold ${(periodSummary.net || 0) >= 0 ? 'text-gray-900' : 'text-red-600'}`}>{fmtF(periodSummary.net)}</div><div className="text-[11px] text-gray-500">Solde net</div></div>
+          <div><div className="text-base font-bold text-gray-900">{periodSummary.paymentCount || 0}</div><div className="text-[11px] text-gray-500">Paiements</div></div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 border-b">
+                <th className="px-4 py-2">Période</th>
+                <th className="px-4 py-2">Encaissé</th>
+                <th className="px-4 py-2">Paiements</th>
+                <th className="px-4 py-2">Dépenses</th>
+                <th className="px-4 py-2">Net</th>
+              </tr>
+            </thead>
+            <tbody>
+              {periodQ.loading ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></td></tr>
+              ) : periodRows.length === 0 ? (
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">Aucun encaissement sur la période</td></tr>
+              ) : periodRows.map((r) => (
+                <tr key={r.period} className="border-b last:border-0">
+                  <td className="px-4 py-2 font-medium text-gray-900">{periodLabel(r.period, period)}</td>
+                  <td className="px-4 py-2 text-green-600 font-semibold">{fmtF(r.collected)}</td>
+                  <td className="px-4 py-2 text-gray-600">{r.count}</td>
+                  <td className="px-4 py-2 text-red-600">{fmtF(r.expenses)}</td>
+                  <td className={`px-4 py-2 font-semibold ${r.net >= 0 ? 'text-gray-900' : 'text-red-600'}`}>{fmtF(r.net)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Salaires */}

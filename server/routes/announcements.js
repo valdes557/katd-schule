@@ -30,14 +30,31 @@ function audiencesFor(role) {
   return ['all', 'parents', 'teachers'] // directeur / super_admin : tout
 }
 
+// Envoie le push d'une annonce à ses destinataires (best-effort). Réutilisé par la
+// publication immédiate (POST) et par la publication différée (scheduler).
+function pushAnnouncement(announcement) {
+  announcementRecipients(announcement.school, announcement.audience, announcement.createdBy).then((ids) => {
+    pushService.sendToUsers(ids, {
+      title: announcement.title || 'Nouvelle annonce',
+      body: (announcement.content || '').slice(0, 100),
+      url: '/dashboard/annonces',
+      tag: 'ann_' + announcement._id.toString(),
+    })
+  }).catch(() => {})
+}
+
 // GET /api/announcements — annonces visibles par l'utilisateur courant
 router.get('/', protect, async (req, res) => {
   try {
     const sid = schoolId(req)
     if (!sid) return res.json({ success: true, data: [] })
 
+    const isManager = ['directeur', 'super_admin', 'secretaire'].includes(req.user.role)
     const query = { school: sid }
-    if (req.user.role !== 'directeur' && req.user.role !== 'super_admin') {
+    if (!isManager) {
+      // Les lecteurs ne voient que les annonces publiées de leur audience ;
+      // les gestionnaires voient aussi leurs annonces programmées (pour les gérer).
+      query.status = 'publiee'
       query.audience = { $in: audiencesFor(req.user.role) }
     }
 
@@ -48,15 +65,24 @@ router.get('/', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/announcements — le directeur publie une annonce
+// POST /api/announcements — le directeur publie (ou programme) une annonce
 router.post('/', protect, authorize('directeur', 'super_admin', 'secretaire'), async (req, res) => {
   try {
-    const { title, content, audience } = req.body
+    const { title, content, audience, scheduledAt } = req.body
     if (!content || String(content).trim().length === 0) {
       return res.status(400).json({ message: "Le contenu de l'annonce est requis" })
     }
     const sid = schoolId(req)
     if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+
+    // Programmation : une date > 30 s dans le futur diffère la publication.
+    let status = 'publiee'
+    let scheduled = null
+    if (scheduledAt) {
+      const when = new Date(scheduledAt)
+      if (isNaN(when.getTime())) return res.status(400).json({ message: 'Date de programmation invalide' })
+      if (when.getTime() > Date.now() + 30 * 1000) { status = 'programmee'; scheduled = when }
+    }
 
     const finalAudience = ['all', 'parents', 'teachers'].includes(audience) ? audience : 'all'
     const announcement = await Announcement.create({
@@ -66,18 +92,14 @@ router.post('/', protect, authorize('directeur', 'super_admin', 'secretaire'), a
       audience: finalAudience,
       // La secrétaire publie au nom de la Direction
       onBehalfOf: req.user.role === 'secretaire' ? 'La Direction' : '',
+      status,
+      scheduledAt: scheduled,
+      publishedAt: status === 'publiee' ? new Date() : null,
       createdBy: req.user._id,
     })
 
-    // Push aux destinataires de l'annonce (best-effort).
-    announcementRecipients(sid, finalAudience, req.user._id).then((ids) => {
-      pushService.sendToUsers(ids, {
-        title: announcement.title || 'Nouvelle annonce',
-        body: content.trim().slice(0, 100),
-        url: '/dashboard/annonces',
-        tag: 'ann_' + announcement._id.toString(),
-      })
-    }).catch(() => {})
+    // Push immédiat seulement si publiée maintenant ; sinon le scheduler s'en charge.
+    if (status === 'publiee') pushAnnouncement(announcement)
 
     res.status(201).json({ success: true, data: announcement })
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -93,3 +115,5 @@ router.delete('/:id', protect, authorize('directeur', 'super_admin', 'secretaire
 })
 
 module.exports = router
+// Exposé pour le scheduler (publication différée des annonces programmées).
+module.exports.pushAnnouncement = pushAnnouncement

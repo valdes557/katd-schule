@@ -261,7 +261,7 @@ export default function NotesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Type</label>
                   <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input text-sm mt-1">
-                    <option value="devoir">Devoir</option><option value="examen">Examen</option><option value="composition">Composition</option><option value="oral">Oral</option><option value="tp">TP</option>
+                    <option value="devoir">Devoir</option><option value="examen">Examen</option><option value="composition">Composition</option><option value="oral">Oral</option><option value="tp">TP</option><option value="examen_blanc">Examen blanc</option><option value="examen_officiel">Examen officiel</option>
                   </select>
                 </div>
                 <div><label className="text-xs font-medium text-gray-600">Trimestre</label>

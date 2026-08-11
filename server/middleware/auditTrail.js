@@ -31,10 +31,19 @@ const RULES = [
   { m: 'DELETE', re: /^\/admin\/users\/[^/]+$/, action: 'user.delete', label: 'Compte supprimé', entity: 'User' },
   { m: 'POST', re: /^\/staff-accounts/, action: 'staff.account', label: 'Compte personnel créé/modifié', entity: 'User' },
   { m: 'DELETE', re: /^\/staff-accounts\/[^/]+$/, action: 'staff.account.delete', label: 'Compte personnel supprimé', entity: 'User' },
+  // Suspension/réactivation des comptes profs / élèves / parents (G3)
+  { m: 'PUT', re: /^\/teachers\/[^/]+\/toggle-active$/, action: 'account.toggle', label: 'Compte enseignant suspendu/réactivé', entity: 'User' },
+  { m: 'PUT', re: /^\/students\/[^/]+\/toggle-active$/, action: 'account.toggle', label: 'Compte élève suspendu/réactivé', entity: 'User' },
+  { m: 'PUT', re: /^\/parents\/[^/]+\/toggle-active$/, action: 'account.toggle', label: 'Compte parent suspendu/réactivé', entity: 'User' },
+  { m: 'POST', re: /^\/auth\/admin-reset-password$/, action: 'account.reset', label: 'Mot de passe réinitialisé', entity: 'User' },
 
   // Scolarité (notes publiées, suppression)
   { m: 'PUT', re: /^\/grades\/publish\/batch$/, action: 'grade.publish', label: 'Notes publiées', entity: 'Grade' },
   { m: 'DELETE', re: /^\/grades\/[^/]+$/, action: 'grade.delete', label: 'Note supprimée', entity: 'Grade' },
+
+  // Discipline (sanctions enregistrées / annulées)
+  { m: 'POST', re: /^\/sanctions$/, action: 'sanction.create', label: 'Sanction disciplinaire enregistrée', entity: 'Sanction' },
+  { m: 'PUT', re: /^\/sanctions\/[^/]+\/cancel$/, action: 'sanction.cancel', label: 'Sanction disciplinaire annulée', entity: 'Sanction' },
 
   // École (suppression = irréversible en cascade)
   { m: 'DELETE', re: /^\/schools\/[^/]+$/, action: 'school.delete', label: 'École supprimée', entity: 'School' },

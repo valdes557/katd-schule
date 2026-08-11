@@ -21,11 +21,16 @@ router.get('/', protect, async (req, res) => {
       const ids = children.map((s) => s.class).filter(Boolean)
       if (ids.length === 0) return res.json({ success: true, data: [] })
       query.class = { $in: ids }
+      // Les parents ne voient que les emplois du temps publiés (G4).
+      // $ne: 'brouillon' inclut les documents legacy sans champ status.
+      query.status = { $ne: 'brouillon' }
     } else if (req.user.role === 'eleve') {
       // L'élève (Secondaire) ne voit que l'emploi du temps de SA classe
       const me = await Student.findOne({ user: req.user._id }).select('class')
       if (!me?.class) return res.json({ success: true, data: [] })
       query.class = me.class
+      // …et seulement s'il est publié (G4).
+      query.status = { $ne: 'brouillon' }
     }
     const timetables = await Timetable.find(query).populate('class', 'name level cycle room')
     res.json({ success: true, data: timetables })
@@ -55,6 +60,29 @@ router.put('/:id', protect, authorize('directeur', 'super_admin', 'enseignant', 
     const tt = await Timetable.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('class', 'name level cycle room')
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
     res.json({ success: true, data: tt })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// PUT /api/timetables/:id/publish — publie ou dépublie l'emploi du temps (G4).
+// body { publish: true|false }. Publié → visible par les élèves et parents.
+router.put('/:id/publish', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
+  try {
+    const publish = req.body.publish !== false // défaut : publier
+    const tt = await Timetable.findById(req.params.id)
+    if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
+    // Scope école (le directeur/VP ne gère que son école)
+    const sid = req.user.school?._id || req.user.school
+    if (req.user.role !== 'super_admin' && String(tt.school) !== String(sid)) {
+      return res.status(403).json({ message: 'Accès refusé' })
+    }
+    tt.status = publish ? 'publie' : 'brouillon'
+    tt.publishedAt = publish ? new Date() : null
+    tt.publishedBy = publish ? req.user._id : null
+    await tt.save()
+    const populated = await Timetable.findById(tt._id).populate('class', 'name level cycle room')
+    res.json({ success: true, data: populated, message: publish ? 'Emploi du temps publié' : 'Publication retirée' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

@@ -179,6 +179,96 @@ router.get('/payment-history', protect, authorize('directeur', 'super_admin', 'c
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// GET /api/fees/period-report?period=day|week|month|year&from=&to= — encaissements
+// agrégés par période (rapport journalier / hebdomadaire / mensuel / annuel de la caissière, G5).
+// Parcourt chaque paiement individuel (sous-tableau payments) et le range dans son seau.
+router.get('/period-report', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const Expense = require('../models/Expense')
+    const period = ['day', 'week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'day'
+    // Plage par défaut selon la granularité (jour → 30 derniers jours, etc.).
+    const now = new Date()
+    let from = req.query.from ? new Date(req.query.from) : null
+    let to = req.query.to ? new Date(req.query.to) : null
+    if (!from) {
+      from = new Date(now)
+      if (period === 'day') from.setDate(from.getDate() - 30)
+      else if (period === 'week') from.setDate(from.getDate() - 7 * 12)
+      else if (period === 'month') from.setMonth(from.getMonth() - 12)
+      else from.setFullYear(from.getFullYear() - 5)
+    }
+    if (!to) to = now
+    from.setHours(0, 0, 0, 0)
+    to.setHours(23, 59, 59, 999)
+
+    // Clé de seau + libellé lisible pour une date donnée.
+    const bucketKey = (d) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      if (period === 'day') return `${y}-${m}-${day}`
+      if (period === 'month') return `${y}-${m}`
+      if (period === 'year') return `${y}`
+      // Semaine ISO : année-Wnn
+      const tmp = new Date(Date.UTC(y, d.getMonth(), d.getDate()))
+      const dayNum = (tmp.getUTCDay() + 6) % 7
+      tmp.setUTCDate(tmp.getUTCDate() - dayNum + 3)
+      const firstThursday = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 4))
+      const week = 1 + Math.round(((tmp - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7)
+      return `${tmp.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
+    }
+
+    const fees = await Fee.find({ school: schoolId(req) }).select('payments').lean()
+    const buckets = new Map()
+    let totalCollected = 0
+    let paymentCount = 0
+    for (const f of fees) {
+      for (const p of f.payments || []) {
+        if (!p.date) continue
+        const d = new Date(p.date)
+        if (d < from || d > to) continue
+        const key = bucketKey(d)
+        if (!buckets.has(key)) buckets.set(key, { period: key, collected: 0, count: 0 })
+        const b = buckets.get(key)
+        b.collected += p.amount || 0
+        b.count += 1
+        totalCollected += p.amount || 0
+        paymentCount += 1
+      }
+    }
+
+    // Dépenses de la même plage, agrégées par seau.
+    const expenses = await Expense.find({ school: schoolId(req), date: { $gte: from, $lte: to } }).select('amount date').lean()
+    let totalExpenses = 0
+    for (const e of expenses) {
+      const d = new Date(e.date)
+      const key = bucketKey(d)
+      if (!buckets.has(key)) buckets.set(key, { period: key, collected: 0, count: 0 })
+      const b = buckets.get(key)
+      b.expenses = (b.expenses || 0) + (e.amount || 0)
+      totalExpenses += e.amount || 0
+    }
+
+    const rows = Array.from(buckets.values())
+      .map((b) => ({ ...b, expenses: b.expenses || 0, net: (b.collected || 0) - (b.expenses || 0) }))
+      .sort((a, b) => b.period.localeCompare(a.period))
+
+    res.json({
+      success: true,
+      period,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      data: rows,
+      summary: {
+        totalCollected,
+        totalExpenses,
+        net: totalCollected - totalExpenses,
+        paymentCount,
+      },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // POST /api/fees — Create fee for a student
 router.post('/', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {

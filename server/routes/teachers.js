@@ -43,7 +43,7 @@ router.get('/', protect, async (req, res) => {
     const total = await Teacher.countDocuments(query)
     const teachers = await Teacher.find(query)
       .populate('classes', 'name level cycle room')
-      .populate('user', 'email matricule')
+      .populate('user', 'email matricule isActive')
       .skip((page - 1) * limit)
       .limit(Number(limit))
       .sort({ lastName: 1 })
@@ -148,6 +148,28 @@ router.put('/:id', protect, authorize('directeur', 'super_admin', 'vice_principa
     await teacher.save()
     const populated = await Teacher.findById(teacher._id).populate('classes', 'name level cycle room').populate('user', 'email matricule')
     res.json({ success: true, data: populated })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// PUT /api/teachers/:id/toggle-active — suspend/réactive le compte de connexion de l'enseignant (G3)
+router.put('/:id/toggle-active', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+  try {
+    const teacher = await Teacher.findById(req.params.id)
+    if (!teacher) return res.status(404).json({ message: 'Enseignant non trouvé' })
+    if (req.user.role === 'directeur') {
+      const mySchool = req.user.school?._id || req.user.school
+      if (!mySchool || String(teacher.school) !== String(mySchool)) {
+        return res.status(403).json({ message: 'Vous ne pouvez gérer que les enseignants de votre école' })
+      }
+    }
+    if (!teacher.user) return res.status(400).json({ message: 'Cet enseignant n\'a pas de compte de connexion' })
+    const account = await User.findById(teacher.user)
+    if (!account) return res.status(404).json({ message: 'Compte de connexion introuvable' })
+    account.isActive = account.isActive === false // inactif → actif, actif → inactif
+    await account.save()
+    res.json({ success: true, isActive: account.isActive, message: account.isActive ? 'Compte réactivé' : 'Compte suspendu' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

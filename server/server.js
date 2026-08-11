@@ -15,6 +15,9 @@ try { require('./jobs/scheduler').start() } catch (e) { console.error('scheduler
 // Diffusion ponctuelle des cours de l'IA enseignante (tick 45 s).
 try { require('./jobs/aiCourseRunner').start() } catch (e) { console.error('aiCourseRunner:', e.message) }
 
+// Publication différée des annonces programmées (tick 60 s).
+try { require('./jobs/announcementRunner').start() } catch (e) { console.error('announcementRunner:', e.message) }
+
 // Gzip/Brotli responses for faster transfers
 app.use(compression())
 
@@ -87,6 +90,7 @@ app.use('/api/visitors', require('./routes/visitors'))
 app.use('/api/teacher-files', require('./routes/teacherFiles'))
 app.use('/api/mails', require('./routes/mails'))
 app.use('/api/permissions', require('./routes/permissions'))
+app.use('/api/sanctions', require('./routes/sanctions'))
 app.use('/api/reports', require('./routes/reports'))
 app.use('/api/lesson-logs', require('./routes/lessonLogs'))
 app.use('/api/notifications', require('./routes/notifications'))

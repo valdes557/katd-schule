@@ -99,5 +99,50 @@
 | 2026-08-09 | F2 IA enseignante autonome (modèle AiCourse, service+quota, runner ponctuel, routes, pages Cours IA + Live, menus prof/élève/parent/VP/directeur) | ✅ |
 | 2026-08-09 | F3 Journal des actions (AuditLog + middleware auditTrail global + route lecture seule + AuditLogPage + nav directeur/super_admin) · F4 confirmé (push branché sur 18 routes) | ✅ |
 | 2026-08-09 | F5 Export Excel/CSV (exportCsv + ExportCsvButton → journal actions, visiteurs, rapport financier) · F6 vérif responsive nouvelles pages | ✅ |
+| 2026-08-10 | G — Complément dashboards Principal / VP / SG / Caissière (voir PHASE G) | ✅ |
 
-**🎉 Module secondaire terminé** — toutes les phases A→F sont livrées.
+**🎉 Module secondaire (A→F) terminé.** Ouverture de la PHASE G : compléments demandés sur les dashboards du **Principal, Vice-Principal, Surveillant Général et Caissière**.
+
+---
+
+## PHASE G — Compléments Principal / Vice-Principal / Surveillant Général / Caissière
+
+> Enregistré le 2026-08-10. Cahier des charges reçu : fonctionnalités détaillées des 4 dashboards de direction.
+> Le gros de la spec est **déjà livré** (voir « Déjà couvert » plus bas) ; la PHASE G ne comble que les manques réels identifiés à l'audit.
+
+### Déjà couvert (aucune action)
+
+- **Principal** : création membre admin (`StaffAccountsPage`), enseignant, élève, association parent↔élève (`students/link-parent`, `:id/parent-account`), modif utilisateurs, suppression comptes, réinit MDP (`auth/admin-reset-password`), gestion école/classes/salles/matières/coefficients, personnel + pointage (`TeacherAttendance`), rapports reçus (`ReportsPage`), QR présence téléchargeables + imprimables (`PresenceQrPage`), messagerie, tableau de bord chiffré (`DashboardPage`).
+- **Vice-Principal** : emplois du temps (créer/modifier), affectation profs (classes/matières), évaluations (devoir/composition/examen + séquences + coefficients), cahier de texte + visa, RDV parents, rapports reçus.
+- **Surveillant Général** : présences portier + appels profs, retards/absences, permissions (sortie/absence/retard), annuaire contacts parents (`ParentsDirectoryPage`), alertes push.
+- **Caissière** : encaissement partiel/total, reçus PDF auto, soldes/restes à payer, notifications parent + principal, préparation salaires.
+- **Commun** : auth sécurisée, Messenger, notifications temps réel, historique/logs (`AuditLog`), profils, export PDF/Excel, responsive.
+
+### Manques à combler
+
+- 🔴 **G1. Discipline enregistrée (Surveillant Général)** — aujourd'hui la discipline est en *lecture seule*. Ajouter :
+  - Modèle `Sanction` (élève, école, type `avertissement|blame|exclusion_temporaire|exclusion_definitive|convocation|retenue`, motif, date, durée éventuelle, décidé par, statut)
+  - Routes `/api/sanctions` (create/list/annuler, authorize `surveillant_general`/`directeur`/`vice_principal`) + push parent + audit
+  - Intégration au dossier discipline (`DisciplineView` : nouvelle section « Sanctions ») et à `GET /students/:id/discipline`
+  - Page `SurveillantDisciplinePage` (`/dashboard/surveillance/discipline`) : formulaire sanction + historique filtrable ; menus SG + directeur
+- 🟠 **G2. Annonces programmées (Principal)** — champs `status` (`publiee|programmee`) + `scheduledAt` sur `Announcement`, filtrage lecture (ne montrer les programmées qu'à l'heure venue), publication automatique via `jobs/scheduler`, UI « Programmer » dans `AnnoncesPage`.
+- 🟠 **G3. Suspendre/réactiver + réinit MDP pour profs/élèves/parents (Principal)** — routes `toggle-active` sur `teachers`/`students`/`parents` (bascule `isActive` du compte User lié) + bouton réinit MDP (réutilise `admin-reset-password`) branchés dans `EnseignantsPage`, `ElevesPage`, `ParentsPage`.
+- 🟠 **G4. Publier les emplois du temps (Vice-Principal)** — champ `status` (`brouillon|publie`) + `publishedAt` sur `Timetable`, `PUT /timetables/:id/publish`, badge + bouton dans `EmploiDuTempsPage`, élève/parent ne voient que le publié.
+- 🟠 **G5. Rapports financiers par période (Caissière)** — sélecteur `journalier|hebdomadaire|mensuel|annuel` dans `CaissiereReportsPage`, agrégation des encaissements (`fees`) sur la période, totaux + export CSV/PDF.
+- 🟡 **G6. QR personnel commun** — ajouter « Mon QR de présence » (`/dashboard/eleve/mon-qr`, déjà générique) aux menus VP/SG/caissière/secrétaire/portier (fonctionnalité commune non exposée).
+- 🟡 **G7. Types examen blanc/officiel (VP)** — étendre l'enum `type` de `Grade` avec `examen_blanc` et `examen_officiel` + options dans le formulaire de notes.
+
+### Journal PHASE G
+
+| Date | Tâche | Statut |
+|---|---|---|
+| 2026-08-10 | Audit + plan PHASE G enregistré | ✅ |
+| 2026-08-10 | G1 Discipline enregistrée (modèle `Sanction`, routes `/api/sanctions` + push parent/élève + audit, intégration `buildDiscipline` + `DisciplineView`, page `SurveillantDisciplinePage`, menu SG) | ✅ |
+| 2026-08-10 | G2 Annonces programmées (champs `status`/`scheduledAt`/`publishedAt` sur `Announcement`, POST diffère si date future, GET masque les programmées aux lecteurs, `announcementRunner` tick 60 s, UI programmation + badge dans `AnnoncesPage`) | ✅ |
+| 2026-08-10 | G3 Suspendre/réinit MDP profs/élèves/parents (routes `toggle-active` sur teachers/students/parents → bascule `isActive` du User lié, `authApi.adminResetPassword`, boutons Suspendre/Réinit dans `EnseignantsPage`/`ElevesPage`/`ParentsPage`, audit `account.toggle`/`account.reset`) | ✅ |
+| 2026-08-10 | G4 Publier emplois du temps (champs `status`/`publishedAt`/`publishedBy` sur `Timetable`, route `PUT /timetables/:id/publish`, scope élève/parent `status ≠ brouillon` — legacy visibles, badge + bouton Publier/Dépublier dans `EmploiDuTempsPage`) | ✅ |
+| 2026-08-10 | G5 Rapports financiers par période (endpoint `GET /fees/period-report` agrège les paiements par jour/semaine/mois/année + dépenses, `feesApi.periodReport`, carte « Encaissements par période » avec sélecteur + résumé + export CSV dans `CaissiereReportsPage`) | ✅ |
+| 2026-08-10 | G6 QR personnel commun (route alias `/dashboard/mon-qr` → `MyQrPage`, entrées « Mon QR de présence » aux menus VP/SG/caissière/secrétaire/portier) | ✅ |
+| 2026-08-10 | G7 Types examen blanc/officiel (enum `Grade.type` étendu, options `NotesPage`, libellés `EleveNotesPage`, regroupement bulletin des examens blancs/officiels avec les examens) | ✅ |
+
+**🎉 PHASE G terminée** — les 7 compléments (G1→G7) des dashboards Principal / Vice-Principal / Surveillant Général / Caissière sont livrés.

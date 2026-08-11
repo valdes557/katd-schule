@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { studentsApi, classesApi, parentsApi } from '../lib/api'
-import { Users, Search, UserPlus, KeyRound, X, Loader2, CheckCircle2, Edit2, Trash2, GraduationCap, Plus } from 'lucide-react'
+import { studentsApi, classesApi, parentsApi, authApi } from '../lib/api'
+import { Users, Search, UserPlus, KeyRound, X, Loader2, CheckCircle2, Edit2, Trash2, GraduationCap, Plus, Ban, Power } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
@@ -128,6 +128,23 @@ export default function ParentsPage() {
     try {
       await parentsApi.remove(p._id)
       refreshAll()
+    } catch (err) { alert(err.message) }
+  }
+
+  // Suspend / réactive le compte parent (G3)
+  const toggleParentActive = async (p) => {
+    const suspended = p.isActive === false
+    if (!confirm(suspended ? `Réactiver le compte de « ${p.name} » ?` : `Suspendre le compte de « ${p.name} » ? Il ne pourra plus se connecter.`)) return
+    try { await parentsApi.toggleActive(p._id); refreshAll() } catch (err) { alert(err.message) }
+  }
+
+  // Réinitialise le mot de passe du parent (G3)
+  const resetParentPassword = async (p) => {
+    if (!p.email) { alert('Ce parent n\'a pas d\'adresse e-mail pour la réinitialisation.'); return }
+    if (!confirm(`Réinitialiser le mot de passe de « ${p.name} » ?`)) return
+    try {
+      const r = await authApi.adminResetPassword(p.email)
+      alert(`Nouveau mot de passe : ${r.rawPassword}\n(également envoyé à ${r.email})`)
     } catch (err) { alert(err.message) }
   }
 
@@ -261,6 +278,7 @@ export default function ParentsPage() {
                   <tr key={p._id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
                       {p.name}
+                      {p.isActive === false && <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-1.5 py-0.5 align-middle"><Ban size={9} /> Suspendu</span>}
                       {p.matricule && <div className="text-[10px] font-mono text-gray-400 font-normal">{p.matricule}</div>}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600">{p.email}</td>
@@ -277,6 +295,10 @@ export default function ParentsPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button onClick={() => openEditParent(p)} title="Modifier" className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={14} /></button>
+                        <button onClick={() => resetParentPassword(p)} title="Réinitialiser le mot de passe" className="p-1.5 rounded hover:bg-amber-50 text-amber-600"><KeyRound size={14} /></button>
+                        <button onClick={() => toggleParentActive(p)} title={p.isActive === false ? 'Réactiver le compte' : 'Suspendre le compte'} className={`p-1.5 rounded ${p.isActive === false ? 'hover:bg-green-50 text-green-600' : 'hover:bg-orange-50 text-orange-500'}`}>
+                          {p.isActive === false ? <Power size={14} /> : <Ban size={14} />}
+                        </button>
                         <button onClick={() => deleteParent(p)} title="Supprimer" className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
                       </div>
                     </td>

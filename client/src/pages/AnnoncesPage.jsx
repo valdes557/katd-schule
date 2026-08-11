@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { announcementsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
-import { Loader2, Bell, Plus, Trash2, X, Users, GraduationCap, UserCheck } from 'lucide-react'
+import { Loader2, Bell, Plus, Trash2, X, Users, GraduationCap, UserCheck, Clock } from 'lucide-react'
 
 const AUDIENCES = [
   { value: 'all', label: 'Tous (parents & enseignants)', icon: Users, color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -18,7 +18,7 @@ export default function AnnoncesPage() {
   const isDirector = user?.role === 'directeur' || user?.role === 'secretaire'
 
   const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState({ title: '', content: '', audience: 'all' })
+  const [form, setForm] = useState({ title: '', content: '', audience: 'all', scheduled: false, scheduledAt: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -28,13 +28,24 @@ export default function AnnoncesPage() {
 
   const refresh = () => { cache.invalidate('/announcements'); annQ.refetch() }
 
-  const openCreate = () => { setForm({ title: '', content: '', audience: 'all' }); setError(''); setModalOpen(true) }
+  const openCreate = () => { setForm({ title: '', content: '', audience: 'all', scheduled: false, scheduledAt: '' }); setError(''); setModalOpen(true) }
 
   const handleCreate = async () => {
     if (!form.content.trim()) { setError("Le contenu de l'annonce est requis"); return }
+    if (form.scheduled) {
+      if (!form.scheduledAt) { setError('Choisissez la date et l\'heure de publication'); return }
+      if (new Date(form.scheduledAt).getTime() <= Date.now()) { setError('La date de programmation doit être dans le futur'); return }
+    }
     setSaving(true); setError('')
     try {
-      await announcementsApi.create(form)
+      const payload = {
+        title: form.title,
+        content: form.content,
+        audience: form.audience,
+        // Envoie scheduledAt seulement si programmation activée ; sinon publication immédiate.
+        ...(form.scheduled && form.scheduledAt ? { scheduledAt: new Date(form.scheduledAt).toISOString() } : {}),
+      }
+      await announcementsApi.create(payload)
       refresh(); setModalOpen(false)
     } catch (err) { setError(err.message) }
     setSaving(false)
@@ -77,8 +88,18 @@ export default function AnnoncesPage() {
                             <meta.icon size={10} /> {meta.value === 'all' ? 'Tous' : meta.value === 'parents' ? 'Parents' : 'Enseignants'}
                           </span>
                         )}
+                        {a.status === 'programmee' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                            <Clock size={10} /> Programmée
+                          </span>
+                        )}
                       </div>
-                      <p className="text-[11px] text-gray-400">{new Date(a.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}{a.onBehalfOf ? ` · Publiée au nom de ${a.onBehalfOf}` : ''}</p>
+                      <p className="text-[11px] text-gray-400">
+                        {a.status === 'programmee' && a.scheduledAt
+                          ? `Publication prévue le ${new Date(a.scheduledAt).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                          : new Date(a.publishedAt || a.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {a.onBehalfOf ? ` · Publiée au nom de ${a.onBehalfOf}` : ''}
+                      </p>
                     </div>
                     {isDirector && (
                       <button type="button" onClick={() => handleDelete(a._id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500 flex-shrink-0"><Trash2 size={14} /></button>
@@ -125,10 +146,25 @@ export default function AnnoncesPage() {
                 <label className="text-xs font-medium text-gray-600">Contenu *</label>
                 <textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={4} className="input text-sm mt-1 w-full resize-none" placeholder="Votre annonce..." />
               </div>
+              {/* Programmation (G2) : publication immédiate ou différée */}
+              <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="checkbox" checked={form.scheduled} onChange={(e) => setForm({ ...form, scheduled: e.target.checked })} className="rounded border-gray-300" />
+                  <Clock size={14} className="text-amber-600" /> Programmer la publication
+                </label>
+                {form.scheduled && (
+                  <input
+                    type="datetime-local"
+                    value={form.scheduledAt}
+                    onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
+                    className="input text-sm w-full"
+                  />
+                )}
+              </div>
             </div>
             <div className="flex gap-2 px-5 py-3 border-t border-gray-100">
               <button onClick={() => setModalOpen(false)} className="flex-1 justify-center border border-gray-200 rounded-lg px-3 py-2 text-sm hover:bg-gray-50">Annuler</button>
-              <button disabled={saving} onClick={handleCreate} className="btn-primary flex-1 justify-center text-sm">{saving ? <Loader2 size={14} className="animate-spin" /> : 'Publier'}</button>
+              <button disabled={saving} onClick={handleCreate} className="btn-primary flex-1 justify-center text-sm">{saving ? <Loader2 size={14} className="animate-spin" /> : (form.scheduled ? 'Programmer' : 'Publier')}</button>
             </div>
           </div>
         </div>

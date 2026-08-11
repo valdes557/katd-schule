@@ -3,7 +3,7 @@ import { FileText, Loader2 } from 'lucide-react'
 import { gradesApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
 
-const TYPE_LABELS = { devoir: 'Devoir', examen: 'Examen', composition: 'Composition', oral: 'Oral', tp: 'TP' }
+const TYPE_LABELS = { devoir: 'Devoir', examen: 'Examen', composition: 'Composition', oral: 'Oral', tp: 'TP', examen_blanc: 'Examen blanc', examen_officiel: 'Examen officiel' }
 
 /** Notes de l'élève connecté (lecture seule — le serveur limite à SES notes). */
 export default function EleveNotesPage() {

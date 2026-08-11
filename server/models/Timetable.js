@@ -19,6 +19,11 @@ const timetableSchema = new mongoose.Schema(
     class: { type: mongoose.Schema.Types.ObjectId, ref: 'Class', required: true },
     academicYear: { type: String },
     slots: [slotSchema],
+    // Publication (G4) : un emploi du temps est en 'brouillon' tant que le VP/directeur
+    // ne l'a pas publié. Les élèves et parents ne voient que les emplois 'publie'.
+    status: { type: String, enum: ['brouillon', 'publie'], default: 'brouillon' },
+    publishedAt: { type: Date, default: null },
+    publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 )

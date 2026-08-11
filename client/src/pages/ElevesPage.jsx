@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus } from 'lucide-react'
-import { studentsApi, classesApi, teachersApi } from '../lib/api'
+import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus, Ban, Power } from 'lucide-react'
+import { studentsApi, classesApi, teachersApi, authApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
@@ -67,6 +67,24 @@ export default function ElevesPage() {
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cet élève ?')) return
     try { await studentsApi.remove(id); refreshStudents() } catch (e) { alert(e.message) }
+  }
+
+  // Suspend / réactive le compte de connexion élève (G3)
+  const handleToggleActive = async (s) => {
+    const suspended = s.user?.isActive === false
+    if (!confirm(suspended ? 'Réactiver le compte de cet élève ?' : 'Suspendre le compte de cet élève ? Il ne pourra plus se connecter.')) return
+    try { await studentsApi.toggleActive(s._id); refreshStudents() } catch (e) { alert(e.message) }
+  }
+
+  // Réinitialise le mot de passe du compte élève (G3)
+  const handleResetPassword = async (s) => {
+    const email = s.user?.email || s.email
+    if (!email) { alert('Cet élève n\'a pas d\'adresse e-mail de connexion pour la réinitialisation.'); return }
+    if (!confirm(`Réinitialiser le mot de passe de ${s.lastName} ${s.firstName} ?`)) return
+    try {
+      const r = await authApi.adminResetPassword(email)
+      alert(`Nouveau mot de passe : ${r.rawPassword}\n(également envoyé à ${r.email})`)
+    } catch (e) { alert(e.message) }
   }
 
   const [parentModal, setParentModal] = useState(null) // { student }
@@ -282,11 +300,19 @@ export default function ElevesPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button title="Créer compte parent" onClick={() => openParentModal(s)} className="p-1.5 rounded hover:bg-green-50 text-green-600"><UserPlus size={14} /></button>
-                        {isSecondaire && (
+                        {isSecondaire && !s.user && (
                           <button title="Créer compte élève" onClick={() => openStudentAccountModal(s)} className="p-1.5 rounded hover:bg-indigo-50 text-indigo-600"><KeyRound size={14} /></button>
                         )}
-                        <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={14} /></button>
-                        <button onClick={() => handleDelete(s._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
+                        {s.user && (
+                          <>
+                            <button title="Réinitialiser le mot de passe" onClick={() => handleResetPassword(s)} className="p-1.5 rounded hover:bg-amber-50 text-amber-600"><KeyRound size={14} /></button>
+                            <button title={s.user.isActive === false ? 'Réactiver le compte' : 'Suspendre le compte'} onClick={() => handleToggleActive(s)} className={`p-1.5 rounded ${s.user.isActive === false ? 'hover:bg-green-50 text-green-600' : 'hover:bg-orange-50 text-orange-500'}`}>
+                              {s.user.isActive === false ? <Power size={14} /> : <Ban size={14} />}
+                            </button>
+                          </>
+                        )}
+                        <button title="Modifier" onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={14} /></button>
+                        <button title="Supprimer" onClick={() => handleDelete(s._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   )}

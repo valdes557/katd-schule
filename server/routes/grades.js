@@ -180,6 +180,9 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
       if (g.comment) grouped[g.subject].comments.push(g.comment)
       let t = (g.type || 'devoir').toLowerCase()
       if (t === 'controle') t = 'examen' // legacy alias
+      // Les examens blancs/officiels (Secondaire) sont regroupés avec les examens
+      // pour l'affichage par type du bulletin (ils comptent déjà dans la moyenne pondérée).
+      if (t === 'examen_blanc' || t === 'examen_officiel') t = 'examen'
       if (!GRADE_TYPES.includes(t)) t = 'devoir'
       if (!grouped[g.subject].byType[t]) grouped[g.subject].byType[t] = []
       grouped[g.subject].byType[t].push(g.value)

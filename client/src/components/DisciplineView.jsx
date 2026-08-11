@@ -1,4 +1,4 @@
-import { Clock, X, AlertCircle, CheckCircle2, Bell } from 'lucide-react'
+import { Clock, X, AlertCircle, CheckCircle2, Bell, Gavel } from 'lucide-react'
 
 const PERM_KIND = { sortie: 'Sortie', absence: 'Absence', retard: 'Retard' }
 const PERM_STATUS = {
@@ -11,11 +11,20 @@ const CLASS_STATUS = {
   late: { label: 'Retard', cls: 'text-orange-500', icon: Clock },
   excused: { label: 'Justifié', cls: 'text-blue-600', icon: CheckCircle2 },
 }
+// Libellés des types de sanction (partagés avec le dashboard SG).
+export const SANCTION_LABELS = {
+  avertissement: 'Avertissement',
+  blame: 'Blâme',
+  exclusion_temporaire: 'Exclusion temporaire',
+  exclusion_definitive: 'Exclusion définitive',
+  convocation: 'Convocation des parents',
+  retenue: 'Retenue',
+}
 
 /** Affichage du dossier discipline (résumé + retards entrée + incidents classe + permissions).
  *  Utilisé par l'espace élève (ma discipline) et l'espace parent (discipline par enfant). */
 export default function DisciplineView({ data }) {
-  const { summary, entries = [], classRecords = [], permissions = [] } = data || {}
+  const { summary, entries = [], classRecords = [], permissions = [], sanctions = [] } = data || {}
   if (!summary) return null
   const lateEntries = entries.filter((e) => e.status === 'late')
   const incidents = classRecords.filter((r) => r.status !== 'present')
@@ -23,7 +32,7 @@ export default function DisciplineView({ data }) {
   return (
     <div className="space-y-5">
       {/* Résumé */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="card p-3 text-center">
           <div className="text-2xl font-bold text-orange-500">{summary.entryLate}</div>
           <div className="text-xs text-gray-500">Retards à l'entrée{summary.entryLateMinutes > 0 ? ` (${summary.entryLateMinutes} min)` : ''}</div>
@@ -39,6 +48,10 @@ export default function DisciplineView({ data }) {
         <div className="card p-3 text-center">
           <div className="text-2xl font-bold text-blue-600">{summary.classExcused}</div>
           <div className="text-xs text-gray-500">Absences justifiées</div>
+        </div>
+        <div className="card p-3 text-center">
+          <div className="text-2xl font-bold text-rose-600">{summary.sanctions || 0}</div>
+          <div className="text-xs text-gray-500">Sanctions actives</div>
         </div>
       </div>
 
@@ -105,6 +118,35 @@ export default function DisciplineView({ data }) {
                 </div>
               )
             })}
+          </div>
+        )}
+      </div>
+
+      {/* Sanctions disciplinaires */}
+      <div className="card p-4">
+        <h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Gavel size={15} className="text-rose-500" /> Sanctions disciplinaires</h3>
+        {sanctions.length === 0 ? (
+          <p className="text-xs text-gray-400">Aucune sanction enregistrée.</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {sanctions.map((s) => (
+              <div key={s._id} className={`py-2.5 ${s.canceled ? 'opacity-50' : ''}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-800">
+                    {SANCTION_LABELS[s.type] || s.type}
+                    {s.durationDays > 0 ? ` — ${s.durationDays} j` : ''}
+                  </span>
+                  <span className={`text-xs font-semibold border rounded-full px-2 py-0.5 ${s.canceled ? 'text-gray-500 bg-gray-50 border-gray-200' : 'text-rose-700 bg-rose-50 border-rose-200'}`}>
+                    {s.canceled ? 'Annulée' : 'En vigueur'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">{s.reason}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {s.date ? new Date(s.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}
+                  {s.decidedBy?.name ? ` · par ${s.decidedBy.name}` : ''}
+                </p>
+              </div>
+            ))}
           </div>
         )}
       </div>

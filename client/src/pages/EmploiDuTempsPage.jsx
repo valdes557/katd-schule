@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clock, Plus, Trash2, X, Loader2, AlertCircle, Copy, CheckCircle2 } from 'lucide-react'
+import { Clock, Plus, Trash2, X, Loader2, AlertCircle, Copy, CheckCircle2, Send, EyeOff } from 'lucide-react'
 import { timetablesApi, classesApi, subjectsApi, teachersApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -20,6 +20,8 @@ export default function EmploiDuTempsPage() {
   // heures libres + duplication vers plusieurs classes) — routes serveur déjà ouvertes.
   // Le vice-principal (Secondaire) gère les EDT de tout l'établissement.
   const canEdit = isDirecteur || user?.role === 'enseignant' || user?.role === 'vice_principal'
+  // Seuls le directeur/principal et le vice-principal peuvent publier (G4).
+  const canPublish = isDirecteur || user?.role === 'vice_principal'
 
   const [selectedClass, setSelectedClass] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -95,6 +97,22 @@ export default function EmploiDuTempsPage() {
     setAssigning(false)
   }
 
+  // Publie / dépublie l'emploi du temps courant (G4)
+  const [publishing, setPublishing] = useState(false)
+  const togglePublish = async () => {
+    if (!timetable) return
+    const publish = timetable.status !== 'publie'
+    if (publish && slots.length === 0) { alert('Ajoutez au moins un créneau avant de publier.'); return }
+    if (!publish && !confirm('Retirer la publication ? Les élèves et parents ne verront plus cet emploi du temps.')) return
+    setPublishing(true)
+    try {
+      const r = await timetablesApi.publish(timetable._id, publish)
+      timetableQ.setData(r.data)
+      cache.invalidate('/timetables')
+    } catch (e) { alert(e.message) }
+    setPublishing(false)
+  }
+
   const slots = timetable?.slots || []
   const currentClass = classes.find((c) => c._id === selectedClass)
 
@@ -115,9 +133,16 @@ export default function EmploiDuTempsPage() {
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <Clock size={22} className="text-indigo-600" /> Emploi du temps
           </h1>
-          <p className="text-sm text-gray-500">{currentClass ? `${currentClass.name} — ${currentClass.cycle}` : 'Sélectionnez une classe'}</p>
+          <p className="text-sm text-gray-500 flex items-center gap-2">
+            {currentClass ? `${currentClass.name} — ${currentClass.cycle}` : 'Sélectionnez une classe'}
+            {timetable && (
+              timetable.status === 'publie'
+                ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5"><CheckCircle2 size={11} /> Publié</span>
+                : <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Brouillon</span>
+            )}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="input text-sm w-auto">
             {classes.map((c) => <option key={c._id} value={c._id}>{c.name} ({c.cycle})</option>)}
           </select>
@@ -130,6 +155,16 @@ export default function EmploiDuTempsPage() {
           {canEdit && timetable && (
             <button onClick={() => { setAssignTargets([]); setShowAssign(true) }} className="btn-ghost text-sm border border-gray-200" title="Appliquer cet emploi du temps à d'autres salles">
               <Copy size={15} /> Dupliquer vers d'autres salles
+            </button>
+          )}
+          {canPublish && timetable && (
+            <button
+              onClick={togglePublish}
+              disabled={publishing}
+              className={`text-sm ${timetable.status === 'publie' ? 'btn-ghost border border-amber-200 text-amber-700' : 'btn-primary bg-green-600 hover:bg-green-700'}`}
+              title={timetable.status === 'publie' ? 'Retirer la publication' : 'Publier pour les élèves et parents'}
+            >
+              {publishing ? <Loader2 size={15} className="animate-spin" /> : timetable.status === 'publie' ? <><EyeOff size={15} /> Dépublier</> : <><Send size={15} /> Publier</>}
             </button>
           )}
         </div>
