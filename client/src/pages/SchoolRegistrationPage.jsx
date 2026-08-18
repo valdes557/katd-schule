@@ -36,10 +36,15 @@ export default function SchoolRegistrationPage() {
   const [proofPreview, setProofPreview] = useState(null)
   const [statusMsg, setStatusMsg] = useState('')
   const [billingMap, setBillingMap] = useState({}) // planId -> 'annual'|'trimestrial'
-  // Opérateurs Mobile Money supportés (chargés depuis SEBPay ; fallback Cameroun)
+  // Opérateurs Mobile Money supportés (chargés depuis Ikeepay ; fallback multi-pays Afrique de l'Ouest)
   const FALLBACK_OPERATORS = [
-    { slug: 'mtn', name: 'MTN Mobile Money' },
     { slug: 'orange', name: 'Orange Money' },
+    { slug: 'mtn', name: 'MTN Mobile Money' },
+    { slug: 'wave', name: 'Wave' },
+    { slug: 'moov', name: 'Moov Money' },
+    { slug: 'free', name: 'Free Money' },
+    { slug: 'emoney', name: 'E-Money' },
+    { slug: 'airtel', name: 'Airtel Money' },
   ]
   const [operators, setOperators] = useState(FALLBACK_OPERATORS)
 
@@ -47,13 +52,13 @@ export default function SchoolRegistrationPage() {
     schoolName: '', directorName: '',
     country: '', city: '', neighborhood: '',
     whatsapp: '', email: '',
-    phone: '', operator: 'mtn',
+    phone: '', operator: 'orange',
   })
 
-  // Charge la vraie liste d'opérateurs SEBPay (slugs exacts) ; garde le fallback si échec
+  // Charge la vraie liste d'opérateurs Ikeepay ; garde le fallback si échec
   useEffect(() => {
     paymentsApi.operators().then((r) => {
-      // SEBPay /collections attend le `code` (ex: "mtn"), pas le `slug` (ex: "mtn-cm")
+      // Ikeepay attend le `code` opérateur (ex: "mtn", "orange", "wave")
       const list = (r.operators || [])
         .map((o) => ({ slug: o.code || o.slug, name: o.name || o.code || o.slug }))
         .filter((o) => o.slug)
@@ -174,8 +179,8 @@ export default function SchoolRegistrationPage() {
     }
     if (!form.phone.trim()) { setError('Veuillez saisir votre numéro Mobile Money'); return }
     if (!form.operator) { setError('Veuillez choisir votre opérateur Mobile Money'); return }
-    // Le numéro national doit être complet (Cameroun = 9 chiffres). Évite le rejet
-    // SEBPay « Invalid phone number » sur un numéro tronqué.
+    // Le numéro doit être complet. Évite le rejet Ikeepay « Invalid phone number »
+    // sur un numéro tronqué.
     const phoneDigits = form.phone.replace(/[^0-9]/g, '')
     if (phoneDigits.length < 8) {
       setError('Numéro Mobile Money incomplet. Saisissez votre numéro complet (9 chiffres, ex. 6XX XXX XXX) sans l’indicatif ' + (dialCode || '') + '.')
@@ -530,7 +535,7 @@ export default function SchoolRegistrationPage() {
               </div>
             )}
 
-            {/* Paiement Mobile Money (SEBPay) */}
+            {/* Paiement Mobile Money (Ikeepay) */}
             {!isTrial && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>

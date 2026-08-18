@@ -75,7 +75,7 @@ async function getPlatformAdmin() {
 
 // Crédite un portefeuille (argent reçu) + écrit au grand livre
 async function credit(userId, { amount, type, description = '', counterparty = null,
-                                paymentIntent = null, sebpayTransactionId = null,
+                                paymentIntent = null, providerTransactionId = null,
                                 role, school, meta = {} }) {
   const amt = Number(amount)
   if (!amt || amt <= 0) throw new Error('Montant de crédit invalide')
@@ -86,7 +86,7 @@ async function credit(userId, { amount, type, description = '', counterparty = n
   const tx = await WalletTransaction.create({
     wallet: wallet._id, owner: userId, direction: 'credit', amount: amt,
     currency: wallet.currency, type, balanceAfter: wallet.balance,
-    counterparty, paymentIntent, sebpayTransactionId, description, meta,
+    counterparty, paymentIntent, providerTransactionId, description, meta,
   })
   // Frais de maintenance : la première somme reçue d'un particulier (transfert, salaire,
   // pension, inscription) règle l'arriéré, exactement comme un dépôt fait par soi-même.

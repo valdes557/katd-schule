@@ -79,6 +79,24 @@ router.get('/feed', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// GET /api/platform/videos — Public: toutes les vidéos publiques du site (posts type 'video'
+// ou ayant une videoUrl). Utilisé par la page « Vidéos » de l'espace utilisateur : les vidéos
+// (y compris YouTube) sont lues EN INTÉGRÉ, sans redirection vers une plateforme externe.
+router.get('/videos', async (req, res) => {
+  try {
+    const { page = 1, limit = 24 } = req.query
+    const query = { isPublic: true, $or: [{ type: 'video' }, { videoUrl: { $exists: true, $ne: '' } }] }
+    const total = await SchoolPost.countDocuments(query)
+    const posts = await SchoolPost.find(query)
+      .populate('author', 'name avatar')
+      .populate('school', 'name logo')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+    res.json({ success: true, total, data: posts })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // POST /api/platform/posts — Super Admin, directors and teachers: create social post
 router.post('/posts', protect, authorize('super_admin', 'directeur', 'enseignant', 'parent', 'utilisateur', 'eleve'), upload.fields([{ name: 'images', maxCount: 5 }, { name: 'audio', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {

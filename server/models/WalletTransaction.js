@@ -43,7 +43,8 @@ const txSchema = new mongoose.Schema(
     counterparty: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     paymentIntent: { type: mongoose.Schema.Types.ObjectId, ref: 'PaymentIntent', default: null },
     withdrawal: { type: mongoose.Schema.Types.ObjectId, ref: 'WithdrawalRequest', default: null },
-    sebpayTransactionId: { type: String, default: null, index: true },
+    // id de transaction du prestataire de paiement (ancien champ legacy: sebpayTransactionId)
+    providerTransactionId: { type: String, default: null, index: true },
     description: { type: String, default: '' },
     meta: { type: Object, default: {} },
   },

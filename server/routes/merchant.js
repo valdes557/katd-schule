@@ -7,7 +7,7 @@ const User = require('../models/User')
 const PaymentIntent = require('../models/PaymentIntent')
 const WalletTransaction = require('../models/WalletTransaction')
 const wallet = require('../services/walletService')
-const sebpay = require('../services/sebpayService')
+const ikeepay = require('../services/ikeepayService')
 
 // Frais d'activation d'un compte marchand (fixés côté serveur, non modifiables par le client)
 const MERCHANT_FEE = 6933
@@ -52,7 +52,7 @@ router.get('/me', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/merchant/initiate — paie les 6933 F via Mobile Money (collecte SEBPay)
+// POST /api/merchant/initiate — paie les 6933 F via Mobile Money (collecte Ikeepay)
 router.post('/initiate', protect, async (req, res) => {
   try {
     const { phone, operator } = req.body
@@ -61,15 +61,15 @@ router.post('/initiate', protect, async (req, res) => {
     if (u?.isMerchant) return res.status(400).json({ message: 'Vous êtes déjà marchand.' })
 
     const reference = genRef('mch')
-    const { mode } = await sebpay.resolveConfig()
+    const { mode } = await ikeepay.resolveConfig()
     const intent = await PaymentIntent.create({
       reference, purpose: 'merchant', amount: MERCHANT_FEE, currency: 'XOF',
       payerPhone: phone, payerOperator: operator, initiatedBy: req.user._id,
       school: req.user.school?._id || null, mode,
     })
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
-    const result = await sebpay.createCollection({ amount: MERCHANT_FEE, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
-    if (result.transaction_id) { intent.sebpayTransactionId = result.transaction_id; await intent.save() }
+    const result = await ikeepay.createCollection({ amount: MERCHANT_FEE, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
+    if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
     res.json({ success: true, reference, amount: MERCHANT_FEE, mode, message: 'Validez le paiement sur votre téléphone Mobile Money.' })
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })

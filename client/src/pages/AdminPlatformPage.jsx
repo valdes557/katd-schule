@@ -1267,16 +1267,16 @@ function NewsDemoPanel() {
   )
 }
 
-// ─── Clés API SEBPay Panel ───────────────────────────────────────────────────
-// Gère l'unique paire de clés SEBPay (publique + secrète) par environnement (test/live).
-// L'opérateur Mobile Money (MTN / Orange / Moov) est choisi automatiquement au paiement,
-// il n'y a donc PAS de clé distincte par opérateur.
-function SebpayKeysPanel() {
+// ─── Clés API Ikeepay Panel ──────────────────────────────────────────────────
+// Gère la clé API Ikeepay + le secret de webhook par environnement (test/live).
+// L'opérateur Mobile Money (MTN / Orange / Wave / Moov…) est choisi automatiquement
+// au paiement, il n'y a donc PAS de clé distincte par opérateur.
+function IkeepayKeysPanel() {
   const [loading, setLoading] = useState(true)
   const [state, setState] = useState({ mode: 'test', configured: false, keys: {} }) // clés masquées
   const [mode, setMode] = useState('test')
   const [code, setCode] = useState('')
-  const [form, setForm] = useState({ publicKeyTest: '', secretKeyTest: '', publicKeyLive: '', secretKeyLive: '' })
+  const [form, setForm] = useState({ apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' })
   const [sending, setSending] = useState(false)
   const [revealing, setRevealing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -1284,7 +1284,7 @@ function SebpayKeysPanel() {
 
   const load = () => {
     setLoading(true)
-    walletAdminApi.getSebpay()
+    walletAdminApi.getIkeepay()
       .then((r) => { setState(r); setMode(r.mode || 'test') })
       .catch((e) => alert(e.message))
       .finally(() => setLoading(false))
@@ -1294,7 +1294,7 @@ function SebpayKeysPanel() {
   const requestCode = async () => {
     setSending(true)
     try {
-      await walletAdminApi.requestSebpayCode()
+      await walletAdminApi.requestIkeepayCode()
       alert('Un code de vérification a été envoyé à l\'email administrateur. Il est valable 10 minutes.')
     } catch (e) { alert(e.message) }
     setSending(false)
@@ -1304,12 +1304,12 @@ function SebpayKeysPanel() {
     if (!code.trim()) return alert('Saisissez d\'abord le code reçu par email.')
     setRevealing(true)
     try {
-      const r = await walletAdminApi.revealSebpay(code.trim())
+      const r = await walletAdminApi.revealIkeepay(code.trim())
       setForm({
-        publicKeyTest: r.keys?.publicKeyTest || '',
-        secretKeyTest: r.keys?.secretKeyTest || '',
-        publicKeyLive: r.keys?.publicKeyLive || '',
-        secretKeyLive: r.keys?.secretKeyLive || '',
+        apiKeyTest: r.keys?.apiKeyTest || '',
+        webhookSecretTest: r.keys?.webhookSecretTest || '',
+        apiKeyLive: r.keys?.apiKeyLive || '',
+        webhookSecretLive: r.keys?.webhookSecretLive || '',
       })
     } catch (e) { alert(e.message) }
     setRevealing(false)
@@ -1320,13 +1320,13 @@ function SebpayKeysPanel() {
     setSaving(true)
     try {
       const payload = { mode, code: code.trim() }
-      for (const k of ['publicKeyTest', 'secretKeyTest', 'publicKeyLive', 'secretKeyLive']) {
+      for (const k of ['apiKeyTest', 'webhookSecretTest', 'apiKeyLive', 'webhookSecretLive']) {
         if (form[k] && form[k].trim()) payload[k] = form[k].trim()
       }
-      await walletAdminApi.updateSebpay(payload)
-      alert('Clés API SEBPay enregistrées ✅')
+      await walletAdminApi.updateIkeepay(payload)
+      alert('Clés API Ikeepay enregistrées ✅')
       setCode('')
-      setForm({ publicKeyTest: '', secretKeyTest: '', publicKeyLive: '', secretKeyLive: '' })
+      setForm({ apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' })
       load()
     } catch (e) { alert(e.message) }
     setSaving(false)
@@ -1335,17 +1335,17 @@ function SebpayKeysPanel() {
   if (loading) return <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
 
   const isLive = mode === 'live'
-  const pkField = isLive ? 'publicKeyLive' : 'publicKeyTest'
-  const skField = isLive ? 'secretKeyLive' : 'secretKeyTest'
-  const pkPlaceholder = (isLive ? state.keys?.publicKeyLive : state.keys?.publicKeyTest) || 'pk_...'
-  const skPlaceholder = (isLive ? state.keys?.secretKeyLive : state.keys?.secretKeyTest) || 'sk_...'
+  const pkField = isLive ? 'apiKeyLive' : 'apiKeyTest'
+  const skField = isLive ? 'webhookSecretLive' : 'webhookSecretTest'
+  const pkPlaceholder = (isLive ? state.keys?.apiKeyLive : state.keys?.apiKeyTest) || 'clé API Ikeepay'
+  const skPlaceholder = (isLive ? state.keys?.webhookSecretLive : state.keys?.webhookSecretTest) || 'secret webhook (optionnel)'
 
   return (
     <div className="space-y-5 max-w-xl">
       <div>
-        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><KeyRound size={15} /> Clés API SEBPay (Mobile Money)</h3>
+        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><KeyRound size={15} /> Clés API Ikeepay (Mobile Money)</h3>
         <p className="text-xs text-gray-500 mt-0.5">
-          Passerelle de collecte MTN / Orange Money / Moov. SEBPay fournit une seule paire de clés (publique + secrète) par environnement ; l'opérateur est choisi automatiquement au moment du paiement.
+          Passerelle de collecte et de payout (MTN / Orange / Wave / Moov…). Ikeepay utilise une clé API unique par environnement ; l'opérateur est choisi automatiquement au moment du paiement. Le secret de webhook (optionnel) sécurise les notifications entrantes.
         </p>
       </div>
 
@@ -1388,12 +1388,12 @@ function SebpayKeysPanel() {
       {/* Étape 2 : clés */}
       <div className="space-y-3">
         <div>
-          <label className="text-xs font-medium text-gray-600 block mb-1">Clé publique — {isLive ? 'Live' : 'Test'}</label>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Clé API — {isLive ? 'Live' : 'Test'}</label>
           <input value={form[pkField]} onChange={(e) => setForm({ ...form, [pkField]: e.target.value })}
             className="input text-sm w-full font-mono" placeholder={pkPlaceholder} />
         </div>
         <div>
-          <label className="text-xs font-medium text-gray-600 block mb-1">Clé secrète — {isLive ? 'Live' : 'Test'}</label>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Secret webhook — {isLive ? 'Live' : 'Test'}</label>
           <div className="relative">
             <input type={showSecret ? 'text' : 'password'} value={form[skField]} onChange={(e) => setForm({ ...form, [skField]: e.target.value })}
               className="input text-sm w-full font-mono pr-10" placeholder={skPlaceholder} />
@@ -1485,7 +1485,7 @@ export default function AdminPlatformPage() {
           {tab === 'experiences' && <ExperiencesPanel />}
           {tab === 'payments' && <PaymentsPanel />}
           {tab === 'plans' && <PlansPanel />}
-          {tab === 'api' && <SebpayKeysPanel />}
+          {tab === 'api' && <IkeepayKeysPanel />}
           {tab === 'news' && <NewsDemoPanel />}
           {tab === 'whatsapp' && <WhatsAppPanel platformData={platformData} refresh={refresh} />}
         </>

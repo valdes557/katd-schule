@@ -58,7 +58,7 @@ export default function EnrollmentPage() {
     setSubmitting(true)
     setStatusMsg('Initialisation du paiement...')
     try {
-      // 1) Paiement SEBPay (crédite le portefeuille du directeur)
+      // 1) Paiement Ikeepay (crédite le portefeuille du directeur)
       const initRes = await paymentsApi.initiateEnrollment({
         schoolId: school?._id,
         classId: form.classId,
@@ -333,7 +333,7 @@ export default function EnrollmentPage() {
               </div>
             )}
 
-            {/* Paiement Mobile Money (SEBPay) */}
+            {/* Paiement Mobile Money (Ikeepay) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur Mobile Money *</label>

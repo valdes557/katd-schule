@@ -1,5 +1,5 @@
 // routes/shareholders.js — Programme actionnaires.
-// Côté utilisateur : consultation des plans/termes + souscription payée via SEBPay.
+// Côté utilisateur : consultation des plans/termes + souscription payée via Ikeepay.
 // Côté super admin : modification des termes/avantages/responsabilités/droits et des
 // plans (prix, libellés…), + liste des actionnaires.
 const express = require('express')
@@ -13,7 +13,7 @@ const PaymentIntent = require('../models/PaymentIntent')
 const WalletTransaction = require('../models/WalletTransaction')
 const User = require('../models/User')
 const School = require('../models/School')
-const sebpay = require('../services/sebpayService')
+const ikeepay = require('../services/ikeepayService')
 
 function genRef(p) { return p + '_' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex') }
 function superAdminOnly(req, res, next) {
@@ -123,7 +123,7 @@ router.get('/dashboard', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/shareholders/subscribe — souscrit à un plan (paiement Mobile Money SEBPay).
+// POST /api/shareholders/subscribe — souscrit à un plan (paiement Mobile Money Ikeepay).
 // Body: { planKey, zone, phone, operator }. Le PRIX est résolu côté serveur depuis la
 // config (jamais depuis le client). L'actionnariat est créé au webhook approuvé.
 router.post('/subscribe', protect, async (req, res) => {
@@ -141,7 +141,7 @@ router.post('/subscribe', protect, async (req, res) => {
     if (existing) return res.status(400).json({ message: 'Vous avez déjà souscrit à ce plan' })
 
     const reference = genRef('shr')
-    const { mode } = await sebpay.resolveConfig()
+    const { mode } = await ikeepay.resolveConfig()
     const intent = await PaymentIntent.create({
       reference, purpose: 'shareholder', amount: plan.price, currency: 'XOF',
       payerPhone: phone, payerOperator: operator, initiatedBy: req.user._id,
@@ -152,8 +152,8 @@ router.post('/subscribe', protect, async (req, res) => {
       },
     })
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
-    const result = await sebpay.createCollection({ amount: plan.price, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
-    if (result.transaction_id) { intent.sebpayTransactionId = result.transaction_id; await intent.save() }
+    const result = await ikeepay.createCollection({ amount: plan.price, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
+    if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
     res.json({ success: true, reference, amount: plan.price, mode, message: 'Validez le paiement sur votre téléphone Mobile Money.' })
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })

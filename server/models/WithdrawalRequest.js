@@ -22,6 +22,9 @@ const withdrawalSchema = new mongoose.Schema(
       default: 'pending',
       index: true,
     },
+    // Payout Ikeepay : notre référence externe (préfixe wd_) + id de payout du prestataire
+    providerRef: { type: String, default: null, index: true },
+    providerPayoutId: { type: String, default: null },
     // SLA : date limite de traitement (now + WITHDRAWAL_SLA_HOURS)
     dueAt: { type: Date },
     processedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

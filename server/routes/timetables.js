@@ -55,11 +55,18 @@ router.get('/class/:classId', protect, async (req, res) => {
 })
 
 // PUT update timetable for a class (add/update slots)
-router.put('/:id', protect, authorize('directeur', 'super_admin', 'enseignant', 'vice_principal'), async (req, res) => {
+// Seul le directeur gère l'emploi du temps (création/modification/attribution/retrait).
+// Les autres rôles (enseignant, vice-principal, parent, élève) sont en lecture seule.
+router.put('/:id', protect, authorize('directeur'), async (req, res) => {
   try {
-    const tt = await Timetable.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('class', 'name level cycle room')
+    const sid = req.user.school?._id || req.user.school
+    const tt = await Timetable.findById(req.params.id)
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
-    res.json({ success: true, data: tt })
+    if (String(tt.school) !== String(sid)) return res.status(403).json({ message: 'Accès refusé' })
+    Object.assign(tt, req.body)
+    await tt.save()
+    const populated = await Timetable.findById(tt._id).populate('class', 'name level cycle room')
+    res.json({ success: true, data: populated })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -67,14 +74,15 @@ router.put('/:id', protect, authorize('directeur', 'super_admin', 'enseignant', 
 
 // PUT /api/timetables/:id/publish — publie ou dépublie l'emploi du temps (G4).
 // body { publish: true|false }. Publié → visible par les élèves et parents.
-router.put('/:id/publish', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
+// Réservé au directeur (seul gestionnaire de l'emploi du temps).
+router.put('/:id/publish', protect, authorize('directeur'), async (req, res) => {
   try {
     const publish = req.body.publish !== false // défaut : publier
     const tt = await Timetable.findById(req.params.id)
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
-    // Scope école (le directeur/VP ne gère que son école)
+    // Scope école (le directeur ne gère que son école)
     const sid = req.user.school?._id || req.user.school
-    if (req.user.role !== 'super_admin' && String(tt.school) !== String(sid)) {
+    if (String(tt.school) !== String(sid)) {
       return res.status(403).json({ message: 'Accès refusé' })
     }
     tt.status = publish ? 'publie' : 'brouillon'
@@ -88,11 +96,13 @@ router.put('/:id/publish', protect, authorize('directeur', 'super_admin', 'vice_
   }
 })
 
-// POST add a slot to a timetable
-router.post('/:id/slots', protect, authorize('directeur', 'super_admin', 'enseignant', 'vice_principal'), async (req, res) => {
+// POST add a slot to a timetable (directeur uniquement)
+router.post('/:id/slots', protect, authorize('directeur'), async (req, res) => {
   try {
+    const sid = req.user.school?._id || req.user.school
     const tt = await Timetable.findById(req.params.id)
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
+    if (String(tt.school) !== String(sid)) return res.status(403).json({ message: 'Accès refusé' })
     tt.slots.push(req.body)
     await tt.save()
     res.json({ success: true, data: tt })
@@ -103,9 +113,9 @@ router.post('/:id/slots', protect, authorize('directeur', 'super_admin', 'enseig
 
 // POST assign/duplicate a timetable's slots to one OR several other classes/rooms
 // Body: { classIds: [<classId>, ...] } — copie les créneaux de l'emploi source vers
-// chaque classe cible (création si l'emploi n'existe pas encore). Le directeur ET le
-// personnel enseignant peuvent ainsi appliquer le même emploi du temps à plusieurs classes.
-router.post('/:id/assign-to', protect, authorize('directeur', 'super_admin', 'enseignant', 'vice_principal'), async (req, res) => {
+// chaque classe cible (création si l'emploi n'existe pas encore). Seul le directeur
+// peut attribuer le même emploi du temps à plusieurs classes de son choix.
+router.post('/:id/assign-to', protect, authorize('directeur'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
     if (!schoolId) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
@@ -142,11 +152,42 @@ router.post('/:id/assign-to', protect, authorize('directeur', 'super_admin', 'en
   }
 })
 
-// DELETE a slot from a timetable
-router.delete('/:id/slots/:slotId', protect, authorize('directeur', 'super_admin', 'enseignant', 'vice_principal'), async (req, res) => {
+// POST retire (vide) l'emploi du temps de une ou plusieurs classes de l'école.
+// Body: { classIds: [<classId>, ...] } — symétrique de /assign-to. Les créneaux sont
+// effacés et l'emploi est repassé en brouillon (les élèves/parents ne le voient plus).
+// Réservé au directeur.
+router.post('/:id/unassign-from', protect, authorize('directeur'), async (req, res) => {
   try {
+    const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+
+    const { classIds } = req.body
+    if (!Array.isArray(classIds) || classIds.length === 0) {
+      return res.status(400).json({ message: 'Sélectionnez au moins une classe' })
+    }
+
+    let updated = 0
+    for (const classId of classIds) {
+      const r = await Timetable.updateOne(
+        { school: schoolId, class: classId },
+        { $set: { slots: [], status: 'brouillon', publishedAt: null, publishedBy: null } },
+      )
+      if (r.matchedCount || r.n) updated++
+    }
+
+    res.json({ success: true, data: { updated } })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// DELETE a slot from a timetable (directeur uniquement)
+router.delete('/:id/slots/:slotId', protect, authorize('directeur'), async (req, res) => {
+  try {
+    const sid = req.user.school?._id || req.user.school
     const tt = await Timetable.findById(req.params.id)
     if (!tt) return res.status(404).json({ message: 'Emploi du temps non trouvé' })
+    if (String(tt.school) !== String(sid)) return res.status(403).json({ message: 'Accès refusé' })
     tt.slots = tt.slots.filter((s) => s._id.toString() !== req.params.slotId)
     await tt.save()
     res.json({ success: true, data: tt })

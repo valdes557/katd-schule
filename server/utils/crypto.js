@@ -1,4 +1,4 @@
-// utils/crypto.js — Chiffrement AES-256-GCM pour secrets (clés API SEBPay, etc.)
+// utils/crypto.js — Chiffrement AES-256-GCM pour secrets (clés API Ikeepay, etc.)
 const crypto = require('crypto')
 
 const ALGO = 'aes-256-gcm'

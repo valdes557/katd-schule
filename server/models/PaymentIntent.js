@@ -1,9 +1,9 @@
-// models/PaymentIntent.js — Suivi des collectes SEBPay (argent entrant)
+// models/PaymentIntent.js — Suivi des collectes Ikeepay (argent entrant)
 const mongoose = require('mongoose')
 
 const paymentIntentSchema = new mongoose.Schema(
   {
-    // Référence unique générée par nous, envoyée à SEBPay (external_reference)
+    // Référence unique générée par nous, envoyée à Ikeepay (external_reference)
     reference: { type: String, required: true, unique: true, index: true },
     purpose: {
       type: String,
@@ -25,8 +25,8 @@ const paymentIntentSchema = new mongoose.Schema(
     beneficiary: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     // Données métier libres (plan choisi, élève, etc.)
     meta: { type: Object, default: {} },
-    // État SEBPay
-    sebpayTransactionId: { type: String, default: null, index: true },
+    // État Ikeepay — id de transaction du prestataire (ancien champ legacy: sebpayTransactionId)
+    providerTransactionId: { type: String, default: null, index: true },
     status: {
       type: String,
       enum: ['pending', 'approved', 'rejected', 'expired'],

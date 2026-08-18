@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store, Landmark } from 'lucide-react'
+import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store, Landmark, Youtube } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { messagesApi, platformApi, newsApi } from '../../lib/api'
 import WhatsAppFab from '../../components/WhatsAppFab'
@@ -36,6 +36,7 @@ export default function UserLayout() {
   const isWallet = pathname.startsWith('/u/portefeuille')
   const isMerchant = pathname.startsWith('/u/marchand')
   const isShareholder = pathname.startsWith('/u/actionnaires')
+  const isVideos = pathname.startsWith('/u/videos')
 
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
@@ -201,6 +202,7 @@ export default function UserLayout() {
           <NavButton active={isMessages} onClick={() => navigate('/u/messages')} icon={Users} label="Amis" gradient="from-teal-500 to-emerald-600" badge={unreadMessages} />
           <NavButton active={isMerchant} onClick={() => navigate('/u/marchand')} icon={Store} label="Marchand" gradient="from-orange-500 to-amber-600" />
           <NavButton active={isShareholder} onClick={() => navigate('/u/actionnaires')} icon={Landmark} label="Actions" gradient="from-indigo-500 to-violet-600" />
+          <NavButton active={isVideos} onClick={() => navigate('/u/videos')} icon={Youtube} label="Vidéos" gradient="from-red-500 to-rose-600" />
 
           {/* Bouton Publier (mis en avant) */}
           <button

@@ -332,6 +332,8 @@ export const platformApi = {
   },
   // Feed
   getFeed: (page = 1, category = '') => api.get(`/platform/feed?page=${page}${category ? `&category=${category}` : ''}`),
+  // Toutes les vidéos publiques du site (pour la page Vidéos de l'espace utilisateur)
+  getVideos: (page = 1) => api.get(`/platform/videos?page=${page}`),
   createPost: async (formData) => {
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/platform/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
@@ -412,6 +414,7 @@ export const timetablesApi = {
   addSlot: (id, data) => api.post(`/timetables/${id}/slots`, data),
   removeSlot: (id, slotId) => api.del(`/timetables/${id}/slots/${slotId}`),
   assignTo: (id, classIds) => api.post(`/timetables/${id}/assign-to`, { classIds }),
+  unassignFrom: (id, classIds) => api.post(`/timetables/${id}/unassign-from`, { classIds }),
   publish: (id, publish = true) => api.put(`/timetables/${id}/publish`, { publish }),
 }
 
@@ -1016,7 +1019,7 @@ export const walletAdminApi = {
   withdrawals: (status) => api.get('/admin/withdrawals' + (status ? '?status=' + status : '')),
   payWithdrawal: (id, note) => api.put('/admin/withdrawals/' + id + '/pay', { note }),
   rejectWithdrawal: (id, reason) => api.put('/admin/withdrawals/' + id + '/reject', { reason }),
-  // Paiements SEBPay (collectes) — consultation admin
+  // Paiements Ikeepay (collectes) — consultation admin
   payments: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()
     return api.get('/admin/payments' + (qs ? '?' + qs : ''))
@@ -1032,10 +1035,10 @@ export const walletAdminApi = {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
     return api.get('/admin/transaction-fees' + (qs ? '?' + qs : ''))
   },
-  getSebpay: () => api.get('/admin/sebpay'),
-  requestSebpayCode: () => api.post('/admin/sebpay/request-code', {}),
-  revealSebpay: (code) => api.post('/admin/sebpay/reveal', { code }),
-  updateSebpay: (payload) => api.put('/admin/sebpay', payload),
+  getIkeepay: () => api.get('/admin/ikeepay'),
+  requestIkeepayCode: () => api.post('/admin/ikeepay/request-code', {}),
+  revealIkeepay: (code) => api.post('/admin/ikeepay/reveal', { code }),
+  updateIkeepay: (payload) => api.put('/admin/ikeepay', payload),
 }
 
 // Compte marchand (côté utilisateur) : statut + commissions + activation 6933 F

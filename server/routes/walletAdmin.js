@@ -1,4 +1,4 @@
-// routes/walletAdmin.js — Admin: traitement des retraits + clés API SEBPay sécurisées
+// routes/walletAdmin.js — Admin: traitement des retraits + clés API Ikeepay sécurisées
 const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcryptjs')
@@ -7,7 +7,7 @@ const User = require('../models/User')
 const WithdrawalRequest = require('../models/WithdrawalRequest')
 const PaymentIntent = require('../models/PaymentIntent')
 const WalletTransaction = require('../models/WalletTransaction')
-const SebpayConfig = require('../models/SebpayConfig')
+const IkeepayConfig = require('../models/IkeepayConfig')
 const wallet = require('../services/walletService')
 const { encrypt, decrypt, mask } = require('../utils/crypto')
 const { sendEmail } = require('../utils/emailService')
@@ -18,7 +18,7 @@ const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'valdeslando15@gmail.com').toLow
 function isAdmin(u){ return u && (u.role === 'super_admin' || u.role === 'admin' || (u.email||'').toLowerCase() === ADMIN_EMAIL) }
 function adminOnly(req, res, next){ if(!isAdmin(req.user)) return res.status(403).json({ message: 'Accès réservé à l\'administrateur' }); next() }
 // Garde stricte : rôle super_admin (clés API). L'email ADMIN_EMAIL ne sert PAS à se connecter,
-// il reçoit uniquement le code de déverrouillage (voir route /sebpay/request-code).
+// il reçoit uniquement le code de déverrouillage (voir route /ikeepay/request-code).
 function superAdminOnly(req, res, next){ if(req.user.role !== 'super_admin') return res.status(403).json({ message: 'Action réservée au super-administrateur' }); next() }
 
 // ───────────────────── RETRAITS (file 24h) ─────────────────────
@@ -73,9 +73,9 @@ router.put('/withdrawals/:id/reject', protect, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// ───────────────────── PAIEMENTS SEBPAY (collectes) ─────────────────────
-// GET /api/admin/payments?purpose=subscription&status=approved — argent entrant SEBPay
-// Consultation seule : le statut est mis à jour automatiquement par le webhook SEBPay.
+// ───────────────────── PAIEMENTS IKEEPAY (collectes) ─────────────────────
+// GET /api/admin/payments?purpose=subscription&status=approved — argent entrant Ikeepay
+// Consultation seule : le statut est mis à jour automatiquement par le webhook Ikeepay.
 router.get('/payments', protect, adminOnly, async (req, res) => {
   try {
     const filter = {}
@@ -84,7 +84,7 @@ router.get('/payments', protect, adminOnly, async (req, res) => {
     if (status && ['pending', 'approved', 'rejected', 'expired'].includes(status)) filter.status = status
     if (q && String(q).trim()) {
       const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
-      filter.$or = [{ reference: rx }, { payerName: rx }, { payerEmail: rx }, { payerPhone: rx }, { sebpayTransactionId: rx }]
+      filter.$or = [{ reference: rx }, { payerName: rx }, { payerEmail: rx }, { payerPhone: rx }, { providerTransactionId: rx }, { sebpayTransactionId: rx }]
     }
     const list = await PaymentIntent.find(filter)
       .sort({ createdAt: -1 })
@@ -187,7 +187,7 @@ function normalizeIntent(pi) {
   const by = pi.initiatedBy || {}
   const role = by.role || 'directeur'
   return {
-    _id: 'p_' + pi._id, source: 'sebpay', date: pi.createdAt,
+    _id: 'p_' + pi._id, source: 'ikeepay', date: pi.createdAt,
     category: pi.purpose, categoryLabel: CATEGORY_LABELS[pi.purpose] || pi.purpose,
     direction: 'credit', amount: pi.amount, currency: pi.currency || 'XOF',
     status: pi.status,
@@ -203,7 +203,7 @@ function normalizeIntent(pi) {
 }
 
 // GET /api/admin/transactions — toutes les souscriptions + paiements (personnel & utilisateurs)
-// Union : grand livre portefeuille (WalletTransaction) + collectes SEBPay non converties en écriture
+// Union : grand livre portefeuille (WalletTransaction) + collectes Ikeepay non converties en écriture
 // (souscriptions + tentatives non abouties). Filtres : type, statut, groupe (staff/users/rôle), dates, q.
 // Renvoie la liste paginée ET les statistiques sur l'ensemble filtré.
 router.get('/transactions', protect, adminOnly, async (req, res) => {
@@ -221,7 +221,7 @@ router.get('/transactions', protect, adminOnly, async (req, res) => {
       .populate('withdrawal', 'status momoNumber momoOperator accountName fee netAmount')
       .limit(8000).lean()
 
-    // Collectes SEBPay : souscriptions (jamais écrites au grand livre) + tentatives non abouties
+    // Collectes Ikeepay : souscriptions (jamais écrites au grand livre) + tentatives non abouties
     // (les dépôts/inscriptions approuvés sont déjà représentés par leur écriture de portefeuille).
     const intentDocs = await PaymentIntent.find({
       ...dateFilter,
@@ -351,29 +351,29 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// ───────────────────── CLÉS API SEBPAY (sécurisées) ─────────────────────
-// GET /api/admin/sebpay — état (clés masquées, jamais en clair)
-router.get('/sebpay', protect, superAdminOnly, async (req, res) => {
+// ───────────────────── CLÉS API IKEEPAY (sécurisées) ─────────────────────
+// GET /api/admin/ikeepay — état (clés masquées, jamais en clair)
+router.get('/ikeepay', protect, superAdminOnly, async (req, res) => {
   try {
-    const cfg = await SebpayConfig.findOne({ singleton: 'sebpay' })
-    if (!cfg) return res.json({ success: true, mode: process.env.SEBPAY_MODE || 'test', configured: false,
-      keys: { publicKeyTest: '', secretKeyTest: '', publicKeyLive: '', secretKeyLive: '' } })
+    const cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
+    if (!cfg) return res.json({ success: true, mode: process.env.IKEEPAY_MODE || 'test', configured: false,
+      keys: { apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' } })
     res.json({ success: true, mode: cfg.mode, configured: true, keys: {
-      publicKeyTest: mask(decrypt(cfg.publicKeyTest)), secretKeyTest: mask(decrypt(cfg.secretKeyTest)),
-      publicKeyLive: mask(decrypt(cfg.publicKeyLive)), secretKeyLive: mask(decrypt(cfg.secretKeyLive)) } })
+      apiKeyTest: mask(decrypt(cfg.apiKeyTest)), webhookSecretTest: mask(decrypt(cfg.webhookSecretTest)),
+      apiKeyLive: mask(decrypt(cfg.apiKeyLive)), webhookSecretLive: mask(decrypt(cfg.webhookSecretLive)) } })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/admin/sebpay/request-code — envoie un PIN à l'email admin pour déverrouiller
-router.post('/sebpay/request-code', protect, superAdminOnly, async (req, res) => {
+// POST /api/admin/ikeepay/request-code — envoie un PIN à l'email admin pour déverrouiller
+router.post('/ikeepay/request-code', protect, superAdminOnly, async (req, res) => {
   try {
     const u = await User.findById(req.user._id).select('+pinResetCode +pinResetExpires')
     const code = ('' + Math.floor(100000 + Math.random() * 900000))
-    u.pinResetCode = await bcrypt.hash('sebpay:' + code, 10)
+    u.pinResetCode = await bcrypt.hash('ikeepay:' + code, 10)
     u.pinResetExpires = new Date(Date.now() + 10 * 60 * 1000)
     await u.save()
     await sendEmail({ to: ADMIN_EMAIL, subject: 'Code de déverrouillage des clés API — KATD-SCHÜLE',
-      html: '<div style="font-family:Arial;max-width:520px;margin:auto"><h2>Déverrouillage des clés API SEBPay</h2>' +
+      html: '<div style="font-family:Arial;max-width:520px;margin:auto"><h2>Déverrouillage des clés API Ikeepay</h2>' +
         '<p>Code valable 10 minutes :</p><div style="font-size:28px;font-weight:bold;letter-spacing:6px;background:#f3f4f6;padding:16px;text-align:center;border-radius:8px">' + code + '</div></div>' })
     res.json({ success: true, message: 'Code envoyé à l\'email administrateur' })
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -383,33 +383,33 @@ router.post('/sebpay/request-code', protect, superAdminOnly, async (req, res) =>
 async function verifyUnlock(userId, code){
   const u = await User.findById(userId).select('+pinResetCode +pinResetExpires')
   if (!u.pinResetCode || !u.pinResetExpires || u.pinResetExpires < new Date()) return false
-  return await bcrypt.compare('sebpay:' + String(code||''), u.pinResetCode)
+  return await bcrypt.compare('ikeepay:' + String(code||''), u.pinResetCode)
 }
 
-// POST /api/admin/sebpay/reveal — révèle les clés en clair (exige le code email)
-router.post('/sebpay/reveal', protect, superAdminOnly, async (req, res) => {
+// POST /api/admin/ikeepay/reveal — révèle les clés en clair (exige le code email)
+router.post('/ikeepay/reveal', protect, superAdminOnly, async (req, res) => {
   try {
     if (!(await verifyUnlock(req.user._id, req.body.code))) return res.status(401).json({ message: 'Code invalide ou expiré' })
-    const cfg = await SebpayConfig.findOne({ singleton: 'sebpay' })
+    const cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
     if (!cfg) return res.json({ success: true, keys: {} })
     res.json({ success: true, keys: {
-      publicKeyTest: decrypt(cfg.publicKeyTest), secretKeyTest: decrypt(cfg.secretKeyTest),
-      publicKeyLive: decrypt(cfg.publicKeyLive), secretKeyLive: decrypt(cfg.secretKeyLive) } })
+      apiKeyTest: decrypt(cfg.apiKeyTest), webhookSecretTest: decrypt(cfg.webhookSecretTest),
+      apiKeyLive: decrypt(cfg.apiKeyLive), webhookSecretLive: decrypt(cfg.webhookSecretLive) } })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// PUT /api/admin/sebpay — modifie les clés (exige le code email)
-router.put('/sebpay', protect, superAdminOnly, async (req, res) => {
+// PUT /api/admin/ikeepay — modifie les clés (exige le code email)
+router.put('/ikeepay', protect, superAdminOnly, async (req, res) => {
   try {
     if (!(await verifyUnlock(req.user._id, req.body.code))) return res.status(401).json({ message: 'Code invalide ou expiré' })
-    const { mode, publicKeyTest, secretKeyTest, publicKeyLive, secretKeyLive } = req.body
-    let cfg = await SebpayConfig.findOne({ singleton: 'sebpay' })
-    if (!cfg) cfg = new SebpayConfig({ singleton: 'sebpay' })
+    const { mode, apiKeyTest, webhookSecretTest, apiKeyLive, webhookSecretLive } = req.body
+    let cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
+    if (!cfg) cfg = new IkeepayConfig({ singleton: 'ikeepay' })
     if (mode) cfg.mode = mode
-    if (publicKeyTest !== undefined && publicKeyTest !== '') cfg.publicKeyTest = encrypt(publicKeyTest)
-    if (secretKeyTest !== undefined && secretKeyTest !== '') cfg.secretKeyTest = encrypt(secretKeyTest)
-    if (publicKeyLive !== undefined && publicKeyLive !== '') cfg.publicKeyLive = encrypt(publicKeyLive)
-    if (secretKeyLive !== undefined && secretKeyLive !== '') cfg.secretKeyLive = encrypt(secretKeyLive)
+    if (apiKeyTest !== undefined && apiKeyTest !== '') cfg.apiKeyTest = encrypt(apiKeyTest)
+    if (webhookSecretTest !== undefined && webhookSecretTest !== '') cfg.webhookSecretTest = encrypt(webhookSecretTest)
+    if (apiKeyLive !== undefined && apiKeyLive !== '') cfg.apiKeyLive = encrypt(apiKeyLive)
+    if (webhookSecretLive !== undefined && webhookSecretLive !== '') cfg.webhookSecretLive = encrypt(webhookSecretLive)
     cfg.updatedBy = req.user._id
     await cfg.save()
     // consomme le code après modification

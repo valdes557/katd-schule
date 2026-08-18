@@ -229,7 +229,7 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
       return
     }
 
-    // ── Paiement Mobile Money (SebPay) ──
+    // ── Paiement Mobile Money (Ikeepay) ──
     if (!f.phone) { setErr('Numéro Mobile Money requis'); return }
     setBusy(true)
     setStatus('Validez le paiement sur votre téléphone...')

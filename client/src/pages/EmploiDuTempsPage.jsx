@@ -15,13 +15,11 @@ const EMPTY_SLOT = { day: 'Lundi', date: '', startTime: '08:00', endTime: '09:00
 export default function EmploiDuTempsPage() {
   const pdfRef = useRef(null)
   const { user } = useAuth()
-  const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
-  // Le personnel enseignant peut aussi gérer l'emploi du temps (ajout de créneaux avec
-  // heures libres + duplication vers plusieurs classes) — routes serveur déjà ouvertes.
-  // Le vice-principal (Secondaire) gère les EDT de tout l'établissement.
-  const canEdit = isDirecteur || user?.role === 'enseignant' || user?.role === 'vice_principal'
-  // Seuls le directeur/principal et le vice-principal peuvent publier (G4).
-  const canPublish = isDirecteur || user?.role === 'vice_principal'
+  // Seul le directeur gère l'emploi du temps : créer, modifier, attribuer et retirer
+  // l'emploi du temps à une classe. Tous les autres rôles (enseignant, vice-principal,
+  // parent, élève) sont en lecture seule.
+  const canEdit = user?.role === 'directeur'
+  const canPublish = user?.role === 'directeur'
 
   const [selectedClass, setSelectedClass] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -29,6 +27,8 @@ export default function EmploiDuTempsPage() {
   const [showAssign, setShowAssign] = useState(false)
   const [assignTargets, setAssignTargets] = useState([])
   const [assigning, setAssigning] = useState(false)
+  // Mode de la modale : 'assign' (attribuer/dupliquer) ou 'unassign' (retirer).
+  const [assignMode, setAssignMode] = useState('assign')
 
   const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
   const subjectsQ = useCachedFetch('/subjects?', async () => (await subjectsApi.list()).data || [], [])
@@ -86,13 +86,23 @@ export default function EmploiDuTempsPage() {
     if (!timetable || assignTargets.length === 0) return
     setAssigning(true)
     try {
-      const r = await timetablesApi.assignTo(timetable._id, assignTargets)
-      if (r.success) {
-        cache.invalidate('/timetables')
-        alert(`Emploi du temps appliqué à ${r.data.updated} salle(s)/classe(s).`)
-        setShowAssign(false)
-        setAssignTargets([])
-      } else alert(r.message || 'Erreur')
+      if (assignMode === 'unassign') {
+        const r = await timetablesApi.unassignFrom(timetable._id, assignTargets)
+        if (r.success) {
+          cache.invalidate('/timetables')
+          alert(`Emploi du temps retiré de ${r.data.updated} classe(s).`)
+          setShowAssign(false)
+          setAssignTargets([])
+        } else alert(r.message || 'Erreur')
+      } else {
+        const r = await timetablesApi.assignTo(timetable._id, assignTargets)
+        if (r.success) {
+          cache.invalidate('/timetables')
+          alert(`Emploi du temps appliqué à ${r.data.updated} salle(s)/classe(s).`)
+          setShowAssign(false)
+          setAssignTargets([])
+        } else alert(r.message || 'Erreur')
+      }
     } catch (e) { alert(e.message) }
     setAssigning(false)
   }
@@ -153,8 +163,13 @@ export default function EmploiDuTempsPage() {
             </button>
           )}
           {canEdit && timetable && (
-            <button onClick={() => { setAssignTargets([]); setShowAssign(true) }} className="btn-ghost text-sm border border-gray-200" title="Appliquer cet emploi du temps à d'autres salles">
-              <Copy size={15} /> Dupliquer vers d'autres salles
+            <button onClick={() => { setAssignMode('assign'); setAssignTargets([]); setShowAssign(true) }} className="btn-ghost text-sm border border-gray-200" title="Appliquer cet emploi du temps à d'autres salles">
+              <Copy size={15} /> Attribuer à d'autres classes
+            </button>
+          )}
+          {canEdit && timetable && (
+            <button onClick={() => { setAssignMode('unassign'); setAssignTargets([]); setShowAssign(true) }} className="btn-ghost text-sm border border-red-200 text-red-600" title="Retirer l'emploi du temps de certaines classes">
+              <Trash2 size={15} /> Retirer d'une classe
             </button>
           )}
           {canPublish && timetable && (
@@ -239,42 +254,57 @@ export default function EmploiDuTempsPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Copy size={18} className="text-indigo-600" /> Dupliquer l'emploi du temps</h3>
+              {assignMode === 'unassign' ? (
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Trash2 size={18} className="text-red-600" /> Retirer l'emploi du temps</h3>
+              ) : (
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Copy size={18} className="text-indigo-600" /> Attribuer l'emploi du temps</h3>
+              )}
               <button onClick={() => setShowAssign(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <p className="text-xs text-gray-500 mb-3">
-              Les créneaux de <strong>{currentClass?.name}</strong> seront copiés vers les salles/classes cochées.
-              <span className="text-amber-600"> L'emploi du temps existant de ces classes sera remplacé.</span>
-            </p>
+            {assignMode === 'unassign' ? (
+              <p className="text-xs text-gray-500 mb-3">
+                L'emploi du temps sera <strong className="text-red-600">retiré (vidé)</strong> des classes cochées, qui repasseront en brouillon.
+                <span className="text-amber-600"> Les élèves et parents ne le verront plus.</span>
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 mb-3">
+                Les créneaux de <strong>{currentClass?.name}</strong> seront copiés vers les salles/classes cochées.
+                <span className="text-amber-600"> L'emploi du temps existant de ces classes sera remplacé.</span>
+              </p>
+            )}
             {(() => {
-              const others = classes.filter((c) => c._id !== selectedClass)
+              // Attribuer : on exclut la classe source (on ne duplique pas sur elle-même).
+              // Retirer : on autorise toutes les classes (y compris celle affichée).
+              const others = assignMode === 'unassign' ? classes : classes.filter((c) => c._id !== selectedClass)
               const allSelected = others.length > 0 && others.every((c) => assignTargets.includes(c._id))
+              const accent = assignMode === 'unassign' ? 'red' : 'indigo'
               return (
                 <div className="space-y-1.5 mb-4">
                   {others.length > 0 && (
-                    <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-indigo-100 bg-indigo-50/60 hover:bg-indigo-50 cursor-pointer">
+                    <label className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer ${accent === 'red' ? 'border-red-100 bg-red-50/60 hover:bg-red-50' : 'border-indigo-100 bg-indigo-50/60 hover:bg-indigo-50'}`}>
                       <input type="checkbox" checked={allSelected}
                         onChange={() => setAssignTargets(allSelected ? [] : others.map((c) => c._id))}
-                        className="w-4 h-4 accent-indigo-600" />
-                      <span className="text-sm font-semibold text-indigo-700">Toute l'établissement (toutes les classes)</span>
+                        className={`w-4 h-4 ${accent === 'red' ? 'accent-red-600' : 'accent-indigo-600'}`} />
+                      <span className={`text-sm font-semibold ${accent === 'red' ? 'text-red-700' : 'text-indigo-700'}`}>Tout l'établissement (toutes les classes)</span>
                     </label>
                   )}
                   {others.map((c) => (
                     <label key={c._id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer">
-                      <input type="checkbox" checked={assignTargets.includes(c._id)} onChange={() => toggleTarget(c._id)} className="w-4 h-4 accent-indigo-600" />
+                      <input type="checkbox" checked={assignTargets.includes(c._id)} onChange={() => toggleTarget(c._id)} className={`w-4 h-4 ${accent === 'red' ? 'accent-red-600' : 'accent-indigo-600'}`} />
                       <span className="text-sm text-gray-700">{c.name} <span className="text-gray-400">({c.cycle})</span></span>
                     </label>
                   ))}
                   {others.length === 0 && (
-                    <p className="text-xs text-gray-400 text-center py-3">Aucune autre classe disponible.</p>
+                    <p className="text-xs text-gray-400 text-center py-3">Aucune classe disponible.</p>
                   )}
                 </div>
               )
             })()}
             <div className="flex gap-3">
               <button type="button" onClick={() => setShowAssign(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
-              <button type="button" disabled={assigning || assignTargets.length === 0} onClick={handleAssign} className="btn-primary flex-1 justify-center">
-                {assigning ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Appliquer ({assignTargets.length})
+              <button type="button" disabled={assigning || assignTargets.length === 0} onClick={handleAssign}
+                className={`flex-1 justify-center ${assignMode === 'unassign' ? 'btn-ghost border border-red-200 text-red-600' : 'btn-primary'}`}>
+                {assigning ? <Loader2 size={14} className="animate-spin" /> : assignMode === 'unassign' ? <Trash2 size={14} /> : <CheckCircle2 size={14} />} {assignMode === 'unassign' ? 'Retirer' : 'Appliquer'} ({assignTargets.length})
               </button>
             </div>
           </div>

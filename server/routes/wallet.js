@@ -11,7 +11,7 @@ const WalletTransaction = require('../models/WalletTransaction')
 const WithdrawalRequest = require('../models/WithdrawalRequest')
 const PaymentIntent = require('../models/PaymentIntent')
 const wallet = require('../services/walletService')
-const sebpay = require('../services/sebpayService')
+const ikeepay = require('../services/ikeepayService')
 const { sendEmail } = require('../utils/emailService')
 
 const SLA_HOURS = Number(process.env.WITHDRAWAL_SLA_HOURS || 24)
@@ -82,7 +82,7 @@ router.post('/transfer-user', protect, async (req, res) => {
 })
 
 // ───────────────────────── DÉPÔT (tous les utilisateurs) ─────────────────────────
-// POST /api/wallet/deposit/initiate — dépôt via Mobile Money (collecte SEBPay)
+// POST /api/wallet/deposit/initiate — dépôt via Mobile Money (collecte Ikeepay)
 router.post('/deposit/initiate', protect, async (req, res) => {
   try {
     const { amount, phone, operator } = req.body
@@ -90,15 +90,15 @@ router.post('/deposit/initiate', protect, async (req, res) => {
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
     if (!phone || !operator) return res.status(400).json({ message: 'Numéro et opérateur requis' })
     const reference = genRef('dep')
-    const { mode } = await sebpay.resolveConfig()
+    const { mode } = await ikeepay.resolveConfig()
     const intent = await PaymentIntent.create({
       reference, purpose: 'deposit', amount: amt, currency: 'XOF',
       payerPhone: phone, payerOperator: operator, initiatedBy: req.user._id,
       school: req.user.school?._id || null, mode,
     })
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
-    const result = await sebpay.createCollection({ amount: amt, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
-    if (result.transaction_id) { intent.sebpayTransactionId = result.transaction_id; await intent.save() }
+    const result = await ikeepay.createCollection({ amount: amt, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
+    if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
     res.json({ success: true, reference, amount: amt, mode, message: 'Validez le dépôt sur votre téléphone Mobile Money.' })
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
@@ -217,8 +217,10 @@ router.post('/transfer', protect, authorize('directeur'), async (req, res) => {
   } catch (err) { res.status(400).json({ message: err.message }) }
 })
 
-// ───────────────────────── RETRAIT (file 24h) ─────────────────────────
-// POST /api/wallet/withdraw — demande de retrait (min 2000 F, PIN obligatoire, frais 2% déduits)
+// ───────────────────────── RETRAIT (payout automatique Ikeepay) ─────────────────────────
+// POST /api/wallet/withdraw — retrait (min 2000 F, PIN obligatoire, frais 2% déduits).
+// Le payout Ikeepay part IMMÉDIATEMENT vers le Mobile Money de l'utilisateur ; le webhook
+// finalise ensuite (payé → settle, échec → remboursement). L'admin garde un filet manuel.
 router.post('/withdraw', protect, async (req, res) => {
   try {
     const { amount, momoNumber, momoOperator, accountName, pin } = req.body
@@ -226,7 +228,7 @@ router.post('/withdraw', protect, async (req, res) => {
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
     if (amt < MIN_WITHDRAWAL) return res.status(400).json({ message: 'Le retrait minimum est de ' + MIN_WITHDRAWAL.toLocaleString('fr-FR') + ' F' })
     if (!momoNumber) return res.status(400).json({ message: 'Numéro Mobile Money requis' })
-    // Nom du titulaire du numéro OBLIGATOIRE (affiché à l'admin pour la confirmation du retrait)
+    // Nom du titulaire du numéro OBLIGATOIRE (traçabilité + affiché à l'admin)
     if (!accountName || !String(accountName).trim()) return res.status(400).json({ message: 'Le nom du titulaire du numéro est obligatoire' })
     // PIN obligatoire pour TOUS les rôles
     if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
@@ -242,19 +244,38 @@ router.post('/withdraw', protect, async (req, res) => {
     const fee = wallet.computeWithdrawalFee(amt)
     const netAmount = amt - fee
     const holderName = String(accountName).trim()
+    const providerRef = genRef('wd') // référence de payout (préfixe wd_ = reconnu par le webhook)
 
-    // bloque le montant total (débité du solde)
+    // Bloque le montant total (débité du solde) puis enregistre la demande en « processing ».
     await wallet.lock(req.user._id, amt)
     const wr = await WithdrawalRequest.create({
       user: req.user._id, wallet: w._id, role: req.user.role, school: req.user.school?._id || null,
       amount: amt, fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName,
-      status: 'pending', dueAt: new Date(Date.now() + SLA_HOURS * 3600 * 1000),
+      status: 'processing', providerRef, dueAt: new Date(Date.now() + SLA_HOURS * 3600 * 1000),
     })
-    // ledger: débit (sortie effective côté solde déjà bloquée)
+
+    // Déclenche le payout Ikeepay (montant NET). Si l'INITIATION échoue, on débloque et on
+    // rejette immédiatement : rien n'a été envoyé, donc aucun frais n'est prélevé.
+    const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
+    try {
+      const payout = await ikeepay.createPayout({
+        amount: netAmount, phone: momoNumber, operator: momoOperator, accountName: holderName,
+        reference: providerRef, callbackUrl: base + '/api/payments/webhook',
+      })
+      if (payout.transaction_id || payout.id) { wr.providerPayoutId = payout.transaction_id || payout.id; await wr.save() }
+    } catch (e) {
+      await wallet.unlock(req.user._id, amt)
+      wr.status = 'rejected'; wr.rejectionReason = "Échec de l'initiation du payout : " + e.message
+      await wr.save()
+      return res.status(e.status || 502).json({ message: "Le retrait n'a pas pu être initié : " + e.message })
+    }
+
+    // Payout initié : on écrit le grand livre + les frais (encaissés par l'admin).
     await WalletTransaction.create({ wallet: w._id, owner: req.user._id, direction: 'debit',
       amount: amt, currency: w.currency, type: 'withdrawal', balanceAfter: w.balance, withdrawal: wr._id,
+      providerTransactionId: wr.providerPayoutId || null,
       description: 'Retrait vers ' + (momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber + ' (net ' + netAmount.toLocaleString('fr-FR') + ' F, frais 2%)',
-      meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName } })
+      meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName, providerRef } })
     // Frais encaissés par l'admin → rubrique « gestion des frais » (best-effort)
     await wallet.collectFee({ fee, fromUserId: req.user._id,
       description: 'Frais de retrait (2%) — ' + (req.user.name || ''),
@@ -266,10 +287,10 @@ router.post('/withdraw', protect, async (req, res) => {
         externalAccount: { operator: momoOperator || '', number: momoNumber, name: holderName } } })
     } catch (e) {}
 
-    try { await sendEmail({ to: req.user.email, subject: 'Demande de retrait reçue — KATD-SCHÜLE',
-      html: '<p>Votre demande de retrait de <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> a été enregistrée ' +
-      '(frais 2% : ' + fee.toLocaleString('fr-FR') + ' F). Vous recevrez <b>' + netAmount.toLocaleString('fr-FR') + ' FCFA</b> sur ' + momoNumber + ' sous ' + SLA_HOURS + ' heures.</p>' }) } catch(e){}
-    res.json({ success: true, message: 'Demande de retrait enregistrée. Vous recevrez ' + netAmount.toLocaleString('fr-FR') + ' F (frais 2%) sous ' + SLA_HOURS + 'h.', withdrawal: wr })
+    try { await sendEmail({ to: req.user.email, subject: 'Retrait en cours — KATD-SCHÜLE',
+      html: '<p>Votre retrait de <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> est en cours de traitement ' +
+      '(frais 2% : ' + fee.toLocaleString('fr-FR') + ' F). Vous recevrez <b>' + netAmount.toLocaleString('fr-FR') + ' FCFA</b> sur ' + momoNumber + '.</p>' }) } catch(e){}
+    res.json({ success: true, message: 'Retrait en cours de traitement. Vous recevrez ' + netAmount.toLocaleString('fr-FR') + ' F (frais 2%) sur votre Mobile Money.', withdrawal: wr })
   } catch (err) { res.status(400).json({ message: err.message }) }
 })
 

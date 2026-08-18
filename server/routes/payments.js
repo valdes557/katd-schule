@@ -1,15 +1,18 @@
-// routes/payments.js — Paiements SEBPay (collectes) : souscription directeur, webhook
+// routes/payments.js — Paiements Ikeepay (collectes) : souscription directeur, webhook
 const express = require('express')
 const router = express.Router()
 const crypto = require('crypto')
 const mongoose = require('mongoose')
 const PaymentIntent = require('../models/PaymentIntent')
-const sebpay = require('../services/sebpayService')
+const WithdrawalRequest = require('../models/WithdrawalRequest')
+const WalletTransaction = require('../models/WalletTransaction')
+const ikeepay = require('../services/ikeepayService')
 const { provisionDirector, activateExistingSchool } = require('../services/directorProvisioning')
 const wallet = require('../services/walletService')
 const School = require('../models/School')
 const User = require('../models/User')
 const SubscriptionPlan = require('../models/SubscriptionPlan')
+const { sendEmail } = require('../utils/emailService')
 
 const SUBSCRIPTION_FEE_DIRECTOR = Number(process.env.SUBSCRIPTION_FEE_DIRECTOR || 40000)
 
@@ -53,7 +56,7 @@ function callbackUrl() {
   return base.replace(/\/$/, '') + '/api/payments/webhook'
 }
 
-// Normalise les nombreux libellés de statut SEBPay vers 'approved' | 'rejected' | 'pending'
+// Normalise les nombreux libellés de statut Ikeepay vers 'approved' | 'rejected' | 'pending'
 const APPROVED_STATES = ['approved', 'success', 'successful', 'completed', 'complete', 'paid', 'confirmed']
 const REJECTED_STATES = ['rejected', 'failed', 'failure', 'declined', 'cancelled', 'canceled', 'expired', 'error']
 function mapStatus(raw) {
@@ -62,7 +65,7 @@ function mapStatus(raw) {
   if (REJECTED_STATES.includes(s)) return 'rejected'
   return 'pending'
 }
-// Extrait la raison d'échec renvoyée par SEBPay (champs variables selon l'API).
+// Extrait la raison d'échec renvoyée par Ikeepay (champs variables selon l'API).
 // Explore récursivement (obj, obj.data, obj.error…) pour ne rien rater du motif réel.
 function extractReason(obj) {
   if (!obj || typeof obj !== 'object') return ''
@@ -87,8 +90,8 @@ function extractReason(obj) {
 // GET /api/payments/operators — opérateurs Mobile Money supportés (pour peupler le formulaire)
 router.get('/operators', async (req, res) => {
   try {
-    const operators = await sebpay.listOperators(req.query.country)
-    return res.json({ success: true, operators, currency: sebpay.DEFAULT_CURRENCY, country: req.query.country || sebpay.DEFAULT_COUNTRY })
+    const operators = await ikeepay.listOperators(req.query.country)
+    return res.json({ success: true, operators, currency: ikeepay.DEFAULT_CURRENCY, country: req.query.country || ikeepay.DEFAULT_COUNTRY })
   } catch (err) {
     console.error('list operators error:', err.message, err.data ? JSON.stringify(err.data) : '')
     return res.status(err.status || 500).json({ message: err.message, data: err.data })
@@ -104,7 +107,7 @@ router.post('/subscription/initiate', async (req, res) => {
       return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
     }
     const reference = genRef('sub')
-    const { mode } = await sebpay.resolveConfig()
+    const { mode } = await ikeepay.resolveConfig()
 
     // Cas 1 : renouvellement d'une école existante (paiement après essai, sans re-remplir le formulaire)
     let meta, resolved
@@ -129,7 +132,7 @@ router.post('/subscription/initiate', async (req, res) => {
     console.log('Souscription: planId=' + (planId || '(absent)') + ' cycle=' + (meta.cycle || meta.schoolName) +
                 ' plan=' + meta.plan + ' → source=' + resolved.source +
                 (resolved.planName ? " plan='" + resolved.planName + "'" : '') +
-                ' montant=' + amount + ' ' + sebpay.DEFAULT_CURRENCY)
+                ' montant=' + amount + ' ' + ikeepay.DEFAULT_CURRENCY)
 
     // Si le plan choisi est introuvable/inactif, on REFUSE plutôt que de facturer
     // silencieusement le tarif par défaut (SUBSCRIPTION_FEE_DIRECTOR). C'était la cause
@@ -146,17 +149,17 @@ router.post('/subscription/initiate', async (req, res) => {
     }
 
     const intent = await PaymentIntent.create({
-      reference, purpose: 'subscription', amount, currency: sebpay.DEFAULT_CURRENCY,
+      reference, purpose: 'subscription', amount, currency: ikeepay.DEFAULT_CURRENCY,
       payerPhone: phone, payerOperator: operator, payerName: directorName || meta.schoolName,
       payerEmail: email || '', mode, meta,
     })
-    const result = await sebpay.createCollection({
+    const result = await ikeepay.createCollection({
       amount, phone, operator, reference, callbackUrl: callbackUrl(),
     })
-    console.log('SEBPay collection créée [' + reference + '] amount=' + amount +
+    console.log('Ikeepay collection créée [' + reference + '] amount=' + amount +
                 ' operator=' + operator + ' →', JSON.stringify(result))
-    if (result.transaction_id) {
-      intent.sebpayTransactionId = result.transaction_id
+    if (result.transaction_id || result.id) {
+      intent.providerTransactionId = result.transaction_id || result.id
       await intent.save()
     }
     return res.json({
@@ -185,15 +188,15 @@ router.post('/enrollment/initiate', async (req, res) => {
     if (fee <= 0) return res.status(400).json({ message: "Le montant des frais d'inscription n'est pas défini" })
 
     const reference = genRef('enr')
-    const { mode } = await sebpay.resolveConfig()
+    const { mode } = await ikeepay.resolveConfig()
     const intent = await PaymentIntent.create({
-      reference, purpose: 'enrollment', amount: fee, currency: sebpay.DEFAULT_CURRENCY,
+      reference, purpose: 'enrollment', amount: fee, currency: ikeepay.DEFAULT_CURRENCY,
       payerPhone: phone, payerOperator: operator, payerName: payerName || studentName || '',
       payerEmail: payerEmail || '', school: school._id, beneficiary: school.director, mode,
       meta: { studentName, studentId, classId, schoolName: school.name },
     })
-    const result = await sebpay.createCollection({ amount: fee, phone, operator, reference, callbackUrl: callbackUrl() })
-    if (result.transaction_id) { intent.sebpayTransactionId = result.transaction_id; await intent.save() }
+    const result = await ikeepay.createCollection({ amount: fee, phone, operator, reference, callbackUrl: callbackUrl() })
+    if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
     return res.json({ success: true, reference, amount: fee, mode, transaction: result,
       message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money.' })
   } catch (err) {
@@ -207,10 +210,10 @@ router.get('/status/:reference', async (req, res) => {
   try {
     const intent = await PaymentIntent.findOne({ reference: req.params.reference })
     if (!intent) return res.status(404).json({ message: 'Référence introuvable' })
-    // Si toujours en attente, on tente une vérification active auprès de SEBPay
+    // Si toujours en attente, on tente une vérification active auprès d'Ikeepay
     if (intent.status === 'pending') {
       try {
-        const remote = await sebpay.getCollectionStatus(intent.sebpayTransactionId || intent.reference)
+        const remote = await ikeepay.getTransactionStatus(intent.providerTransactionId || intent.reference)
         const rs = mapStatus(remote.status || (remote.data && remote.data.status))
         if (rs === 'approved' || rs === 'rejected') {
           await applyOutcome(intent, rs, remote)
@@ -226,24 +229,50 @@ router.get('/status/:reference', async (req, res) => {
   }
 })
 
-// POST /api/payments/webhook — notification SEBPay (signée HMAC)
+// Détermine le statut FIABLE d'un webhook. Si la signature HMAC est valide, on fait
+// confiance au payload. Sinon (pas de secret configuré / signature absente), on réconcilie
+// activement le statut auprès d'Ikeepay : on ne crédite JAMAIS sur un webhook non vérifié.
+// Retourne 'approved' | 'rejected' | 'pending', ou null si la vérification est impossible.
+async function verifiedStatus(raw, payload, signature, lookupId) {
+  if (await ikeepay.verifyWebhookSignature(raw, signature)) {
+    return mapStatus(payload.status || (payload.data && payload.data.status))
+  }
+  try {
+    const remote = await ikeepay.getTransactionStatus(lookupId)
+    return mapStatus(remote.status || (remote.data && remote.data.status))
+  } catch (e) {
+    return null
+  }
+}
+
+// POST /api/payments/webhook — notification Ikeepay (collecte OU payout), signée HMAC.
 router.post('/webhook', async (req, res) => {
   try {
-    const signature = req.headers['x-sebpay-signature'] || req.headers['x-sebpay-signature'.toLowerCase()]
-    const raw = req.rawBody || JSON.stringify(req.body || {})
-    const valid = await sebpay.verifyWebhookSignature(raw, signature)
-    if (!valid) {
-      console.warn('Webhook SEBPay: signature invalide')
-      return res.status(401).json({ message: 'Signature invalide' })
-    }
     const payload = req.body || {}
-    const reference = payload.external_reference
-    const status = mapStatus(payload.status)
+    const raw = req.rawBody || JSON.stringify(payload)
+    const signature = req.headers[ikeepay.SIGNATURE_HEADER]
+    const d = payload.data && typeof payload.data === 'object' ? payload.data : {}
+    const reference = payload.external_reference || payload.reference || d.external_reference || d.reference
+    const providerId = payload.transaction_id || payload.id || d.transaction_id || d.id
     if (!reference) return res.status(400).json({ message: 'external_reference manquant' })
+
+    // Payout (retrait) : nos références de payout commencent par « wd_ »
+    if (String(reference).startsWith('wd_')) {
+      const wr = await WithdrawalRequest.findOne({ providerRef: reference })
+      if (!wr) return res.status(404).json({ message: 'Retrait introuvable' })
+      if (wr.status === 'paid' || wr.status === 'rejected') return res.json({ success: true, message: 'Déjà traité' })
+      const status = await verifiedStatus(raw, payload, signature, wr.providerPayoutId || providerId || reference)
+      if (!status) { console.warn('Webhook Ikeepay payout non vérifié [' + reference + ']'); return res.status(401).json({ message: 'Signature invalide' }) }
+      await applyPayoutOutcome(wr, status, payload, providerId)
+      return res.json({ success: true })
+    }
+
+    // Collecte : PaymentIntent
     const intent = await PaymentIntent.findOne({ reference })
     if (!intent) return res.status(404).json({ message: 'Intent introuvable' })
-    // Idempotence : déjà traité
     if (intent.fulfilled) return res.json({ success: true, message: 'Déjà traité' })
+    const status = await verifiedStatus(raw, payload, signature, intent.providerTransactionId || providerId || reference)
+    if (!status) { console.warn('Webhook Ikeepay collecte non vérifié [' + reference + ']'); return res.status(401).json({ message: 'Signature invalide' }) }
     await applyOutcome(intent, status, payload)
     return res.json({ success: true })
   } catch (err) {
@@ -252,12 +281,45 @@ router.post('/webhook', async (req, res) => {
   }
 })
 
+// Applique le résultat d'un payout (retrait) — idempotent.
+// Succès → règle le montant bloqué (settleLocked) et marque « payé ».
+// Échec  → débloque (unlock) + écriture de remboursement + marque « rejeté ».
+async function applyPayoutOutcome(wr, status, raw, providerId) {
+  if (wr.status === 'paid' || wr.status === 'rejected') return
+  if (providerId && !wr.providerPayoutId) wr.providerPayoutId = providerId
+  if (status === 'approved') {
+    await wallet.settleLocked(wr.user, wr.amount)
+    wr.status = 'paid'; wr.processedAt = new Date()
+    await wr.save()
+    try {
+      const u = await User.findById(wr.user)
+      if (u?.email) await sendEmail({ to: u.email, subject: 'Retrait effectué — KATD-SCHÜLE',
+        html: '<p>Votre retrait de <b>' + (wr.netAmount || wr.amount).toLocaleString('fr-FR') + ' FCFA</b> a été envoyé sur ' + wr.momoNumber + '.</p>' })
+    } catch (e) {}
+  } else if (status === 'rejected') {
+    await wallet.unlock(wr.user, wr.amount)
+    const w = await wallet.getOrCreateWallet(wr.user)
+    await WalletTransaction.create({ wallet: w._id, owner: wr.user, direction: 'credit',
+      amount: wr.amount, currency: wr.currency, type: 'withdrawal_refund', balanceAfter: w.balance,
+      withdrawal: wr._id, description: 'Remboursement retrait échoué (payout)' })
+    wr.status = 'rejected'; wr.processedAt = new Date()
+    wr.rejectionReason = extractReason(raw) || 'Échec du payout'
+    await wr.save()
+    try {
+      const u = await User.findById(wr.user)
+      if (u?.email) await sendEmail({ to: u.email, subject: 'Retrait échoué — KATD-SCHÜLE',
+        html: '<p>Votre retrait de <b>' + wr.amount.toLocaleString('fr-FR') + ' FCFA</b> n\'a pas pu aboutir ; le montant a été recrédité sur votre portefeuille.</p>' })
+    } catch (e) {}
+    console.warn('Ikeepay PAYOUT ÉCHEC [' + wr.providerRef + '] montant=' + wr.amount + ' raison=' + (extractReason(raw) || '(aucune)'))
+  }
+}
+
 // Applique le résultat d'un paiement (centralisé, idempotent)
 async function applyOutcome(intent, status, raw) {
   if (intent.fulfilled) return
   if (status === 'approved') {
     intent.status = 'approved'
-    if (raw && (raw.transaction_id)) intent.sebpayTransactionId = raw.transaction_id
+    if (raw && (raw.transaction_id || raw.id)) intent.providerTransactionId = raw.transaction_id || raw.id
     intent.rawWebhook = raw || {}
     // Traitement selon la finalité
     if (intent.purpose === 'subscription') {
@@ -283,7 +345,7 @@ async function applyOutcome(intent, status, raw) {
         const m = intent.meta || {}
         await wallet.credit(intent.beneficiary, {
           amount: intent.amount, type: 'enrollment', role: 'directeur', school: intent.school,
-          paymentIntent: intent._id, sebpayTransactionId: intent.sebpayTransactionId,
+          paymentIntent: intent._id, providerTransactionId: intent.providerTransactionId,
           counterparty: intent.initiatedBy || null,
           description: "Frais d'inscription" + (m.studentName ? ' - ' + m.studentName : ''),
           meta: m,
@@ -294,7 +356,7 @@ async function applyOutcome(intent, status, raw) {
       if (intent.initiatedBy) {
         await wallet.credit(intent.initiatedBy, {
           amount: intent.amount, type: 'deposit', school: intent.school,
-          paymentIntent: intent._id, sebpayTransactionId: intent.sebpayTransactionId,
+          paymentIntent: intent._id, providerTransactionId: intent.providerTransactionId,
           description: 'Dépôt sur le portefeuille',
         })
         // Parrainage : au TOUT PREMIER dépôt du filleul, le parrain gagne 70 F (chantier 16).
@@ -330,7 +392,7 @@ async function applyOutcome(intent, status, raw) {
             await wallet.credit(admin._id, {
               amount: intent.amount, type: 'merchant_signup', role: 'admin',
               counterparty: intent.initiatedBy, paymentIntent: intent._id,
-              sebpayTransactionId: intent.sebpayTransactionId,
+              providerTransactionId: intent.providerTransactionId,
               description: "Frais d'activation marchand",
             })
           }
@@ -357,7 +419,7 @@ async function applyOutcome(intent, status, raw) {
             await wallet.credit(admin._id, {
               amount: intent.amount, type: 'shareholder_subscription', role: 'admin',
               counterparty: intent.initiatedBy, paymentIntent: intent._id,
-              sebpayTransactionId: intent.sebpayTransactionId,
+              providerTransactionId: intent.providerTransactionId,
               description: 'Souscription actionnaire — ' + (m.planLabel || m.planKey || ''),
               meta: { planKey: m.planKey, zone: m.zone || '' },
             })
@@ -372,7 +434,7 @@ async function applyOutcome(intent, status, raw) {
     intent.rawWebhook = raw || {}
     await intent.save()
     // Trace le motif exact du rejet (montant, plafond, opérateur…) pour diagnostic
-    console.warn('SEBPay REJET [' + intent.reference + '] purpose=' + intent.purpose +
+    console.warn('Ikeepay REJET [' + intent.reference + '] purpose=' + intent.purpose +
                  ' amount=' + intent.amount + ' operator=' + intent.payerOperator +
                  ' raison=' + (extractReason(raw) || '(aucune)') +
                  ' brut=' + JSON.stringify(raw || {}))

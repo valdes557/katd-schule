@@ -51,7 +51,7 @@ export default function AdminPaiementsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <CreditCard size={22} className="text-blue-600" /> Paiements SEBPay
+            <CreditCard size={22} className="text-blue-600" /> Paiements Ikeepay
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Argent entrant via Mobile Money (souscriptions, inscriptions, dépôts).</p>
         </div>
@@ -147,7 +147,7 @@ export default function AdminPaiementsPage() {
                         {p.payerPhone && <div className="text-xs text-gray-400">{p.payerPhone}</div>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-gray-500">{p.sebpayTransactionId || p.reference}</span>
+                        <span className="font-mono text-xs text-gray-500">{p.providerTransactionId || p.sebpayTransactionId || p.reference}</span>
                         {p.mode === 'test' && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">TEST</span>}
                       </td>
                       <td className="px-4 py-3">
