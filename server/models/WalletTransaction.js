@@ -35,6 +35,9 @@ const txSchema = new mongoose.Schema(
         'shareholder_subscription', // souscription actionnaire encaissée par l'admin (crédit)
         'shareholder_payment', // souscription actionnaire payée depuis le solde (côté souscripteur, débit)
         'shareholder_gain',  // gain/dividende versé à un actionnaire (crédit)
+        'boost',             // paiement d'un boost de publication depuis le solde (débit)
+        'boost_revenue',     // revenu d'un boost encaissé par l'admin plateforme (crédit)
+        'boost_refund',      // remboursement d'un boost au propriétaire (crédit)
       ],
       required: true,
       index: true,

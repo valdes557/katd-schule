@@ -426,6 +426,30 @@ async function applyOutcome(intent, status, raw) {
           }
         } catch (e) { /* part créée même si le crédit admin échoue */ }
       }
+    } else if (intent.purpose === 'boost') {
+      // Boost payé par Mobile Money : encaisse le revenu (admin) puis active la campagne.
+      // Idempotent (garde intent.fulfilled ci-dessous). L'activation elle-même est idempotente.
+      try {
+        const BoostCampaign = require('../models/BoostCampaign')
+        const lifecycle = require('../services/boostLifecycleService')
+        const campaignId = intent.meta && intent.meta.campaignId
+        const campaign = campaignId
+          ? await BoostCampaign.findById(campaignId)
+          : await BoostCampaign.findOne({ paymentIntent: intent._id })
+        if (campaign) {
+          try {
+            const admin = await wallet.getPlatformAdmin()
+            if (admin) {
+              await wallet.credit(admin._id, {
+                amount: intent.amount, type: 'boost_revenue', role: 'admin', counterparty: intent.initiatedBy,
+                paymentIntent: intent._id, providerTransactionId: intent.providerTransactionId,
+                description: 'Revenu boost (Mobile Money)', meta: { boostCampaign: String(campaign._id) },
+              })
+            }
+          } catch (e) { /* campagne activée même si le crédit admin échoue */ }
+          await lifecycle.activateCampaign(campaign)
+        }
+      } catch (e) { console.error('[payment:boost] ' + intent.reference + ' :', e.message) }
     }
     intent.fulfilled = true
     await intent.save()
@@ -433,6 +457,17 @@ async function applyOutcome(intent, status, raw) {
     intent.status = 'rejected'
     intent.rawWebhook = raw || {}
     await intent.save()
+    // Boost : paiement Mobile Money échoué → annule la campagne restée en attente.
+    if (intent.purpose === 'boost') {
+      try {
+        const BoostCampaign = require('../models/BoostCampaign')
+        const campaignId = intent.meta && intent.meta.campaignId
+        const campaign = campaignId
+          ? await BoostCampaign.findById(campaignId)
+          : await BoostCampaign.findOne({ paymentIntent: intent._id })
+        if (campaign && campaign.status === 'pending_payment') { campaign.status = 'cancelled'; await campaign.save() }
+      } catch (e) { /* best-effort */ }
+    }
     // Trace le motif exact du rejet (montant, plafond, opérateur…) pour diagnostic
     console.warn('Ikeepay REJET [' + intent.reference + '] purpose=' + intent.purpose +
                  ' amount=' + intent.amount + ' operator=' + intent.payerOperator +

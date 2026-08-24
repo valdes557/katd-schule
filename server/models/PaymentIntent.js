@@ -7,7 +7,7 @@ const paymentIntentSchema = new mongoose.Schema(
     reference: { type: String, required: true, unique: true, index: true },
     purpose: {
       type: String,
-      enum: ['subscription', 'enrollment', 'deposit', 'merchant', 'shareholder'],
+      enum: ['subscription', 'enrollment', 'deposit', 'merchant', 'shareholder', 'boost'],
       required: true,
       index: true,
     },

@@ -11,6 +11,8 @@ const Student = require('../models/Student')
 const { protect, authorize } = require('../middleware/auth')
 const { upload, videoThumbnailUrl } = require('../config/cloudinary')
 const pushService = require('../services/pushService')
+const boostFeedService = require('../services/boostFeedService')
+const boostPricing = require('../services/boostPricingService')
 const http = require('http')
 const https = require('https')
 
@@ -62,6 +64,10 @@ router.post('/upload', protect, authorize('super_admin'), upload.array('images',
 // ===================== SOCIAL FEED (platform-level posts) =====================
 
 // GET /api/platform/feed — Public: get all public posts (platform + all schools)
+// Diffusion boostée : sur la 1re page du feed principal, on injecte quelques publications
+// SPONSORISÉES (boostFeedService), espacées et marquées isSponsored. On marque aussi les
+// publications DU VISITEUR ayant déjà une campagne en cours (activeBoost → bouton « Boost en
+// cours »). La forme de réponse { success, total, data } est inchangée.
 router.get('/feed', async (req, res) => {
   try {
     const { page = 1, limit = 20, category } = req.query
@@ -75,7 +81,54 @@ router.get('/feed', async (req, res) => {
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit))
-    res.json({ success: true, total, data: posts })
+
+    // Décodage souple du jeton (le feed est public) pour personnaliser la diffusion.
+    let viewer = null
+    try {
+      const authz = req.headers.authorization || ''
+      if (authz.startsWith('Bearer ')) {
+        const jwt = require('jsonwebtoken')
+        const decoded = jwt.verify(authz.split(' ')[1], process.env.JWT_SECRET)
+        if (decoded?.id) viewer = { _id: decoded.id }
+      }
+    } catch (_) { /* visiteur anonyme */ }
+
+    let data = posts
+    // Injection sponsorisée : uniquement page 1 du feed principal (évite les doublons en scroll).
+    if (Number(page) === 1 && !category) {
+      try {
+        const cfg = await boostPricing.getConfig()
+        const excludeIds = posts.map((p) => String(p._id))
+        const { posts: sponsored, campaignIds } = await boostFeedService.getSponsoredFor(viewer, { excludeIds, limit: cfg.maxSponsoredPerPage })
+        if (sponsored.length) {
+          data = boostFeedService.interleave(posts, sponsored, cfg.feedInjectionRatio)
+          boostFeedService.incrementImpressions(campaignIds) // best-effort (non bloquant)
+        }
+      } catch (e) { /* si la diffusion échoue, on sert le feed organique tel quel */ }
+    }
+
+    // « Boost en cours » : marque les publications du visiteur ayant une campagne en cours.
+    if (viewer) {
+      try {
+        const BoostCampaign = require('../models/BoostCampaign')
+        const owned = posts.filter((p) => String(p.author?._id || p.author) === String(viewer._id)).map((p) => p._id)
+        if (owned.length) {
+          const live = await BoostCampaign.find({ user: viewer._id, post: { $in: owned }, status: { $in: ['active', 'pending_review', 'pending_payment'] } }).select('post').lean()
+          const set = new Set(live.map((c) => String(c.post)))
+          if (set.size) {
+            data = data.map((p) => {
+              if (set.has(String(p._id))) {
+                const obj = typeof p.toObject === 'function' ? p.toObject() : p
+                return { ...obj, activeBoost: true }
+              }
+              return p
+            })
+          }
+        }
+      } catch (_) { /* best-effort */ }
+    }
+
+    res.json({ success: true, total, data })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

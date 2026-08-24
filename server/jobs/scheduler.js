@@ -11,6 +11,7 @@ const User = require('../models/User')
 const Wallet = require('../models/Wallet')
 const JobRun = require('../models/JobRun')
 const wallet = require('../services/walletService')
+const boostLifecycle = require('../services/boostLifecycleService')
 
 // Taux d'intérêt quotidien sur le solde des comptes directeur.
 const DAILY_INTEREST_RATE = 0.0001 // 0,01%/jour
@@ -106,6 +107,18 @@ async function applyMaintenanceOnDeposit(userId) {
   } catch (e) { console.error('[maintenance:onDeposit] ' + userId + ' :', e.message) }
 }
 
+// ───────────────────────── CYCLE DE VIE DES BOOSTS ─────────────────────────
+// Termine les campagnes expirées + notifie celles qui se terminent bientôt (≤6h).
+// Exécuté à CHAQUE tick (sensible au temps) — les opérations sont idempotentes.
+async function runBoostLifecycle() {
+  try {
+    const completed = await boostLifecycle.completeExpired()
+    const notified = await boostLifecycle.notifyEndingSoon()
+    if (completed || notified) console.log('[job:boost] ' + JSON.stringify({ completed, notified }))
+    return { completed, notified }
+  } catch (e) { console.error('[job:boost]', e.message); return { completed: 0, notified: 0 } }
+}
+
 // ───────────────────────── ORCHESTRATION (tick horaire + idempotence) ─────────────────────────
 async function tick() {
   try {
@@ -127,6 +140,8 @@ async function tick() {
       mr.lastRunMonth = month; mr.lastRunAt = new Date(); mr.lastResult = result
       await mr.save()
     }
+    // Cycle de vie des boosts (à chaque tick, indépendant des gardes jour/mois).
+    await runBoostLifecycle()
   } catch (e) { console.error('[scheduler:tick]', e.message) }
 }
 
@@ -140,4 +155,4 @@ function start() {
 }
 
 module.exports = { start, tick, runDailyInterest, runMonthlyMaintenance, applyMaintenanceOnDeposit,
-  DAILY_INTEREST_RATE, MAINTENANCE_TIERS }
+  runBoostLifecycle, DAILY_INTEREST_RATE, MAINTENANCE_TIERS }

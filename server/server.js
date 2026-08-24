@@ -51,6 +51,9 @@ app.use(require('./middleware/auditTrail').auditTrail)
 
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/payments', require('./routes/payments'))
+// Boosts (monétisation espace social). /api/admin/boosts AVANT /api/admin (walletAdmin) pour priorité.
+app.use('/api/boosts', require('./routes/boosts'))
+app.use('/api/admin/boosts', require('./routes/adminBoosts'))
 app.use('/api/wallet', require('./routes/wallet'))
 app.use('/api/merchant', require('./routes/merchant'))
 app.use('/api/shareholders', require('./routes/shareholders'))

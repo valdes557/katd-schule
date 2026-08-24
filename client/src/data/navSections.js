@@ -4,7 +4,7 @@ import {
   Library, MessageSquare, Bell, FolderOpen, CreditCard, History, Receipt,
   BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet, QrCode,
   Bot, Sparkles, Image as ImageIcon, Briefcase, Newspaper, KeyRound,
-  ArrowLeftRight, Coins, Store, Landmark, Gavel,
+  ArrowLeftRight, Coins, Store, Landmark, Gavel, Rocket,
 } from 'lucide-react'
 
 // roles: array of allowed roles. undefined = all roles.
@@ -253,6 +253,7 @@ export const navSections = [
       { label: 'Gestion des utilisateurs', icon: UserCog, path: '/dashboard/utilisateurs-admin' },
       { label: 'Gestion des marchands', icon: Store, path: '/dashboard/marchands-admin' },
       { label: 'Gestion des actionnaires', icon: Landmark, path: '/dashboard/actionnaires-admin' },
+      { label: 'Gestion des boosts', icon: Rocket, path: '/dashboard/boosts-admin' },
       { label: 'Gestion des transactions', icon: ArrowLeftRight, path: '/dashboard/transactions-admin' },
       { label: 'Frais de transaction', icon: Coins, path: '/dashboard/frais-transaction-admin' },
       { label: 'Bannières', icon: ImageIcon, path: '/dashboard/bannieres' },

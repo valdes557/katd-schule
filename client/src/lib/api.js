@@ -48,6 +48,7 @@ export const api = {
   get: (path) => request(path),
   post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
   put: (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) }),
+  patch: (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body) }),
   del: (path) => request(path, { method: 'DELETE' }),
 }
 
@@ -397,6 +398,18 @@ export const platformApi = {
     return res.json()
   },
   deleteResource: (id) => api.del(`/platform/resources/${id}`),
+}
+
+// Boost d'une publication (espace utilisateur /u). Le prix est TOUJOURS résolu côté serveur ;
+// le front n'envoie qu'une durationKey — jamais un montant.
+export const boostApi = {
+  pricing: () => api.get('/boosts/pricing'),
+  preview: (payload) => api.post('/boosts/preview', payload),
+  create: (payload) => api.post('/boosts/create', payload),
+  myCampaigns: (status = '') => api.get('/boosts/my-campaigns' + (status ? '?status=' + status : '')),
+  get: (id) => api.get('/boosts/' + id),
+  stats: (id) => api.get('/boosts/' + id + '/stats'),
+  cancel: (id) => api.post('/boosts/' + id + '/cancel', {}),
 }
 
 export const subjectsApi = {
@@ -1039,6 +1052,23 @@ export const walletAdminApi = {
   requestIkeepayCode: () => api.post('/admin/ikeepay/request-code', {}),
   revealIkeepay: (code) => api.post('/admin/ikeepay/reveal', { code }),
   updateIkeepay: (payload) => api.put('/admin/ikeepay', payload),
+}
+
+// Gestion des boosts (Super Admin) : campagnes, revenus, actions, configuration, tarifs.
+export const adminBoostsApi = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/admin/boosts' + (qs ? '?' + qs : ''))
+  },
+  stats: () => api.get('/admin/boosts/stats'),
+  setStatus: (id, payload) => api.patch('/admin/boosts/' + id + '/status', payload),
+  refund: (id) => api.post('/admin/boosts/' + id + '/refund', {}),
+  getConfig: () => api.get('/admin/boosts/config'),
+  updateConfig: (payload) => api.patch('/admin/boosts/config', payload),
+  pricing: () => api.get('/admin/boosts/pricing'),
+  createPricing: (payload) => api.post('/admin/boosts/pricing', payload),
+  updatePricing: (id, payload) => api.patch('/admin/boosts/pricing/' + id, payload),
+  deletePricing: (id) => api.del('/admin/boosts/pricing/' + id),
 }
 
 // Compte marchand (côté utilisateur) : statut + commissions + activation 6933 F

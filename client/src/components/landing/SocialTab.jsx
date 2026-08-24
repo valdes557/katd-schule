@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import {
   Globe2, Play, Eye, ThumbsUp, MessageCircle, Share2, Send, ChevronDown,
   Download, Music, Lock, Check, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Trash2,
-  Facebook, Twitter, Linkedin, Mail, Link2,
+  Facebook, Twitter, Linkedin, Mail, Link2, Rocket, Megaphone,
 } from 'lucide-react'
 import { platformApi } from '../../lib/api'
+import BoostModal from '../boost/BoostModal'
 
 const CATEGORIES = ['Tout', 'Éducation', 'Sport', 'Culture', 'Sciences', 'Technologie']
 
@@ -41,6 +42,7 @@ export default function SocialTab({ feed, setFeed, user, hideHeading = false }) 
   const [expandedComments, setExpandedComments] = useState({})
   const [viewer, setViewer] = useState(null) // { type: 'image' | 'video', src, post, index }
   const [viewerZoom, setViewerZoom] = useState(1)
+  const [boostPost, setBoostPost] = useState(null) // publication en cours de « boost » (ouvre BoostModal)
   // Publications déjà vues durant cette session (évite de compter plusieurs fois la même vue)
   const viewedRef = useRef(new Set())
 
@@ -190,6 +192,7 @@ export default function SocialTab({ feed, setFeed, user, hideHeading = false }) 
                 expandedComments={expandedComments} setExpandedComments={setExpandedComments}
                 onDownload={(id) => setFeed((prev) => prev.map((p) => p._id === id ? { ...p, downloads: (p.downloads || 0) + 1 } : p))}
                 onView={markViewed}
+                onBoost={setBoostPost}
                 onOpenMedia={(payload) => { markViewed(payload.post?._id); setViewer({ ...payload, index }) }}
               />
             ))}
@@ -352,11 +355,19 @@ export default function SocialTab({ feed, setFeed, user, hideHeading = false }) 
           </div>
         )
       })()}
+
+      {boostPost && (
+        <BoostModal
+          post={boostPost}
+          onClose={() => setBoostPost(null)}
+          onActivated={(postId) => setFeed((prev) => prev.map((p) => (p._id === postId ? { ...p, activeBoost: true } : p)))}
+        />
+      )}
     </div>
   )
 }
 
-function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload, onView, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
+function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload, onView, onBoost, commentText, setCommentText, expandedComments, setExpandedComments, onOpenMedia }) {
   const navigate = useNavigate()
   const [expanded, setExpanded] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
@@ -415,6 +426,8 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
   const myId = user?.id || user?._id
   const authorId = post.author?._id || post.author
   const canDelete = !!user && (post.isPlatform ? user.role === 'super_admin' : (authorId && myId && authorId.toString() === myId.toString()) || user.role === 'super_admin')
+  // Le propriétaire (hors publication plateforme, compte non suspendu) peut booster sa publication.
+  const isOwner = !!user && !post.isPlatform && authorId && myId && authorId.toString() === myId.toString() && user.isActive !== false
 
   // Ratio d'affichage respectant l'orientation initiale (portrait reste portrait).
   const ar = mediaAspect(post)
@@ -543,6 +556,11 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
             <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-400">
               <span>{post.author?.name || 'KATD-SCHÜLE'}</span>
               <span>·</span><span>{timeAgo(post.createdAt)}</span>
+              {post.isSponsored && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full">
+                  <Megaphone size={9} /> Sponsorisé
+                </span>
+              )}
             </div>
           </div>
           {canDelete && (
@@ -600,6 +618,25 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
               {user ? <Download size={12} /> : <Lock size={12} />}
               {user ? 'DL' : 'Login'}
             </button>
+          )}
+          {/* 🚀 Booster — propriétaire uniquement, aligné avec les autres boutons d'action */}
+          {isOwner && (
+            post.activeBoost ? (
+              <span
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium text-green-600 bg-green-50 flex-1 justify-center"
+                title="Campagne de boost en cours"
+              >
+                <Rocket size={12} /> En cours
+              </span>
+            ) : (
+              <button
+                onClick={() => onBoost?.(post)}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium text-purple-600 hover:bg-purple-50 transition-colors flex-1 justify-center"
+                title="Booster cette publication"
+              >
+                <Rocket size={12} /> Booster
+              </button>
+            )
           )}
         </div>
 
