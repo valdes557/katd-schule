@@ -15,8 +15,9 @@ const crypto = require('crypto')
 const IkeepayConfig = require('../models/IkeepayConfig')
 const { decrypt } = require('../utils/crypto')
 
-const BASE_URL = (process.env.IKEEPAY_BASE_URL || 'https://api.ikeepay.com/api/v1').replace(/\/$/, '')
-// Chemins surchargeables (l'API publique documente /payments ; payout/statut à confirmer).
+const BASE_URL = (process.env.IKEEPAY_BASE_URL || 'https://api.ikeepay.com').replace(/\/$/, '')
+// Chemins surchargeables (à confirmer/ajuster côté Ikeepay sans toucher au code).
+const COLLECT_PATH = process.env.IKEEPAY_COLLECT_PATH || '/payments'
 const PAYOUT_PATH = process.env.IKEEPAY_PAYOUT_PATH || '/payouts'
 const STATUS_PATH = process.env.IKEEPAY_STATUS_PATH || '/payments'
 // En-tête portant la signature HMAC du webhook (à confirmer avec Ikeepay).
@@ -88,10 +89,11 @@ function mapProvider(operator) {
 }
 
 function authHeaders(cfg) {
+  // Doc Ikeepay : authentification par clé secrète dans l'en-tête x-api-key.
   return {
     'Content-Type': 'application/json',
     Accept: 'application/json',
-    Authorization: 'Bearer ' + cfg.apiKey,
+    'x-api-key': cfg.apiKey,
   }
 }
 
@@ -111,22 +113,24 @@ function buildError(res, data) {
 }
 
 // Corps commun d'une opération Mobile Money (collecte ou payout).
-function buildMomoBody({ amount, phone, operator, reference, callbackUrl, country, currency, accountName }) {
+function buildMomoBody({ amount, phone, operator, reference, callbackUrl, country, currency, accountName, customerEmail, otp }) {
   const natPhone = normalizePhone(phone, country)
   if (!/^[0-9]{8,15}$/.test(natPhone)) {
     const err = new Error('Numéro Mobile Money invalide : « ' + (phone || '') + " ». Vérifiez qu'il est complet.")
     err.status = 400
     throw err
   }
+  // Format attendu par Ikeepay (doc) : phoneNumber + operator (nom du fournisseur), external_reference.
   const body = {
     amount,
     currency,
-    payment_method: 'mobile_money',
-    provider: mapProvider(operator),
     country,
-    phone: natPhone,
+    phoneNumber: natPhone,
+    operator: mapProvider(operator),
     external_reference: reference,
   }
+  if (customerEmail) body.customer_email = customerEmail
+  if (otp) body.otp = otp
   if (accountName) body.account_name = accountName
   // callback_url optionnel : uniquement s'il est absolu (http/https).
   if (callbackUrl && /^https?:\/\//i.test(callbackUrl)) body.callback_url = callbackUrl
@@ -134,11 +138,11 @@ function buildMomoBody({ amount, phone, operator, reference, callbackUrl, countr
 }
 
 // Initie une collecte Mobile Money (argent entrant)
-async function createCollection({ amount, phone, operator, reference, callbackUrl, country = DEFAULT_COUNTRY, currency = DEFAULT_CURRENCY }) {
+async function createCollection({ amount, phone, operator, reference, callbackUrl, customerEmail, otp, country = DEFAULT_COUNTRY, currency = DEFAULT_CURRENCY }) {
   const cfg = await resolveConfig()
   if (!cfg.apiKey) throw new Error('Clé API Ikeepay non configurée (mode ' + cfg.mode + ')')
-  const body = buildMomoBody({ amount, phone, operator, reference, callbackUrl, country, currency })
-  const res = await fetch(BASE_URL + '/payments', {
+  const body = buildMomoBody({ amount, phone, operator, reference, callbackUrl, country, currency, customerEmail, otp })
+  const res = await fetch(BASE_URL + COLLECT_PATH, {
     method: 'POST', headers: authHeaders(cfg), body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => ({}))

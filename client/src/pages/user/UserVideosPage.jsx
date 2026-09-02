@@ -34,12 +34,12 @@ export default function UserVideosPage() {
         <span className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center text-red-600 flex-shrink-0"><Youtube size={18} /></span>
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-gray-900">Vidéos</h1>
-          <p className="text-xs text-gray-500">Regardez YouTube et les vidéos KATD sans quitter la plateforme.</p>
+          <p className="text-xs text-gray-500">Regardez KATDtube et les vidéos KATD sans quitter la plateforme.</p>
         </div>
       </div>
 
       <div className="flex gap-2 mb-4 border-b border-gray-200">
-        {[['youtube', 'YouTube'], ['katd', 'KATD']].map(([k, label]) => (
+        {[['youtube', 'KATDtube'], ['katd', 'KATD']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === k ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
             {label}

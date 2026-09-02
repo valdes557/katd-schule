@@ -154,7 +154,7 @@ router.post('/subscription/initiate', async (req, res) => {
       payerEmail: email || '', mode, meta,
     })
     const result = await ikeepay.createCollection({
-      amount, phone, operator, reference, callbackUrl: callbackUrl(),
+      amount, phone, operator, reference, callbackUrl: callbackUrl(), customerEmail: email || '',
     })
     console.log('Ikeepay collection créée [' + reference + '] amount=' + amount +
                 ' operator=' + operator + ' →', JSON.stringify(result))
@@ -195,7 +195,7 @@ router.post('/enrollment/initiate', async (req, res) => {
       payerEmail: payerEmail || '', school: school._id, beneficiary: school.director, mode,
       meta: { studentName, studentId, classId, schoolName: school.name },
     })
-    const result = await ikeepay.createCollection({ amount: fee, phone, operator, reference, callbackUrl: callbackUrl() })
+    const result = await ikeepay.createCollection({ amount: fee, phone, operator, reference, callbackUrl: callbackUrl(), customerEmail: payerEmail || '' })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
     return res.json({ success: true, reference, amount: fee, mode, transaction: result,
       message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money.' })
@@ -254,7 +254,7 @@ async function webhookHandler(req, res) {
     const signature = req.headers[ikeepay.SIGNATURE_HEADER]
     const d = payload.data && typeof payload.data === 'object' ? payload.data : {}
     const reference = payload.external_reference || payload.reference || d.external_reference || d.reference
-    const providerId = payload.transaction_id || payload.id || d.transaction_id || d.id
+    const providerId = payload.transaction_id || payload.id || payload.provider_reference || d.transaction_id || d.id || d.provider_reference
     if (!reference) return res.status(400).json({ message: 'external_reference manquant' })
 
     // Payout (retrait) : nos références de payout commencent par « wd_ »
