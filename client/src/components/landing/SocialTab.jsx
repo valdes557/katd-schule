@@ -457,12 +457,23 @@ function PostCard({ post, user, onLike, onComment, onShare, onDelete, onDownload
     } catch (e) {}
   }
 
-  const hasMedia = post.audioUrl || post.videoUrl || post.images?.length > 0
+  // Les vidéos YouTube partagées ne sont jamais téléchargeables (lecture intégrée uniquement).
+  const hasMedia = post.type !== 'youtube' && (post.audioUrl || post.videoUrl || post.images?.length > 0)
 
   return (
     <div id={post._id} className="bg-white border-y sm:border border-gray-100 sm:rounded-xl overflow-hidden hover:shadow-lg transition-all">
       {/* ── Media zone ── */}
-      {post.type === 'audio' ? (
+      {post.type === 'youtube' && post.youtubeVideoId ? (
+        <div className="relative bg-black w-full" style={{ aspectRatio: '16 / 9' }}>
+          <iframe
+            src={`https://www.youtube.com/embed/${post.youtubeVideoId}?rel=0`}
+            title={post.title || 'YouTube'}
+            className="w-full h-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        </div>
+      ) : post.type === 'audio' ? (
         <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-5 text-white">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">

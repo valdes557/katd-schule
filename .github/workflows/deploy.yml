@@ -1,27 +1,39 @@
 # ---------------------------------------------------------------------------
-# Déploiement automatique KATD-SCHÜLE sur le VPS Contabo
+# Déploiement automatique KATD-SCHÜLE sur l'hébergement cPanel (gptservers.cloud)
+#
+# Le site est hébergé sur un cPanel mutualisé (domaine katdschool.com), avec une
+# application Node.js gérée par cPanel (« Setup Node.js App » / Passenger). Il n'y a
+# ni SSH root, ni PM2, ni Nginx : le déploiement se fait par FTP(S).
 #
 # À chaque push sur `main` :
-#   1. Le client React/Vite est COMPILÉ SUR LE RUNNER GITHUB (beaucoup de RAM)
-#      — le petit VPS ne fait plus le build (fini les échecs « Killed » / OOM).
-#   2. Le résultat (client/dist) est archivé et copié sur le VPS.
-#   3. En SSH : mise à jour du code serveur + dépendances, bascule ATOMIQUE du
-#      nouveau build, reload PM2 et Nginx.
+#   1. Le client React/Vite est COMPILÉ sur le runner GitHub (beaucoup de RAM).
+#   2. Les dépendances backend de PRODUCTION sont installées sur le runner
+#      (paquets 100 % JavaScript → compatibles avec le Linux de l'hébergeur).
+#   3. Le tout (server/ + server/node_modules + client/dist) est synchronisé par
+#      FTPS vers le dossier de l'application Node (envoi incrémental : seuls les
+#      fichiers modifiés partent → mises à jour quasi instantanées).
+#   4. On (ré)écrit `tmp/restart.txt` → Passenger redémarre l'app Node : le site en
+#      ligne reflète alors le dernier commit.
 #
-# Secret requis (Settings ▸ Secrets and variables ▸ Actions) :
-#   VPS_SSH_KEY  -> clé privée SSH autorisée sur le VPS (root@169.58.96.69).
-# L'hôte (169.58.96.69), l'utilisateur (root) et le port (22) sont en dur ci-dessous
-# (l'IP est publique, rien de sensible). Voir AUTO-DEPLOY.md pour la mise en place.
+# Secrets requis (Settings ▸ Secrets and variables ▸ Actions) :
+#   FTP_HOST      -> hôte FTP de l'hébergement (ex. ftp.katdschool.com)
+#   FTP_USERNAME  -> identifiant du compte FTP cPanel
+#   FTP_PASSWORD  -> mot de passe du compte FTP cPanel
+#   FTP_APP_DIR   -> (optionnel) dossier racine de l'app Node sur l'hébergement,
+#                    ex. "/katd-schule/" ou "/home/USER/katd-schule/". Défaut : "./"
+#
+# ⚠️ Le fichier server/.env (secrets : MONGO_URI, JWT_SECRET, clés…) vit UNIQUEMENT
+#    sur l'hébergement et n'est JAMAIS écrasé (exclu de la synchro ci-dessous).
+#    De même, server/uploads/ (fichiers téléversés) est préservé.
+# Voir AUTO-DEPLOY.md pour la mise en place détaillée côté cPanel.
 # ---------------------------------------------------------------------------
-name: Deploy to Contabo VPS
+name: Deploy to cPanel (gptservers.cloud)
 
 on:
   push:
     branches: [main]
   workflow_dispatch: {}   # permet aussi de lancer le déploiement à la main
 
-# Jeton en lecture seule sur le contenu du dépôt : sert à authentifier le
-# `git fetch` sur le VPS (dépôt privé) sans identifiants stockés côté serveur.
 permissions:
   contents: read
 
@@ -32,7 +44,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Build client (CI) + déploiement VPS
+    name: Build (CI) + déploiement FTP
     runs-on: ubuntu-latest
     steps:
       - name: Récupération du code
@@ -52,71 +64,41 @@ jobs:
           npx vite build
           test -f dist/index.html || (echo "Build client échoué : dist/index.html manquant" && exit 1)
 
-      - name: Archivage du build
-        run: tar -czf client-dist.tgz -C client/dist .
+      - name: Dépendances backend (production, 100 % JS → portables vers cPanel)
+        working-directory: server
+        run: npm ci --omit=dev --no-audit --no-fund
 
-      - name: Copie de l'archive vers le VPS
-        uses: appleboy/scp-action@v0.1.7
+      - name: Génération du déclencheur de redémarrage Passenger
+        run: |
+          mkdir -p tmp
+          echo "restart ${GITHUB_SHA} $(date -u +%FT%TZ)" > tmp/restart.txt
+
+      - name: Déploiement FTPS (synchro incrémentale)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          host: 169.58.96.69
-          username: root
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          source: "client-dist.tgz"
-          target: "/var/www/katd-schule"
-
-      - name: Mise à jour serveur + bascule du build (SSH)
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          # Jeton éphémère (valide le temps du run) transmis au VPS pour fetch le dépôt privé.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        with:
-          host: 169.58.96.69
-          username: root
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          command_timeout: 10m
-          script_stop: true
-          envs: GH_TOKEN,GH_REPO
-          script: |
-            set -e
-            cd /var/www/katd-schule
-
-            echo "==> 1/4  Code serveur à jour"
-            # Dépôt privé : on fetch via une URL authentifiée par le jeton du run
-            # (aucun identifiant stocké sur le VPS). On ne persiste pas le token
-            # dans le remote : URL explicite le temps du fetch uniquement.
-            git fetch "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git" \
-              "+refs/heads/main:refs/remotes/origin/main" --prune
-            git reset --hard origin/main
-
-            echo "==> 2/4  Dépendances backend"
-            cd /var/www/katd-schule/server
-            npm install --production --no-audit --no-fund
-
-            echo "==> 3/4  Bascule du build client (compilé sur GitHub)"
-            cd /var/www/katd-schule
-            test -f client-dist.tgz || { echo "Archive client-dist.tgz absente — abandon."; exit 1; }
-            rm -rf client/dist.ci
-            mkdir -p client/dist.ci
-            tar -xzf client-dist.tgz -C client/dist.ci
-            test -f client/dist.ci/index.html || { echo "Archive invalide (index.html manquant) — abandon."; exit 1; }
-            rm -rf client/dist.old
-            [ -d client/dist ] && mv client/dist client/dist.old
-            mv client/dist.ci client/dist
-            rm -rf client/dist.old client-dist.tgz
-            echo "   Build client déployé (bascule atomique)."
-
-            echo "==> 4/4  Reload API (PM2) + Nginx"
-            cd /var/www/katd-schule/server
-            mkdir -p logs
-            pm2 startOrReload ecosystem.config.js
-            pm2 save
-            if sudo -n nginx -t 2>/dev/null; then
-              sudo -n systemctl reload nginx && echo "   Nginx rechargé."
-            else
-              echo "   ⚠️  Nginx non rechargé (sudo non-interactif) — utile seulement si la conf a changé."
-            fi
-
-            echo "✅ Déploiement terminé — https://katdschool.com"
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./
+          server-dir: ${{ secrets.FTP_APP_DIR || './' }}
+          # On NE nettoie PAS le serveur (préserve .env, uploads/ côté hôte).
+          dangerous-clean-slate: false
+          # Exclusions : ce qui ne doit pas partir (ou ne doit jamais écraser l'hébergement).
+          # NB : server/node_modules N'EST PAS exclu → les dépendances de prod partent
+          #      avec l'app (aucune commande npm à lancer manuellement sur l'hébergement).
+          exclude: |
+            **/.git*
+            **/.git*/**
+            client/node_modules/**
+            server/.env
+            server/.env.*
+            server/uploads/**
+            server/logs/**
+            **/.DS_Store
+            .github/**
+            backups/**
+            *.md
+            ecosystem.config.js
+            deploy.sh
+            nginx-katdschool.conf

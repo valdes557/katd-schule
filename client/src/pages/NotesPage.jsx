@@ -18,7 +18,7 @@ export default function NotesPage() {
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [publishing, setPublishing] = useState(false)
-  const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'brouillon' })
+  const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'publie' })
 
   const params = new URLSearchParams()
   if (selectedClass) params.set('classId', selectedClass)
@@ -50,7 +50,7 @@ export default function NotesPage() {
         class: student?.class?._id || student?.class || selectedClass,
       })
       setShowModal(false)
-      setForm({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'brouillon' })
+      setForm({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'publie' })
       refreshGrades()
     } catch (e) { alert(e.message) }
   }
@@ -282,9 +282,10 @@ export default function NotesPage() {
               <div>
                 <label className="text-xs font-medium text-gray-600">Publication</label>
                 <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="input text-sm mt-1">
-                  <option value="brouillon">Brouillon (modifiable, invisible élèves/parents)</option>
-                  <option value="publie">Publier immédiatement</option>
+                  <option value="publie">Publier (visible sur le bulletin, élèves/parents)</option>
+                  <option value="brouillon">Brouillon (modifiable, invisible — à publier ensuite)</option>
                 </select>
+                <p className="text-[11px] text-gray-400 mt-1">Une note en brouillon n'apparaît PAS sur le bulletin tant qu'elle n'est pas publiée.</p>
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>

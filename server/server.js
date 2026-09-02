@@ -50,7 +50,11 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 app.use(require('./middleware/auditTrail').auditTrail)
 
 app.use('/api/auth', require('./routes/auth'))
-app.use('/api/payments', require('./routes/payments'))
+const paymentsRouter = require('./routes/payments')
+app.use('/api/payments', paymentsRouter)
+// Alias court pour la passerelle de paiement Ikeepay : https://<domaine>/api/webhook
+// (identique à /api/payments/webhook). Ikeepay attend ce format court dans sa configuration.
+app.post('/api/webhook', paymentsRouter.webhookHandler)
 // Boosts (monétisation espace social). /api/admin/boosts AVANT /api/admin (walletAdmin) pour priorité.
 app.use('/api/boosts', require('./routes/boosts'))
 app.use('/api/admin/boosts', require('./routes/adminBoosts'))
@@ -77,6 +81,7 @@ app.use('/api/locations', require('./routes/locations'))
 app.use('/api/school-registrations', require('./routes/schoolRegistrations'))
 app.use('/api/school-pages', require('./routes/schoolPages'))
 app.use('/api/platform', require('./routes/platform'))
+app.use('/api/youtube', require('./routes/youtube'))
 app.use('/api/subjects', require('./routes/subjects'))
 app.use('/api/timetables', require('./routes/timetables'))
 app.use('/api/parent', require('./routes/parent'))
@@ -115,8 +120,7 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
   })
 })
-
-// GET /api/smtp-test?secret=<JWT_SECRET_4_premiers_chars> — diagnostic SMTP (super_admin uniquement)
+// GET /api/smtp-test?secret=<JWT_SECRET_8_premiers_chars> — diagnostic SMTP (super_admin uniquement)
 // Exemple : /api/smtp-test?secret=f34a&to=admin@gmail.com
 app.get('/api/smtp-test', async (req, res) => {
   const { secret, to } = req.query
@@ -143,13 +147,35 @@ app.get('/api/smtp-test', async (req, res) => {
   })
 })
 
+// ── Service du build React (hébergement cPanel : une seule app Node sert l'API ET le site) ──
+// En production (SERVE_CLIENT=true ou NODE_ENV=production), on sert client/dist et on renvoie
+// index.html pour toute route non-API (repli SPA de React Router). Ainsi, plus besoin de Nginx :
+// l'app Node lancée par cPanel (« Setup Node.js App » / Passenger) sert tout le site.
+const SERVE_CLIENT = process.env.SERVE_CLIENT === 'true' || process.env.NODE_ENV === 'production'
+if (SERVE_CLIENT) {
+  const fs = require('fs')
+  const clientDist = path.join(__dirname, '..', 'client', 'dist')
+  if (fs.existsSync(path.join(clientDist, 'index.html'))) {
+    app.use(express.static(clientDist))
+    // Repli SPA : toute requête GET restante (hors /api et /uploads, déjà gérés plus haut) → index.html.
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next()
+      res.sendFile(path.join(clientDist, 'index.html'))
+    })
+  } else {
+    console.warn('[serve-client] client/dist/index.html introuvable — build client non déployé ?')
+  }
+}
+
+// 404 (routes API non trouvées, ou requêtes non-GET hors API) → réponse JSON.
+app.use((req, res) => {
+  res.status(404).json({ message: 'Route non trouvée' })
+})
+
+// Gestionnaire d'erreurs — enregistré en dernier (convention Express).
 app.use((err, req, res, next) => {
   console.error(err.stack)
   res.status(500).json({ message: err.message || 'Erreur serveur interne' })
-})
-
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route non trouvée' })
 })
 
 const PORT = process.env.PORT || 5000

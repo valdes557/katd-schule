@@ -1271,6 +1271,97 @@ function NewsDemoPanel() {
 // Gère la clé API Ikeepay + le secret de webhook par environnement (test/live).
 // L'opérateur Mobile Money (MTN / Orange / Wave / Moov…) est choisi automatiquement
 // au paiement, il n'y a donc PAS de clé distincte par opérateur.
+// ─── Clé API YouTube Panel (insertion directe, super_admin) ──────────────────
+function YoutubeKeyPanel() {
+  const [state, setState] = useState(null)
+  const [apiKey, setApiKey] = useState('')
+  const [cacheTtl, setCacheTtl] = useState(300)
+  const [maxSearchLen, setMaxSearchLen] = useState(120)
+  const [enabled, setEnabled] = useState(true)
+  const [downloadEnabled, setDownloadEnabled] = useState(true)
+  const [adsenseClient, setAdsenseClient] = useState('')
+  const [adSlot, setAdSlot] = useState('')
+  const [adCountdown, setAdCountdown] = useState(5)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const load = () => walletAdminApi.getYoutube().then((r) => {
+    setState(r)
+    setCacheTtl(r.cacheTtl ?? 300)
+    setMaxSearchLen(r.maxSearchLen ?? 120)
+    setEnabled(r.enabled !== false)
+    setDownloadEnabled(r.downloadEnabled !== false)
+    setAdsenseClient(r.adsenseClient || '')
+    setAdSlot(r.adSlot || '')
+    setAdCountdown(r.adCountdown ?? 5)
+  }).catch(() => {})
+  useEffect(() => { load() }, [])
+
+  const save = async () => {
+    setSaving(true); setMsg('')
+    try {
+      await walletAdminApi.updateYoutube({ apiKey: apiKey || undefined, cacheTtl, maxSearchLen, enabled, downloadEnabled, adsenseClient, adSlot, adCountdown })
+      setApiKey(''); setMsg('Configuration YouTube enregistrée ✅'); await load()
+    } catch (e) { setMsg(e.message || 'Erreur') }
+    setSaving(false)
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mt-4">
+      <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><KeyRound size={15} /> Clé API YouTube (Vidéos)</h3>
+      <p className="text-xs text-gray-500 mt-1 mb-3">
+        Alimente la recherche et la lecture YouTube de l'espace utilisateur. La clé est chiffrée en base et n'est jamais exposée au navigateur.{' '}
+        {state && (state.configured
+          ? <>Statut : <b className="text-green-600">configurée</b> ({state.source === 'env' ? '.env' : 'base'}) — <span className="font-mono">{state.apiKeyMasked}</span></>
+          : <>Statut : <b className="text-red-600">non configurée</b></>)}
+      </p>
+      <label className="block text-xs text-gray-500 mb-1">Clé API (collez pour définir/remplacer)</label>
+      <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} type="password" placeholder="AIza…" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3" />
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <label className="text-xs text-gray-500">Cache (secondes)
+          <input type="number" value={cacheTtl} onChange={(e) => setCacheTtl(Number(e.target.value))} className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+        </label>
+        <label className="text-xs text-gray-500">Longueur max recherche
+          <input type="number" value={maxSearchLen} onChange={(e) => setMaxSearchLen(Number(e.target.value))} className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+        </label>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-gray-600 mb-4">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Fonctionnalité YouTube activée
+      </label>
+
+      {/* Téléchargement + publicité Google AdSense (monétisation) */}
+      <div className="border-t border-gray-100 pt-3 mb-3">
+        <h4 className="text-xs font-bold text-gray-800 mb-1">Téléchargement & publicité (Google AdSense)</h4>
+        <p className="text-[11px] text-gray-500 mb-3">
+          Une publicité s'affiche pendant quelques secondes avant chaque téléchargement de vidéo. Renseignez votre identifiant éditeur AdSense
+          (<span className="font-mono">ca-pub-…</span>) et l'ID du bloc d'annonce. Ces valeurs ne sont pas secrètes (elles figurent dans la page).
+        </p>
+        <label className="flex items-center gap-2 text-xs text-gray-600 mb-3">
+          <input type="checkbox" checked={downloadEnabled} onChange={(e) => setDownloadEnabled(e.target.checked)} /> Autoriser le téléchargement des vidéos
+        </label>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <label className="text-xs text-gray-500 col-span-2 sm:col-span-1">ID éditeur AdSense
+            <input value={adsenseClient} onChange={(e) => setAdsenseClient(e.target.value)} placeholder="ca-pub-1234567890123456" className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+          </label>
+          <label className="text-xs text-gray-500 col-span-2 sm:col-span-1">ID du bloc d'annonce (slot)
+            <input value={adSlot} onChange={(e) => setAdSlot(e.target.value)} placeholder="1234567890" className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+          </label>
+          <label className="text-xs text-gray-500">Durée de la pub (secondes)
+            <input type="number" min="0" max="30" value={adCountdown} onChange={(e) => setAdCountdown(Number(e.target.value))} className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+          </label>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button onClick={save} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg px-5 py-2 disabled:opacity-50">
+          {saving ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+        {msg && <span className="text-xs text-gray-600">{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
 function IkeepayKeysPanel() {
   const [loading, setLoading] = useState(true)
   const [state, setState] = useState({ mode: 'test', configured: false, keys: {} }) // clés masquées
@@ -1485,7 +1576,7 @@ export default function AdminPlatformPage() {
           {tab === 'experiences' && <ExperiencesPanel />}
           {tab === 'payments' && <PaymentsPanel />}
           {tab === 'plans' && <PlansPanel />}
-          {tab === 'api' && <IkeepayKeysPanel />}
+          {tab === 'api' && <><IkeepayKeysPanel /><YoutubeKeyPanel /></>}
           {tab === 'news' && <NewsDemoPanel />}
           {tab === 'whatsapp' && <WhatsAppPanel platformData={platformData} refresh={refresh} />}
         </>

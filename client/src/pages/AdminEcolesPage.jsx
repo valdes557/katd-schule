@@ -35,18 +35,51 @@ export default function AdminEcolesPage() {
     try { await schoolsApi.remove(id); cache.invalidate('/schools'); schoolsQ.refetch() } catch (e) { alert(e.message) }
   }
 
+  // Accès réel au dashboard : abonnement actif ET non expiré. Un plan expiré (status 'active'
+  // mais échéance dépassée) n'ouvre plus l'accès → il doit être renouvelé, pas désactivé.
+  const hasAccess = (s) => {
+    const sub = s.subscription || {}
+    if (sub.status !== 'active') return false
+    const end = sub.endDate ? new Date(sub.endDate) : null
+    return !end || end > new Date()
+  }
+
   const handleToggleSubscription = async (s) => {
-    const isActive = s.subscription?.status === 'active'
-    const next = !isActive
-    const verb = next ? 'réactiver' : 'désactiver'
-    if (!confirm(`Voulez-vous ${verb} la souscription de "${s.name}" ?${next ? '' : '\nLe directeur, les enseignants et les parents perdront l\'accès au tableau de bord.'}\nLe directeur sera notifié par email.`)) return
+    const next = !hasAccess(s)
+    let opts = {}
+    if (next) {
+      // Réactivation : si le plan est expiré (échéance dépassée), on propose de prolonger.
+      const end = s.subscription?.endDate ? new Date(s.subscription.endDate) : null
+      const expired = !end || end <= new Date()
+      const promptMsg = expired
+        ? `Réactiver et RENOUVELER la souscription de "${s.name}".\nDurée en mois (12 = 1 an, 3 = 1 trimestre) :`
+        : `Réactiver la souscription de "${s.name}" ?\n(Durée en mois — laisser vide pour conserver l'échéance actuelle)`
+      const input = window.prompt(promptMsg, expired ? '12' : '')
+      if (input === null) return // annulé
+      const months = parseInt(input, 10)
+      if (Number.isFinite(months) && months > 0) opts.months = months
+    } else {
+      if (!confirm(`Voulez-vous désactiver la souscription de "${s.name}" ?\nLe directeur, les enseignants et les parents perdront l'accès au tableau de bord.\nLe directeur sera notifié par email.`)) return
+    }
     setToggling(s._id)
     try {
-      await schoolsApi.setSubscriptionStatus(s._id, next)
+      const r = await schoolsApi.setSubscriptionStatus(s._id, next, opts)
       cache.invalidate('/schools')
       await schoolsQ.refetch()
+      if (r?.message) alert(r.message)
     } catch (e) { alert(e.message) }
     setToggling(null)
+  }
+
+  // État lisible de la souscription : actif / expiré / inactif
+  const subState = (s) => {
+    const sub = s.subscription || {}
+    const end = sub.endDate ? new Date(sub.endDate) : null
+    if (sub.status === 'active') {
+      if (end && end <= new Date()) return { label: 'Expiré', cls: 'bg-amber-100 text-amber-700' }
+      return { label: 'Actif', cls: 'bg-green-100 text-green-700' }
+    }
+    return { label: 'Inactif', cls: 'bg-gray-100 text-gray-500' }
   }
 
   return (
@@ -101,9 +134,9 @@ export default function AdminEcolesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${s.subscription?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {s.subscription?.status === 'active' ? 'Actif' : 'Inactif'}
-                    </span>
+                    {(() => { const st = subState(s); return (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${st.cls}`}>{st.label}</span>
+                    ) })()}
                   </div>
                 </div>
                 <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
@@ -117,10 +150,10 @@ export default function AdminEcolesPage() {
                 <button
                   onClick={() => handleToggleSubscription(s)}
                   disabled={toggling === s._id}
-                  title={s.subscription?.status === 'active' ? 'Désactiver la souscription' : 'Réactiver la souscription'}
-                  className={`p-1.5 rounded disabled:opacity-50 ${s.subscription?.status === 'active' ? 'hover:bg-orange-50 text-orange-500' : 'hover:bg-green-50 text-green-600'}`}
+                  title={hasAccess(s) ? 'Désactiver la souscription' : 'Réactiver / renouveler la souscription'}
+                  className={`p-1.5 rounded disabled:opacity-50 ${hasAccess(s) ? 'hover:bg-orange-50 text-orange-500' : 'hover:bg-green-50 text-green-600'}`}
                 >
-                  {toggling === s._id ? <Loader2 size={14} className="animate-spin" /> : (s.subscription?.status === 'active' ? <PowerOff size={14} /> : <Power size={14} />)}
+                  {toggling === s._id ? <Loader2 size={14} className="animate-spin" /> : (hasAccess(s) ? <PowerOff size={14} /> : <Power size={14} />)}
                 </button>
                 <button onClick={() => handleDelete(s._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" title="Supprimer l'école"><Trash2 size={14} /></button>
               </div>

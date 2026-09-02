@@ -8,6 +8,7 @@ const WithdrawalRequest = require('../models/WithdrawalRequest')
 const PaymentIntent = require('../models/PaymentIntent')
 const WalletTransaction = require('../models/WalletTransaction')
 const IkeepayConfig = require('../models/IkeepayConfig')
+const YoutubeConfig = require('../models/YoutubeConfig')
 const wallet = require('../services/walletService')
 const { encrypt, decrypt, mask } = require('../utils/crypto')
 const { sendEmail } = require('../utils/emailService')
@@ -416,6 +417,52 @@ router.put('/ikeepay', protect, superAdminOnly, async (req, res) => {
     const u = await User.findById(req.user._id).select('+pinResetCode +pinResetExpires')
     u.pinResetCode = null; u.pinResetExpires = null; await u.save()
     res.json({ success: true, message: 'Clés API mises à jour' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ───────────────── Clé API YouTube (insertion directe, super_admin) ─────────────────
+// GET /api/admin/youtube — état : clé MASQUÉE (jamais en clair) + source + réglages.
+router.get('/youtube', protect, superAdminOnly, async (req, res) => {
+  try {
+    const cfg = await YoutubeConfig.findOne({ singleton: 'youtube' })
+    const envKey = process.env.YOUTUBE_API_KEY || ''
+    const dbKey = cfg ? (decrypt(cfg.apiKey) || '') : ''
+    const effective = dbKey || envKey
+    res.json({
+      success: true,
+      configured: !!effective,
+      source: dbKey ? 'db' : (envKey ? 'env' : 'none'),
+      apiKeyMasked: mask(effective),
+      cacheTtl: cfg ? cfg.cacheTtl : 300,
+      maxSearchLen: cfg ? cfg.maxSearchLen : 120,
+      enabled: cfg ? cfg.enabled !== false : true,
+      // Téléchargement + publicité AdSense (non secrets)
+      downloadEnabled: cfg ? cfg.downloadEnabled !== false : true,
+      adsenseClient: cfg ? (cfg.adsenseClient || '') : '',
+      adSlot: cfg ? (cfg.adSlot || '') : '',
+      adCountdown: cfg && cfg.adCountdown != null ? cfg.adCountdown : 5,
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/admin/youtube — colle/met à jour la clé (CHIFFRÉE) + réglages. Insertion directe.
+router.put('/youtube', protect, superAdminOnly, async (req, res) => {
+  try {
+    const { apiKey, cacheTtl, maxSearchLen, enabled, downloadEnabled, adsenseClient, adSlot, adCountdown } = req.body
+    let cfg = await YoutubeConfig.findOne({ singleton: 'youtube' })
+    if (!cfg) cfg = new YoutubeConfig({ singleton: 'youtube' })
+    if (apiKey !== undefined && String(apiKey).trim() !== '') cfg.apiKey = encrypt(String(apiKey).trim())
+    if (cacheTtl !== undefined) cfg.cacheTtl = Math.max(0, Number(cacheTtl) || 0)
+    if (maxSearchLen !== undefined) cfg.maxSearchLen = Math.max(10, Number(maxSearchLen) || 120)
+    if (enabled !== undefined) cfg.enabled = !!enabled
+    // Téléchargement + publicité AdSense (valeurs non secrètes)
+    if (downloadEnabled !== undefined) cfg.downloadEnabled = !!downloadEnabled
+    if (adsenseClient !== undefined) cfg.adsenseClient = String(adsenseClient).trim()
+    if (adSlot !== undefined) cfg.adSlot = String(adSlot).trim()
+    if (adCountdown !== undefined) cfg.adCountdown = Math.min(30, Math.max(0, Number(adCountdown) || 0))
+    cfg.updatedBy = req.user._id
+    await cfg.save()
+    res.json({ success: true, message: 'Configuration YouTube enregistrée' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

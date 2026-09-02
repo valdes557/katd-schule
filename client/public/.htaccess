@@ -1,0 +1,34 @@
+# SPA fallback pour hébergement Apache/cPanel.
+#
+# Utile UNIQUEMENT si le build React (client/dist) est servi directement par Apache
+# (document root = client/dist). Dans le déploiement recommandé, c'est l'application
+# Node (Passenger) qui sert le site et l'API : ce fichier est alors ignoré (inoffensif).
+#
+# Ce fichier est copié tel quel dans client/dist par Vite (dossier public/).
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Ne pas réécrire les vraies ressources (fichiers/dossiers existants).
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Laisser passer l'API et les fichiers téléversés vers le backend Node.
+  RewriteRule ^api/ - [L]
+  RewriteRule ^uploads/ - [L]
+
+  # Toute autre route → index.html (React Router gère la navigation côté client).
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Cache long pour les assets versionnés (hash dans le nom) — perf.
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/png "access plus 1 month"
+  ExpiresByType image/jpeg "access plus 1 month"
+  ExpiresByType image/svg+xml "access plus 1 month"
+</IfModule>

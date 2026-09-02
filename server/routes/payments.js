@@ -246,7 +246,8 @@ async function verifiedStatus(raw, payload, signature, lookupId) {
 }
 
 // POST /api/payments/webhook — notification Ikeepay (collecte OU payout), signée HMAC.
-router.post('/webhook', async (req, res) => {
+// Exposé aussi via l'alias court POST /api/webhook (voir server.js) pour la passerelle Ikeepay.
+async function webhookHandler(req, res) {
   try {
     const payload = req.body || {}
     const raw = req.rawBody || JSON.stringify(payload)
@@ -279,7 +280,8 @@ router.post('/webhook', async (req, res) => {
     console.error('webhook error:', err.message)
     return res.status(500).json({ message: err.message })
   }
-})
+}
+router.post('/webhook', webhookHandler)
 
 // Applique le résultat d'un payout (retrait) — idempotent.
 // Succès → règle le montant bloqué (settleLocked) et marque « payé ».
@@ -477,3 +479,5 @@ async function applyOutcome(intent, status, raw) {
 }
 
 module.exports = router
+// Handler exposé pour l'alias court /api/webhook (server.js) — même logique que /api/payments/webhook.
+module.exports.webhookHandler = webhookHandler

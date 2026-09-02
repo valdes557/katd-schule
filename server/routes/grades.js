@@ -154,16 +154,23 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
     const classId = student.class?._id
     const year = academicYear || student.academicYear || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
 
+    // En Maternelle/Primaire il n'existe pas de workflow de publication (brouillon → publié) :
+    // c'est une notion propre au Secondaire. Les notes saisies pour ces cycles doivent donc
+    // figurer IMMÉDIATEMENT sur le bulletin. Le filtre « publiées uniquement » ne s'applique
+    // qu'au Secondaire — sinon des notes maternelle enregistrées restaient invisibles à l'impression.
+    const cycle = student.class?.cycle
+    const publishedOnly = cycle === 'Secondaire'
+    const statusFilter = publishedOnly ? { status: { $ne: 'brouillon' } } : {}
+
     // 2. All grades for this student (filtered by term)
-    // Le bulletin est un document officiel : seules les notes PUBLIÉES y figurent.
-    const gradeQuery = { student: studentId, status: { $ne: 'brouillon' } }
+    const gradeQuery = { student: studentId, ...statusFilter }
     if (term) gradeQuery.term = term
     if (academicYear) gradeQuery.academicYear = academicYear
     const grades = await Grade.find(gradeQuery).lean()
 
     // Which terms actually have grades for this student (used by the UI to avoid
     // showing an empty bulletin when notes exist in another term).
-    const availableTerms = await Grade.distinct('term', { student: studentId, status: { $ne: 'brouillon' } })
+    const availableTerms = await Grade.distinct('term', { student: studentId, ...statusFilter })
 
     // 3. All subjects + their coefficient (from Subject model when available)
     const subjectDocs = classId ? await Subject.find({ classes: classId }).lean() : []
@@ -232,7 +239,7 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
       const ids = classmates.map((c) => c._id)
       const allClassGrades = await Grade.find({
         student: { $in: ids },
-        status: { $ne: 'brouillon' },
+        ...statusFilter,
         ...(term ? { term } : {}),
         ...(academicYear ? { academicYear } : {}),
       }).lean()

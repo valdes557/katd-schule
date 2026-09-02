@@ -17,13 +17,16 @@ const schoolPostSchema = new mongoose.Schema(
     title: { type: String, default: '' },
     images: [{ type: String }],
     thumbnail: { type: String, default: '' },
-    type: { type: String, enum: ['text', 'photo', 'video', 'audio'], default: 'text' },
+    type: { type: String, enum: ['text', 'photo', 'video', 'audio', 'youtube'], default: 'text' },
     // Dimensions réelles du média principal (pour afficher portrait/paysage à sa taille initiale)
     mediaWidth: { type: Number },
     mediaHeight: { type: Number },
     aspectRatio: { type: Number }, // largeur / hauteur
     videoUrl: { type: String },
     audioUrl: { type: String },
+    // Publication d'une vidéo YouTube partagée (type 'youtube') — lecteur intégré, métadonnées uniquement.
+    youtubeVideoId: { type: String, default: '' },
+    channelTitle: { type: String, default: '' },
     duration: { type: String, default: '' },
     category: { type: String, default: '' },
     likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

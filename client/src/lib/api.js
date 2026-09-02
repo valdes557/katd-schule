@@ -280,7 +280,9 @@ export const schoolsApi = {
     return res.json()
   },
   remove: (id) => api.del(`/schools/${id}`),
-  setSubscriptionStatus: (id, active) => api.put(`/schools/${id}/subscription-status`, { active }),
+  // active=false → suspend ; active=true → (ré)active. Pour un plan EXPIRÉ, on peut prolonger
+  // l'échéance en passant { months } (défaut : durée du plan côté serveur).
+  setSubscriptionStatus: (id, active, opts = {}) => api.put(`/schools/${id}/subscription-status`, { active, ...opts }),
 }
 
 export const locationsApi = {
@@ -410,6 +412,38 @@ export const boostApi = {
   get: (id) => api.get('/boosts/' + id),
   stats: (id) => api.get('/boosts/' + id + '/stats'),
   cancel: (id) => api.post('/boosts/' + id + '/cancel', {}),
+}
+
+// YouTube (espace utilisateur). La clé API reste côté serveur — ces appels passent tous par le backend.
+export const youtubeApi = {
+  categories: () => api.get('/youtube/categories'),
+  search: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/youtube/search' + (qs ? '?' + qs : ''))
+  },
+  video: (id) => api.get('/youtube/videos/' + id),
+  related: (id) => api.get('/youtube/related/' + id),
+  favorites: () => api.get('/youtube/favorites'),
+  addFavorite: (payload) => api.post('/youtube/favorites', payload),
+  removeFavorite: (videoId) => api.del('/youtube/favorites/' + videoId),
+  history: () => api.get('/youtube/history'),
+  recordHistory: (payload) => api.post('/youtube/history', payload),
+  clearHistory: () => api.del('/youtube/history'),
+  share: (payload) => api.post('/youtube/share', payload),
+  // Réglages publicité/téléchargement (non secrets) pour le « gate » AdSense avant download.
+  adConfig: () => api.get('/youtube/ad-config'),
+  // Télécharge la vidéo via le backend (flux MP4). Requiert le token → fetch authentifié → blob.
+  download: async (videoId) => {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/youtube/download/${videoId}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || `Erreur HTTP ${res.status}`) }
+    const blob = await res.blob()
+    const cd = res.headers.get('content-disposition') || ''
+    const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd)
+    let filename = `${videoId}.mp4`
+    try { filename = decodeURIComponent(m ? m[1] : filename) } catch (_) { filename = m ? m[1] : filename }
+    return { blob, filename }
+  },
 }
 
 export const subjectsApi = {
@@ -1052,6 +1086,9 @@ export const walletAdminApi = {
   requestIkeepayCode: () => api.post('/admin/ikeepay/request-code', {}),
   revealIkeepay: (code) => api.post('/admin/ikeepay/reveal', { code }),
   updateIkeepay: (payload) => api.put('/admin/ikeepay', payload),
+  // Clé API YouTube (super_admin) — insertion directe, jamais renvoyée en clair.
+  getYoutube: () => api.get('/admin/youtube'),
+  updateYoutube: (payload) => api.put('/admin/youtube', payload),
 }
 
 // Gestion des boosts (Super Admin) : campagnes, revenus, actions, configuration, tarifs.

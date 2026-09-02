@@ -1,121 +1,117 @@
-# Déploiement automatique — GitHub → VPS Contabo
+# Déploiement automatique — GitHub → hébergement cPanel (gptservers.cloud)
 
-À chaque `git push` sur la branche **`main`**, GitHub Actions se connecte en SSH
-au VPS et lance `deploy.sh` (pull → build → PM2 reload → nginx). Le site
-**https://katdschool.com** reflète alors automatiquement le dernier commit.
+Le site est hébergé sur **gptservers.cloud** (cPanel mutualisé), domaine **https://katdschool.com**.
+À chaque `git push` sur la branche **`main`**, GitHub Actions **compile le client**, **installe les
+dépendances backend** et **envoie le tout par FTPS** vers l'application Node de l'hébergement, puis
+**redémarre l'app** (Passenger). Le site en ligne reflète alors automatiquement le dernier commit.
 
 ```
-git push  ──►  GitHub Actions  ──►  SSH  ──►  VPS : deploy.sh
-                                              (git reset --hard, build client,
-                                               npm install server, pm2 reload,
-                                               nginx reload best-effort)
+git push  ──►  GitHub Actions  ──►  FTPS  ──►  cPanel
+                (build client + npm ci        (synchro incrémentale de server/ + client/dist,
+                 dépendances prod)             puis tmp/restart.txt → redémarrage Passenger)
 ```
 
 Le workflow est défini dans `.github/workflows/deploy.yml`.
+
+> **Pourquoi ce changement ?** L'ancien hébergement (VPS Contabo) utilisait SSH + PM2 + Nginx.
+> Un cPanel mutualisé n'a ni root, ni PM2, ni Nginx : l'app Node y est gérée par cPanel
+> (« Setup Node.js App » / Passenger) et le déploiement se fait par FTP. L'app Node sert
+> désormais **à la fois l'API et le site React** (voir `server/server.js`, `SERVE_CLIENT`).
 
 ---
 
 ## Mise en place (à faire UNE SEULE FOIS)
 
-### 1. Générer une paire de clés SSH dédiée au déploiement
+### 1. Créer l'application Node.js sur cPanel
 
-**Sur le VPS** (connecté en SSH), crée une clé sans passphrase réservée à GitHub :
+Dans cPanel → **Setup Node.js App** → **Create Application** :
 
-```bash
-ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/github_deploy -N ""
-```
+- **Node.js version** : 20 (ou la plus récente disponible).
+- **Application mode** : `Production`.
+- **Application root** : ex. `katd-schule` (dossier qui contiendra `server/`, `client/dist`, …).
+- **Application URL** : le domaine `katdschool.com`.
+- **Application startup file** : `server/server.js`.
+- **Variables d'environnement** : ajouter toutes celles de `server/.env.example`
+  (`MONGO_URI`, `JWT_SECRET`, `ENCRYPTION_KEY`, SMTP, Ikeepay, `CLIENT_URL=https://katdschool.com`,
+  `SERVER_URL=https://katdschool.com`, `SERVE_CLIENT=true`, …). **Ne mettez jamais ces secrets
+  dans le dépôt.** On peut aussi téléverser un fichier `server/.env` (voir étape 4).
 
-Cela crée :
-- `~/.ssh/github_deploy`     → clé **privée** (ira dans les secrets GitHub)
-- `~/.ssh/github_deploy.pub` → clé **publique** (reste sur le VPS)
+> **Base de données** : cPanel mutualisé ne fournit **que MySQL**. L'application utilise **MongoDB**
+> → la base doit rester **externe** (MongoDB Atlas, ou l'ancien VPS). Renseignez simplement
+> `MONGO_URI` vers cette base externe. Rien à changer dans le code.
 
-### 2. Autoriser la clé publique sur le VPS
+### 2. Récupérer les identifiants FTP
 
-```bash
-cat ~/.ssh/github_deploy.pub >> ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/authorized_keys
-```
+cPanel → **FTP Accounts**. Notez l'**hôte** (ex. `ftp.katdschool.com`), l'**utilisateur** et le
+**mot de passe**. Repérez le **chemin** du dossier de l'app (Application root), ex.
+`/home/UTILISATEUR/katd-schule/`.
 
-### 3. Récupérer la clé privée à copier dans GitHub
+### 3. Créer les secrets sur GitHub
 
-```bash
-cat ~/.ssh/github_deploy
-```
+Dépôt → **Settings ▸ Secrets and variables ▸ Actions ▸ New repository secret** :
 
-Copie **tout** l'affichage, de la ligne `-----BEGIN OPENSSH PRIVATE KEY-----`
-jusqu'à `-----END OPENSSH PRIVATE KEY-----` incluses.
+| Nom du secret  | Valeur                                                                 |
+|----------------|------------------------------------------------------------------------|
+| `FTP_HOST`     | hôte FTP (ex. `ftp.katdschool.com`)                                     |
+| `FTP_USERNAME` | identifiant du compte FTP cPanel                                        |
+| `FTP_PASSWORD` | mot de passe du compte FTP cPanel                                       |
+| `FTP_APP_DIR`  | (optionnel) dossier racine de l'app, ex. `/home/UTILISATEUR/katd-schule/` — défaut `./` |
 
-### 4. Créer les secrets sur GitHub
+> ⚠️ Le mot de passe FTP ne doit **jamais** être commité : il vit uniquement dans les secrets
+> GitHub (chiffrés).
 
-Sur le dépôt : **Settings ▸ Secrets and variables ▸ Actions ▸ New repository secret**.
-Crée ces 4 secrets :
+### 4. Créer le fichier `server/.env` sur l'hébergement (une fois)
 
-| Nom du secret | Valeur                                                        |
-|---------------|---------------------------------------------------------------|
-| `VPS_HOST`    | IP publique du VPS (ex. `82.180.123.45`) ou `katdschool.com`  |
-| `VPS_USER`    | l'utilisateur SSH (ex. `root`, ou l'utilisateur de déploiement)|
-| `VPS_SSH_KEY` | le **contenu complet** de la clé privée copiée à l'étape 3     |
-| `VPS_PORT`    | le port SSH — généralement `22`                               |
+Le workflow **n'écrase jamais** `server/.env` (il est exclu de la synchro). Créez-le une fois via le
+**File Manager** de cPanel (ou par FTP) dans `…/katd-schule/server/.env`, à partir de
+`server/.env.example`, avec les vraies valeurs. (Alternative : tout définir dans les variables
+d'environnement de l'app Node à l'étape 1.)
 
-> ⚠️ La clé privée ne doit **jamais** être commitée dans le dépôt. Elle vit
-> uniquement dans les secrets GitHub (chiffrés).
+### 5. Premier déploiement
 
-### 5. (Si `VPS_USER` n'est PAS `root`) → sudo sans mot de passe pour Nginx
+Poussez sur `main` (ou lancez le workflow à la main : onglet **Actions ▸ Deploy to cPanel ▸ Run
+workflow**). Le premier envoi est plus long (il téléverse aussi `server/node_modules`) ; les suivants
+sont **incrémentaux** (seuls les fichiers modifiés partent).
 
-`deploy.sh` recharge Nginx avec `sudo`. En session SSH automatique, sudo ne peut
-pas saisir de mot de passe. Deux cas :
-
-- **`VPS_USER = root`** → rien à faire, root n'a pas besoin de mot de passe.
-- **Utilisateur non-root** → autorise juste les 2 commandes Nginx sans mot de passe :
-
-```bash
-# En tant que root sur le VPS (remplace <USER> par ton utilisateur de déploiement)
-echo '<USER> ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /bin/systemctl reload nginx' \
-  | sudo tee /etc/sudoers.d/katd-deploy
-sudo chmod 440 /etc/sudoers.d/katd-deploy
-sudo visudo -c   # vérifie la syntaxe
-```
-
-> Sans cette étape, le déploiement fonctionne quand même : seul le rechargement
-> Nginx est sauté (utile uniquement si `nginx-katdschool.conf` a changé). Un
-> avertissement s'affiche dans les logs.
+Après le premier déploiement, ouvrez **Setup Node.js App** et cliquez **Restart** si l'app ne s'est
+pas relancée automatiquement. Les redéploiements suivants la redémarrent via `tmp/restart.txt`.
 
 ---
 
 ## Vérifier que ça marche
 
-1. Fais un petit changement, puis :
-   ```bash
-   git add -A && git commit -m "test auto-deploy" && git push
-   ```
-2. Sur GitHub : onglet **Actions** → tu vois le workflow **Deploy to Contabo VPS**
-   s'exécuter. Clique dessus pour voir les logs en direct.
-3. Vert ✅ = le site est à jour sur https://katdschool.com.
+1. Onglet **Actions** → le workflow **Deploy to cPanel (gptservers.cloud)** doit finir en vert ✅.
+2. Ouvrez **https://katdschool.com** — le site doit refléter le dernier commit.
+3. Testez l'API : **https://katdschool.com/api/health** doit répondre `{"status":"ok",…}`.
 
-### Lancer un déploiement manuellement (sans push)
+---
 
-Onglet **Actions ▸ Deploy to Contabo VPS ▸ Run workflow** (bouton à droite).
-Utile pour re-déployer sans nouveau commit.
+## Alternative : « Git Version Control » de cPanel (sans FTP)
+
+Si vous préférez que cPanel tire lui-même le dépôt : cPanel → **Git Version Control** → cloner le
+dépôt, puis déployer. Cette voie exige toutefois de compiler le client et d'installer les
+dépendances côté hébergement (souvent via un `.cpanel.yml` et l'accès terminal), ce que tous les
+plans mutualisés ne permettent pas. La méthode **FTP ci-dessus reste la plus simple et la plus
+portable**, et ne demande aucune action manuelle après la mise en place.
 
 ---
 
 ## Dépannage
 
-| Symptôme dans les logs GitHub Actions | Cause probable / solution |
+| Symptôme | Cause probable / solution |
 |---|---|
-| `ssh: handshake failed` / `permission denied (publickey)` | Clé publique absente de `~/.ssh/authorized_keys` sur le VPS, ou mauvais `VPS_USER`. Reprendre étapes 1-3. |
-| `dial tcp ... i/o timeout` | `VPS_HOST` ou `VPS_PORT` incorrect, ou pare-feu (ufw) bloque le port SSH. |
-| Le déploiement se fige puis timeout à l'étape Nginx | sudo attend un mot de passe → faire l'étape 5 (sudo sans mot de passe). |
-| `deploy.sh: bad interpreter` | Fins de ligne CRLF. Déjà géré par `.gitattributes` (`*.sh eol=lf`) — refaire `git pull` sur le VPS. |
-| `git reset --hard` échoue | Modifications locales non commitées sur le VPS. Se connecter et faire `git status` ; le reset écrase tout ce qui est suivi par git. |
+| Le workflow échoue à l'étape FTP (`login incorrect` / timeout) | `FTP_HOST` / `FTP_USERNAME` / `FTP_PASSWORD` erronés, ou FTP bloqué. Vérifiez le compte FTP dans cPanel. |
+| Le site affiche l'ancienne version | L'app Node n'a pas redémarré : **Setup Node.js App → Restart**. Vérifiez que `tmp/restart.txt` est bien dans l'Application root. |
+| `/api/health` OK mais le site est blanc | `client/dist` non déployé ou `SERVE_CLIENT` absent. Vérifiez la variable d'env `SERVE_CLIENT=true` et la présence de `client/dist/index.html` sur l'hôte. |
+| Erreurs 500 / l'app ne démarre pas | `server/.env` manquant ou `MONGO_URI` invalide (base MongoDB externe injoignable). Consultez les logs de l'app Node dans cPanel. |
+| Les fichiers téléversés ont disparu | `server/uploads/` est préservé (exclu de la synchro). S'ils manquent, ils n'ont pas été migrés depuis l'ancien VPS. |
 
 ---
 
 ## Sécurité — bonnes pratiques
 
-- La clé `github_deploy` ne sert **qu'**au déploiement : si elle fuite, il suffit
-  de retirer sa ligne de `~/.ssh/authorized_keys` sur le VPS pour la révoquer.
-- Les variables sensibles (MONGO_URI, JWT_SECRET, OPENAI_API_KEY…) restent dans
-  `server/.env` **sur le VPS** — jamais dans le dépôt ni dans les secrets GitHub.
-- Le workflow ne déploie que la branche `main`. Les autres branches ne touchent
-  pas la production.
+- Les secrets FTP vivent uniquement dans les secrets GitHub (chiffrés). En cas de fuite, changez le
+  mot de passe du compte FTP dans cPanel.
+- Les variables sensibles (`MONGO_URI`, `JWT_SECRET`, `ENCRYPTION_KEY`, clés Ikeepay/YouTube…)
+  restent dans `server/.env` **sur l'hébergement** — jamais dans le dépôt ni dans les secrets FTP.
+- Le workflow ne déploie que la branche `main`. Les autres branches ne touchent pas la production.

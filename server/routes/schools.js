@@ -7,6 +7,7 @@ const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
 const { sendSubscriptionSuspendedEmail, sendSubscriptionReactivatedEmail } = require('../utils/emailService')
 const { deleteSchoolCascade } = require('../services/schoolCascade')
+const { addPlanDuration } = require('../services/directorProvisioning')
 
 // @route  GET /api/schools  (public)
 router.get('/', async (req, res) => {
@@ -132,8 +133,12 @@ router.get('/:id/stats', protect, async (req, res) => {
   }
 })
 
-// @route  PUT /api/schools/:id/subscription-status  (super_admin) — activer/désactiver la souscription
+// @route  PUT /api/schools/:id/subscription-status  (super_admin) — activer/réactiver/désactiver
 // Désactivée → le directeur, les enseignants et les parents de l'école perdent l'accès au dashboard.
+// Réactivation d'un plan EXPIRÉ : si l'échéance (endDate) est absente ou dépassée, on la prolonge
+// automatiquement — durée `months` transmise par l'admin, sinon durée du plan (trimestriel +3 mois,
+// annuel +1 an). Sans cette prolongation, remettre le statut « active » ne suffisait pas à rétablir
+// l'accès (hasActiveAccess exige endDate > maintenant).
 router.put('/:id/subscription-status', protect, authorize('super_admin'), async (req, res) => {
   try {
     const active = req.body.active === true || req.body.active === 'true'
@@ -141,7 +146,26 @@ router.put('/:id/subscription-status', protect, authorize('super_admin'), async 
     if (!school) return res.status(404).json({ message: 'École non trouvée' })
 
     school.subscription = school.subscription || {}
-    school.subscription.status = active ? 'active' : 'suspended'
+    let renewedUntil = null
+    if (active) {
+      school.subscription.status = 'active'
+      const now = new Date()
+      const cur = school.subscription.endDate ? new Date(school.subscription.endDate) : null
+      if (!cur || cur <= now) {
+        const months = Number(req.body.months)
+        if (months > 0) {
+          const d = new Date(now); d.setMonth(d.getMonth() + months); school.subscription.endDate = d
+        } else {
+          school.subscription.endDate = addPlanDuration(now, school.subscription.plan)
+        }
+        if (!school.subscription.startDate) school.subscription.startDate = now
+        renewedUntil = school.subscription.endDate
+      }
+      school.isActive = true
+    } else {
+      school.subscription.status = 'suspended'
+    }
+    school.markModified('subscription')
     await school.save()
 
     // Notification email au directeur (best-effort)
@@ -158,7 +182,11 @@ router.put('/:id/subscription-status', protect, authorize('super_admin'), async 
 
     res.json({
       success: true,
-      message: active ? 'Souscription réactivée. Le directeur a été notifié par email.' : 'Souscription désactivée. Le directeur a été notifié par email.',
+      message: active
+        ? (renewedUntil
+            ? `Souscription réactivée jusqu'au ${new Date(renewedUntil).toLocaleDateString('fr-FR')}. Le directeur a été notifié par email.`
+            : 'Souscription réactivée. Le directeur a été notifié par email.')
+        : 'Souscription désactivée. Le directeur a été notifié par email.',
       data: school,
     })
   } catch (err) {
