@@ -147,6 +147,22 @@ app.get('/api/smtp-test', async (req, res) => {
   })
 })
 
+// GET /ads.txt — fichier requis par Google AdSense pour autoriser la monétisation du domaine.
+// Généré dynamiquement à partir de l'ID éditeur configuré (dashboard admin → YouTube/AdSense).
+// Renvoie une ligne vide (200) tant qu'aucun ID n'est configuré, pour éviter une 404 côté Google.
+app.get('/ads.txt', async (req, res) => {
+  res.type('text/plain')
+  try {
+    const youtube = require('./services/youtubeService')
+    const cfg = await youtube.resolveConfig()
+    const client = (cfg.adsenseClient || '').trim()
+    // Format officiel : google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+    const pub = client.replace(/^ca-/, '') // ads.txt attend "pub-…" (sans le préfixe "ca-")
+    if (pub) return res.send(`google.com, ${pub}, DIRECT, f08c47fec0942fa0\n`)
+  } catch (_) { /* repli ligne vide */ }
+  res.send('')
+})
+
 // ── Service du build React (hébergement cPanel : une seule app Node sert l'API ET le site) ──
 // En production (SERVE_CLIENT=true ou NODE_ENV=production), on sert client/dist et on renvoie
 // index.html pour toute route non-API (repli SPA de React Router). Ainsi, plus besoin de Nginx :
