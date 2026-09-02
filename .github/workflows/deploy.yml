@@ -73,6 +73,19 @@ jobs:
           mkdir -p tmp
           echo "restart ${GITHUB_SHA} $(date -u +%FT%TZ)" > tmp/restart.txt
 
+      # L'action FTP exige que server-dir se termine par « / ». On normalise ici
+      # le secret FTP_APP_DIR (ajout d'un « / » final s'il manque ; « ./ » par défaut)
+      # pour qu'un secret mal formé ne fasse plus échouer le déploiement.
+      - name: Normalisation du dossier cible FTP (garantit un « / » final)
+        id: ftp_target
+        env:
+          RAW_DIR: ${{ secrets.FTP_APP_DIR }}
+        run: |
+          DIR="${RAW_DIR:-./}"
+          DIR="${DIR%/}/"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "Dossier cible FTP normalisé : $DIR"
+
       - name: Déploiement FTPS (synchro incrémentale)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -81,7 +94,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./
-          server-dir: ${{ secrets.FTP_APP_DIR || './' }}
+          server-dir: ${{ steps.ftp_target.outputs.dir }}
           # On NE nettoie PAS le serveur (préserve .env, uploads/ côté hôte).
           dangerous-clean-slate: false
           # Exclusions : ce qui ne doit pas partir (ou ne doit jamais écraser l'hébergement).
