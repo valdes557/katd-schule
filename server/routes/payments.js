@@ -98,14 +98,23 @@ router.get('/operators', async (req, res) => {
   }
 })
 
+// GET /api/payments/config — config PUBLIQUE pour le paiement inline (clé publique, mode, devise). Aucun secret.
+router.get('/config', async (req, res) => {
+  try {
+    const { mode, publicKey } = await ikeepay.resolveConfig()
+    return res.json({ success: true, publicKey: publicKey || '', mode,
+      currency: ikeepay.DEFAULT_CURRENCY, country: ikeepay.DEFAULT_COUNTRY,
+      inlineBase: 'https://ikeepay.com/checkout/v1/inline' })
+  } catch (err) { return res.status(500).json({ message: err.message }) }
+})
+
 // POST /api/payments/subscription/initiate — démarre la collecte de souscription directeur
 router.post('/subscription/initiate', async (req, res) => {
   try {
     const { schoolId, schoolName, directorName, email, whatsapp, cycle, plan, planId,
             cityName, neighborhoodName, countryName, phone, operator } = req.body
-    if (!phone || !operator) {
-      return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
-    }
+    // Sans numéro + opérateur → paiement « inline » (iframe Ikeepay avec clé publique pk_…).
+    const inline = !(phone && operator)
     const reference = genRef('sub')
     const { mode } = await ikeepay.resolveConfig()
 
@@ -150,9 +159,18 @@ router.post('/subscription/initiate', async (req, res) => {
 
     const intent = await PaymentIntent.create({
       reference, purpose: 'subscription', amount, currency: ikeepay.DEFAULT_CURRENCY,
-      payerPhone: phone, payerOperator: operator, payerName: directorName || meta.schoolName,
+      payerPhone: phone || '', payerOperator: operator || '', payerName: directorName || meta.schoolName,
       payerEmail: email || '', mode, meta,
     })
+    // Paiement INLINE : on renvoie la clé publique ; l'iframe Ikeepay encaisse, le webhook confirme.
+    if (inline) {
+      const { publicKey } = await ikeepay.resolveConfig()
+      if (!publicKey) {
+        return res.status(400).json({ message: "Clé publique Ikeepay non configurée pour le mode " + mode +
+          " — renseignez-la dans Gestion Plateforme → Clés API." })
+      }
+      return res.json({ success: true, reference, amount, mode, currency: ikeepay.DEFAULT_CURRENCY, inline: true, publicKey })
+    }
     const result = await ikeepay.createCollection({
       amount, phone, operator, reference, callbackUrl: callbackUrl(), customerEmail: email || '',
     })

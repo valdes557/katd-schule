@@ -29,7 +29,7 @@ const DEFAULT_CURRENCY = process.env.IKEEPAY_CURRENCY || 'XOF'
 // Résout la clé API active : la config DB (dashboard) prend le dessus sur le .env.
 async function resolveConfig() {
   let mode = process.env.IKEEPAY_MODE || 'test'
-  let apiKey = '', webhookSecret = ''
+  let apiKey = '', webhookSecret = '', publicKey = ''
   try {
     const cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
     if (cfg) {
@@ -37,9 +37,11 @@ async function resolveConfig() {
       if (mode === 'live') {
         apiKey = decrypt(cfg.apiKeyLive) || ''
         webhookSecret = decrypt(cfg.webhookSecretLive) || ''
+        publicKey = cfg.publicKeyLive || ''
       } else {
         apiKey = decrypt(cfg.apiKeyTest) || ''
         webhookSecret = decrypt(cfg.webhookSecretTest) || ''
+        publicKey = cfg.publicKeyTest || ''
       }
     }
   } catch (e) { /* DB indisponible -> fallback env */ }
@@ -50,7 +52,10 @@ async function resolveConfig() {
   if (!webhookSecret) {
     webhookSecret = (mode === 'live' ? process.env.IKEEPAY_WEBHOOK_SECRET_LIVE : process.env.IKEEPAY_WEBHOOK_SECRET_TEST) || ''
   }
-  return { mode, apiKey, webhookSecret }
+  if (!publicKey) {
+    publicKey = (mode === 'live' ? process.env.IKEEPAY_PUBLIC_KEY_LIVE : process.env.IKEEPAY_PUBLIC_KEY_TEST) || ''
+  }
+  return { mode, apiKey, webhookSecret, publicKey }
 }
 
 // Indicatifs téléphoniques par code pays ISO (marchés Ikeepay courants)

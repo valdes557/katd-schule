@@ -1040,6 +1040,7 @@ export const aiApi = {
 }
 
 export const paymentsApi = {
+  config: () => api.get('/payments/config'),
   initiateSubscription: (payload) => api.post('/payments/subscription/initiate', payload),
   initiateEnrollment: (payload) => api.post('/payments/enrollment/initiate', payload),
   status: (reference) => api.get(`/payments/status/${reference}`),

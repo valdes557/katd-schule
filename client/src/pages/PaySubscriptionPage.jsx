@@ -3,15 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { CreditCard, Loader2, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { paymentsApi, authApi } from '../lib/api'
+import IkeepayCheckout from '../components/payments/IkeepayCheckout'
 
-const OPERATORS = [
-  { value: 'mtn', label: 'MTN Mobile Money' },
-  { value: 'moov', label: 'Moov Money' },
-  { value: 'celtiis', label: 'Celtiis Cash' },
-]
-
-// Page légère de paiement d'abonnement pour un directeur DÉJÀ inscrit (après essai) :
-// réutilise l'école existante — aucun formulaire à re-remplir, juste le Mobile Money.
+// Page de paiement d'abonnement pour un directeur DÉJÀ inscrit (après essai) : réutilise l'école
+// existante — aucun formulaire à re-remplir. Paiement via le checkout INLINE Ikeepay (iframe pk_…) :
+// Ikeepay affiche l'écran de paiement (opérateur, numéro), puis confirme au backend via webhook.
 export default function PaySubscriptionPage() {
   const { school, setSchool } = useAuth()
   const navigate = useNavigate()
@@ -19,34 +15,46 @@ export default function PaySubscriptionPage() {
   const schoolId = school?._id || school?.id
 
   const [plan, setPlan] = useState(sub?.plan || 'annual')
-  const [phone, setPhone] = useState('')
-  const [operator, setOperator] = useState('mtn')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [err, setErr] = useState('')
   const [done, setDone] = useState(false)
+  const [checkout, setCheckout] = useState(null) // { publicKey, amount, currency, reference }
 
+  // Étape 1 : crée l'intention de paiement (référence + clé publique), puis ouvre l'iframe.
   const pay = async () => {
     setErr('')
     if (!schoolId) return setErr("Aucune école associée à votre compte.")
-    if (!phone) return setErr('Numéro Mobile Money requis')
     setBusy(true)
     try {
-      setStatus('Validez le paiement sur votre téléphone Mobile Money…')
-      const r = await paymentsApi.initiateSubscription({ schoolId, plan, phone, operator })
-      let ok = false
-      for (let i = 0; i < 45 && !ok; i++) {
-        await new Promise((res) => setTimeout(res, 4000))
-        try {
-          const st = await paymentsApi.status(r.reference)
-          if (st.status === 'approved') ok = true
-          else if (st.status === 'rejected') throw new Error('Paiement rejeté')
-        } catch (e) { if (e.message === 'Paiement rejeté') throw e }
-      }
-      if (!ok) throw new Error("Paiement non confirmé à temps. Si vous avez été débité, l'activation se fera sous peu.")
-      setStatus('')
-      setDone(true)
-      // Rafraîchit l'école (statut d'abonnement passé à « actif ») + met à jour le cache local.
+      const r = await paymentsApi.initiateSubscription({ schoolId, plan })
+      if (!r.publicKey) throw new Error("Paiement indisponible : la clé publique Ikeepay n'est pas configurée. Contactez l'administrateur.")
+      setCheckout({ publicKey: r.publicKey, amount: r.amount, currency: r.currency || 'XOF', reference: r.reference })
+    } catch (e) { setErr(e.message); setBusy(false) }
+  }
+
+  // Interroge le statut jusqu'à confirmation (le webhook Ikeepay active l'abonnement côté serveur).
+  const pollUntilPaid = async (reference) => {
+    setStatus('Confirmation du paiement…')
+    let ok = false
+    for (let i = 0; i < 45 && !ok; i++) {
+      await new Promise((res) => setTimeout(res, 4000))
+      try {
+        const st = await paymentsApi.status(reference)
+        if (st.status === 'approved') ok = true
+        else if (st.status === 'rejected') throw new Error('Paiement rejeté')
+      } catch (e) { if (e.message === 'Paiement rejeté') throw e }
+    }
+    if (!ok) throw new Error("Paiement non confirmé à temps. Si vous avez été débité, l'activation se fera sous peu.")
+  }
+
+  // Étape 2 : l'iframe signale « success » → on confirme côté serveur puis on rafraîchit l'école.
+  const onPaid = async () => {
+    const reference = checkout?.reference
+    setCheckout(null)
+    try {
+      await pollUntilPaid(reference)
+      setStatus(''); setDone(true)
       try {
         const me = await authApi.me()
         if (me?.school) { setSchool(me.school); localStorage.setItem('katd_school', JSON.stringify(me.school)) }
@@ -91,24 +99,25 @@ export default function PaySubscriptionPage() {
             <option value="trimestriel">Trimestriel</option>
           </select>
         </div>
-        <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur Mobile Money</label>
-          <select value={operator} onChange={(e) => setOperator(e.target.value)} className="input w-full">
-            {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label>
-          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="input w-full" placeholder="01 97 00 00 00" />
-        </div>
 
         {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
 
         <button onClick={pay} disabled={busy || !schoolId} className="btn-primary w-full justify-center">
           {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement…</> : 'Payer maintenant'}
         </button>
-        <p className="text-[11px] text-gray-400 text-center">Paiement sécurisé via Mobile Money. Votre abonnement est activé automatiquement après confirmation.</p>
+        <p className="text-[11px] text-gray-400 text-center">Paiement sécurisé Ikeepay. Choisissez votre opérateur Mobile Money dans la fenêtre de paiement. L'abonnement est activé automatiquement après confirmation.</p>
       </div>
+
+      {checkout && (
+        <IkeepayCheckout
+          publicKey={checkout.publicKey}
+          amount={checkout.amount}
+          currency={checkout.currency}
+          orderId={checkout.reference}
+          onSuccess={onPaid}
+          onClose={() => { setCheckout(null); setBusy(false) }}
+        />
+      )}
     </div>
   )
 }
