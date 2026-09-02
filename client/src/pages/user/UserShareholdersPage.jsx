@@ -12,6 +12,7 @@ import {
   TrendingUp, Crown, Megaphone, CalendarClock, Video, Banknote, Receipt, Wallet,
 } from 'lucide-react'
 import { shareholdersApi, paymentsApi, walletApi } from '../../lib/api'
+import { useInlineCheckout } from '../../components/payments/useInlineCheckout'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 const OPERATORS = [
@@ -202,6 +203,7 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [err, setErr] = useState('')
+  const inline = useInlineCheckout()
 
   const needZone = selected && selected.key !== 'international'
 
@@ -229,25 +231,11 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
       return
     }
 
-    // ── Paiement Mobile Money (Ikeepay) ──
-    if (!f.phone) { setErr('Numéro Mobile Money requis'); return }
-    setBusy(true)
-    setStatus('Validez le paiement sur votre téléphone...')
-    try {
-      const r = await shareholdersApi.subscribe({ planKey: selected.key, zone: f.zone.trim(), phone: f.phone, operator: f.operator })
-      let ok = false
-      for (let i = 0; i < 45 && !ok; i++) {
-        await new Promise((res) => setTimeout(res, 4000))
-        try {
-          const st = await paymentsApi.status(r.reference)
-          if (st.status === 'approved') ok = true
-          else if (st.status === 'rejected') throw new Error('Paiement rejeté')
-        } catch (e) { if (e.message === 'Paiement rejeté') throw e }
-      }
-      if (!ok) throw new Error('Paiement non confirmé à temps')
-      // Après validation → orientation directe vers le portefeuille d'actionnaire
-      onDone()
-    } catch (e) { setErr(e.message); setStatus('') } finally { setBusy(false) }
+    // ── Paiement Mobile Money (inline Ikeepay) ──
+    inline.start(
+      () => shareholdersApi.subscribe({ planKey: selected.key, zone: f.zone.trim() }),
+      async () => { onDone() }
+    )
   }
 
   return (
@@ -334,18 +322,9 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur</label>
-                    <select value={f.operator} onChange={(e) => setF({ ...f, operator: e.target.value })} className="input w-full">
-                      {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label>
-                    <input type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className="input w-full" placeholder="6XX XXX XXX" />
-                  </div>
-                </div>
+                <p className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+                  Paiement par Mobile Money : l'opérateur et le numéro seront demandés dans la fenêtre de paiement sécurisée Ikeepay.
+                </p>
               )}
             </div>
           )}
@@ -362,15 +341,16 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
             </span>
           </label>
 
-          {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{err}</p>}
-          {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
+          {(err || inline.error) && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{err || inline.error}</p>}
+          {(status || inline.status) && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status || inline.status}</p>}
 
-          <button onClick={submit} disabled={busy || !selected} className="btn-primary w-full justify-center">
-            {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</>
+          <button onClick={submit} disabled={busy || inline.busy || !selected} className="btn-primary w-full justify-center">
+            {(busy || inline.busy) ? <><Loader2 size={16} className="animate-spin" /> Traitement...</>
               : !selected ? <>Sélectionnez un plan</>
               : method === 'wallet' ? <>Payer {fmt(selected.price)} F depuis mon portefeuille</>
               : <>Valider — Payer {fmt(selected.price)} F</>}
           </button>
+          {inline.element}
         </div>
       </div>
 

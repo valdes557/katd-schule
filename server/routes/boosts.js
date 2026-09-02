@@ -180,7 +180,8 @@ router.post('/create', protect, async (req, res) => {
       return res.status(201).json({ success: true, confirmed: true, status: fresh.status, campaign: serializeCampaign(fresh) })
     }
     return res.status(201).json({ success: true, confirmed: false, reference: result.reference, mode: result.mode,
-      message: 'Demande de paiement envoyée. Validez le paiement sur votre téléphone Mobile Money.' })
+      inline: result.inline || false, publicKey: result.publicKey || '', amount: campaign.budget, currency: campaign.currency,
+      message: 'Demande de paiement envoyée.' })
   } catch (err) {
     // Paiement wallet échoué (solde/PIN) → on supprime la campagne pending pour ne pas polluer les limites.
     if (campaign && campaign.paymentProvider === 'wallet' && campaign.status === 'pending_payment') {

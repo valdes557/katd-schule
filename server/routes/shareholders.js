@@ -130,7 +130,7 @@ router.post('/subscribe', protect, async (req, res) => {
   try {
     const { planKey, zone, phone, operator } = req.body
     if (!planKey) return res.status(400).json({ message: 'Plan requis' })
-    if (!phone || !operator) return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
+    const inline = !(phone && operator)
 
     const cfg = await ShareholderConfig.getOrCreate()
     const plan = (cfg.plans || []).find((p) => p.key === planKey && p.isActive !== false)
@@ -144,13 +144,14 @@ router.post('/subscribe', protect, async (req, res) => {
     const { mode } = await ikeepay.resolveConfig()
     const intent = await PaymentIntent.create({
       reference, purpose: 'shareholder', amount: plan.price, currency: 'XOF',
-      payerPhone: phone, payerOperator: operator, initiatedBy: req.user._id,
+      payerPhone: phone || '', payerOperator: operator || '', initiatedBy: req.user._id,
       school: req.user.school?._id || null, mode,
       meta: {
         planKey: plan.key, planLabel: plan.label, percent: plan.percent,
         durationYears: plan.durationYears, zone: String(zone || '').trim(),
       },
     })
+    if (inline) return res.json(await ikeepay.inlineResponse(reference, plan.price))
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
     const result = await ikeepay.createCollection({ amount: plan.price, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }

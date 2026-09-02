@@ -60,5 +60,12 @@ Les vidéos s'affichent par **recherche + catégories** (pas de chaîne/playlist
 - URLs réelles `youtube.com/embed`, `youtu.be`, `googleapis.com/youtube/v3` (vrai service YouTube).
 - Liens sociaux « YouTube » des écoles (DashboardSchoolProfilePage / SchoolDetailPage) — vrais liens YouTube.
 
+## 5. Paiement INLINE Ikeepay (implémenté 2026-09-02)
+« requested function was not found » au paiement = le chemin H2H `/payments` n'existe pas chez Ikeepay. Choix retenu : **paiement inline** (méthode principale de la doc, iframe `https://ikeepay.com/checkout/v1/inline?pk=…`).
+- Backend : `resolveConfig` renvoie `publicKey` (publicKeyLive/Test) ; `GET /api/payments/config` (clé publique, non secret) ; `POST /payments/subscription/initiate` **sans** phone/operator → mode inline (crée l'intention, renvoie `reference`+`publicKey`, PAS d'appel H2H). Le webhook confirme.
+- Frontend : `components/payments/IkeepayCheckout.jsx` (iframe + écoute `ikeepay-success`/`ikeepay-close`) ; `PaySubscriptionPage.jsx` ouvre l'iframe puis interroge `/status`.
+- **Prérequis** : la **clé publique pk_live** doit être saisie dans le dashboard (→ nécessite le code email → SMTP OK).
+- **Restant (même patron)** : nouvelle inscription (`SchoolRegistrationPage`), dépôt portefeuille, enrôlement, boost, marchand, actionnaire utilisent encore le H2H → à convertir en inline si voulu.
+
 ## Déploiement
 Tout changement de code se déploie par `git push` sur `main` (pipeline réparé : `FTP_APP_DIR=./`, dépose dans `katd-api`, restart auto).

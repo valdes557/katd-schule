@@ -222,8 +222,20 @@ async function verifyWebhookSignature(rawBody, signature) {
   }
 }
 
+// Réponse standard d'un paiement « inline » (iframe pk_…). Lève une erreur 400 si la clé publique
+// n'est pas configurée. `reference` = external_reference (order_id), `amount` en unités (XOF).
+async function inlineResponse(reference, amount, currency = DEFAULT_CURRENCY) {
+  const { mode, publicKey } = await resolveConfig()
+  if (!publicKey) {
+    const e = new Error('Clé publique Ikeepay non configurée (mode ' + mode + ') — renseignez-la dans Gestion Plateforme → Clés API.')
+    e.status = 400
+    throw e
+  }
+  return { success: true, reference, amount, mode, currency, inline: true, publicKey }
+}
+
 module.exports = {
   resolveConfig, createCollection, createPayout, listOperators, getTransactionStatus,
-  verifyWebhookSignature, mapProvider, normalizePhone,
+  verifyWebhookSignature, mapProvider, normalizePhone, inlineResponse,
   BASE_URL, PAYOUT_PATH, STATUS_PATH, SIGNATURE_HEADER, DEFAULT_COUNTRY, DEFAULT_CURRENCY,
 }

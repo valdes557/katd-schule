@@ -196,9 +196,8 @@ router.post('/enrollment/initiate', async (req, res) => {
   try {
     const { schoolId, studentName, studentId, classId, amount,
             payerName, payerEmail, phone, operator } = req.body
-    if (!schoolId || !phone || !operator) {
-      return res.status(400).json({ message: 'École, numéro et opérateur Mobile Money requis' })
-    }
+    if (!schoolId) return res.status(400).json({ message: 'École requise' })
+    const inline = !(phone && operator)
     const school = await School.findById(schoolId)
     if (!school) return res.status(404).json({ message: 'École introuvable' })
     if (!school.director) return res.status(400).json({ message: "Cette école n'a pas de directeur associé" })
@@ -209,10 +208,11 @@ router.post('/enrollment/initiate', async (req, res) => {
     const { mode } = await ikeepay.resolveConfig()
     const intent = await PaymentIntent.create({
       reference, purpose: 'enrollment', amount: fee, currency: ikeepay.DEFAULT_CURRENCY,
-      payerPhone: phone, payerOperator: operator, payerName: payerName || studentName || '',
+      payerPhone: phone || '', payerOperator: operator || '', payerName: payerName || studentName || '',
       payerEmail: payerEmail || '', school: school._id, beneficiary: school.director, mode,
       meta: { studentName, studentId, classId, schoolName: school.name },
     })
+    if (inline) return res.json(await ikeepay.inlineResponse(reference, fee))
     const result = await ikeepay.createCollection({ amount: fee, phone, operator, reference, callbackUrl: callbackUrl(), customerEmail: payerEmail || '' })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
     return res.json({ success: true, reference, amount: fee, mode, transaction: result,

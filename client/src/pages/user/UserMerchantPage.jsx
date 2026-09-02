@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Store, Loader2, Coins, Wallet, X, CheckCircle2, TrendingUp, Sparkles, Gift, Copy, Check, Users } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { merchantApi, paymentsApi, authApi } from '../../lib/api'
+import { useInlineCheckout } from '../../components/payments/useInlineCheckout'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 const OPERATORS = [
@@ -136,31 +137,8 @@ function ReferralCard({ code, count, earned }) {
 }
 
 function PayModal({ fee, onClose, onDone }) {
-  const [f, setF] = useState({ phone: '', operator: 'mtn' })
-  const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState('')
-  const [err, setErr] = useState('')
-
-  const submit = async () => {
-    setErr('')
-    if (!f.phone) { setErr('Numéro Mobile Money requis'); return }
-    setBusy(true)
-    setStatus('Validez le paiement sur votre téléphone...')
-    try {
-      const r = await merchantApi.initiate({ phone: f.phone, operator: f.operator })
-      let ok = false
-      for (let i = 0; i < 45 && !ok; i++) {
-        await new Promise((res) => setTimeout(res, 4000))
-        try {
-          const st = await paymentsApi.status(r.reference)
-          if (st.status === 'approved') ok = true
-          else if (st.status === 'rejected') throw new Error('Paiement rejeté')
-        } catch (e) { if (e.message === 'Paiement rejeté') throw e }
-      }
-      if (!ok) throw new Error("Paiement non confirmé à temps")
-      onDone()
-    } catch (e) { setErr(e.message); setStatus('') } finally { setBusy(false) }
-  }
+  const { start, element, busy, status, error } = useInlineCheckout()
+  const pay = () => start(() => merchantApi.initiate({}), async () => { onDone() })
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && onClose()}>
@@ -169,20 +147,14 @@ function PayModal({ fee, onClose, onDone }) {
           <h3 className="font-bold text-gray-900">Activation marchand — {fmt(fee)} F</h3>
           <button onClick={() => !busy && onClose()} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <div><label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur</label>
-          <select value={f.operator} onChange={(e) => setF({ ...f, operator: e.target.value })} className="input w-full">
-            {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        <div><label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label>
-          <input type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className="input w-full" placeholder="6XX XXX XXX" />
-        </div>
-        {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{err}</p>}
+        <p className="text-sm text-gray-500">Réglez {fmt(fee)} F par Mobile Money. L'opérateur et le numéro seront demandés dans la fenêtre de paiement sécurisée Ikeepay.</p>
+        {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{error}</p>}
         {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
-        <button onClick={submit} disabled={busy} className="btn-primary w-full justify-center">
+        <button onClick={pay} disabled={busy} className="btn-primary w-full justify-center">
           {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : <>Payer {fmt(fee)} F</>}
         </button>
       </div>
+      {element}
     </div>
   )
 }
