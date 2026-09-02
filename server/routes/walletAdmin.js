@@ -358,8 +358,9 @@ router.get('/ikeepay', protect, superAdminOnly, async (req, res) => {
   try {
     const cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
     if (!cfg) return res.json({ success: true, mode: process.env.IKEEPAY_MODE || 'test', configured: false,
-      keys: { apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' } })
+      keys: { publicKeyTest: '', publicKeyLive: '', apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' } })
     res.json({ success: true, mode: cfg.mode, configured: true, keys: {
+      publicKeyTest: cfg.publicKeyTest || '', publicKeyLive: cfg.publicKeyLive || '',
       apiKeyTest: mask(decrypt(cfg.apiKeyTest)), webhookSecretTest: mask(decrypt(cfg.webhookSecretTest)),
       apiKeyLive: mask(decrypt(cfg.apiKeyLive)), webhookSecretLive: mask(decrypt(cfg.webhookSecretLive)) } })
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -394,6 +395,7 @@ router.post('/ikeepay/reveal', protect, superAdminOnly, async (req, res) => {
     const cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
     if (!cfg) return res.json({ success: true, keys: {} })
     res.json({ success: true, keys: {
+      publicKeyTest: cfg.publicKeyTest || '', publicKeyLive: cfg.publicKeyLive || '',
       apiKeyTest: decrypt(cfg.apiKeyTest), webhookSecretTest: decrypt(cfg.webhookSecretTest),
       apiKeyLive: decrypt(cfg.apiKeyLive), webhookSecretLive: decrypt(cfg.webhookSecretLive) } })
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -403,10 +405,13 @@ router.post('/ikeepay/reveal', protect, superAdminOnly, async (req, res) => {
 router.put('/ikeepay', protect, superAdminOnly, async (req, res) => {
   try {
     if (!(await verifyUnlock(req.user._id, req.body.code))) return res.status(401).json({ message: 'Code invalide ou expiré' })
-    const { mode, apiKeyTest, webhookSecretTest, apiKeyLive, webhookSecretLive } = req.body
+    const { mode, publicKeyTest, publicKeyLive, apiKeyTest, webhookSecretTest, apiKeyLive, webhookSecretLive } = req.body
     let cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
     if (!cfg) cfg = new IkeepayConfig({ singleton: 'ikeepay' })
     if (mode) cfg.mode = mode
+    // Clés publiques (pk_…) : non secrètes, stockées en clair.
+    if (publicKeyTest !== undefined && publicKeyTest !== '') cfg.publicKeyTest = publicKeyTest
+    if (publicKeyLive !== undefined && publicKeyLive !== '') cfg.publicKeyLive = publicKeyLive
     if (apiKeyTest !== undefined && apiKeyTest !== '') cfg.apiKeyTest = encrypt(apiKeyTest)
     if (webhookSecretTest !== undefined && webhookSecretTest !== '') cfg.webhookSecretTest = encrypt(webhookSecretTest)
     if (apiKeyLive !== undefined && apiKeyLive !== '') cfg.apiKeyLive = encrypt(apiKeyLive)

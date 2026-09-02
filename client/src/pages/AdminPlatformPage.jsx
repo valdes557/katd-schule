@@ -1367,7 +1367,7 @@ function IkeepayKeysPanel() {
   const [state, setState] = useState({ mode: 'test', configured: false, keys: {} }) // clés masquées
   const [mode, setMode] = useState('test')
   const [code, setCode] = useState('')
-  const [form, setForm] = useState({ apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' })
+  const [form, setForm] = useState({ publicKeyTest: '', publicKeyLive: '', apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' })
   const [sending, setSending] = useState(false)
   const [revealing, setRevealing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -1397,6 +1397,8 @@ function IkeepayKeysPanel() {
     try {
       const r = await walletAdminApi.revealIkeepay(code.trim())
       setForm({
+        publicKeyTest: r.keys?.publicKeyTest || '',
+        publicKeyLive: r.keys?.publicKeyLive || '',
         apiKeyTest: r.keys?.apiKeyTest || '',
         webhookSecretTest: r.keys?.webhookSecretTest || '',
         apiKeyLive: r.keys?.apiKeyLive || '',
@@ -1411,13 +1413,13 @@ function IkeepayKeysPanel() {
     setSaving(true)
     try {
       const payload = { mode, code: code.trim() }
-      for (const k of ['apiKeyTest', 'webhookSecretTest', 'apiKeyLive', 'webhookSecretLive']) {
+      for (const k of ['publicKeyTest', 'publicKeyLive', 'apiKeyTest', 'webhookSecretTest', 'apiKeyLive', 'webhookSecretLive']) {
         if (form[k] && form[k].trim()) payload[k] = form[k].trim()
       }
       await walletAdminApi.updateIkeepay(payload)
       alert('Clés API Ikeepay enregistrées ✅')
       setCode('')
-      setForm({ apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' })
+      setForm({ publicKeyTest: '', publicKeyLive: '', apiKeyTest: '', webhookSecretTest: '', apiKeyLive: '', webhookSecretLive: '' })
       load()
     } catch (e) { alert(e.message) }
     setSaving(false)
@@ -1426,9 +1428,11 @@ function IkeepayKeysPanel() {
   if (loading) return <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
 
   const isLive = mode === 'live'
+  const pubField = isLive ? 'publicKeyLive' : 'publicKeyTest'
   const pkField = isLive ? 'apiKeyLive' : 'apiKeyTest'
   const skField = isLive ? 'webhookSecretLive' : 'webhookSecretTest'
-  const pkPlaceholder = (isLive ? state.keys?.apiKeyLive : state.keys?.apiKeyTest) || 'clé API Ikeepay'
+  const pubPlaceholder = (isLive ? state.keys?.publicKeyLive : state.keys?.publicKeyTest) || 'pk_live_… (clé publique)'
+  const pkPlaceholder = (isLive ? state.keys?.apiKeyLive : state.keys?.apiKeyTest) || 'clé API secrète Ikeepay'
   const skPlaceholder = (isLive ? state.keys?.webhookSecretLive : state.keys?.webhookSecretTest) || 'secret webhook (optionnel)'
 
   return (
@@ -1436,7 +1440,7 @@ function IkeepayKeysPanel() {
       <div>
         <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><KeyRound size={15} /> Clés API Ikeepay (Mobile Money)</h3>
         <p className="text-xs text-gray-500 mt-0.5">
-          Passerelle de collecte et de payout (MTN / Orange / Wave / Moov…). Ikeepay utilise une clé API unique par environnement ; l'opérateur est choisi automatiquement au moment du paiement. Le secret de webhook (optionnel) sécurise les notifications entrantes.
+          Passerelle de collecte et de payout (MTN / Orange / Wave / Moov…). Renseignez la clé publique (pk_…, pour le paiement inline) et la clé API secrète (x-api-key, pour l'API serveur), par environnement. L'opérateur est choisi automatiquement au moment du paiement. Le secret de webhook (optionnel) sécurise les notifications entrantes.
         </p>
       </div>
 
@@ -1479,7 +1483,12 @@ function IkeepayKeysPanel() {
       {/* Étape 2 : clés */}
       <div className="space-y-3">
         <div>
-          <label className="text-xs font-medium text-gray-600 block mb-1">Clé API — {isLive ? 'Live' : 'Test'}</label>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Clé publique (pk_…) — {isLive ? 'Live' : 'Test'}</label>
+          <input value={form[pubField]} onChange={(e) => setForm({ ...form, [pubField]: e.target.value })}
+            className="input text-sm w-full font-mono" placeholder={pubPlaceholder} />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Clé API secrète (x-api-key) — {isLive ? 'Live' : 'Test'}</label>
           <input value={form[pkField]} onChange={(e) => setForm({ ...form, [pkField]: e.target.value })}
             className="input text-sm w-full font-mono" placeholder={pkPlaceholder} />
         </div>
