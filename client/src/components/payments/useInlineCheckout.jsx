@@ -36,7 +36,7 @@ export function useInlineCheckout() {
       await new Promise((res) => setTimeout(res, 4000))
       try {
         const st = await paymentsApi.status(reference)
-        if (st.status === 'approved') return true
+        if (st.status === 'approved') return st
         if (st.status === 'rejected') throw new Error(st.reason || 'Paiement rejeté')
       } catch (e) { if (/rejet|refus/i.test(e.message || '')) throw e }
     }
@@ -46,9 +46,16 @@ export function useInlineCheckout() {
   const handleSuccess = async () => {
     const c = checkout
     setCheckout(null)
-    try { await poll(c.reference); setStatus(''); await c.onPaid?.() }
-    catch (e) { setError(e.message); setStatus('') }
-    finally { setBusy(false) }
+    try {
+      const st = await poll(c.reference)
+      setStatus('')
+      await c.onPaid?.(c.reference, st)
+    } catch (e) {
+      setError(e.message)
+      setStatus('')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const element = checkout ? (

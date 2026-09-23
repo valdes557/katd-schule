@@ -2,12 +2,17 @@ import { useState, useEffect } from 'react'
 import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, RefreshCw, X, Loader2, Users, Copy, Check } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { walletApi } from '../lib/api'
+import { useInlineCheckout } from '../components/payments/useInlineCheckout'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 const OPERATORS = [
+  { value: 'orange', label: 'Orange Money' },
   { value: 'mtn', label: 'MTN Mobile Money' },
+  { value: 'wave', label: 'Wave' },
   { value: 'moov', label: 'Moov Money' },
+  { value: 'free', label: 'Free Money' },
   { value: 'celtiis', label: 'Celtiis Cash' },
+  { value: 'airtel', label: 'Airtel Money' },
 ]
 
 export default function PortefeuillePage() {
@@ -111,7 +116,8 @@ export default function PortefeuillePage() {
 function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, onError }) {
   const { user } = useAuth()
   const isMerchant = user?.isMerchant === true
-  const [f, setF] = useState({ amount: '', phone: '', operator: 'mtn', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
+  const inlineCheckout = useInlineCheckout()
+  const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
   const [status, setStatus] = useState('')
   const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -136,19 +142,19 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
 
   const submit = async () => {
     onError('')
+    inlineCheckout.setError('')
+    if (type === 'deposit') {
+      const amt = Number(f.amount)
+      if (!amt || amt < 100) { onError('Montant minimum : 100 FCFA'); return }
+      inlineCheckout.start(
+        () => walletApi.initiateDeposit({ amount: amt }),
+        async () => { onDone('Dépôt effectué avec succès sur votre portefeuille') }
+      )
+      return
+    }
     setBusy(true)
     try {
-      if (type === 'deposit') {
-        setStatus('Validez le dépôt sur votre téléphone...')
-        const r = await walletApi.initiateDeposit({ amount: Number(f.amount), phone: f.phone, operator: f.operator })
-        let ok = false
-        for (let i = 0; i < 45 && !ok; i++) {
-          await new Promise((res) => setTimeout(res, 4000))
-          try { const st = await (await import('../lib/api')).paymentsApi.status(r.reference); if (st.status === 'approved') ok = true; else if (st.status === 'rejected') throw new Error('Dépôt rejeté') } catch (e) { if (e.message === 'Dépôt rejeté') throw e }
-        }
-        if (!ok) throw new Error("Dépôt non confirmé à temps")
-        onDone('Dépôt effectué avec succès')
-      } else if (type === 'withdraw') {
+      if (type === 'withdraw') {
         if (Number(f.amount) < 2000) throw new Error('Le retrait minimum est de 2000 F')
         if (!f.momoNumber.trim()) throw new Error('Numéro Mobile Money requis')
         if (!f.accountName.trim()) throw new Error('Le nom du titulaire du numéro est obligatoire')
@@ -218,10 +224,11 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
         </>)}
 
-        {type === 'deposit' && (<>
-          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur</label><select value={f.operator} onChange={up('operator')} className="input w-full">{OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label><input type="tel" value={f.phone} onChange={up('phone')} className="input w-full" placeholder="01 97 00 00 00" /></div>
-        </>)}
+        {type === 'deposit' && (
+          <p className="text-xs text-gray-500">
+            Réglez le montant par Mobile Money. L'opérateur et le numéro seront demandés dans la fenêtre sécurisée Ikeepay.
+          </p>
+        )}
 
         {type === 'withdraw' && (<>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de réception</label><select value={f.momoOperator} onChange={up('momoOperator')} className="input w-full">{OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
@@ -258,12 +265,15 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Confirmer le nouveau PIN</label><input type="password" value={f.confirmPin} onChange={up('confirmPin')} className="input w-full" placeholder="••••" /></div>
         </>)}
 
+        {inlineCheckout.error && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{inlineCheckout.error}</p>}
+        {inlineCheckout.status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{inlineCheckout.status}</p>}
         {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
 
-        <button onClick={submit} disabled={busy} className="btn-primary w-full justify-center">
-          {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : 'Confirmer'}
+        <button onClick={submit} disabled={busy || inlineCheckout.busy} className="btn-primary w-full justify-center">
+          {busy || inlineCheckout.busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : 'Confirmer'}
         </button>
       </div>
+      {inlineCheckout.element}
     </div>
   )
 }

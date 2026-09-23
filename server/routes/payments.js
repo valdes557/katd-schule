@@ -180,9 +180,10 @@ router.post('/subscription/initiate', async (req, res) => {
       intent.providerTransactionId = result.transaction_id || result.id
       await intent.save()
     }
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
     return res.json({
       success: true, reference, amount, mode,
-      transaction: result,
+      transaction: result, payment_link: paymentLink,
       message: 'Demande de paiement envoyée. Validez le paiement sur votre téléphone Mobile Money.',
     })
   } catch (err) {
@@ -215,7 +216,8 @@ router.post('/enrollment/initiate', async (req, res) => {
     if (inline) return res.json(await ikeepay.inlineResponse(reference, fee))
     const result = await ikeepay.createCollection({ amount: fee, phone, operator, reference, callbackUrl: callbackUrl(), customerEmail: payerEmail || '' })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
-    return res.json({ success: true, reference, amount: fee, mode, transaction: result,
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+    return res.json({ success: true, reference, amount: fee, mode, transaction: result, payment_link: paymentLink,
       message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money.' })
   } catch (err) {
     console.error('initiate enrollment error:', err.message, err.data ? JSON.stringify(err.data) : '')
@@ -251,12 +253,12 @@ router.get('/status/:reference', async (req, res) => {
 // confiance au payload. Sinon (pas de secret configuré / signature absente), on réconcilie
 // activement le statut auprès d'Ikeepay : on ne crédite JAMAIS sur un webhook non vérifié.
 // Retourne 'approved' | 'rejected' | 'pending', ou null si la vérification est impossible.
-async function verifiedStatus(raw, payload, signature, lookupId) {
+async function verifiedStatus(raw, payload, signature, lookupId, type = 'payin') {
   if (await ikeepay.verifyWebhookSignature(raw, signature)) {
     return mapStatus(payload.status || (payload.data && payload.data.status))
   }
   try {
-    const remote = await ikeepay.getTransactionStatus(lookupId)
+    const remote = await ikeepay.getTransactionStatus(lookupId, type)
     return mapStatus(remote.status || (remote.data && remote.data.status))
   } catch (e) {
     return null
@@ -271,8 +273,8 @@ async function webhookHandler(req, res) {
     const raw = req.rawBody || JSON.stringify(payload)
     const signature = req.headers[ikeepay.SIGNATURE_HEADER]
     const d = payload.data && typeof payload.data === 'object' ? payload.data : {}
-    const reference = payload.external_reference || payload.reference || d.external_reference || d.reference
-    const providerId = payload.transaction_id || payload.id || payload.provider_reference || d.transaction_id || d.id || d.provider_reference
+    const reference = payload.external_reference || payload.reference || payload.order_id || d.external_reference || d.reference || d.order_id
+    const providerId = payload.transaction_id || payload.id || payload.provider_reference || payload.ikeepay_ref || d.transaction_id || d.id || d.provider_reference || d.ikeepay_ref
     if (!reference) return res.status(400).json({ message: 'external_reference manquant' })
 
     // Payout (retrait) : nos références de payout commencent par « wd_ »
@@ -280,7 +282,7 @@ async function webhookHandler(req, res) {
       const wr = await WithdrawalRequest.findOne({ providerRef: reference })
       if (!wr) return res.status(404).json({ message: 'Retrait introuvable' })
       if (wr.status === 'paid' || wr.status === 'rejected') return res.json({ success: true, message: 'Déjà traité' })
-      const status = await verifiedStatus(raw, payload, signature, wr.providerPayoutId || providerId || reference)
+      const status = await verifiedStatus(raw, payload, signature, wr.providerPayoutId || providerId || reference, 'payout')
       if (!status) { console.warn('Webhook Ikeepay payout non vérifié [' + reference + ']'); return res.status(401).json({ message: 'Signature invalide' }) }
       await applyPayoutOutcome(wr, status, payload, providerId)
       return res.json({ success: true })
@@ -290,7 +292,7 @@ async function webhookHandler(req, res) {
     const intent = await PaymentIntent.findOne({ reference })
     if (!intent) return res.status(404).json({ message: 'Intent introuvable' })
     if (intent.fulfilled) return res.json({ success: true, message: 'Déjà traité' })
-    const status = await verifiedStatus(raw, payload, signature, intent.providerTransactionId || providerId || reference)
+    const status = await verifiedStatus(raw, payload, signature, intent.providerTransactionId || providerId || reference, 'payin')
     if (!status) { console.warn('Webhook Ikeepay collecte non vérifié [' + reference + ']'); return res.status(401).json({ message: 'Signature invalide' }) }
     await applyOutcome(intent, status, payload)
     return res.json({ success: true })

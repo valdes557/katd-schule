@@ -4,6 +4,7 @@ import {
   Smartphone, Loader2, Check, ChevronRight, ChevronLeft, AlertCircle, Sparkles, Megaphone,
 } from 'lucide-react'
 import { boostApi, walletApi, paymentsApi } from '../../lib/api'
+import { useInlineCheckout } from '../payments/useInlineCheckout'
 
 // Modal « 🚀 Booster une publication » — flux : Objectif → Audience → Durée → Résumé →
 // Paiement (Portefeuille ou Mobile Money) → Confirmation. Style Tailwind + lucide, états
@@ -26,6 +27,7 @@ const OBJECTIVES = [
 const STEPS = ['objective', 'audience', 'duration', 'summary', 'payment', 'done']
 
 export default function BoostModal({ post, onClose, onActivated }) {
+  const inlineCheckout = useInlineCheckout()
   const [step, setStep] = useState('objective')
   const [pricing, setPricing] = useState([])
   const [objectives, setObjectives] = useState(OBJECTIVES.map((o) => o.key))
@@ -83,10 +85,6 @@ export default function BoostModal({ post, onClose, onActivated }) {
   const goToPayment = async () => {
     setError(''); setStep('payment')
     walletApi.me().then((r) => setWallet(r.data || r.wallet || r)).catch(() => {})
-    paymentsApi.operators().then((r) => {
-      setOperators(r.operators || [])
-      if (r.operators?.[0]) setOperator(r.operators[0].code)
-    }).catch(() => {})
   }
 
   const buildAudience = () => audienceMode === 'auto'
@@ -109,36 +107,20 @@ export default function BoostModal({ post, onClose, onActivated }) {
     setLoading(false)
   }
 
-  // Paiement Mobile Money : initiation → polling du statut (aucun boost tant que non approuvé).
+  // Paiement Mobile Money via checkout Inline Ikeepay (iframe pk_live).
   const payMomo = async () => {
-    setError(''); setLoading(true)
-    try {
-      const r = await boostApi.create({
+    setError('')
+    inlineCheckout.setError('')
+    inlineCheckout.start(
+      () => boostApi.create({
         postId: post._id, durationKey, objective, audience: buildAudience(),
-        provider: 'ikeepay', phone, operator,
-      })
-      setLoading(false)
-      if (r.confirmed) { setDoneCampaign(r.campaign); setStep('done'); onActivated?.(post._id, r.campaign); return }
-      if (!r.reference) { setError('Initiation du paiement échouée.'); return }
-      // Polling du statut (~2 min max).
-      setPolling(true)
-      const ref = r.reference
-      let tries = 0
-      const timer = setInterval(async () => {
-        tries++
-        try {
-          const s = await paymentsApi.status(ref)
-          if (s.status === 'approved') {
-            clearInterval(timer); setPolling(false)
-            setStep('done'); onActivated?.(post._id, null)
-          } else if (s.status === 'rejected') {
-            clearInterval(timer); setPolling(false)
-            setError(s.reason || 'Paiement refusé.')
-          }
-        } catch (_) { /* on continue à interroger */ }
-        if (tries >= 30) { clearInterval(timer); setPolling(false); setError("Le paiement n'a pas été confirmé à temps. Vérifiez « Mes boosts » plus tard.") }
-      }, 4000)
-    } catch (e) { setLoading(false); setError(e.message || 'Paiement impossible') }
+        provider: 'ikeepay',
+      }),
+      async () => {
+        setStep('done')
+        onActivated?.(post._id, null)
+      }
+    )
   }
 
   const stepIndex = STEPS.indexOf(step)
@@ -291,13 +273,21 @@ export default function BoostModal({ post, onClose, onActivated }) {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <select value={operator} onChange={(e) => setOperator(e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
-                    {operators.length === 0 && <option value="">Chargement des opérateurs…</option>}
-                    {operators.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
-                  </select>
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Numéro Mobile Money" inputMode="tel" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
-                  {polling && (
-                    <p className="text-[12px] text-blue-600 flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> Validez le paiement sur votre téléphone…</p>
+                  <div className="bg-orange-50/70 border border-orange-100 rounded-xl p-3 space-y-1.5 text-xs text-orange-900">
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <Sparkles size={14} className="text-orange-600" /> Paiement Mobile Money instantané
+                    </p>
+                    <p className="text-orange-800/80 leading-relaxed">
+                      L'opérateur (Orange, MTN, Wave, Moov...) et le numéro vous seront demandés dans la fenêtre sécurisée Ikeepay.
+                    </p>
+                  </div>
+                  {inlineCheckout.error && (
+                    <p className="text-[12px] text-red-600 bg-red-50 p-2 rounded-lg">{inlineCheckout.error}</p>
+                  )}
+                  {inlineCheckout.status && (
+                    <p className="text-[12px] text-blue-600 flex items-center gap-1.5 bg-blue-50 p-2 rounded-lg">
+                      <Loader2 size={13} className="animate-spin" /> {inlineCheckout.status}
+                    </p>
                   )}
                 </div>
               )}
@@ -335,16 +325,17 @@ export default function BoostModal({ post, onClose, onActivated }) {
               {step === 'summary' && <NextBtn label="Vers le paiement" onClick={goToPayment} />}
               {step === 'payment' && (
                 <button
-                  disabled={loading || polling || (provider === 'wallet' && insufficient) || (provider === 'ikeepay' && (!phone || !operator))}
+                  disabled={loading || inlineCheckout.busy || (provider === 'wallet' && insufficient)}
                   onClick={provider === 'wallet' ? payWallet : payMomo}
                   className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg px-5 py-2.5">
-                  {(loading || polling) && <Loader2 size={15} className="animate-spin" />} Payer {fmt(price)} {currency}
+                  {(loading || inlineCheckout.busy) && <Loader2 size={15} className="animate-spin" />} Payer {fmt(price)} {currency}
                 </button>
               )}
             </>
           )}
         </div>
       </div>
+      {inlineCheckout.element}
     </div>
   )
 }

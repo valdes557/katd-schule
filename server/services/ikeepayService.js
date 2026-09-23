@@ -16,10 +16,10 @@ const IkeepayConfig = require('../models/IkeepayConfig')
 const { decrypt } = require('../utils/crypto')
 
 const BASE_URL = (process.env.IKEEPAY_BASE_URL || 'https://api.ikeepay.com').replace(/\/$/, '')
-// Chemins surchargeables (à confirmer/ajuster côté Ikeepay sans toucher au code).
-const COLLECT_PATH = process.env.IKEEPAY_COLLECT_PATH || '/payments'
-const PAYOUT_PATH = process.env.IKEEPAY_PAYOUT_PATH || '/payouts'
-const STATUS_PATH = process.env.IKEEPAY_STATUS_PATH || '/payments'
+// Chemins officiels Ikeepay (/h2h-payin et /h2h-payout). Surchargeables si besoin via env.
+const COLLECT_PATH = process.env.IKEEPAY_COLLECT_PATH || '/h2h-payin'
+const PAYOUT_PATH = process.env.IKEEPAY_PAYOUT_PATH || '/h2h-payout'
+const STATUS_PATH = process.env.IKEEPAY_STATUS_PATH || '/h2h-payin'
 // En-tête portant la signature HMAC du webhook (à confirmer avec Ikeepay).
 const SIGNATURE_HEADER = (process.env.IKEEPAY_SIGNATURE_HEADER || 'x-ikeepay-signature').toLowerCase()
 // Marché par défaut : multi-pays, devise XOF, pays par défaut Côte d'Ivoire.
@@ -152,7 +152,8 @@ async function createCollection({ amount, phone, operator, reference, callbackUr
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw buildError(res, data)
-  return { mode: cfg.mode, ...data }
+  const paymentLink = data.payment_link || data.redirect_url || data.link || (data.data && (data.data.payment_link || data.data.redirect_url)) || null
+  return { mode: cfg.mode, payment_link: paymentLink, ...data }
 }
 
 // Initie un payout / disbursement Mobile Money (argent sortant → retraits utilisateurs)
@@ -196,9 +197,11 @@ async function listOperators(country = DEFAULT_COUNTRY) {
 }
 
 // Vérifie le statut d'une transaction (par id fournisseur ou external_reference)
-async function getTransactionStatus(idOrRef) {
+async function getTransactionStatus(idOrRef, type = 'payin') {
   const cfg = await resolveConfig()
-  const res = await fetch(BASE_URL + STATUS_PATH + '/' + encodeURIComponent(idOrRef), {
+  const isPayout = type === 'payout' || String(idOrRef).startsWith('wd_') || String(idOrRef).startsWith('PAYOUT_')
+  const path = isPayout ? (process.env.IKEEPAY_PAYOUT_PATH || '/h2h-payout') : STATUS_PATH
+  const res = await fetch(BASE_URL + path + '/' + encodeURIComponent(idOrRef), {
     method: 'GET', headers: authHeaders(cfg),
   })
   const data = await res.json().catch(() => ({}))

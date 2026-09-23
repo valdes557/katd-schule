@@ -9,6 +9,7 @@ import Footer from '../components/layout/Footer'
 import { locationsApi, schoolRegistrationApi, platformApi, plansApi, paymentsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { dialCodeFor } from '../data/countryDialCodes'
+import { useInlineCheckout } from '../components/payments/useInlineCheckout'
 
 const CYCLE_META = {
   Maternelle: { icon: '🌸', gradient: 'from-orange-500 to-amber-400', color: 'text-orange-600', ring: 'ring-orange-400', btn: 'bg-orange-500 hover:bg-orange-600' },
@@ -20,6 +21,7 @@ export default function SchoolRegistrationPage() {
   const [params] = useSearchParams()
   const isTrial = params.get('trial') === '1' || params.get('plan') === 'trial'
   const fileRef = useRef()
+  const inlineCheckout = useInlineCheckout()
 
   const [selected, setSelected] = useState(null) // { plan, billing: 'annual'|'trimestrial' }
 
@@ -177,30 +179,21 @@ export default function SchoolRegistrationPage() {
       setSubmitting(false)
       return
     }
-    if (!form.phone.trim()) { setError('Veuillez saisir votre numéro Mobile Money'); return }
-    if (!form.operator) { setError('Veuillez choisir votre opérateur Mobile Money'); return }
-    // Le numéro doit être complet. Évite le rejet Ikeepay « Invalid phone number »
-    // sur un numéro tronqué.
-    const phoneDigits = form.phone.replace(/[^0-9]/g, '')
-    if (phoneDigits.length < 8) {
-      setError('Numéro Mobile Money incomplet. Saisissez votre numéro complet (9 chiffres, ex. 6XX XXX XXX) sans l’indicatif ' + (dialCode || '') + '.')
+    if (!form.schoolName.trim() || !form.directorName.trim() || !form.email.trim()) {
+      setError('Veuillez remplir tous les champs obligatoires (école, responsable, email)')
       return
     }
 
-    setSubmitting(true)
-    setStatusMsg('Initialisation du paiement...')
-    try {
-      const whatsappFull = dialCode && !form.whatsapp.trim().startsWith('+')
-        ? `${dialCode} ${form.whatsapp.trim()}`
-        : form.whatsapp.trim()
-      const phoneFull = dialCode && !form.phone.trim().startsWith('+')
-        ? `${dialCode} ${form.phone.trim()}`
-        : form.phone.trim()
+    const whatsappFull = dialCode && !form.whatsapp.trim().startsWith('+')
+      ? `${dialCode} ${form.whatsapp.trim()}`
+      : form.whatsapp.trim()
 
-      const initRes = await paymentsApi.initiateSubscription({
-        schoolName: form.schoolName,
-        directorName: form.directorName,
-        email: form.email,
+    inlineCheckout.setError('')
+    inlineCheckout.start(
+      () => paymentsApi.initiateSubscription({
+        schoolName: form.schoolName.trim(),
+        directorName: form.directorName.trim(),
+        email: form.email.trim(),
         whatsapp: whatsappFull,
         planId: selected.planId,
         cycle: selected.cycle,
@@ -208,41 +201,19 @@ export default function SchoolRegistrationPage() {
         countryName: form.country,
         cityName: form.city,
         neighborhoodName: form.neighborhood,
-        phone: phoneFull,
-        operator: form.operator,
-      })
-      const reference = initRes.reference
-      setStatusMsg('Validez le paiement sur votre téléphone Mobile Money, puis patientez...')
-
-      // Polling du statut (jusqu'à ~3 min)
-      let done = false
-      for (let i = 0; i < 45 && !done; i++) {
-        await new Promise((r) => setTimeout(r, 4000))
-        try {
-          const st = await paymentsApi.status(reference)
-          if (st.status === 'approved') {
-            done = true
-            setStatusMsg('')
+      }),
+      async (reference, lastStatus) => {
+        if (lastStatus?.credentials) {
+          setCredentials(lastStatus.credentials)
+        } else {
+          try {
+            const st = await paymentsApi.status(reference)
             if (st.credentials) setCredentials(st.credentials)
-            setSubmitted(true)
-          } else if (st.status === 'rejected') {
-            done = true
-            setStatusMsg('')
-            setError(st.reason
-              ? `Paiement non abouti : ${st.reason}. Vérifiez votre solde puis réessayez.`
-              : "Le paiement n'a pas été validé sur votre téléphone (refusé, annulé ou expiré). Réessayez et saisissez votre code Mobile Money à l'invite.")
-          }
-        } catch (e) { /* continue polling */ }
+          } catch (_) {}
+        }
+        setSubmitted(true)
       }
-      if (!done) {
-        setStatusMsg('')
-        setError("Le paiement n'a pas été confirmé à temps. Si vous avez payé, vos identifiants arriveront par email dès confirmation.")
-      }
-    } catch (err) {
-      setStatusMsg('')
-      setError(err.message)
-    }
-    setSubmitting(false)
+    )
   }
 
   // ── Success screen ──────────────────────────────────────────────────────────
@@ -535,32 +506,11 @@ export default function SchoolRegistrationPage() {
               </div>
             )}
 
-            {/* Paiement Mobile Money (Ikeepay) */}
+            {/* Paiement Mobile Money (Ikeepay Inline) */}
             {!isTrial && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur Mobile Money *</label>
-                <select
-                  value={form.operator}
-                  onChange={(e) => setForm({ ...form, operator: e.target.value })}
-                  className="input w-full"
-                >
-                  {operators.map((op) => (
-                    <option key={op.slug} value={op.slug}>{op.name}</option>
-                  ))}
-                </select>
+              <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 text-xs text-blue-800">
+                Paiement sécurisé via Mobile Money (Orange, MTN, Wave, Moov...). L'opérateur et le numéro vous seront demandés dans la fenêtre sécurisée.
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money *</label>
-                <input
-                  type="tel"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="Ex: 6 90 00 00 00"
-                  className="input w-full"
-                />
-              </div>
-            </div>
             )}
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start gap-2">
               <CreditCard size={16} className="text-blue-600 mt-0.5" />
@@ -568,21 +518,32 @@ export default function SchoolRegistrationPage() {
                 {isTrial
                 ? <>Votre établissement bénéficie de <b>1 mois d'essai gratuit</b>. Aucun paiement requis aujourd'hui. À la fin de l'essai, l'accès sera suspendu jusqu'au règlement de votre souscription.</>
                 : <>Vous serez débité de <b>{selected?.amount?.toLocaleString('fr-FR')} FCFA</b> via Mobile Money.</>}
-                Validez la demande de paiement sur votre téléphone. Dès confirmation, votre compte directeur
-                est créé automatiquement et vos identifiants vous sont envoyés par email.
+                {isTrial
+                  ? " Dès validation, votre compte directeur est créé automatiquement et vos identifiants vous sont envoyés par email."
+                  : " Dès confirmation du paiement, votre compte directeur est créé automatiquement et vos identifiants vous sont envoyés par email."}
               </p>
             </div>
+            {inlineCheckout.error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-800 flex items-center gap-2">
+                <AlertCircle size={14} className="text-red-600 shrink-0" /> {inlineCheckout.error}
+              </div>
+            )}
+            {inlineCheckout.status && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-800 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin shrink-0" /> {inlineCheckout.status}
+              </div>
+            )}
             {statusMsg && (
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2">
-                <Loader2 size={14} className="animate-spin" /> {statusMsg}
+                <Loader2 size={14} className="animate-spin shrink-0" /> {statusMsg}
               </div>
             )}
 
-            <button type="submit" disabled={submitting} className="btn-primary w-full justify-center py-3.5 text-sm">
-              {submitting ? (
-                <><Loader2 size={16} className="animate-spin" /> Envoi en cours...</>
+            <button type="submit" disabled={submitting || inlineCheckout.busy} className="btn-primary w-full justify-center py-3.5 text-sm">
+              {submitting || inlineCheckout.busy ? (
+                <><Loader2 size={16} className="animate-spin" /> Traitement en cours...</>
               ) : (
-                <><Upload size={16} /> {isTrial ? "Démarrer mon essai gratuit" : "Envoyer ma demande de souscription"}</>
+                <><Upload size={16} /> {isTrial ? "Démarrer mon essai gratuit" : "Payer ma souscription"}</>
               )}
             </button>
 
@@ -592,6 +553,7 @@ export default function SchoolRegistrationPage() {
           </form>
         </div>
       </div>
+      {inlineCheckout.element}
       <Footer />
     </div>
   )

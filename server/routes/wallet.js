@@ -100,7 +100,8 @@ router.post('/deposit/initiate', protect, async (req, res) => {
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
     const result = await ikeepay.createCollection({ amount: amt, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
-    res.json({ success: true, reference, amount: amt, mode, message: 'Validez le dépôt sur votre téléphone Mobile Money.' })
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+    res.json({ success: true, reference, amount: amt, mode, payment_link: paymentLink, message: 'Validez le dépôt sur votre téléphone Mobile Money.' })
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
 

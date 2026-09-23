@@ -28,7 +28,7 @@ export default function IkeepayCheckout({ publicKey, amount, currency = 'XOF', o
   const src = `https://ikeepay.com/checkout/v1/inline?${params.toString()}`
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-3">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-3">
       <div className="relative w-full max-w-[450px] h-[90vh]">
         <button onClick={onClose} aria-label="Fermer"
           className="absolute -top-3 -right-3 z-10 w-9 h-9 rounded-full bg-white shadow-lg flex items-center justify-center text-gray-600 hover:text-gray-900">

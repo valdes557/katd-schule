@@ -5,9 +5,11 @@ import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { enrollmentApi, schoolsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
+import { useInlineCheckout } from '../components/payments/useInlineCheckout'
 
 export default function EnrollmentPage() {
   const { schoolId } = useParams()
+  const inlineCheckout = useInlineCheckout()
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
@@ -52,61 +54,47 @@ export default function EnrollmentPage() {
     const fee = selectedClass?.enrollmentFee || school?.enrollmentFee || 0
     if (fee <= 0) { setError("Le montant des frais d'inscription n'est pas défini pour cette classe"); return }
     if (!form.classId) { setError('Veuillez choisir une classe'); return }
-    if (!form.momoPhone.trim()) { setError('Veuillez saisir votre numéro Mobile Money'); return }
-    if (!form.momoOperator) { setError('Veuillez choisir votre opérateur Mobile Money'); return }
+    if (!form.firstName.trim() || !form.lastName.trim()) { setError("Le prénom et le nom de l'élève sont obligatoires"); return }
 
-    setSubmitting(true)
-    setStatusMsg('Initialisation du paiement...')
-    try {
-      // 1) Paiement Ikeepay (crédite le portefeuille du directeur)
-      const initRes = await paymentsApi.initiateEnrollment({
+    inlineCheckout.setError('')
+    inlineCheckout.start(
+      () => paymentsApi.initiateEnrollment({
         schoolId: school?._id,
         classId: form.classId,
         amount: fee,
         studentName: (form.firstName + ' ' + form.lastName).trim(),
         payerName: form.fatherName || form.motherName || '',
         payerEmail: form.email,
-        phone: form.momoPhone.trim(),
-        operator: form.momoOperator,
-      })
-      const reference = initRes.reference
-      setStatusMsg('Validez le paiement sur votre téléphone Mobile Money, puis patientez...')
-
-      let approved = false
-      for (let i = 0; i < 45 && !approved; i++) {
-        await new Promise((r) => setTimeout(r, 4000))
+      }),
+      async (reference) => {
+        setSubmitting(true)
+        setStatusMsg("Enregistrement de l'inscription...")
         try {
-          const st = await paymentsApi.status(reference)
-          if (st.status === 'approved') approved = true
-          else if (st.status === 'rejected') { setError('Paiement rejeté ou annulé. Réessayez.'); setSubmitting(false); setStatusMsg(''); return }
-        } catch (e2) { /* continue */ }
+          const formData = new FormData()
+          formData.append('firstName', form.firstName)
+          formData.append('lastName', form.lastName)
+          formData.append('dateOfBirth', form.dateOfBirth)
+          formData.append('placeOfBirth', form.placeOfBirth)
+          formData.append('gender', form.gender)
+          formData.append('email', form.email)
+          formData.append('phone', form.phone)
+          formData.append('fatherName', form.fatherName)
+          formData.append('motherName', form.motherName)
+          formData.append('fatherPhone', form.fatherPhone)
+          formData.append('schoolId', school?._id)
+          formData.append('classId', form.classId)
+          formData.append('paymentReference', reference)
+          if (photoFile) formData.append('photo', photoFile)
+          await enrollmentApi.submit(formData)
+          setStatusMsg('')
+          setSubmitted(true)
+        } catch (err) {
+          setError(err.message)
+        } finally {
+          setSubmitting(false)
+        }
       }
-      if (!approved) { setError("Paiement non confirmé à temps. Si vous avez payé, contactez l'école."); setSubmitting(false); setStatusMsg(''); return }
-
-      // 2) Création de la demande d'inscription avec la référence de paiement
-      setStatusMsg("Enregistrement de l'inscription...")
-      const formData = new FormData()
-      formData.append('firstName', form.firstName)
-      formData.append('lastName', form.lastName)
-      formData.append('dateOfBirth', form.dateOfBirth)
-      formData.append('placeOfBirth', form.placeOfBirth)
-      formData.append('gender', form.gender)
-      formData.append('email', form.email)
-      formData.append('phone', form.phone)
-      formData.append('fatherName', form.fatherName)
-      formData.append('motherName', form.motherName)
-      formData.append('fatherPhone', form.fatherPhone)
-      formData.append('schoolId', school?._id)
-      formData.append('classId', form.classId)
-      formData.append('paymentReference', reference)
-      if (photoFile) formData.append('photo', photoFile)
-      await enrollmentApi.submit(formData)
-      setStatusMsg('')
-      setSubmitted(true)
-    } catch (err) {
-      setError(err.message)
-    }
-    setSubmitting(false)
+    )
   }
 
   if (loading) {
@@ -333,38 +321,37 @@ export default function EnrollmentPage() {
               </div>
             )}
 
-            {/* Paiement Mobile Money (Ikeepay) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur Mobile Money *</label>
-                <select value={form.momoOperator} onChange={(e) => setForm({ ...form, momoOperator: e.target.value })} className="input text-sm">
-                  <option value="mtn">MTN Mobile Money</option>
-                  <option value="moov">Moov Money</option>
-                  <option value="celtiis">Celtiis Cash</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money *</label>
-                <input type="tel" value={form.momoPhone} onChange={(e) => setForm({ ...form, momoPhone: e.target.value })} className="input text-sm" placeholder="Ex: 01 97 00 00 00" />
-              </div>
+            {/* Paiement Mobile Money (Ikeepay Inline) */}
+            <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 text-xs text-blue-800">
+              Paiement sécurisé via Mobile Money (Orange, MTN, Wave, Moov...). L'opérateur et le numéro vous seront demandés dans la fenêtre sécurisée.
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
-              <Banknote size={16} className="text-blue-600 mt-0.5" />
+              <Banknote size={16} className="text-blue-600 mt-0.5 shrink-0" />
               <p className="text-xs text-blue-800 leading-relaxed">
-                Le paiement est automatique : validez la demande sur votre téléphone. Dès confirmation,
+                Le paiement est automatique via la fenêtre sécurisée. Dès confirmation,
                 votre inscription est enregistrée et les frais sont versés au directeur de l'école.
               </p>
             </div>
+            {inlineCheckout.error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-800 flex items-center gap-2">
+                <AlertCircle size={14} className="text-red-600 shrink-0" /> {inlineCheckout.error}
+              </div>
+            )}
+            {inlineCheckout.status && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-800 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin shrink-0" /> {inlineCheckout.status}
+              </div>
+            )}
             {statusMsg && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2">
-                <Loader2 size={14} className="animate-spin" /> {statusMsg}
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin shrink-0" /> {statusMsg}
               </div>
             )}
 
             {/* Submit */}
-            <button type="submit" disabled={submitting} className="btn-primary w-full justify-center py-3 text-sm mt-4">
-              {submitting ? (
-                <><Loader2 size={16} className="animate-spin" /> Envoi en cours...</>
+            <button type="submit" disabled={submitting || inlineCheckout.busy} className="btn-primary w-full justify-center py-3 text-sm mt-4">
+              {submitting || inlineCheckout.busy ? (
+                <><Loader2 size={16} className="animate-spin" /> Traitement en cours...</>
               ) : (
                 <><GraduationCap size={16} /> Payer et confirmer l'inscription</>
               )}
@@ -376,6 +363,7 @@ export default function EnrollmentPage() {
           </form>
         </div>
       </div>
+      {inlineCheckout.element}
       <Footer />
     </div>
   )
