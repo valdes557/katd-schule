@@ -58,10 +58,29 @@ export function useInlineCheckout() {
     }
   }
 
+  const handleClose = async () => {
+    const c = checkout
+    setCheckout(null)
+    if (!c?.reference) {
+      setBusy(false)
+      return
+    }
+    // Vérifie si le paiement a déjà été validé (par ex. webhook reçu pendant la session)
+    try {
+      const st = await paymentsApi.status(c.reference)
+      if (st && st.status === 'approved') {
+        setStatus('')
+        await c.onPaid?.(c.reference, st)
+        return
+      }
+    } catch (e) {}
+    setBusy(false)
+  }
+
   const element = checkout ? (
     <IkeepayCheckout
       publicKey={checkout.publicKey} amount={checkout.amount} currency={checkout.currency}
-      orderId={checkout.reference} onSuccess={handleSuccess} onClose={() => { setCheckout(null); setBusy(false) }}
+      orderId={checkout.reference} onSuccess={handleSuccess} onClose={handleClose}
     />
   ) : null
 

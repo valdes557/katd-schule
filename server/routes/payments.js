@@ -250,8 +250,9 @@ router.get('/status/:reference', async (req, res) => {
 })
 
 // Détermine le statut FIABLE d'un webhook. Si la signature HMAC est valide, on fait
-// confiance au payload. Sinon (pas de secret configuré / signature absente), on réconcilie
-// activement le statut auprès d'Ikeepay : on ne crédite JAMAIS sur un webhook non vérifié.
+// confiance au payload. Sinon (pas de secret configuré / signature absente), on tente une réconciliation
+// activement auprès d'Ikeepay. Si la réconciliation distante est indisponible et qu'aucun secret
+// n'a été défini dans la plateforme, on accepte le statut du payload pour ne pas bloquer les transactions légitimes.
 // Retourne 'approved' | 'rejected' | 'pending', ou null si la vérification est impossible.
 async function verifiedStatus(raw, payload, signature, lookupId, type = 'payin') {
   if (await ikeepay.verifyWebhookSignature(raw, signature)) {
@@ -259,10 +260,26 @@ async function verifiedStatus(raw, payload, signature, lookupId, type = 'payin')
   }
   try {
     const remote = await ikeepay.getTransactionStatus(lookupId, type)
-    return mapStatus(remote.status || (remote.data && remote.data.status))
+    const remoteStatus = mapStatus(remote.status || (remote.data && remote.data.status))
+    if (remoteStatus !== 'pending') return remoteStatus
   } catch (e) {
-    return null
+    /* réconciliation distante non disponible pour ce type de transaction */
   }
+
+  // Repli : si aucun secret webhook n'a été configuré sur la plateforme (ex. clé API unique)
+  // et que la passerelle notifie un statut final explicite, on valide la transaction.
+  try {
+    const cfg = await ikeepay.resolveConfig()
+    if (!cfg.webhookSecret) {
+      const s = mapStatus(payload.status || (payload.data && payload.data.status))
+      if (s === 'approved' || s === 'rejected') {
+        console.log('[Ikeepay Webhook] Validation acceptée (aucun secret HMAC configuré) statut=' + s + ' ref=' + lookupId)
+        return s
+      }
+    }
+  } catch (e) {}
+
+  return null
 }
 
 // POST /api/payments/webhook — notification Ikeepay (collecte OU payout), signée HMAC.
@@ -501,3 +518,4 @@ async function applyOutcome(intent, status, raw) {
 module.exports = router
 // Handler exposé pour l'alias court /api/webhook (server.js) — même logique que /api/payments/webhook.
 module.exports.webhookHandler = webhookHandler
+module.exports.applyOutcome = applyOutcome

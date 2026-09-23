@@ -225,9 +225,14 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {type === 'deposit' && (
-          <p className="text-xs text-gray-500">
-            Réglez le montant par Mobile Money. L'opérateur et le numéro seront demandés dans la fenêtre sécurisée Ikeepay.
-          </p>
+          <div className="text-xs text-blue-900 bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
+            <p className="font-semibold flex items-center gap-1.5">
+              <span>💳</span> Paiement sécurisé Mobile Money
+            </p>
+            <p className="text-gray-600 leading-relaxed">
+              Dans la fenêtre Ikeepay, assurez-vous de bien sélectionner l’indicatif de votre pays (ex : 🇨🇲 <b>+237</b>, 🇨🇮 <b>+225</b>, 🇧🇯 <b>+229</b>) ou tapez votre numéro complet avec l'indicatif pour éviter toute erreur de validation.
+            </p>
+          </div>
         )}
 
         {type === 'withdraw' && (<>

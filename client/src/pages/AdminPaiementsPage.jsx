@@ -26,6 +26,8 @@ export default function AdminPaiementsPage() {
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
   const [search, setSearch] = useState('')
+  const [approvingId, setApprovingId] = useState(null)
+  const [feedback, setFeedback] = useState('')
 
   const statsQ = useCachedFetch('/admin/payments/stats', async () => (await walletAdminApi.paymentsStats()).stats, [])
   const paymentsQ = useCachedFetch(
@@ -44,6 +46,21 @@ export default function AdminPaiementsPage() {
     paymentsQ.refetch()
   }
 
+  const handleApprove = async (id, amount) => {
+    if (!window.confirm(`Confirmez-vous que les fonds de ${fmt(amount)} FCFA sont bien reçus sur votre compte Ikeepay pour valider et créditer cette opération ?`)) return
+    setApprovingId(id)
+    setFeedback('')
+    try {
+      await walletAdminApi.approvePayment(id)
+      setFeedback('Paiement validé avec succès. Les fonds ont été immédiatement crédités.')
+      refresh()
+    } catch (e) {
+      alert(e.message || 'Erreur lors de la validation du paiement')
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
   const onSearch = (e) => { e.preventDefault(); setSearch(q.trim()) }
 
   return (
@@ -59,6 +76,13 @@ export default function AdminPaiementsPage() {
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
         </button>
       </div>
+
+      {feedback && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm px-4 py-3 rounded-xl flex items-center justify-between">
+          <span>{feedback}</span>
+          <button onClick={() => setFeedback('')} className="text-emerald-600 hover:text-emerald-800 text-xs font-semibold">Fermer</button>
+        </div>
+      )}
 
       {/* Cartes de synthèse */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -118,6 +142,7 @@ export default function AdminPaiementsPage() {
                   <th className="px-4 py-3 font-semibold">Opérateur</th>
                   <th className="px-4 py-3 font-semibold">Réf. transaction</th>
                   <th className="px-4 py-3 font-semibold">Statut</th>
+                  <th className="px-4 py-3 font-semibold text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,6 +179,19 @@ export default function AdminPaiementsPage() {
                         <span className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border', st.bg, st.color, st.border)}>
                           <StIcon size={13} /> {st.label}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {p.status === 'pending' && (
+                          <button
+                            onClick={() => handleApprove(p._id, p.amount)}
+                            disabled={approvingId === p._id}
+                            className="text-xs px-2.5 py-1 inline-flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm transition disabled:opacity-50"
+                            title="Valider manuellement si vous confirmez que les fonds sont sur votre compte Ikeepay"
+                          >
+                            {approvingId === p._id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                            Valider
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )

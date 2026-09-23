@@ -98,6 +98,20 @@ router.get('/payments', protect, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// POST /api/admin/payments/:id/approve — validation manuelle d'un paiement (ex: si encaissé sur Ikeepay mais webhook en attente)
+router.post('/payments/:id/approve', protect, adminOnly, async (req, res) => {
+  try {
+    const intent = await PaymentIntent.findById(req.params.id)
+    if (!intent) return res.status(404).json({ message: 'Paiement introuvable' })
+    if (intent.fulfilled) return res.status(400).json({ message: 'Ce paiement a déjà été validé et traité.' })
+    const { applyOutcome } = require('./payments')
+    await applyOutcome(intent, 'approved', { manual: true, approvedBy: req.user._id, at: new Date() })
+    res.json({ success: true, message: 'Paiement validé avec succès. Les fonds ont été crédités.' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // GET /api/admin/payments/stats — synthèse (encaissé / en attente / rejeté) par finalité
 router.get('/payments/stats', protect, adminOnly, async (req, res) => {
   try {

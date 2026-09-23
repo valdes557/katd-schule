@@ -1073,6 +1073,7 @@ export const walletAdminApi = {
     return api.get('/admin/payments' + (qs ? '?' + qs : ''))
   },
   paymentsStats: () => api.get('/admin/payments/stats'),
+  approvePayment: (id) => api.post('/admin/payments/' + id + '/approve'),
   // Grand livre unifié (souscriptions + paiements du personnel & des utilisateurs)
   transactions: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
