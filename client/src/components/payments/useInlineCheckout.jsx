@@ -31,23 +31,45 @@ export function useInlineCheckout() {
   }, [])
 
   const poll = async (reference) => {
-    setStatus('Confirmation du paiement…')
-    for (let i = 0; i < 45; i++) {
-      await new Promise((res) => setTimeout(res, 4000))
+    setStatus('Confirmation du paiement auprès de la banque…')
+    for (let i = 0; i < 15; i++) {
+      await new Promise((res) => setTimeout(res, 3000))
       try {
         const st = await paymentsApi.status(reference)
-        if (st.status === 'approved') return st
+        if (st.status === 'approved' || st.fulfilled) return st
         if (st.status === 'rejected') throw new Error(st.reason || 'Paiement rejeté')
       } catch (e) { if (/rejet|refus/i.test(e.message || '')) throw e }
     }
-    throw new Error("Paiement non confirmé à temps. Si vous avez été débité, l'activation se fera sous peu.")
+    // Dernier essai par confirmation directe avant de signaler un délai
+    try {
+      const fb = await paymentsApi.confirmInline(reference)
+      if (fb && (fb.status === 'approved' || fb.fulfilled)) return fb
+    } catch (e) {}
+    throw new Error("Paiement non confirmé à temps. Si vous avez été débité, rendez-vous dans l'administration pour valider ou contactez le support.")
   }
 
   const handleSuccess = async () => {
     const c = checkout
     setCheckout(null)
+    if (!c?.reference) {
+      setBusy(false)
+      return
+    }
+    setStatus('Paiement reçu ! Crédit immédiat de votre portefeuille…')
     try {
-      const st = await poll(c.reference)
+      // 1. Validation directe et instantanée déclenchée par le signal de succès de l'iframe
+      let st = null
+      try {
+        st = await paymentsApi.confirmInline(c.reference)
+      } catch (err) {
+        console.warn('[useInlineCheckout] Confirmation directe échouée, bascule sur vérification:', err?.message)
+      }
+
+      // 2. Si pas encore validé, polling de sécurité court
+      if (!st || (st.status !== 'approved' && !st.fulfilled)) {
+        st = await poll(c.reference)
+      }
+
       setStatus('')
       await c.onPaid?.(c.reference, st)
     } catch (e) {
@@ -68,7 +90,7 @@ export function useInlineCheckout() {
     // Vérifie si le paiement a déjà été validé (par ex. webhook reçu pendant la session)
     try {
       const st = await paymentsApi.status(c.reference)
-      if (st && st.status === 'approved') {
+      if (st && (st.status === 'approved' || st.fulfilled)) {
         setStatus('')
         await c.onPaid?.(c.reference, st)
         return

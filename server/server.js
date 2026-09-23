@@ -54,7 +54,7 @@ const paymentsRouter = require('./routes/payments')
 app.use('/api/payments', paymentsRouter)
 // Alias court pour la passerelle de paiement Ikeepay : https://<domaine>/api/webhook
 // (identique à /api/payments/webhook). Ikeepay attend ce format court dans sa configuration.
-app.post('/api/webhook', paymentsRouter.webhookHandler)
+app.all('/api/webhook', paymentsRouter.webhookHandler)
 // Boosts (monétisation espace social). /api/admin/boosts AVANT /api/admin (walletAdmin) pour priorité.
 app.use('/api/boosts', require('./routes/boosts'))
 app.use('/api/admin/boosts', require('./routes/adminBoosts'))

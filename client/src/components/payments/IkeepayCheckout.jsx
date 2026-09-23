@@ -42,11 +42,18 @@ export default function IkeepayCheckout({ publicKey, amount, currency = 'XOF', o
     return () => window.removeEventListener('message', handler)
   }, [onSuccess, onClose])
 
+  const webhookUrl = (typeof window !== 'undefined' && window.location?.origin)
+    ? `${window.location.origin}/api/webhook`
+    : 'https://katdschool.com/api/webhook'
+
   const params = new URLSearchParams({
     pk: publicKey,
     amount: String(amount),
     currency,
     order_id: orderId,
+    callback_url: webhookUrl,
+    webhook_url: webhookUrl,
+    notify_url: webhookUrl,
   })
   if (redirectUrl) params.set('redirect_url', redirectUrl)
   const src = `https://ikeepay.com/checkout/v1/inline?${params.toString()}`

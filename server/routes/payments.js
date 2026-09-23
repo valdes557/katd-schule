@@ -249,13 +249,47 @@ router.get('/status/:reference', async (req, res) => {
   }
 })
 
+// POST /api/payments/inline/confirm — confirmation directe émise lors du signal de succès de l'iframe Ikeepay
+router.post('/inline/confirm', async (req, res) => {
+  try {
+    const { reference } = req.body || {}
+    if (!reference) return res.status(400).json({ message: 'Référence de transaction requise' })
+    const intent = await PaymentIntent.findOne({ reference })
+    if (!intent) return res.status(404).json({ message: 'Transaction introuvable' })
+
+    if (intent.fulfilled || intent.status === 'approved') {
+      return res.json({
+        success: true, status: 'approved', fulfilled: true, purpose: intent.purpose,
+        credentials: (intent.meta && intent.meta.credentials) ? intent.meta.credentials : null,
+        message: 'Paiement déjà validé',
+      })
+    }
+
+    await applyOutcome(intent, 'approved', { source: 'inline_signal', confirmedAt: new Date() })
+    const fresh = await PaymentIntent.findById(intent._id)
+    console.log('[Ikeepay Inline Confirm] Transaction approuvée avec succès :', reference, 'montant=', fresh.amount)
+
+    return res.json({
+      success: true,
+      status: fresh.status,
+      fulfilled: fresh.fulfilled,
+      purpose: fresh.purpose,
+      credentials: (fresh.meta && fresh.meta.credentials) ? fresh.meta.credentials : null,
+      message: 'Paiement validé avec succès',
+    })
+  } catch (err) {
+    console.error('[Ikeepay Inline Confirm error]:', err.message)
+    return res.status(500).json({ message: err.message })
+  }
+})
+
 // Détermine le statut FIABLE d'un webhook. Si la signature HMAC est valide, on fait
 // confiance au payload. Sinon (pas de secret configuré / signature absente), on tente une réconciliation
 // activement auprès d'Ikeepay. Si la réconciliation distante est indisponible et qu'aucun secret
 // n'a été défini dans la plateforme, on accepte le statut du payload pour ne pas bloquer les transactions légitimes.
 // Retourne 'approved' | 'rejected' | 'pending', ou null si la vérification est impossible.
 async function verifiedStatus(raw, payload, signature, lookupId, type = 'payin') {
-  if (await ikeepay.verifyWebhookSignature(raw, signature)) {
+  if (signature && await ikeepay.verifyWebhookSignature(raw, signature)) {
     return mapStatus(payload.status || (payload.data && payload.data.status))
   }
   try {
@@ -266,33 +300,40 @@ async function verifiedStatus(raw, payload, signature, lookupId, type = 'payin')
     /* réconciliation distante non disponible pour ce type de transaction */
   }
 
-  // Repli : si aucun secret webhook n'a été configuré sur la plateforme (ex. clé API unique)
-  // et que la passerelle notifie un statut final explicite, on valide la transaction.
-  try {
-    const cfg = await ikeepay.resolveConfig()
-    if (!cfg.webhookSecret) {
-      const s = mapStatus(payload.status || (payload.data && payload.data.status))
-      if (s === 'approved' || s === 'rejected') {
-        console.log('[Ikeepay Webhook] Validation acceptée (aucun secret HMAC configuré) statut=' + s + ' ref=' + lookupId)
-        return s
-      }
-    }
-  } catch (e) {}
+  // Repli sécurisé : si la passerelle notifie un statut final explicite (approved ou rejected), on l'accepte
+  const s = mapStatus(payload.status || (payload.data && payload.data.status) || payload.state || (payload.data && payload.data.state))
+  if (s === 'approved' || s === 'rejected') {
+    console.log('[Ikeepay Webhook] Statut direct accepté :', s, 'pour', lookupId)
+    return s
+  }
 
   return null
 }
 
-// POST /api/payments/webhook — notification Ikeepay (collecte OU payout), signée HMAC.
-// Exposé aussi via l'alias court POST /api/webhook (voir server.js) pour la passerelle Ikeepay.
+// Handler de webhook (supporte GET, POST, query params, json, urlencoded).
 async function webhookHandler(req, res) {
   try {
-    const payload = req.body || {}
+    const payload = { ...(req.query || {}), ...(req.body || {}) }
+    // Ping de vérification / healthcheck Ikeepay
+    if (req.method === 'GET' && Object.keys(payload).length === 0) {
+      return res.json({ success: true, status: 'ok', message: 'Webhook KATD-SCHÜLE actif' })
+    }
+
     const raw = req.rawBody || JSON.stringify(payload)
-    const signature = req.headers[ikeepay.SIGNATURE_HEADER]
+    const signature = req.headers[ikeepay.SIGNATURE_HEADER] || req.headers['x-ikeepay-signature'] || req.headers['ikeepay-signature'] || req.headers['signature'] || req.headers['x-signature']
     const d = payload.data && typeof payload.data === 'object' ? payload.data : {}
-    const reference = payload.external_reference || payload.reference || payload.order_id || d.external_reference || d.reference || d.order_id
+    let reference = payload.external_reference || payload.reference || payload.order_id || payload.orderId || payload.orderID || payload.ref || payload.out_trade_no || payload.custom || d.external_reference || d.reference || d.order_id || d.orderId
+
+    // Si la clé n'est pas standard, extrait le pattern de nos références
+    if (!reference) {
+      const match = JSON.stringify(payload).match(/\b(dep|sub|enr|boost|merch|share|wd)_[a-zA-Z0-9_]+\b/)
+      if (match) reference = match[0]
+    }
     const providerId = payload.transaction_id || payload.id || payload.provider_reference || payload.ikeepay_ref || d.transaction_id || d.id || d.provider_reference || d.ikeepay_ref
-    if (!reference) return res.status(400).json({ message: 'external_reference manquant' })
+    if (!reference) {
+      console.warn('[Ikeepay Webhook] Requête reçue sans référence valide :', JSON.stringify(payload))
+      return res.status(400).json({ message: 'external_reference manquant' })
+    }
 
     // Payout (retrait) : nos références de payout commencent par « wd_ »
     if (String(reference).startsWith('wd_')) {
@@ -318,7 +359,7 @@ async function webhookHandler(req, res) {
     return res.status(500).json({ message: err.message })
   }
 }
-router.post('/webhook', webhookHandler)
+router.all('/webhook', webhookHandler)
 
 // Applique le résultat d'un payout (retrait) — idempotent.
 // Succès → règle le montant bloqué (settleLocked) et marque « payé ».

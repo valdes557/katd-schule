@@ -1044,6 +1044,7 @@ export const paymentsApi = {
   initiateSubscription: (payload) => api.post('/payments/subscription/initiate', payload),
   initiateEnrollment: (payload) => api.post('/payments/enrollment/initiate', payload),
   status: (reference) => api.get(`/payments/status/${reference}`),
+  confirmInline: (reference) => api.post('/payments/inline/confirm', { reference }),
   operators: (country) => api.get(`/payments/operators${country ? `?country=${country}` : ''}`),
 }
 
