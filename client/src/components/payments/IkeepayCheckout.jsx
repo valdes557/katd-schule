@@ -4,7 +4,7 @@ import { X, Loader2, Info } from 'lucide-react'
 // Paiement « inline » Ikeepay : ouvre le checkout officiel dans une iframe (méthode pk_live de la doc).
 // L'utilisateur paie dans l'iframe (opérateur Mobile Money, etc.), Ikeepay confirme au backend via webhook.
 // Props : publicKey (pk_…), amount, currency, orderId (= référence PaymentIntent), onSuccess(), onClose(), redirectUrl?
-export default function IkeepayCheckout({ publicKey, amount, currency = 'XOF', orderId, redirectUrl, onSuccess, onClose }) {
+export default function IkeepayCheckout({ publicKey, amount, currency = 'XAF', orderId, redirectUrl, onSuccess, onClose }) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {

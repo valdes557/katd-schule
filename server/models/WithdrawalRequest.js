@@ -11,7 +11,8 @@ const withdrawalSchema = new mongoose.Schema(
     // Frais de retrait (2%) déduits du montant + montant net réellement versé à l'opérateur
     fee: { type: Number, default: 0 },
     netAmount: { type: Number, default: 0 },
-    currency: { type: String, default: 'XOF' },
+    currency: { type: String, default: 'XAF' },
+    country: { type: String, default: 'CM' },
     // Coordonnées Mobile Money de réception
     momoNumber: { type: String, required: true },
     momoOperator: { type: String, default: '' }, // mtn / moov ...

@@ -12,7 +12,7 @@ const paymentIntentSchema = new mongoose.Schema(
       index: true,
     },
     amount: { type: Number, required: true, min: 1 },
-    currency: { type: String, default: 'XOF' },
+    currency: { type: String, default: 'XAF' },
     // Coordonnées du payeur
     payerPhone: { type: String, default: '' },
     payerOperator: { type: String, default: '' },

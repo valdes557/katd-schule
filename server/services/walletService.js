@@ -20,7 +20,7 @@ const MAINTENANCE_ON_CREDIT_TYPES = new Set(['transfer_received', 'salary_receiv
 async function getOrCreateWallet(userId, { role = 'autre', school = null } = {}) {
   let wallet = await Wallet.findOne({ owner: userId })
   if (!wallet) {
-    wallet = await Wallet.create({ owner: userId, role, school, currency: 'XOF' })
+    wallet = await Wallet.create({ owner: userId, role, school, currency: 'XAF' })
   }
   return wallet
 }

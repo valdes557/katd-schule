@@ -15,7 +15,7 @@ const walletSchema = new mongoose.Schema(
       default: 'autre',
     },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', default: null, index: true },
-    currency: { type: String, default: 'XOF' },
+    currency: { type: String, default: 'XAF' },
     // Solde disponible (retirable / transférable)
     balance: { type: Number, default: 0, min: 0 },
     // Montant bloqué (retraits en attente de traitement)

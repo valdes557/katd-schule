@@ -93,7 +93,7 @@ function PendingWithdrawals({ onProcessed }) {
   }
 
   const confirm = async (wr) => {
-    if (!window.confirm(`Confirmer le paiement de ${fmt(wr.netAmount)} F (net) à ${wr.accountName || wr.user?.name || '—'} sur le ${wr.momoNumber} ?`)) return
+    if (!window.confirm(`Confirmer le paiement de ${fmt(wr.netAmount)} ${wr.currency || 'XAF'} (net) à ${wr.accountName || wr.user?.name || '—'} sur le ${wr.momoNumber} ?`)) return
     setBusyId(wr._id); setError('')
     try { await walletAdminApi.payWithdrawal(wr._id); flash('Retrait confirmé et marqué comme payé.'); refresh(); onProcessed?.() }
     catch (e) { setError(e.message) } finally { setBusyId(null) }
@@ -196,14 +196,14 @@ function PendingWithdrawals({ onProcessed }) {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <div className="font-mono font-semibold text-gray-900 flex items-center gap-1.5"><Phone size={13} className="text-gray-400" /> {wr.momoNumber}</div>
-                    <div className="text-xs text-gray-500 uppercase">{OPERATOR_LABELS[wr.momoOperator] || wr.momoOperator || '—'}</div>
+                    <div className="text-xs text-gray-500 uppercase">{OPERATOR_LABELS[wr.momoOperator] || wr.momoOperator || '—'} {wr.country ? `(${wr.country})` : ''}</div>
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5 font-medium text-gray-800"><UserIcon size={13} className="text-gray-400" /> {wr.accountName || '—'}</span>
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(wr.amount)} F</td>
                   <td className="px-4 py-3 text-right text-red-500 whitespace-nowrap">− {fmt(wr.fee)} F</td>
-                  <td className="px-4 py-3 text-right font-bold text-green-700 whitespace-nowrap">{fmt(wr.netAmount)} F</td>
+                  <td className="px-4 py-3 text-right font-bold text-green-700 whitespace-nowrap">{fmt(wr.netAmount)} {wr.currency || 'XAF'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-2">
                       <button onClick={() => confirm(wr)} disabled={busyId === wr._id}

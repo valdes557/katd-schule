@@ -22,9 +22,21 @@ const PAYOUT_PATH = process.env.IKEEPAY_PAYOUT_PATH || '/h2h-payout'
 const STATUS_PATH = process.env.IKEEPAY_STATUS_PATH || '/h2h-payin'
 // En-tête portant la signature HMAC du webhook (à confirmer avec Ikeepay).
 const SIGNATURE_HEADER = (process.env.IKEEPAY_SIGNATURE_HEADER || 'x-ikeepay-signature').toLowerCase()
-// Marché par défaut : multi-pays, devise XOF, pays par défaut Côte d'Ivoire.
-const DEFAULT_COUNTRY = process.env.IKEEPAY_COUNTRY || 'CI'
-const DEFAULT_CURRENCY = process.env.IKEEPAY_CURRENCY || 'XOF'
+// Marché par défaut : Cameroun (CM), devise XAF (CEMAC). Multi-pays supporté dynamiquement.
+const DEFAULT_COUNTRY = process.env.IKEEPAY_COUNTRY || 'CM'
+const DEFAULT_CURRENCY = process.env.IKEEPAY_CURRENCY || 'XAF'
+
+// Table de correspondance pays -> devise officielle
+const COUNTRY_CURRENCIES = {
+  CM: 'XAF', GA: 'XAF', CG: 'XAF', TD: 'XAF', CF: 'XAF', GQ: 'XAF', // CEMAC (Afrique Centrale)
+  CI: 'XOF', SN: 'XOF', BJ: 'XOF', TG: 'XOF', BF: 'XOF', ML: 'XOF', NE: 'XOF', // UEMOA (Afrique de l'Ouest)
+  CD: 'USD', GN: 'GNF',
+}
+
+function getCountryCurrency(country) {
+  const c = String(country || DEFAULT_COUNTRY).trim().toUpperCase()
+  return COUNTRY_CURRENCIES[c] || (['CI', 'SN', 'BJ', 'TG', 'BF', 'ML', 'NE'].includes(c) ? 'XOF' : 'XAF')
+}
 
 // Résout la clé API active : la config DB (dashboard) prend le dessus sur le .env.
 async function resolveConfig() {
@@ -118,8 +130,10 @@ function buildError(res, data) {
 }
 
 // Corps commun d'une opération Mobile Money (collecte ou payout).
-function buildMomoBody({ amount, phone, operator, reference, callbackUrl, country, currency, accountName, customerEmail, otp }) {
-  const natPhone = normalizePhone(phone, country)
+function buildMomoBody({ amount, phone, operator, reference, callbackUrl, country = DEFAULT_COUNTRY, currency, accountName, customerEmail, otp }) {
+  const resolvedCountry = String(country || DEFAULT_COUNTRY).trim().toUpperCase()
+  const resolvedCurrency = currency || getCountryCurrency(resolvedCountry)
+  const natPhone = normalizePhone(phone, resolvedCountry)
   if (!/^[0-9]{8,15}$/.test(natPhone)) {
     const err = new Error('Numéro Mobile Money invalide : « ' + (phone || '') + " ». Vérifiez qu'il est complet.")
     err.status = 400
@@ -128,8 +142,8 @@ function buildMomoBody({ amount, phone, operator, reference, callbackUrl, countr
   // Format attendu par Ikeepay (doc) : phoneNumber + operator (nom du fournisseur), external_reference.
   const body = {
     amount,
-    currency,
-    country,
+    currency: resolvedCurrency,
+    country: resolvedCountry,
     phoneNumber: natPhone,
     operator: mapProvider(operator),
     external_reference: reference,
@@ -143,10 +157,12 @@ function buildMomoBody({ amount, phone, operator, reference, callbackUrl, countr
 }
 
 // Initie une collecte Mobile Money (argent entrant)
-async function createCollection({ amount, phone, operator, reference, callbackUrl, customerEmail, otp, country = DEFAULT_COUNTRY, currency = DEFAULT_CURRENCY }) {
+async function createCollection({ amount, phone, operator, reference, callbackUrl, customerEmail, otp, country = DEFAULT_COUNTRY, currency }) {
   const cfg = await resolveConfig()
   if (!cfg.apiKey) throw new Error('Clé API Ikeepay non configurée (mode ' + cfg.mode + ')')
-  const body = buildMomoBody({ amount, phone, operator, reference, callbackUrl, country, currency, customerEmail, otp })
+  const resolvedCountry = String(country || DEFAULT_COUNTRY).trim().toUpperCase()
+  const resolvedCurrency = currency || getCountryCurrency(resolvedCountry)
+  const body = buildMomoBody({ amount, phone, operator, reference, callbackUrl, country: resolvedCountry, currency: resolvedCurrency, customerEmail, otp })
   const res = await fetch(BASE_URL + COLLECT_PATH, {
     method: 'POST', headers: authHeaders(cfg), body: JSON.stringify(body),
   })
@@ -157,10 +173,12 @@ async function createCollection({ amount, phone, operator, reference, callbackUr
 }
 
 // Initie un payout / disbursement Mobile Money (argent sortant → retraits utilisateurs)
-async function createPayout({ amount, phone, operator, reference, callbackUrl, accountName, country = DEFAULT_COUNTRY, currency = DEFAULT_CURRENCY }) {
+async function createPayout({ amount, phone, operator, reference, callbackUrl, accountName, country = DEFAULT_COUNTRY, currency }) {
   const cfg = await resolveConfig()
   if (!cfg.apiKey) throw new Error('Clé API Ikeepay non configurée (mode ' + cfg.mode + ')')
-  const body = buildMomoBody({ amount, phone, operator, reference, callbackUrl, country, currency, accountName })
+  const resolvedCountry = String(country || DEFAULT_COUNTRY).trim().toUpperCase()
+  const resolvedCurrency = currency || getCountryCurrency(resolvedCountry)
+  const body = buildMomoBody({ amount, phone, operator, reference, callbackUrl, country: resolvedCountry, currency: resolvedCurrency, accountName })
   const res = await fetch(BASE_URL + PAYOUT_PATH, {
     method: 'POST', headers: authHeaders(cfg), body: JSON.stringify(body),
   })
@@ -241,4 +259,5 @@ module.exports = {
   resolveConfig, createCollection, createPayout, listOperators, getTransactionStatus,
   verifyWebhookSignature, mapProvider, normalizePhone, inlineResponse,
   BASE_URL, PAYOUT_PATH, STATUS_PATH, SIGNATURE_HEADER, DEFAULT_COUNTRY, DEFAULT_CURRENCY,
+  getCountryCurrency, COUNTRY_CURRENCIES,
 }

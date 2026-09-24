@@ -5,14 +5,82 @@ import { walletApi } from '../lib/api'
 import { useInlineCheckout } from '../components/payments/useInlineCheckout'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
-const OPERATORS = [
-  { value: 'orange', label: 'Orange Money' },
-  { value: 'mtn', label: 'MTN Mobile Money' },
-  { value: 'wave', label: 'Wave' },
-  { value: 'moov', label: 'Moov Money' },
-  { value: 'free', label: 'Free Money' },
-  { value: 'celtiis', label: 'Celtiis Cash' },
-  { value: 'airtel', label: 'Airtel Money' },
+const COUNTRIES = [
+  {
+    code: 'CM', name: 'Cameroun 🇨🇲 (+237)', dial: '237', currency: 'XAF', placeholder: '690 00 00 00',
+    operators: [
+      { value: 'mtn', label: 'MTN Mobile Money' },
+      { value: 'orange', label: 'Orange Money' },
+    ],
+  },
+  {
+    code: 'CI', name: "Côte d'Ivoire 🇨🇮 (+225)", dial: '225', currency: 'XOF', placeholder: '07 00 00 00 00',
+    operators: [
+      { value: 'wave', label: 'Wave' },
+      { value: 'orange', label: 'Orange Money' },
+      { value: 'mtn', label: 'MTN MoMo' },
+      { value: 'moov', label: 'Moov Money' },
+    ],
+  },
+  {
+    code: 'SN', name: 'Sénégal 🇸🇳 (+221)', dial: '221', currency: 'XOF', placeholder: '77 000 00 00',
+    operators: [
+      { value: 'wave', label: 'Wave' },
+      { value: 'orange', label: 'Orange Money' },
+      { value: 'free', label: 'Free Money' },
+    ],
+  },
+  {
+    code: 'BJ', name: 'Bénin 🇧🇯 (+229)', dial: '229', currency: 'XOF', placeholder: '97 00 00 00',
+    operators: [
+      { value: 'mtn', label: 'MTN MoMo' },
+      { value: 'moov', label: 'Moov Money' },
+      { value: 'celtiis', label: 'Celtiis Cash' },
+    ],
+  },
+  {
+    code: 'TG', name: 'Togo 🇹🇬 (+228)', dial: '228', currency: 'XOF', placeholder: '90 00 00 00',
+    operators: [
+      { value: 'tmoney', label: 'TMoney' },
+      { value: 'moov', label: 'Moov Money' },
+    ],
+  },
+  {
+    code: 'GA', name: 'Gabon 🇬🇦 (+241)', dial: '241', currency: 'XAF', placeholder: '074 00 00 00',
+    operators: [
+      { value: 'airtel', label: 'Airtel Money' },
+      { value: 'moov', label: 'Moov Money' },
+    ],
+  },
+  {
+    code: 'CG', name: 'Congo 🇨🇬 (+242)', dial: '242', currency: 'XAF', placeholder: '06 000 00 00',
+    operators: [
+      { value: 'airtel', label: 'Airtel Money' },
+      { value: 'mtn', label: 'MTN MoMo' },
+    ],
+  },
+  {
+    code: 'BF', name: 'Burkina Faso 🇧🇫 (+226)', dial: '226', currency: 'XOF', placeholder: '70 00 00 00',
+    operators: [
+      { value: 'orange', label: 'Orange Money' },
+      { value: 'moov', label: 'Moov Money' },
+    ],
+  },
+  {
+    code: 'ML', name: 'Mali 🇲🇱 (+223)', dial: '223', currency: 'XOF', placeholder: '70 00 00 00',
+    operators: [
+      { value: 'orange', label: 'Orange Money' },
+      { value: 'moov', label: 'Moov Money' },
+    ],
+  },
+  {
+    code: 'CD', name: 'RD Congo 🇨🇩 (+243)', dial: '243', currency: 'USD', placeholder: '81 000 0000',
+    operators: [
+      { value: 'mpesa', label: 'M-Pesa' },
+      { value: 'orange', label: 'Orange Money' },
+      { value: 'airtel', label: 'Airtel Money' },
+    ],
+  },
 ]
 
 export default function PortefeuillePage() {
@@ -117,12 +185,15 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const { user } = useAuth()
   const isMerchant = user?.isMerchant === true
   const inlineCheckout = useInlineCheckout()
-  const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
+  const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '', country: 'CM' })
   const [status, setStatus] = useState('')
   const [modalError, setModalError] = useState('')
   const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
   const [minWithdrawal, setMinWithdrawal] = useState(100)
   const up = (k) => (e) => { setModalError(''); setF({ ...f, [k]: e.target.value }) }
+
+  const currentCountry = COUNTRIES.find(c => c.code === (f.country || 'CM')) || COUNTRIES[0]
+  const currentOperators = currentCountry.operators || []
 
   useEffect(() => {
     walletApi.getConfig().then((r) => {
@@ -173,8 +244,8 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         if (!f.momoNumber.trim()) throw new Error('Numéro Mobile Money requis')
         if (!f.accountName.trim()) throw new Error('Le nom du titulaire du numéro est obligatoire')
         if (!f.pin) throw new Error('Code PIN requis pour valider le retrait')
-        const r = await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, accountName: f.accountName, pin: f.pin })
-        onDone(r?.message || 'Demande de retrait enregistrée. Traitement sous 24h.')
+        const r = await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, accountName: f.accountName, pin: f.pin, country: f.country || 'CM' })
+        onDone(r?.message || 'Demande de retrait enregistrée. Traitement et envoi sous 24h par Ikeepay.')
       } else if (type === 'transfer') {
         if (!f.teacherUserId) throw new Error('Veuillez sélectionner un enseignant')
         if (!f.amount || Number(f.amount) <= 0) throw new Error('Veuillez saisir un montant')
@@ -267,18 +338,59 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         )}
 
         {type === 'withdraw' && (<>
-          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de réception</label><select value={f.momoOperator} onChange={up('momoOperator')} className="input w-full">{OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label><input type="tel" value={f.momoNumber} onChange={up('momoNumber')} className="input w-full" placeholder="01 97 00 00 00" /></div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Pays de retrait</label>
+            <select
+              value={f.country || 'CM'}
+              onChange={(e) => {
+                const c = e.target.value
+                const cObj = COUNTRIES.find(x => x.code === c) || COUNTRIES[0]
+                setModalError('')
+                setF({
+                  ...f,
+                  country: c,
+                  momoOperator: cObj.operators[0]?.value || 'mtn',
+                })
+              }}
+              className="input w-full font-medium"
+            >
+              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de réception ({currentCountry.currency})</label>
+            <select value={f.momoOperator} onChange={up('momoOperator')} className="input w-full">
+              {currentOperators.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-xs text-gray-400 font-mono font-medium">+{currentCountry.dial}</span>
+              <input
+                type="tel"
+                value={f.momoNumber}
+                onChange={up('momoNumber')}
+                className="input w-full pl-14"
+                placeholder={currentCountry.placeholder}
+              />
+            </div>
+          </div>
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Nom du titulaire du numéro <span className="text-red-500">*</span></label><input value={f.accountName} onChange={up('accountName')} className="input w-full" placeholder="Nom du titulaire Mobile Money" required /></div>
           {Number(f.amount) > 0 && (
             <div className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
-              <div className="flex justify-between"><span>Montant demandé</span><b>{fmt(Number(f.amount))} F</b></div>
-              <div className="flex justify-between text-gray-500"><span>Frais de retrait (2%)</span><span>− {fmt(withdrawFee)} F</span></div>
-              <div className="flex justify-between border-t border-blue-100 pt-1 mt-1"><span>Vous recevrez</span><b>{fmt(withdrawNet)} F</b></div>
+              <div className="flex justify-between"><span>Montant demandé</span><b>{fmt(Number(f.amount))} FCFA</b></div>
+              <div className="flex justify-between text-gray-500"><span>Frais de retrait (2%)</span><span>− {fmt(withdrawFee)} FCFA</span></div>
+              <div className="flex justify-between border-t border-blue-100 pt-1 mt-1">
+                <span>Vous recevrez</span>
+                <b className="text-green-700 font-bold">{fmt(withdrawNet)} {currentCountry.currency}</b>
+              </div>
             </div>
           )}
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
-          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">Retrait minimum : {fmt(minWithdrawal)} F. Frais de 2% déduits. Traitement et réception sous 24h.</p>
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">
+            Retrait minimum : {fmt(minWithdrawal)} FCFA. Frais de 2% déduits. Traitement et envoi sous 24h par Ikeepay.
+          </p>
         </>)}
 
         {type === 'transfer' && (<>

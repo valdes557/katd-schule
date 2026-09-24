@@ -26,7 +26,7 @@ export function useInlineCheckout() {
       // Cas paiement déjà confirmé côté serveur (ex. portefeuille) → pas d'iframe.
       if (r && r.confirmed) { setBusy(false); await onPaid?.(); return }
       if (!r || !r.publicKey) throw new Error("Clé publique Ikeepay non configurée. Contactez l'administrateur.")
-      setCheckout({ publicKey: r.publicKey, amount: r.amount, currency: r.currency || 'XOF', reference: r.reference, onPaid })
+      setCheckout({ publicKey: r.publicKey, amount: r.amount, currency: r.currency || 'XAF', reference: r.reference, onPaid })
     } catch (e) { setError(e.message || 'Paiement impossible'); setBusy(false) }
   }, [])
 
