@@ -231,6 +231,19 @@ async function listOperators(country = DEFAULT_COUNTRY) {
 // Vérifie le statut d'une transaction (par id fournisseur ou external_reference)
 async function getTransactionStatus(idOrRef, type = 'payin') {
   const cfg = await resolveConfig()
+  // Tente d'abord le endpoint officiel Ikeepay H2H /h2h-verify/:reference
+  try {
+    const resVerify = await fetch(BASE_URL + '/h2h-verify/' + encodeURIComponent(idOrRef), {
+      method: 'GET', headers: authHeaders(cfg),
+    })
+    if (resVerify.ok) {
+      const dataVerify = await resVerify.json().catch(() => ({}))
+      if (dataVerify && dataVerify.status === 'success' && dataVerify.data) {
+        return dataVerify.data
+      }
+    }
+  } catch (_) {}
+
   const isPayout = type === 'payout' || String(idOrRef).startsWith('wd_') || String(idOrRef).startsWith('PAYOUT_')
   const path = isPayout ? (process.env.IKEEPAY_PAYOUT_PATH || '/h2h-payout') : STATUS_PATH
   const res = await fetch(BASE_URL + path + '/' + encodeURIComponent(idOrRef), {
