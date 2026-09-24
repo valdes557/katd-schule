@@ -74,6 +74,29 @@ router.put('/withdrawals/:id/reject', protect, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// GET /api/admin/withdrawal-config — consultation du seuil minimum de retrait
+router.get('/withdrawal-config', protect, adminOnly, async (req, res) => {
+  try {
+    const cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
+    const minWithdrawal = (cfg && typeof cfg.minWithdrawal === 'number' && cfg.minWithdrawal > 0) ? cfg.minWithdrawal : 100
+    res.json({ success: true, minWithdrawal })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/admin/withdrawal-config — modification du seuil minimum de retrait
+router.put('/withdrawal-config', protect, adminOnly, async (req, res) => {
+  try {
+    const { minWithdrawal } = req.body
+    const val = Math.max(10, Number(minWithdrawal) || 100)
+    let cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
+    if (!cfg) cfg = new IkeepayConfig({ singleton: 'ikeepay' })
+    cfg.minWithdrawal = val
+    cfg.updatedBy = req.user._id
+    await cfg.save()
+    res.json({ success: true, minWithdrawal: val, message: 'Seuil minimum de retrait fixé à ' + val.toLocaleString('fr-FR') + ' F' })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // ───────────────────── PAIEMENTS IKEEPAY (collectes) ─────────────────────
 // GET /api/admin/payments?purpose=subscription&status=approved — argent entrant Ikeepay
 // Consultation seule : le statut est mis à jour automatiquement par le webhook Ikeepay.

@@ -1059,6 +1059,8 @@ export const walletApi = {
   resetPin: (payload) => api.post('/wallet/pin/reset', payload),
   transfer: (payload) => api.post('/wallet/transfer', payload),
   withdraw: (payload) => api.post('/wallet/withdraw', payload),
+  // Configuration générale portefeuille (seuil min retrait, etc.)
+  getConfig: () => api.get('/wallet/config'),
   // Transfert entre utilisateurs (frais 0,25%)
   lookup: (accountNo) => api.get('/wallet/lookup/' + encodeURIComponent(accountNo)),
   transferUser: (payload) => api.post('/wallet/transfer-user', payload),
@@ -1066,6 +1068,8 @@ export const walletApi = {
 
 export const walletAdminApi = {
   withdrawals: (status) => api.get('/admin/withdrawals' + (status ? '?status=' + status : '')),
+  getWithdrawalConfig: () => api.get('/admin/withdrawal-config'),
+  updateWithdrawalConfig: (minWithdrawal) => api.put('/admin/withdrawal-config', { minWithdrawal }),
   payWithdrawal: (id, note) => api.put('/admin/withdrawals/' + id + '/pay', { note }),
   rejectWithdrawal: (id, reason) => api.put('/admin/withdrawals/' + id + '/reject', { reason }),
   // Paiements Ikeepay (collectes) — consultation admin

@@ -16,6 +16,8 @@ const ikeepayConfigSchema = new mongoose.Schema(
     // Secret de vérification des webhooks (HMAC), optionnel selon la config Ikeepay
     webhookSecretTest: { type: String, default: '' },
     webhookSecretLive: { type: String, default: '' },
+    // Seuil minimum de retrait (en FCFA). Modifiable par l'administrateur (100 pour test, 2000 par défaut).
+    minWithdrawal: { type: Number, default: 100 },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }

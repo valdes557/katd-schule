@@ -15,8 +15,28 @@ const ikeepay = require('../services/ikeepayService')
 const { sendEmail } = require('../utils/emailService')
 
 const SLA_HOURS = Number(process.env.WITHDRAWAL_SLA_HOURS || 24)
-const MIN_WITHDRAWAL = 2000 // retrait minimum vers un opérateur externe
+const IkeepayConfig = require('../models/IkeepayConfig')
+async function getMinWithdrawal() {
+  try {
+    const cfg = await IkeepayConfig.findOne({ singleton: 'ikeepay' })
+    if (cfg && typeof cfg.minWithdrawal === 'number' && cfg.minWithdrawal > 0) {
+      return cfg.minWithdrawal
+    }
+  } catch (e) {}
+  return 100 // Défaut de test (100 F), ajustable par l'administrateur
+}
+
 function genRef(p){ return p + '_' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex') }
+
+// GET /api/wallet/config — paramètres généraux du portefeuille (seuil minimum de retrait, etc.)
+router.get('/config', async (req, res) => {
+  try {
+    const minWithdrawal = await getMinWithdrawal()
+    res.json({ success: true, minWithdrawal })
+  } catch (err) {
+    res.json({ success: true, minWithdrawal: 100 })
+  }
+})
 
 // ───────────────────────── SOLDE & HISTORIQUE ─────────────────────────
 // GET /api/wallet/me — solde + 50 dernières opérations + numéro de compte KS
@@ -227,8 +247,8 @@ router.post('/withdraw', protect, async (req, res) => {
   try {
     const { amount, momoNumber, momoOperator, accountName, pin } = req.body
     const amt = Number(amount)
-    if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
-    if (amt < MIN_WITHDRAWAL) return res.status(400).json({ message: 'Le retrait minimum est de ' + MIN_WITHDRAWAL.toLocaleString('fr-FR') + ' F' })
+    const minW = await getMinWithdrawal()
+    if (amt < minW) return res.status(400).json({ message: 'Le retrait minimum est de ' + minW.toLocaleString('fr-FR') + ' F' })
     if (!momoNumber) return res.status(400).json({ message: 'Numéro Mobile Money requis' })
     // Nom du titulaire du numéro OBLIGATOIRE (traçabilité + affiché à l'admin)
     if (!accountName || !String(accountName).trim()) return res.status(400).json({ message: 'Le nom du titulaire du numéro est obligatoire' })

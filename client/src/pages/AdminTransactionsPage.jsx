@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import {
   ArrowLeftRight, Loader2, RefreshCw, TrendingUp, TrendingDown, Scale, Hash,
   CheckCircle2, Clock, XCircle, ChevronLeft, ChevronRight, Users, Building2,
@@ -51,6 +51,8 @@ function PendingWithdrawals({ onProcessed }) {
   const [busyId, setBusyId] = useState(null)
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
+  const [minWithdrawal, setMinWithdrawal] = useState(100)
+  const [savingMin, setSavingMin] = useState(false)
 
   const key = '/admin/withdrawals?status=pending'
   const query = useCachedFetch(key, () => walletAdminApi.withdrawals('pending'), [])
@@ -59,6 +61,36 @@ function PendingWithdrawals({ onProcessed }) {
 
   const refresh = () => { cache.invalidate('/admin/withdrawals'); query.refetch() }
   const flash = (m) => { setMsg(m); setError(''); setTimeout(() => setMsg(''), 4000) }
+
+  useEffect(() => {
+    walletAdminApi.getWithdrawalConfig().then((r) => {
+      if (r && r.minWithdrawal) setMinWithdrawal(r.minWithdrawal)
+    }).catch(() => {})
+  }, [])
+
+  const handleSetMin = async (val) => {
+    setSavingMin(true)
+    try {
+      const res = await walletAdminApi.updateWithdrawalConfig(val)
+      setMinWithdrawal(res.minWithdrawal || val)
+      flash(`Seuil minimum de retrait fixé à ${fmt(val)} FCFA avec succès !`)
+    } catch (e) {
+      setError(e.message || 'Impossible de mettre à jour le seuil')
+    } finally {
+      setSavingMin(false)
+    }
+  }
+
+  const handleCustomMin = async () => {
+    const raw = window.prompt("Entrez le montant minimum de retrait souhaité (en FCFA) :", String(minWithdrawal))
+    if (!raw) return
+    const num = Number(raw.replace(/[^0-9]/g, ''))
+    if (!num || num < 10) {
+      alert("Montant invalide (minimum 10 FCFA)")
+      return
+    }
+    handleSetMin(num)
+  }
 
   const confirm = async (wr) => {
     if (!window.confirm(`Confirmer le paiement de ${fmt(wr.netAmount)} F (net) à ${wr.accountName || wr.user?.name || '—'} sur le ${wr.momoNumber} ?`)) return
@@ -88,6 +120,48 @@ function PendingWithdrawals({ onProcessed }) {
         <button onClick={refresh} className="btn-secondary text-sm inline-flex items-center gap-1.5">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Actualiser
         </button>
+      </div>
+
+      {/* Configuration du seuil minimum de retrait */}
+      <div className="bg-orange-50/60 border-b border-orange-100 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2 text-xs">
+        <div className="flex items-center gap-2 text-gray-700">
+          <span className="font-medium text-gray-900">Seuil minimum de retrait :</span>
+          <span className="font-bold text-orange-700 text-sm bg-white px-2 py-0.5 rounded border border-orange-200">
+            {fmt(minWithdrawal)} FCFA
+          </span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-gray-500">Modifier :</span>
+          <button
+            onClick={() => handleSetMin(100)}
+            disabled={savingMin || minWithdrawal === 100}
+            className={cn("px-2.5 py-1 rounded font-medium border transition", minWithdrawal === 100 ? "bg-orange-600 text-white border-orange-600 shadow-sm" : "bg-white text-gray-700 border-gray-200 hover:bg-orange-50")}
+          >
+            100 F (Mode Test)
+          </button>
+          <button
+            onClick={() => handleSetMin(2000)}
+            disabled={savingMin || minWithdrawal === 2000}
+            className={cn("px-2.5 py-1 rounded font-medium border transition", minWithdrawal === 2000 ? "bg-orange-600 text-white border-orange-600 shadow-sm" : "bg-white text-gray-700 border-gray-200 hover:bg-orange-50")}
+          >
+            2 000 F (Défaut)
+          </button>
+          <button
+            onClick={() => handleSetMin(5000)}
+            disabled={savingMin || minWithdrawal === 5000}
+            className={cn("px-2.5 py-1 rounded font-medium border transition", minWithdrawal === 5000 ? "bg-orange-600 text-white border-orange-600 shadow-sm" : "bg-white text-gray-700 border-gray-200 hover:bg-orange-50")}
+          >
+            5 000 F
+          </button>
+          <button
+            onClick={handleCustomMin}
+            disabled={savingMin}
+            className="px-2.5 py-1 rounded font-medium border bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            title="Saisir un autre montant personnalisé"
+          >
+            Personnalisé...
+          </button>
+        </div>
       </div>
 
       {msg && <div className="mx-4 mt-3 bg-green-50 border border-green-200 text-green-800 rounded-xl p-2.5 text-sm">{msg}</div>}

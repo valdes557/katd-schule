@@ -120,7 +120,14 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
   const [status, setStatus] = useState('')
   const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
+  const [minWithdrawal, setMinWithdrawal] = useState(100)
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
+
+  useEffect(() => {
+    walletApi.getConfig().then((r) => {
+      if (r && r.minWithdrawal) setMinWithdrawal(r.minWithdrawal)
+    }).catch(() => {})
+  }, [])
 
   // Aperçu des frais de transfert utilisateur (0,25%, arrondi, payés en plus)
   const transferFee = Math.round((Number(f.amount) || 0) * 0.0025)
@@ -155,7 +162,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
     setBusy(true)
     try {
       if (type === 'withdraw') {
-        if (Number(f.amount) < 2000) throw new Error('Le retrait minimum est de 2000 F')
+        if (Number(f.amount) < minWithdrawal) throw new Error(`Le retrait minimum est de ${fmt(minWithdrawal)} F`)
         if (!f.momoNumber.trim()) throw new Error('Numéro Mobile Money requis')
         if (!f.accountName.trim()) throw new Error('Le nom du titulaire du numéro est obligatoire')
         if (!f.pin) throw new Error('Code PIN requis')
@@ -247,7 +254,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
             </div>
           )}
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
-          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">Retrait minimum : 2000 F. Frais de 2% déduits. Traitement et réception sous 24h.</p>
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">Retrait minimum : {fmt(minWithdrawal)} F. Frais de 2% déduits. Traitement et réception sous 24h.</p>
         </>)}
 
         {type === 'transfer' && (<>
