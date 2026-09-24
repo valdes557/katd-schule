@@ -100,8 +100,12 @@ router.post('/withdrawals/:id/payout', protect, adminOnly, async (req, res) => {
         await wr.save()
       }
     } catch (_) {}
+    let userMsg = "Ikeepay a retourné une erreur : " + err.message
+    if (/solde insuffisant/i.test(err.message)) {
+      userMsg = "Solde insuffisant dans votre portefeuille PRO Décaissement Ikeepay (" + err.message + "). Votre solde standard Ikeepay doit être transféré ou crédité vers votre portefeuille PRO H2H pour permettre les virements automatiques. Vous pouvez aussi marquer le retrait comme 'Payé manuellement' si vous transférez les fonds par vos propres moyens."
+    }
     return res.status(err.status || 400).json({
-      message: "Ikeepay a retourné une erreur : " + err.message,
+      message: userMsg,
       data: err.data,
     })
   }

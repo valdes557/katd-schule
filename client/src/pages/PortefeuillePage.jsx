@@ -304,19 +304,13 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           }
         } catch (e) {
           const errMsg = e.message || 'Erreur lors du dépôt'
-          setModalError(errMsg)
-          onError(errMsg)
-          setStatus('')
-          if (/partenaire|rejet|invalide|failed|échec/i.test(errMsg)) {
-            if (typeof window !== 'undefined' && window.confirm("L'opérateur Mobile Money a refusé l'initialisation du débit direct (" + errMsg + ").\n\nSouhaitez-vous ouvrir la Fenêtre Sécurisée Ikeepay pour finaliser votre dépôt de " + fmt(amt) + " FCFA ?")) {
-              setDepositMethod('inline')
-              inlineCheckout.start(
-                () => walletApi.initiateDeposit({ amount: amt, country: f.country || 'CM' }),
-                async () => { onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`) }
-              )
-              return
-            }
+          let friendlyMsg = errMsg
+          if (/partenaire|rejet|failed|échec/i.test(errMsg)) {
+            friendlyMsg = `L'opérateur Mobile Money (${(f.momoOperator || 'opérateur').toUpperCase()}) a refusé l'initialisation du débit direct (${errMsg}). Vérifiez votre numéro et code OTP ou réessayez dans un instant.`
           }
+          setModalError(friendlyMsg)
+          onError(friendlyMsg)
+          setStatus('')
         } finally {
           setBusy(false)
         }
@@ -458,17 +452,17 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
                 <span>🛡️</span> Guichet officiel sécurisé Ikeepay
               </p>
               <p className="text-gray-700 leading-relaxed text-[11.5px]">
-                En cliquant sur <b>Confirmer</b> ci-dessous, la fenêtre officielle sécurisée Ikeepay s'ouvrira directement pour valider vos <b>{f.amount ? fmt(f.amount) : '...'} FCFA</b> avec votre compte <b>Orange Money</b>, <b>MTN MoMo</b> ou par <b>carte bancaire</b>.
+                En cliquant sur <b>Confirmer</b>, la fenêtre sécurisée Ikeepay s'affiche pour valider vos <b>{f.amount ? fmt(f.amount) : '...'} FCFA</b> par <b>Orange Money</b>, <b>MTN MoMo</b> ou par <b>carte bancaire</b>.
               </p>
-              <div className="flex items-center gap-2 pt-1 text-[11px] text-emerald-800 font-semibold bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-                <span>Méthode 100% fonctionnelle au Cameroun sans blocage opérateur.</span>
+              <div className="flex items-center gap-2 pt-1 text-[11px] text-blue-800 font-medium bg-blue-100/60 border border-blue-200 rounded-lg p-2">
+                <span>ℹ️</span>
+                <span>Si la fenêtre Ikeepay signale une indisponibilité, vous pouvez basculer sur le <b>Débit direct (API)</b>.</span>
               </div>
             </div>
           ) : (<>
             <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-start gap-1.5">
               <span>ℹ️</span>
-              <span><b>Note pour le Cameroun :</b> Si l'opérateur rejette l'invite directe (« Erreur partenaire »), basculez simplement sur l'onglet <b>Fenêtre Ikeepay</b> ci-dessus.</span>
+              <span>Débit direct Mobile Money : une invite de confirmation ou un code PIN sera demandé sur votre téléphone.</span>
             </div>
 
             <div>

@@ -80,9 +80,12 @@ export function useInlineCheckout() {
     }
   }
 
-  const handleClose = async () => {
+  const handleClose = async (reason) => {
     const c = checkout
     setCheckout(null)
+    if (reason && typeof reason === 'string') {
+      setError(`La fenêtre de paiement s'est fermée : ${reason}. Vous pouvez utiliser le débit direct.`)
+    }
     if (!c?.reference) {
       setBusy(false)
       return
