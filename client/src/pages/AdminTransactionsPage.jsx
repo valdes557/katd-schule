@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import {
   ArrowLeftRight, Loader2, RefreshCw, TrendingUp, TrendingDown, Scale, Hash,
   CheckCircle2, Clock, XCircle, ChevronLeft, ChevronRight, Users, Building2,
-  ArrowUpFromLine, Phone, User as UserIcon,
+  ArrowUpFromLine, Phone, User as UserIcon, Zap, RotateCcw, AlertTriangle, Send, Check,
 } from 'lucide-react'
 import { walletAdminApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -53,14 +53,15 @@ function PendingWithdrawals({ onProcessed }) {
   const [error, setError] = useState('')
   const [minWithdrawal, setMinWithdrawal] = useState(100)
   const [savingMin, setSavingMin] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('pending') // 'pending' | 'all'
 
-  const key = '/admin/withdrawals?status=pending'
-  const query = useCachedFetch(key, () => walletAdminApi.withdrawals('pending'), [])
+  const key = '/admin/withdrawals?status=' + statusFilter
+  const query = useCachedFetch(key, () => walletAdminApi.withdrawals(statusFilter), [statusFilter])
   const list = query.data?.withdrawals || []
   const loading = query.loading
 
   const refresh = () => { cache.invalidate('/admin/withdrawals'); query.refetch() }
-  const flash = (m) => { setMsg(m); setError(''); setTimeout(() => setMsg(''), 4000) }
+  const flash = (m) => { setMsg(m); setError(''); setTimeout(() => setMsg(''), 6000) }
 
   useEffect(() => {
     walletAdminApi.getWithdrawalConfig().then((r) => {
@@ -92,19 +93,59 @@ function PendingWithdrawals({ onProcessed }) {
     handleSetMin(num)
   }
 
-  const confirm = async (wr) => {
-    if (!window.confirm(`Confirmer le paiement de ${fmt(wr.netAmount)} ${wr.currency || 'XAF'} (net) à ${wr.accountName || wr.user?.name || '—'} sur le ${wr.momoNumber} ?`)) return
-    setBusyId(wr._id); setError('')
-    try { await walletAdminApi.payWithdrawal(wr._id); flash('Retrait confirmé et marqué comme payé.'); refresh(); onProcessed?.() }
-    catch (e) { setError(e.message) } finally { setBusyId(null) }
+  // 1. Déclencher le virement RÉEL via l'API Ikeepay vers Orange/MTN
+  const handlePayoutIkeepay = async (wr) => {
+    const confirmMsg = `⚡ Déclencher le virement RÉEL Ikeepay ?\n\n` +
+      `• Bénéficiaire : ${wr.accountName || wr.user?.name || '—'}\n` +
+      `• Numéro : ${wr.momoNumber} (${(wr.momoOperator || '').toUpperCase()} - ${wr.country || 'CM'})\n` +
+      `• Montant net à verser : ${fmt(wr.netAmount)} ${wr.currency || 'XAF'}\n\n` +
+      `L'argent sera débité de votre solde marchand Ikeepay et envoyé directement sur le téléphone du client.`
+    if (!window.confirm(confirmMsg)) return
+    setBusyId(wr._id); setError(''); setMsg('')
+    try {
+      const res = await walletAdminApi.payoutWithdrawal(wr._id)
+      flash(res.message || 'Virement Ikeepay envoyé avec succès !')
+      refresh()
+      onProcessed?.()
+    } catch (e) {
+      setError(e.message || "Erreur lors du virement Ikeepay")
+      refresh()
+    } finally {
+      setBusyId(null)
+    }
   }
 
-  const reject = async (wr) => {
-    const reason = window.prompt('Motif du rejet (le montant sera remboursé au portefeuille) :', '')
+  // 2. Annuler et rembourser le portefeuille de l'utilisateur
+  const handleRefund = async (wr) => {
+    const reason = window.prompt("Motif du remboursement au portefeuille de l'utilisateur :", "Annulation de la demande de retrait")
     if (reason === null) return
-    setBusyId(wr._id); setError('')
-    try { await walletAdminApi.rejectWithdrawal(wr._id, reason); flash('Retrait rejeté, montant remboursé au portefeuille.'); refresh(); onProcessed?.() }
-    catch (e) { setError(e.message) } finally { setBusyId(null) }
+    setBusyId(wr._id); setError(''); setMsg('')
+    try {
+      await walletAdminApi.refundWithdrawal(wr._id, reason)
+      flash(`Retrait remboursé : ${fmt(wr.amount)} FCFA ont été recrédités au solde de l'utilisateur.`)
+      refresh()
+      onProcessed?.()
+    } catch (e) {
+      setError(e.message || "Erreur lors du remboursement")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // 3. Marquer comme payé manuellement (sans Ikeepay)
+  const handleManualPay = async (wr) => {
+    if (!window.confirm(`Marquer manuellement ce retrait comme PAYÉ (sans appel à Ikeepay) ?\n\nÀ n'utiliser que si vous avez déjà transféré les ${fmt(wr.netAmount)} F par vos propres moyens.`)) return
+    setBusyId(wr._id); setError(''); setMsg('')
+    try {
+      await walletAdminApi.payWithdrawal(wr._id, 'Payé manuellement par admin (hors plateforme)')
+      flash('Retrait marqué comme payé manuellement.')
+      refresh()
+      onProcessed?.()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusyId(null)
+    }
   }
 
   return (
@@ -113,13 +154,38 @@ function PendingWithdrawals({ onProcessed }) {
         <div>
           <h2 className="font-bold text-gray-900 flex items-center gap-2">
             <ArrowUpFromLine size={18} className="text-orange-500" /> Gestion des retraits
-            {list.length > 0 && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700">{list.length} en attente</span>}
+            {list.filter(x => x.status === 'pending').length > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700">
+                {list.filter(x => x.status === 'pending').length} en attente
+              </span>
+            )}
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">Les retraits restent en attente jusqu'à votre confirmation. Le net à payer est déduit des frais de 2%.</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Pour envoyer le virement réel sur le téléphone Orange/MTN du client, cliquez sur <b>⚡ Envoyer Ikeepay</b>.
+          </p>
         </div>
-        <button onClick={refresh} className="btn-secondary text-sm inline-flex items-center gap-1.5">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Actualiser
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Filtres de statut */}
+          <div className="inline-flex bg-gray-100 p-1 rounded-lg text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('pending')}
+              className={cn("px-2.5 py-1 rounded transition", statusFilter === 'pending' ? "bg-white text-orange-700 font-bold shadow-sm" : "text-gray-600 hover:text-gray-900")}
+            >
+              En attente
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={cn("px-2.5 py-1 rounded transition", statusFilter === 'all' ? "bg-white text-gray-900 font-bold shadow-sm" : "text-gray-600 hover:text-gray-900")}
+            >
+              Tous les retraits récents
+            </button>
+          </div>
+          <button onClick={refresh} className="btn-secondary text-sm inline-flex items-center gap-1.5">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Actualiser
+          </button>
+        </div>
       </div>
 
       {/* Configuration du seuil minimum de retrait */}
@@ -164,13 +230,15 @@ function PendingWithdrawals({ onProcessed }) {
         </div>
       </div>
 
-      {msg && <div className="mx-4 mt-3 bg-green-50 border border-green-200 text-green-800 rounded-xl p-2.5 text-sm">{msg}</div>}
-      {error && <div className="mx-4 mt-3 bg-red-50 border border-red-200 text-red-800 rounded-xl p-2.5 text-sm">{error}</div>}
+      {msg && <div className="mx-4 mt-3 bg-green-50 border border-green-200 text-green-800 rounded-xl p-3 text-sm font-medium flex items-center gap-2"><CheckCircle2 size={16} className="text-green-600 shrink-0" />{msg}</div>}
+      {error && <div className="mx-4 mt-3 bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm font-medium flex items-start gap-2"><AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" /><span className="flex-1">{error}</span></div>}
 
       {loading ? (
         <div className="p-8 text-center text-gray-400"><Loader2 size={20} className="animate-spin mx-auto mb-2" /> Chargement…</div>
       ) : list.length === 0 ? (
-        <div className="p-8 text-center text-gray-400 text-sm">Aucun retrait en attente de confirmation.</div>
+        <div className="p-8 text-center text-gray-400 text-sm">
+          {statusFilter === 'pending' ? 'Aucun retrait en attente de confirmation.' : 'Aucun retrait enregistré.'}
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -178,46 +246,91 @@ function PendingWithdrawals({ onProcessed }) {
               <tr className="text-left text-xs uppercase tracking-wide text-gray-400 border-b border-gray-100">
                 <th className="px-4 py-3 font-semibold">Date</th>
                 <th className="px-4 py-3 font-semibold">Utilisateur</th>
-                <th className="px-4 py-3 font-semibold">N° de retrait</th>
+                <th className="px-4 py-3 font-semibold">N° Mobile Money</th>
                 <th className="px-4 py-3 font-semibold">Nom du titulaire</th>
                 <th className="px-4 py-3 font-semibold text-right">Montant</th>
-                <th className="px-4 py-3 font-semibold text-right">Frais (2%)</th>
+                <th className="px-4 py-3 font-semibold text-right">Frais</th>
                 <th className="px-4 py-3 font-semibold text-right">Net à payer</th>
+                <th className="px-4 py-3 font-semibold">Statut & Détails</th>
                 <th className="px-4 py-3 font-semibold text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {list.map((wr) => (
-                <tr key={wr._id} className="border-b border-gray-50 hover:bg-orange-50/40">
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmtDate(wr.createdAt)}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{wr.user?.name || '—'}</div>
-                    <div className="text-xs text-gray-500">{ROLE_LABELS[wr.user?.role] || wr.user?.role || '—'}</div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="font-mono font-semibold text-gray-900 flex items-center gap-1.5"><Phone size={13} className="text-gray-400" /> {wr.momoNumber}</div>
-                    <div className="text-xs text-gray-500 uppercase">{OPERATOR_LABELS[wr.momoOperator] || wr.momoOperator || '—'} {wr.country ? `(${wr.country})` : ''}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1.5 font-medium text-gray-800"><UserIcon size={13} className="text-gray-400" /> {wr.accountName || '—'}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(wr.amount)} F</td>
-                  <td className="px-4 py-3 text-right text-red-500 whitespace-nowrap">− {fmt(wr.fee)} F</td>
-                  <td className="px-4 py-3 text-right font-bold text-green-700 whitespace-nowrap">{fmt(wr.netAmount)} {wr.currency || 'XAF'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => confirm(wr)} disabled={busyId === wr._id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
-                        {busyId === wr._id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Confirmer
-                      </button>
-                      <button onClick={() => reject(wr)} disabled={busyId === wr._id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-50">
-                        <XCircle size={13} /> Rejeter
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {list.map((wr) => {
+                const canPayoutOrRefund = wr.status === 'pending' || (wr.status === 'paid' && !wr.providerPayoutId)
+                return (
+                  <tr key={wr._id} className="border-b border-gray-50 hover:bg-orange-50/40">
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">{fmtDate(wr.createdAt)}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{wr.user?.name || '—'}</div>
+                      <div className="text-xs text-gray-500">{ROLE_LABELS[wr.user?.role] || wr.user?.role || '—'}</div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="font-mono font-semibold text-gray-900 flex items-center gap-1.5"><Phone size={13} className="text-gray-400" /> {wr.momoNumber}</div>
+                      <div className="text-xs text-gray-500 uppercase">{OPERATOR_LABELS[wr.momoOperator] || wr.momoOperator || '—'} {wr.country ? `(${wr.country})` : ''}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1.5 font-medium text-gray-800"><UserIcon size={13} className="text-gray-400" /> {wr.accountName || '—'}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(wr.amount)} F</td>
+                    <td className="px-4 py-3 text-right text-red-500 whitespace-nowrap">− {fmt(wr.fee)} F</td>
+                    <td className="px-4 py-3 text-right font-bold text-green-700 whitespace-nowrap">{fmt(wr.netAmount)} {wr.currency || 'XAF'}</td>
+                    <td className="px-4 py-3">
+                      {wr.status === 'pending' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">En attente</span>}
+                      {wr.status === 'paid' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800">Payé</span>}
+                      {wr.status === 'rejected' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-800">Rejeté</span>}
+                      {wr.providerPayoutId && (
+                        <div className="text-[10px] text-green-700 font-mono mt-0.5">Ikeepay: {wr.providerPayoutId}</div>
+                      )}
+                      {wr.adminNote && (
+                        <div className={cn("text-[11px] mt-1 max-w-[220px] leading-tight break-words", wr.adminNote.toLowerCase().includes('échec') || wr.adminNote.toLowerCase().includes('erreur') ? "text-red-700 font-medium bg-red-50 p-1 rounded border border-red-200" : "text-gray-500")}>
+                          {wr.adminNote}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {canPayoutOrRefund ? (
+                          <>
+                            <button
+                              onClick={() => handlePayoutIkeepay(wr)}
+                              disabled={busyId === wr._id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
+                              title="Déclencher le virement réel vers le compte Mobile Money du client via Ikeepay"
+                            >
+                              {busyId === wr._id ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} className="fill-current" />} ⚡ Envoyer Ikeepay
+                            </button>
+                            <button
+                              onClick={() => handleRefund(wr)}
+                              disabled={busyId === wr._id}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 disabled:opacity-50"
+                              title="Annuler ce retrait et recréditer le portefeuille de l'utilisateur"
+                            >
+                              <RotateCcw size={12} /> Rembourser
+                            </button>
+                            <button
+                              onClick={() => handleManualPay(wr)}
+                              disabled={busyId === wr._id}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 disabled:opacity-50"
+                              title="Marquer comme payé manuellement (sans passer par Ikeepay)"
+                            >
+                              <Check size={12} /> Manuel
+                            </button>
+                          </>
+                        ) : wr.status === 'paid' && wr.providerPayoutId ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-green-700 font-semibold bg-green-50 px-2.5 py-1 rounded-lg border border-green-200">
+                            <CheckCircle2 size={13} /> Virement Ikeepay terminé
+                          </span>
+                        ) : wr.status === 'rejected' ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium bg-red-50 px-2 py-1 rounded border border-red-200">
+                            <XCircle size={13} /> Rejeté & Remboursé
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

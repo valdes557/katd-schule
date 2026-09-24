@@ -141,18 +141,26 @@ function buildMomoBody({ amount, phone, operator, reference, callbackUrl, countr
   }
   // Format attendu par Ikeepay (doc) : phoneNumber + operator (nom du fournisseur), external_reference.
   const body = {
-    amount,
+    amount: Math.round(Number(amount)),
     currency: resolvedCurrency,
     country: resolvedCountry,
     phoneNumber: natPhone,
+    phone: natPhone,
     operator: mapProvider(operator),
     external_reference: reference,
+    reference: reference,
   }
   if (customerEmail) body.customer_email = customerEmail
   if (otp) body.otp = otp
-  if (accountName) body.account_name = accountName
+  if (accountName) {
+    body.account_name = accountName
+    body.accountName = accountName
+  }
   // callback_url optionnel : uniquement s'il est absolu (http/https).
-  if (callbackUrl && /^https?:\/\//i.test(callbackUrl)) body.callback_url = callbackUrl
+  if (callbackUrl && /^https?:\/\//i.test(callbackUrl)) {
+    body.callback_url = callbackUrl
+    body.notify_url = callbackUrl
+  }
   return body
 }
 

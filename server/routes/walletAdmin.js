@@ -22,18 +22,92 @@ function adminOnly(req, res, next){ if(!isAdmin(req.user)) return res.status(403
 // il reçoit uniquement le code de déverrouillage (voir route /ikeepay/request-code).
 function superAdminOnly(req, res, next){ if(req.user.role !== 'super_admin') return res.status(403).json({ message: 'Action réservée au super-administrateur' }); next() }
 
-// ───────────────────── RETRAITS (file 24h) ─────────────────────
-// GET /api/admin/withdrawals?status=pending
+// ───────────────────── RETRAITS (file 24h & Ikeepay Payout) ─────────────────────
+// GET /api/admin/withdrawals?status=pending|paid|rejected|all
 router.get('/withdrawals', protect, adminOnly, async (req, res) => {
   try {
     const filter = {}
-    if (req.query.status) filter.status = req.query.status
-    const list = await WithdrawalRequest.find(filter).sort({ createdAt: 1 }).populate('user', 'name email role').limit(200)
+    if (req.query.status && req.query.status !== 'all') filter.status = req.query.status
+    const list = await WithdrawalRequest.find(filter).sort({ createdAt: -1 }).populate('user', 'name email role').limit(200)
     res.json({ success: true, withdrawals: list })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// PUT /api/admin/withdrawals/:id/pay — marquer comme payé (settle locked)
+// POST /api/admin/withdrawals/:id/payout — déclenche le virement réel via l'API Ikeepay
+router.post('/withdrawals/:id/payout', protect, adminOnly, async (req, res) => {
+  try {
+    const wr = await WithdrawalRequest.findById(req.params.id)
+    if (!wr) return res.status(404).json({ message: 'Demande introuvable' })
+    if (wr.status === 'paid' && wr.providerPayoutId) {
+      return res.status(400).json({ message: 'Ce retrait a déjà été envoyé via Ikeepay (ID: ' + wr.providerPayoutId + ').' })
+    }
+    if (wr.status === 'rejected') return res.status(400).json({ message: 'Cette demande a été rejetée.' })
+
+    const ikeepay = require('../services/ikeepayService')
+    const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
+    const providerRef = wr.providerRef || ('wd_' + Date.now())
+
+    // Appelle l'API Ikeepay pour décaisser vers Orange/MTN
+    const payout = await ikeepay.createPayout({
+      amount: wr.netAmount,
+      phone: wr.momoNumber,
+      operator: wr.momoOperator,
+      accountName: wr.accountName,
+      country: wr.country || 'CM',
+      currency: wr.currency || 'XAF',
+      reference: providerRef,
+      callbackUrl: base + '/api/payments/webhook',
+    })
+
+    if (payout.transaction_id || payout.id) {
+      wr.providerPayoutId = payout.transaction_id || payout.id
+      wr.status = 'paid'
+      wr.processedBy = req.user._id
+      wr.processedAt = new Date()
+      wr.adminNote = 'Virement Ikeepay envoyé avec succès (ID: ' + (payout.transaction_id || payout.id) + ')'
+      await wr.save()
+
+      // Si le montant était encore verrouillé, on le débloque définitivement
+      try {
+        await wallet.settleLocked(wr.user, wr.amount)
+      } catch (_) {}
+
+      try {
+        const u = await User.findById(wr.user)
+        if (u?.email) {
+          await sendEmail({
+            to: u.email,
+            subject: 'Retrait envoyé — KATD-SCHÜLE',
+            html: '<p>Votre retrait de <b>' + wr.amount.toLocaleString('fr-FR') + ' FCFA</b> a été envoyé avec succès sur votre compte ' + wr.momoNumber + ' via Ikeepay.</p>',
+          })
+        }
+      } catch (e) {}
+
+      return res.json({
+        success: true,
+        message: 'Virement Ikeepay envoyé avec succès ! Transaction ID : ' + (payout.transaction_id || payout.id),
+        payout,
+      })
+    } else {
+      throw new Error('Réponse inattendue d\'Ikeepay (aucun identifiant de transaction renvoyé)')
+    }
+  } catch (err) {
+    console.error('[Admin Payout Error]:', err.message, err.data || '')
+    try {
+      const wr = await WithdrawalRequest.findById(req.params.id)
+      if (wr) {
+        wr.adminNote = "Échec virement Ikeepay : " + err.message
+        await wr.save()
+      }
+    } catch (_) {}
+    return res.status(err.status || 400).json({
+      message: "Ikeepay a retourné une erreur : " + err.message,
+      data: err.data,
+    })
+  }
+})
+
+// PUT /api/admin/withdrawals/:id/pay — marquer comme payé manuellement (sans appel Ikeepay)
 router.put('/withdrawals/:id/pay', protect, adminOnly, async (req, res) => {
   try {
     const wr = await WithdrawalRequest.findById(req.params.id)
@@ -42,36 +116,60 @@ router.put('/withdrawals/:id/pay', protect, adminOnly, async (req, res) => {
     if (wr.status === 'rejected') return res.status(400).json({ message: 'Demande déjà rejetée' })
     await wallet.settleLocked(wr.user, wr.amount)
     wr.status = 'paid'; wr.processedBy = req.user._id; wr.processedAt = new Date()
-    wr.adminNote = req.body.note || ''
+    wr.adminNote = req.body.note || 'Payé manuellement par admin (sans appel Ikeepay)'
     await wr.save()
     try { const u = await User.findById(wr.user); if(u?.email) await sendEmail({ to: u.email,
       subject: 'Retrait effectué — KATD-SCHÜLE',
-      html: '<p>Votre retrait de <b>' + wr.amount.toLocaleString('fr-FR') + ' FCFA</b> a été envoyé sur ' + wr.momoNumber + '.</p>' }) } catch(e){}
-    res.json({ success: true, message: 'Retrait marqué comme payé' })
+      html: '<p>Votre retrait de <b>' + wr.amount.toLocaleString('fr-FR') + ' FCFA</b> a été validé manuellement et envoyé sur ' + wr.momoNumber + '.</p>' }) } catch(e){}
+    res.json({ success: true, message: 'Retrait marqué comme payé manuellement' })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// PUT /api/admin/withdrawals/:id/reject — rejeter (rembourse le portefeuille)
-router.put('/withdrawals/:id/reject', protect, adminOnly, async (req, res) => {
+// POST /api/admin/withdrawals/:id/refund — annuler et rembourser le portefeuille de l'utilisateur
+router.post('/withdrawals/:id/refund', protect, adminOnly, async (req, res) => {
   try {
     const wr = await WithdrawalRequest.findById(req.params.id)
     if (!wr) return res.status(404).json({ message: 'Demande introuvable' })
-    if (wr.status === 'paid') return res.status(400).json({ message: 'Demande déjà payée' })
-    if (wr.status === 'rejected') return res.json({ success: true, message: 'Déjà rejeté' })
-    await wallet.unlock(wr.user, wr.amount)
-    const WalletTransaction = require('../models/WalletTransaction')
-    const w = await wallet.getOrCreateWallet(wr.user)
-    await WalletTransaction.create({ wallet: w._id, owner: wr.user, direction: 'credit',
-      amount: wr.amount, currency: wr.currency, type: 'withdrawal_refund', balanceAfter: w.balance,
-      withdrawal: wr._id, description: 'Remboursement retrait rejeté' })
-    wr.status = 'rejected'; wr.processedBy = req.user._id; wr.processedAt = new Date()
-    wr.rejectionReason = req.body.reason || ''
+    if (wr.status === 'rejected') return res.json({ success: true, message: 'Déjà rejeté et remboursé' })
+
+    const reason = req.body.reason || 'Remboursement par l\'administrateur'
+    if (wr.status === 'pending') {
+      await wallet.unlock(wr.user, wr.amount)
+    } else {
+      // Si déjà marqué payé par erreur sans virement réel, on recrédite le solde
+      await wallet.credit(wr.user, {
+        amount: wr.amount,
+        type: 'withdrawal_refund',
+        description: 'Remboursement retrait non envoyé — ' + reason,
+      })
+    }
+
+    wr.status = 'rejected'
+    wr.processedBy = req.user._id
+    wr.processedAt = new Date()
+    wr.rejectionReason = reason
+    wr.adminNote = 'Remboursé sur le portefeuille : ' + reason
     await wr.save()
-    try { const u = await User.findById(wr.user); if(u?.email) await sendEmail({ to: u.email,
-      subject: 'Retrait rejeté — KATD-SCHÜLE',
-      html: '<p>Votre demande de retrait de <b>' + wr.amount.toLocaleString('fr-FR') + ' FCFA</b> a été rejetée et le montant recrédité sur votre portefeuille.' + (wr.rejectionReason ? ' Motif : ' + wr.rejectionReason : '') + '</p>' }) } catch(e){}
-    res.json({ success: true, message: 'Demande rejetée et montant remboursé' })
+
+    try {
+      const u = await User.findById(wr.user)
+      if (u?.email) {
+        await sendEmail({
+          to: u.email,
+          subject: 'Retrait remboursé — KATD-SCHÜLE',
+          html: '<p>Votre demande de retrait de <b>' + wr.amount.toLocaleString('fr-FR') + ' FCFA</b> a été annulée et le montant recrédité sur votre portefeuille.</p><p>Motif : ' + reason + '</p>',
+        })
+      }
+    } catch (e) {}
+
+    res.json({ success: true, message: 'Demande annulée et montant de ' + wr.amount.toLocaleString('fr-FR') + ' FCFA remboursé sur le portefeuille.' })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/admin/withdrawals/:id/reject — alias de rejet
+router.put('/withdrawals/:id/reject', protect, adminOnly, async (req, res) => {
+  req.body = { reason: req.body.reason || 'Rejeté par administrateur' }
+  return router.handle({ ...req, method: 'POST', url: `/${req.params.id}/refund` }, res)
 })
 
 // GET /api/admin/withdrawal-config — consultation du seuil minimum de retrait

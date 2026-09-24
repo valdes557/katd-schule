@@ -1071,6 +1071,8 @@ export const walletAdminApi = {
   getWithdrawalConfig: () => api.get('/admin/withdrawal-config'),
   updateWithdrawalConfig: (minWithdrawal) => api.put('/admin/withdrawal-config', { minWithdrawal }),
   payWithdrawal: (id, note) => api.put('/admin/withdrawals/' + id + '/pay', { note }),
+  payoutWithdrawal: (id) => api.post('/admin/withdrawals/' + id + '/payout'),
+  refundWithdrawal: (id, reason) => api.post('/admin/withdrawals/' + id + '/refund', { reason }),
   rejectWithdrawal: (id, reason) => api.put('/admin/withdrawals/' + id + '/reject', { reason }),
   // Paiements Ikeepay (collectes) — consultation admin
   payments: (params = {}) => {

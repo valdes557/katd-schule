@@ -262,8 +262,8 @@ router.post('/withdraw', protect, async (req, res) => {
     const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
     if (w.balance < amt) return res.status(400).json({ message: 'Solde insuffisant' })
 
-    // Frais 2% déduits du montant : l'utilisateur reçoit (amount − fee), l'admin encaisse fee.
-    const fee = wallet.computeWithdrawalFee(amt)
+    // Frais 2% déduits du montant (gratuit si <= 100 FCFA pour garantir le minimum opérateur de 100 FCFA).
+    const fee = amt <= 100 ? 0 : wallet.computeWithdrawalFee(amt)
     const netAmount = amt - fee
     const holderName = String(accountName).trim()
     const providerRef = genRef('wd') // référence de payout (préfixe wd_ = reconnu par le webhook)
@@ -298,7 +298,7 @@ router.post('/withdraw', protect, async (req, res) => {
     } catch (e) {
       console.warn('[Withdrawal] Payout Ikeepay direct non abouti (' + e.message + ') -> bascule en file manuelle admin (pending)')
       wr.status = 'pending'
-      wr.adminNote = 'Tentative auto Ikeepay non aboutie (' + e.message + ") — En attente d'envoi par Ikeepay"
+      wr.adminNote = 'Échec auto Ikeepay : ' + e.message
       await wr.save()
     }
 

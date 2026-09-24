@@ -277,6 +277,9 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
       setModalError(e.message)
       onError(e.message)
       setStatus('')
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        alert("Erreur de retrait : " + e.message)
+      }
     } finally {
       setBusy(false)
     }
@@ -289,11 +292,21 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && setModal(null)}>
-      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-gray-900">{titles[type]}</h3>
           <button onClick={() => !busy && setModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
+
+        {modalError && (
+          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 shadow-sm">
+            <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-bold block">Attention :</span>
+              <span className="font-medium">{modalError}</span>
+            </div>
+          </div>
+        )}
 
         {(type === 'deposit' || type === 'withdraw' || type === 'transfer' || type === 'transferUser') && (
           <div>
