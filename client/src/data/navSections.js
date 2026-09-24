@@ -255,6 +255,7 @@ export const navSections = [
       { label: 'Gestion des actionnaires', icon: Landmark, path: '/dashboard/actionnaires-admin' },
       { label: 'Gestion des boosts', icon: Rocket, path: '/dashboard/boosts-admin' },
       { label: 'Gestion des transactions', icon: ArrowLeftRight, path: '/dashboard/transactions-admin' },
+      { label: 'Paiements Ikeepay', icon: CreditCard, path: '/dashboard/paiements-admin' },
       { label: 'Frais de transaction', icon: Coins, path: '/dashboard/frais-transaction-admin' },
       { label: 'Bannières', icon: ImageIcon, path: '/dashboard/bannieres' },
       { label: 'Assistant IA', icon: Bot, path: '/dashboard/ia-admin' },

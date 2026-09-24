@@ -175,10 +175,25 @@ export default function AdminTransactionsPage() {
   const stats = data.stats || { totalCount: 0, totalIn: 0, totalOut: 0, net: 0, byGroup: { staff: {}, users: {} } }
   const loading = query.loading
 
+  const [approvingId, setApprovingId] = useState(null)
+
   const refresh = () => { cache.invalidate('/admin/transactions'); query.refetch() }
   const onSearch = (e) => { e.preventDefault(); setPage(1); setSearch(q.trim()) }
   const resetFilters = () => { setCategory(''); setStatus(''); setGroup(''); setFrom(''); setTo(''); setQ(''); setSearch(''); setPage(1) }
   const changeFilter = (setter) => (e) => { setPage(1); setter(e.target.value) }
+
+  const handleApprove = async (id, amount) => {
+    if (!window.confirm(`Confirmer et valider manuellement ce paiement de ${fmt(amount)} F ? Le portefeuille sera immédiatement crédité.`)) return
+    setApprovingId(id)
+    try {
+      await walletAdminApi.approvePayment(id)
+      refresh()
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la validation')
+    } finally {
+      setApprovingId(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -283,6 +298,7 @@ export default function AdminTransactionsPage() {
                     <th className="px-4 py-3 font-semibold">Profil</th>
                     <th className="px-4 py-3 font-semibold text-right">Montant</th>
                     <th className="px-4 py-3 font-semibold">Statut</th>
+                    <th className="px-4 py-3 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -290,6 +306,8 @@ export default function AdminTransactionsPage() {
                     const st = STATUS_MAP[t.status] || STATUS_MAP.completed
                     const StIcon = st.icon
                     const isStaff = t.actor?.group === 'staff'
+                    const canValidate = t.status === 'pending' && (t.source === 'ikeepay' || t.canApprove || String(t._id).startsWith('p_'))
+                    const cleanTargetId = t.rawId || String(t._id).replace(/^p_/, '')
                     return (
                       <tr key={t._id} className="border-b border-gray-50 hover:bg-gray-50/60">
                         <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmtDate(t.date)}</td>
@@ -330,6 +348,19 @@ export default function AdminTransactionsPage() {
                           <span className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border', st.bg, st.color, st.border)}>
                             <StIcon size={13} /> {st.label}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          {canValidate && (
+                            <button
+                              onClick={() => handleApprove(cleanTargetId, t.amount)}
+                              disabled={approvingId === cleanTargetId}
+                              className="text-xs px-2.5 py-1 inline-flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm transition disabled:opacity-50"
+                              title="Valider manuellement si vous confirmez que les fonds sont sur votre compte Ikeepay"
+                            >
+                              {approvingId === cleanTargetId ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                              Valider
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )

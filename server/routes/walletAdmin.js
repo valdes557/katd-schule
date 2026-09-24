@@ -101,7 +101,8 @@ router.get('/payments', protect, adminOnly, async (req, res) => {
 // POST /api/admin/payments/:id/approve — validation manuelle d'un paiement (ex: si encaissé sur Ikeepay mais webhook en attente)
 router.post('/payments/:id/approve', protect, adminOnly, async (req, res) => {
   try {
-    const intent = await PaymentIntent.findById(req.params.id)
+    const cleanId = String(req.params.id || '').replace(/^p_/, '')
+    const intent = await PaymentIntent.findById(cleanId)
     if (!intent) return res.status(404).json({ message: 'Paiement introuvable' })
     if (intent.fulfilled) return res.status(400).json({ message: 'Ce paiement a déjà été validé et traité.' })
     const { applyOutcome } = require('./payments')
@@ -202,10 +203,12 @@ function normalizeIntent(pi) {
   const by = pi.initiatedBy || {}
   const role = by.role || 'directeur'
   return {
-    _id: 'p_' + pi._id, source: 'ikeepay', date: pi.createdAt,
+    _id: 'p_' + pi._id, rawId: String(pi._id), source: 'ikeepay', date: pi.createdAt,
     category: pi.purpose, categoryLabel: CATEGORY_LABELS[pi.purpose] || pi.purpose,
     direction: 'credit', amount: pi.amount, currency: pi.currency || 'XOF',
     status: pi.status,
+    canApprove: pi.status === 'pending',
+    reference: pi.reference || '',
     actor: {
       id: by._id, name: pi.payerName || by.name || (pi.meta && pi.meta.directorName) || '—',
       role, email: pi.payerEmail || by.email || '',
