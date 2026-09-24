@@ -25,15 +25,14 @@ export default function IkeepayCheckout({ publicKey, amount, currency = 'XAF', o
         act === 'approved' ||
         act === 'completed' ||
         act === 'paid' ||
-        act.includes('success')
+        act.includes('ikeepay-success')
       ) {
         onSuccess?.()
       } else if (
         act === 'ikeepay-close' ||
-        act === 'close' ||
+        act === 'ikeepay-cancel' ||
         act === 'cancel' ||
-        act === 'cancelled' ||
-        act.includes('close')
+        act === 'cancelled'
       ) {
         onClose?.()
       }
@@ -42,9 +41,9 @@ export default function IkeepayCheckout({ publicKey, amount, currency = 'XAF', o
     return () => window.removeEventListener('message', handler)
   }, [onSuccess, onClose])
 
-  const webhookUrl = (typeof window !== 'undefined' && window.location?.origin)
-    ? `${window.location.origin}/api/webhook`
-    : 'https://katdschool.com/api/webhook'
+  const origin = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : 'https://katdschool.com'
+  const webhookUrl = `${origin}/api/webhook`
+  const returnUrl = redirectUrl || `${origin}/api/payments/return?reference=${encodeURIComponent(orderId)}`
 
   const params = new URLSearchParams({
     pk: publicKey,
@@ -54,8 +53,9 @@ export default function IkeepayCheckout({ publicKey, amount, currency = 'XAF', o
     callback_url: webhookUrl,
     webhook_url: webhookUrl,
     notify_url: webhookUrl,
+    redirect_url: returnUrl,
+    return_url: returnUrl,
   })
-  if (redirectUrl) params.set('redirect_url', redirectUrl)
   const src = `https://ikeepay.com/checkout/v1/inline?${params.toString()}`
 
   return (

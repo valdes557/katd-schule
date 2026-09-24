@@ -105,23 +105,48 @@ router.post('/transfer-user', protect, async (req, res) => {
 // POST /api/wallet/deposit/initiate — dépôt via Mobile Money (collecte Ikeepay)
 router.post('/deposit/initiate', protect, async (req, res) => {
   try {
-    const { amount, phone, operator } = req.body
+    const { amount, phone, operator, country = 'CM' } = req.body
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
     const inline = !(phone && operator)
     const reference = genRef('dep')
     const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+
     const intent = await PaymentIntent.create({
-      reference, purpose: 'deposit', amount: amt, currency: 'XAF',
+      reference, purpose: 'deposit', amount: amt, currency: targetCurrency,
       payerPhone: phone || '', payerOperator: operator || '', initiatedBy: req.user._id,
       school: req.user.school?._id || null, mode,
     })
-    if (inline) return res.json(await ikeepay.inlineResponse(reference, amt))
+    if (inline) return res.json(await ikeepay.inlineResponse(reference, amt, targetCurrency))
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
-    const result = await ikeepay.createCollection({ amount: amt, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
-    if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
+    const result = await ikeepay.createCollection({
+      amount: amt,
+      phone,
+      operator,
+      reference,
+      country: normCountry,
+      currency: targetCurrency,
+      customerEmail: req.user.email || '',
+      callbackUrl: base + '/api/payments/webhook',
+    })
+    if (result.transaction_id || result.id) {
+      intent.providerTransactionId = result.transaction_id || result.id
+      await intent.save()
+    }
     const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
-    res.json({ success: true, reference, amount: amt, mode, payment_link: paymentLink, message: 'Validez le dépôt sur votre téléphone Mobile Money.' })
+    res.json({
+      success: true,
+      reference,
+      amount: amt,
+      currency: targetCurrency,
+      mode,
+      payment_link: paymentLink,
+      message: paymentLink
+        ? 'Redirection vers la page de paiement sécurisée...'
+        : 'Demande de débit envoyée sur votre téléphone. Validez avec votre code secret Mobile Money.',
+    })
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
 

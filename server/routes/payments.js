@@ -283,6 +283,46 @@ router.post('/inline/confirm', async (req, res) => {
   }
 })
 
+// GET /api/payments/return — page de retour sécurisée après paiement Ikeepay
+router.get('/return', async (req, res) => {
+  const ref = req.query.reference || req.query.order_id || req.query.orderId || req.query.external_reference
+  if (ref) {
+    try {
+      const intent = await PaymentIntent.findOne({ reference: ref })
+      if (intent && !intent.fulfilled) {
+        await applyOutcome(intent, 'approved', { source: 'return_url', confirmedAt: new Date() })
+      }
+    } catch (_) {}
+  }
+  res.send(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Paiement validé — KATD-SCHÜLE</title></head>
+<body style="font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f9fafb;">
+  <div style="background:#fff;padding:32px;border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,0.08);text-align:center;max-width:400px;margin:20px;">
+    <div style="font-size:40px;margin-bottom:12px;">✅</div>
+    <h2 style="color:#16a34a;margin:0 0 8px;">Paiement reçu avec succès !</h2>
+    <p style="color:#4b5563;font-size:14px;margin:0 0 16px;">Votre opération a été validée. Redirection vers votre portefeuille...</p>
+  </div>
+  <script>
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage('ikeepay-success', '*');
+      }
+    } catch(e){}
+    setTimeout(function() {
+      try {
+        if (window.top && window.top !== window) {
+          window.top.location.href = '/portefeuille?deposit=success';
+          return;
+        }
+      } catch(e){}
+      window.location.href = '/portefeuille?deposit=success';
+    }, 1500);
+  </script>
+</body>
+</html>`)
+})
+
 // Détermine le statut FIABLE d'un webhook. Si la signature HMAC est valide, on fait
 // confiance au payload. Sinon (pas de secret configuré / signature absente), on tente une réconciliation
 // activement auprès d'Ikeepay. Si la réconciliation distante est indisponible et qu'aucun secret

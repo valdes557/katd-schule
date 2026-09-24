@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, RefreshCw, X, Loader2, Users, Copy, Check, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { walletApi } from '../lib/api'
+import { walletApi, paymentsApi } from '../lib/api'
 import { useInlineCheckout } from '../components/payments/useInlineCheckout'
+import { cn } from '../lib/utils'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 const COUNTRIES = [
@@ -185,6 +186,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const { user } = useAuth()
   const isMerchant = user?.isMerchant === true
   const inlineCheckout = useInlineCheckout()
+  const [depositMethod, setDepositMethod] = useState('direct') // 'direct' (API Payin) | 'inline' (fenêtre Ikeepay)
   const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '', country: 'CM' })
   const [status, setStatus] = useState('')
   const [modalError, setModalError] = useState('')
@@ -230,8 +232,79 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         onError('Montant minimum : 100 FCFA')
         return
       }
+
+      // Mode 1 : Débit direct via l'API Payin Ikeepay (recharge le solde de décaissement)
+      if (depositMethod === 'direct') {
+        const rawPhone = String(f.momoNumber || '').trim().replace(/[^0-9]/g, '')
+        if (!rawPhone) {
+          setModalError('Veuillez saisir votre numéro Mobile Money pour le débit')
+          return
+        }
+        setBusy(true)
+        setStatus('Envoi de la demande de débit à l\'API Payin Ikeepay…')
+        try {
+          const res = await walletApi.initiateDeposit({
+            amount: amt,
+            phone: rawPhone,
+            operator: f.momoOperator,
+            country: f.country || 'CM',
+          })
+
+          if (res.payment_link) {
+            setStatus('Redirection vers la page de paiement sécurisée…')
+            window.location.href = res.payment_link
+            return
+          }
+
+          setStatus(`Demande de ${fmt(amt)} FCFA envoyée au +${currentCountry.dial} ${rawPhone} ! Confirmez le débit avec votre code PIN Mobile Money sur votre téléphone…`)
+
+          // Polling automatique pour détecter la validation du débit
+          let confirmed = false
+          for (let i = 0; i < 40; i++) {
+            await new Promise(r => setTimeout(r, 3000))
+            try {
+              const st = await paymentsApi.status(res.reference)
+              if (st && (st.status === 'approved' || st.fulfilled)) {
+                confirmed = true
+                break
+              }
+              if (st && st.status === 'rejected') {
+                throw new Error(st.reason || 'Paiement refusé ou annulé sur votre téléphone')
+              }
+            } catch (err) {
+              if (/refus|annul|rejet/i.test(err.message)) throw err
+            }
+          }
+
+          if (confirmed) {
+            onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`)
+          } else {
+            // Rattrapage par confirmation directe
+            try {
+              const fb = await paymentsApi.confirmInline(res.reference)
+              if (fb && (fb.status === 'approved' || fb.fulfilled)) {
+                onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`)
+                return
+              }
+            } catch (_) {}
+            throw new Error("Paiement en cours de confirmation. Si vous avez déjà validé le code secret sur votre téléphone, votre compte sera crédité sous peu.")
+          }
+        } catch (e) {
+          setModalError(e.message || 'Erreur lors du dépôt')
+          onError(e.message || 'Erreur lors du dépôt')
+          setStatus('')
+          if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            alert("Erreur dépôt : " + (e.message || 'Échec'))
+          }
+        } finally {
+          setBusy(false)
+        }
+        return
+      }
+
+      // Mode 2 : Fenêtre Inline
       inlineCheckout.start(
-        () => walletApi.initiateDeposit({ amount: amt }),
+        () => walletApi.initiateDeposit({ amount: amt, country: f.country || 'CM' }),
         async () => { onDone('Dépôt effectué avec succès sur votre portefeuille') }
       )
       return
@@ -339,16 +412,81 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
         </>)}
 
-        {type === 'deposit' && (
-          <div className="text-xs text-blue-900 bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
-            <p className="font-semibold flex items-center gap-1.5">
-              <span>💳</span> Paiement sécurisé Mobile Money
-            </p>
-            <p className="text-gray-600 leading-relaxed">
-              Dans la fenêtre Ikeepay, assurez-vous de bien sélectionner l’indicatif de votre pays (ex : 🇨🇲 <b>+237</b>, 🇨🇮 <b>+225</b>, 🇧🇯 <b>+229</b>) ou tapez votre numéro complet avec l'indicatif pour éviter toute erreur de validation.
-            </p>
+        {type === 'deposit' && (<>
+          {/* Choix de la méthode : Direct (API Payin) vs Fenêtre sécurisée */}
+          <div className="flex bg-gray-100 p-1 rounded-xl gap-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setDepositMethod('direct')}
+              className={cn("flex-1 py-1.5 px-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5", depositMethod === 'direct' ? "bg-white text-emerald-700 shadow-sm" : "text-gray-600 hover:text-gray-900")}
+            >
+              <span>⚡</span> Débit direct (API Payin)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDepositMethod('inline')}
+              className={cn("flex-1 py-1.5 px-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5", depositMethod === 'inline' ? "bg-white text-blue-700 shadow-sm" : "text-gray-600 hover:text-gray-900")}
+            >
+              <span>💳</span> Fenêtre Ikeepay
+            </button>
           </div>
-        )}
+
+          {depositMethod === 'direct' ? (<>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Pays</label>
+              <select
+                value={f.country || 'CM'}
+                onChange={(e) => {
+                  const c = e.target.value
+                  const cObj = COUNTRIES.find(x => x.code === c) || COUNTRIES[0]
+                  setModalError('')
+                  setF({
+                    ...f,
+                    country: c,
+                    momoOperator: cObj.operators[0]?.value || 'mtn',
+                  })
+                }}
+                className="input w-full font-medium"
+              >
+                {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de débit ({currentCountry.currency})</label>
+              <select value={f.momoOperator} onChange={up('momoOperator')} className="input w-full">
+                {currentOperators.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money à débiter</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs text-gray-400 font-mono font-medium">+{currentCountry.dial}</span>
+                <input
+                  type="tel"
+                  value={f.momoNumber}
+                  onChange={up('momoNumber')}
+                  className="input w-full pl-14"
+                  placeholder={currentCountry.placeholder}
+                />
+              </div>
+            </div>
+            <div className="text-xs text-emerald-800 bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex items-start gap-2">
+              <span className="text-base">📲</span>
+              <span className="leading-relaxed">
+                <b>Recharge via l'API Payin Ikeepay :</b> En confirmant, une invite de débit apparaîtra directement sur votre téléphone pour valider les {f.amount ? fmt(f.amount) : '...'} FCFA avec votre code secret Mobile Money.
+              </span>
+            </div>
+          </>) : (
+            <div className="text-xs text-blue-900 bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-1">
+              <p className="font-semibold flex items-center gap-1.5">
+                <span>💳</span> Paiement sécurisé via portail Ikeepay
+              </p>
+              <p className="text-gray-600 leading-relaxed">
+                Une fenêtre Ikeepay s'ouvrira pour choisir votre méthode de paiement (carte bancaire ou Mobile Money multi-pays).
+              </p>
+            </div>
+          )}
+        </>)}
 
         {type === 'withdraw' && (<>
           <div>
