@@ -231,10 +231,11 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
       return
     }
 
-    // ── Paiement Mobile Money (inline Ikeepay) ──
+    // ── Paiement Mobile Money (Direct Charge H2H) ──
     inline.start(
-      () => shareholdersApi.subscribe({ planKey: selected.key, zone: f.zone.trim() }),
-      async () => { onDone() }
+      (momo = {}) => shareholdersApi.subscribe({ planKey: selected.key, zone: f.zone.trim(), ...momo }),
+      async () => { onDone() },
+      { amount: selected.price, title: `Souscription actionnaire — ${selected.label || ''}` }
     )
   }
 

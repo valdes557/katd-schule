@@ -107,19 +107,21 @@ export default function BoostModal({ post, onClose, onActivated }) {
     setLoading(false)
   }
 
-  // Paiement Mobile Money via checkout Inline Ikeepay (iframe pk_live).
+  // Paiement Mobile Money Direct Charge (API H2H Server-to-Server).
   const payMomo = async () => {
     setError('')
     inlineCheckout.setError('')
     inlineCheckout.start(
-      () => boostApi.create({
+      (momo = {}) => boostApi.create({
         postId: post._id, durationKey, objective, audience: buildAudience(),
         provider: 'ikeepay',
+        ...momo,
       }),
       async () => {
         setStep('done')
         onActivated?.(post._id, null)
-      }
+      },
+      { amount: price, currency, title: 'Booster la publication' }
     )
   }
 

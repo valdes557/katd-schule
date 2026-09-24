@@ -108,7 +108,10 @@ router.post('/deposit/initiate', protect, async (req, res) => {
     const { amount, phone, operator, country = 'CM', otp } = req.body
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
-    const inline = !(phone && operator)
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur Mobile Money requis pour le débit direct.' })
+    }
     const reference = genRef('dep')
     const { mode } = await ikeepay.resolveConfig()
     const normCountry = String(country || 'CM').trim().toUpperCase()
@@ -116,14 +119,13 @@ router.post('/deposit/initiate', protect, async (req, res) => {
 
     const intent = await PaymentIntent.create({
       reference, purpose: 'deposit', amount: amt, currency: targetCurrency,
-      payerPhone: phone || '', payerOperator: operator || '', initiatedBy: req.user._id,
+      payerPhone: rawPhone, payerOperator: operator, initiatedBy: req.user._id,
       school: req.user.school?._id || null, mode,
     })
-    if (inline) return res.json(await ikeepay.inlineResponse(reference, amt, targetCurrency))
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
     const result = await ikeepay.createCollection({
       amount: amt,
-      phone,
+      phone: rawPhone,
       operator,
       otp,
       reference,

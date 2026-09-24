@@ -48,32 +48,35 @@ async function chargeWallet({ user, campaign, pin }) {
   return { confirmed: true, paymentRef: String(tx._id) }
 }
 
-// Paiement Ikeepay Mobile Money : crée un PaymentIntent (purpose 'boost') + une collecte.
+// Paiement Ikeepay Mobile Money : crée un PaymentIntent (purpose 'boost') + une collecte H2H.
 // Retourne { confirmed:false, reference } → activation au webhook.
-async function chargeIkeepay({ user, campaign, phone, operator }) {
-  const inline = !(phone && operator)
+async function chargeIkeepay({ user, campaign, phone, operator, country = 'CM', otp }) {
+  const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+  if (!rawPhone || !operator) {
+    throw new Error('Numéro de téléphone et opérateur Mobile Money requis pour le débit direct.')
+  }
   const reference = genRef('bst')
   const { mode } = await ikeepay.resolveConfig()
   const intent = await PaymentIntent.create({
     reference, purpose: 'boost', amount: campaign.budget, currency: campaign.currency,
-    payerPhone: phone || '', payerOperator: operator || '', payerName: user.name || '', payerEmail: user.email || '',
+    payerPhone: rawPhone, payerOperator: operator, payerName: user.name || '', payerEmail: user.email || '',
     initiatedBy: user._id, mode, meta: { campaignId: String(campaign._id) },
   })
   campaign.paymentIntent = intent._id
   campaign.paymentRef = reference
   await campaign.save()
-  // Sans numéro/opérateur → paiement inline (iframe pk_…) ; sinon collecte H2H.
-  if (inline) {
-    const r = await ikeepay.inlineResponse(reference, campaign.budget, campaign.currency)
-    return { confirmed: false, reference, mode: r.mode, inline: true, publicKey: r.publicKey }
-  }
-  const result = await ikeepay.createCollection({ amount: campaign.budget, phone, operator, reference, callbackUrl: callbackUrl() })
+
+  const result = await ikeepay.createCollection({
+    amount: campaign.budget, phone: rawPhone, operator, reference,
+    callbackUrl: callbackUrl(), country, customerEmail: user.email || '', otp
+  })
   if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
-  return { confirmed: false, reference, mode, transaction: result }
+  const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+  return { confirmed: false, reference, mode, transaction: result, payment_link: paymentLink }
 }
 
 // Point d'entrée unique.
-async function charge({ user, campaign, provider, pin, phone, operator }) {
+async function charge({ user, campaign, provider, pin, phone, operator, country, otp }) {
   if (provider === 'wallet') {
     campaign.paymentProvider = 'wallet'
     const r = await chargeWallet({ user, campaign, pin })
@@ -85,8 +88,8 @@ async function charge({ user, campaign, provider, pin, phone, operator }) {
   if (provider === 'ikeepay') {
     campaign.paymentProvider = 'ikeepay'
     await campaign.save()
-    const r = await chargeIkeepay({ user, campaign, phone, operator })
-    return { confirmed: false, reference: r.reference, mode: r.mode, inline: r.inline, publicKey: r.publicKey, campaign }
+    const r = await chargeIkeepay({ user, campaign, phone, operator, country, otp })
+    return { confirmed: false, reference: r.reference, mode: r.mode, payment_link: r.payment_link, campaign }
   }
   const e = new Error('Fournisseur de paiement non supporté'); e.status = 400; throw e
 }

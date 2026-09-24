@@ -58,7 +58,8 @@ export default function EnrollmentPage() {
 
     inlineCheckout.setError('')
     inlineCheckout.start(
-      () => paymentsApi.initiateEnrollment({
+      (momo = {}) => paymentsApi.initiateEnrollment({
+        ...momo,
         schoolId: school?._id,
         classId: form.classId,
         amount: fee,

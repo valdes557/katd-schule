@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { CreditCard, Loader2, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { paymentsApi, authApi } from '../lib/api'
-import IkeepayCheckout from '../components/payments/IkeepayCheckout'
+import { COUNTRIES } from '../constants/countries'
+
+const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 
 // Page de paiement d'abonnement pour un directeur DÉJÀ inscrit (après essai) : réutilise l'école
-// existante — aucun formulaire à re-remplir. Paiement via le checkout INLINE Ikeepay (iframe pk_…) :
-// Ikeepay affiche l'écran de paiement (opérateur, numéro), puis confirme au backend via webhook.
+// existante — aucun formulaire à re-remplir. Paiement Direct Charge Mobile Money (API H2H Server-to-Server).
 export default function PaySubscriptionPage() {
   const { school, setSchool } = useAuth()
   const navigate = useNavigate()
@@ -15,51 +16,86 @@ export default function PaySubscriptionPage() {
   const schoolId = school?._id || school?.id
 
   const [plan, setPlan] = useState(sub?.plan || 'annual')
+  const [country, setCountry] = useState('CM')
+  const [operator, setOperator] = useState('mtn')
+  const [phone, setPhone] = useState('')
+  const [otp, setOtp] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [err, setErr] = useState('')
   const [done, setDone] = useState(false)
-  const [checkout, setCheckout] = useState(null) // { publicKey, amount, currency, reference }
 
-  // Étape 1 : crée l'intention de paiement (référence + clé publique), puis ouvre l'iframe.
-  const pay = async () => {
-    setErr('')
-    if (!schoolId) return setErr("Aucune école associée à votre compte.")
-    setBusy(true)
-    try {
-      const r = await paymentsApi.initiateSubscription({ schoolId, plan })
-      if (!r.publicKey) throw new Error("Paiement indisponible : la clé publique Ikeepay n'est pas configurée. Contactez l'administrateur.")
-      setCheckout({ publicKey: r.publicKey, amount: r.amount, currency: r.currency || 'XOF', reference: r.reference })
-    } catch (e) { setErr(e.message); setBusy(false) }
-  }
+  const currentCountry = COUNTRIES.find((c) => c.code === country) || COUNTRIES[0]
+  const currentOperators = currentCountry.operators || []
 
   // Interroge le statut jusqu'à confirmation (le webhook Ikeepay active l'abonnement côté serveur).
   const pollUntilPaid = async (reference) => {
-    setStatus('Confirmation du paiement…')
+    setStatus('Confirmation du paiement auprès du réseau Mobile Money…')
     let ok = false
     for (let i = 0; i < 45 && !ok; i++) {
-      await new Promise((res) => setTimeout(res, 4000))
+      await new Promise((res) => setTimeout(res, 3000))
       try {
         const st = await paymentsApi.status(reference)
-        if (st.status === 'approved') ok = true
-        else if (st.status === 'rejected') throw new Error('Paiement rejeté')
-      } catch (e) { if (e.message === 'Paiement rejeté') throw e }
+        if (st.status === 'approved' || st.fulfilled) ok = true
+        else if (st.status === 'rejected') throw new Error(st.reason || 'Paiement rejeté par l\'opérateur')
+      } catch (e) {
+        if (/rejet|refus|annul/i.test(e.message || '')) throw e
+      }
     }
-    if (!ok) throw new Error("Paiement non confirmé à temps. Si vous avez été débité, l'activation se fera sous peu.")
+    if (!ok) throw new Error("Paiement non confirmé à temps. Si vous avez validé le débit sur votre téléphone, l'activation se fera dès notification réseau.")
   }
 
-  // Étape 2 : l'iframe signale « success » → on confirme côté serveur puis on rafraîchit l'école.
-  const onPaid = async () => {
-    const reference = checkout?.reference
-    setCheckout(null)
+  const pay = async (e) => {
+    e?.preventDefault()
+    setErr('')
+    if (!schoolId) return setErr("Aucune école associée à votre compte.")
+
+    const rawPhone = String(phone || '').trim().replace(/[^0-9]/g, '')
+    if (!rawPhone) return setErr("Veuillez saisir le numéro Mobile Money pour le débit.")
+    if (!operator) return setErr("Veuillez sélectionner votre opérateur Mobile Money.")
+
+    const isOrangeCameroon = country === 'CM' && String(operator).toLowerCase().includes('orange')
+    if (isOrangeCameroon && !String(otp || '').trim()) {
+      return setErr("Pour Orange Money Cameroun, composez le #150*4*4# et saisissez ici le code d'autorisation (OTP).")
+    }
+
+    setBusy(true)
+    setStatus("Initialisation du débit direct auprès d'Ikeepay…")
     try {
-      await pollUntilPaid(reference)
-      setStatus(''); setDone(true)
+      const r = await paymentsApi.initiateSubscription({
+        schoolId,
+        plan,
+        phone: rawPhone,
+        operator,
+        country,
+        otp: String(otp || '').trim(),
+      })
+
+      if (r.payment_link) {
+        setStatus('Redirection vers la page de paiement sécurisée…')
+        window.location.href = r.payment_link
+        return
+      }
+
+      setStatus(`Demande envoyée au +${currentCountry.dial} ${rawPhone} ! Confirmez le débit avec votre code PIN Mobile Money sur votre téléphone…`)
+      await pollUntilPaid(r.reference)
+
+      setStatus('')
+      setDone(true)
       try {
         const me = await authApi.me()
-        if (me?.school) { setSchool(me.school); localStorage.setItem('katd_school', JSON.stringify(me.school)) }
+        if (me?.school) {
+          setSchool(me.school)
+          localStorage.setItem('katd_school', JSON.stringify(me.school))
+        }
       } catch { /* best-effort */ }
-    } catch (e) { setErr(e.message); setStatus('') } finally { setBusy(false) }
+    } catch (e) {
+      const msg = e.message || 'Erreur lors du paiement'
+      setErr(msg)
+      setStatus('')
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (done) {
@@ -91,33 +127,104 @@ export default function PaySubscriptionPage() {
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">{err}</div>}
 
-      <div className="card p-5 space-y-4">
+      <form onSubmit={pay} className="card p-5 space-y-4">
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">Formule</label>
-          <select value={plan} onChange={(e) => setPlan(e.target.value)} className="input w-full">
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Formule d'abonnement</label>
+          <select value={plan} onChange={(e) => setPlan(e.target.value)} className="input w-full font-medium">
             <option value="annual">Annuel</option>
             <option value="trimestriel">Trimestriel</option>
           </select>
         </div>
 
-        {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Pays</label>
+          <select
+            value={country}
+            onChange={(e) => {
+              const c = e.target.value
+              const cObj = COUNTRIES.find((x) => x.code === c) || COUNTRIES[0]
+              setCountry(c)
+              setOperator(cObj.operators[0]?.value || 'mtn')
+              setOtp('')
+            }}
+            className="input w-full font-medium"
+          >
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>{c.name}</option>
+            ))}
+          </select>
+        </div>
 
-        <button onClick={pay} disabled={busy || !schoolId} className="btn-primary w-full justify-center">
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de débit ({currentCountry.currency})</label>
+          <select
+            value={operator}
+            onChange={(e) => {
+              setOperator(e.target.value)
+              setOtp('')
+            }}
+            className="input w-full"
+          >
+            {currentOperators.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money à débiter</label>
+          <div className="relative">
+            <span className="absolute left-3 top-2.5 text-xs text-gray-400 font-mono font-medium">+{currentCountry.dial}</span>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="input w-full pl-14"
+              placeholder={currentCountry.placeholder}
+              required
+            />
+          </div>
+        </div>
+
+        {country === 'CM' && String(operator).toLowerCase().includes('orange') && (
+          <div>
+            <label className="text-xs font-medium text-gray-700 mb-1 flex items-center justify-between">
+              <span>Code d'autorisation Orange Money (OTP) <span className="text-red-500">*</span></span>
+              <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">#150*4*4#</span>
+            </label>
+            <input
+              type="text"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              className="input w-full font-mono font-bold tracking-widest text-center text-lg"
+              placeholder="Ex: 1234"
+              maxLength={6}
+              required
+            />
+            <p className="text-[11px] text-amber-900 bg-amber-50 rounded-lg p-2.5 mt-1.5 border border-amber-200 leading-snug">
+              👉 Composez <b>#150*4*4#</b> sur votre téléphone Orange pour générer votre code d'autorisation temporaire (4 à 6 chiffres).
+            </p>
+          </div>
+        )}
+
+        {status && (
+          <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2.5 flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin shrink-0" />
+            <span>{status}</span>
+          </p>
+        )}
+
+        <button type="submit" disabled={busy || !schoolId} className="btn-primary w-full justify-center">
           {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement…</> : 'Payer maintenant'}
         </button>
-        <p className="text-[11px] text-gray-400 text-center">Paiement sécurisé Ikeepay. Choisissez votre opérateur Mobile Money dans la fenêtre de paiement. L'abonnement est activé automatiquement après confirmation.</p>
-      </div>
 
-      {checkout && (
-        <IkeepayCheckout
-          publicKey={checkout.publicKey}
-          amount={checkout.amount}
-          currency={checkout.currency}
-          orderId={checkout.reference}
-          onSuccess={onPaid}
-          onClose={() => { setCheckout(null); setBusy(false) }}
-        />
-      )}
+        <div className="text-xs text-emerald-800 bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex items-start gap-2">
+          <span className="text-base">📲</span>
+          <span className="leading-relaxed text-[11px]">
+            <b>Direct Charge H2H :</b> Le débit direct est initié de serveur à serveur. Vous recevrez une notification ou une invite sur votre téléphone pour valider l'opération avec votre code secret Mobile Money.
+          </span>
+        </div>
+      </form>
     </div>
   )
 }

@@ -2,87 +2,10 @@ import { useState, useEffect } from 'react'
 import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, RefreshCw, X, Loader2, Users, Copy, Check, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { walletApi, paymentsApi } from '../lib/api'
-import { useInlineCheckout } from '../components/payments/useInlineCheckout'
 import { cn } from '../lib/utils'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
-const COUNTRIES = [
-  {
-    code: 'CM', name: 'Cameroun 🇨🇲 (+237)', dial: '237', currency: 'XAF', placeholder: '690 00 00 00',
-    operators: [
-      { value: 'mtn', label: 'MTN Mobile Money' },
-      { value: 'orange', label: 'Orange Money' },
-    ],
-  },
-  {
-    code: 'CI', name: "Côte d'Ivoire 🇨🇮 (+225)", dial: '225', currency: 'XOF', placeholder: '07 00 00 00 00',
-    operators: [
-      { value: 'wave', label: 'Wave' },
-      { value: 'orange', label: 'Orange Money' },
-      { value: 'mtn', label: 'MTN MoMo' },
-      { value: 'moov', label: 'Moov Money' },
-    ],
-  },
-  {
-    code: 'SN', name: 'Sénégal 🇸🇳 (+221)', dial: '221', currency: 'XOF', placeholder: '77 000 00 00',
-    operators: [
-      { value: 'wave', label: 'Wave' },
-      { value: 'orange', label: 'Orange Money' },
-      { value: 'free', label: 'Free Money' },
-    ],
-  },
-  {
-    code: 'BJ', name: 'Bénin 🇧🇯 (+229)', dial: '229', currency: 'XOF', placeholder: '97 00 00 00',
-    operators: [
-      { value: 'mtn', label: 'MTN MoMo' },
-      { value: 'moov', label: 'Moov Money' },
-      { value: 'celtiis', label: 'Celtiis Cash' },
-    ],
-  },
-  {
-    code: 'TG', name: 'Togo 🇹🇬 (+228)', dial: '228', currency: 'XOF', placeholder: '90 00 00 00',
-    operators: [
-      { value: 'tmoney', label: 'TMoney' },
-      { value: 'moov', label: 'Moov Money' },
-    ],
-  },
-  {
-    code: 'GA', name: 'Gabon 🇬🇦 (+241)', dial: '241', currency: 'XAF', placeholder: '074 00 00 00',
-    operators: [
-      { value: 'airtel', label: 'Airtel Money' },
-      { value: 'moov', label: 'Moov Money' },
-    ],
-  },
-  {
-    code: 'CG', name: 'Congo 🇨🇬 (+242)', dial: '242', currency: 'XAF', placeholder: '06 000 00 00',
-    operators: [
-      { value: 'airtel', label: 'Airtel Money' },
-      { value: 'mtn', label: 'MTN MoMo' },
-    ],
-  },
-  {
-    code: 'BF', name: 'Burkina Faso 🇧🇫 (+226)', dial: '226', currency: 'XOF', placeholder: '70 00 00 00',
-    operators: [
-      { value: 'orange', label: 'Orange Money' },
-      { value: 'moov', label: 'Moov Money' },
-    ],
-  },
-  {
-    code: 'ML', name: 'Mali 🇲🇱 (+223)', dial: '223', currency: 'XOF', placeholder: '70 00 00 00',
-    operators: [
-      { value: 'orange', label: 'Orange Money' },
-      { value: 'moov', label: 'Moov Money' },
-    ],
-  },
-  {
-    code: 'CD', name: 'RD Congo 🇨🇩 (+243)', dial: '243', currency: 'USD', placeholder: '81 000 0000',
-    operators: [
-      { value: 'mpesa', label: 'M-Pesa' },
-      { value: 'orange', label: 'Orange Money' },
-      { value: 'airtel', label: 'Airtel Money' },
-    ],
-  },
-]
+import { COUNTRIES } from '../constants/countries'
 
 export default function PortefeuillePage() {
   const { user } = useAuth()
@@ -185,8 +108,6 @@ export default function PortefeuillePage() {
 function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, onError }) {
   const { user } = useAuth()
   const isMerchant = user?.isMerchant === true
-  const inlineCheckout = useInlineCheckout()
-  const [depositMethod, setDepositMethod] = useState('inline') // 'inline' (fenêtre Ikeepay recommandée) | 'direct' (API Payin)
   const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '', country: 'CM', otp: '' })
   const [status, setStatus] = useState('')
   const [modalError, setModalError] = useState('')
@@ -224,7 +145,6 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const submit = async () => {
     setModalError('')
     onError('')
-    inlineCheckout.setError('')
     if (type === 'deposit') {
       const amt = Number(f.amount)
       if (!amt || amt < 100) {
@@ -233,95 +153,85 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         return
       }
 
-      // Mode 1 : Débit direct via l'API Payin Ikeepay (recharge le solde de décaissement)
-      if (depositMethod === 'direct') {
-        const rawPhone = String(f.momoNumber || '').trim().replace(/[^0-9]/g, '')
-        if (!rawPhone) {
-          setModalError('Veuillez saisir votre numéro Mobile Money pour le débit')
-          return
-        }
+      const rawPhone = String(f.momoNumber || '').trim().replace(/[^0-9]/g, '')
+      if (!rawPhone) {
+        setModalError('Veuillez saisir votre numéro Mobile Money pour le débit')
+        return
+      }
 
-        const isOrangeCameroon = (f.country || 'CM') === 'CM' && String(f.momoOperator || '').toLowerCase().includes('orange')
-        if (isOrangeCameroon && !String(f.otp || '').trim()) {
-          const msg = "Pour Orange Money Cameroun, veuillez composer le #150*4*4# sur votre téléphone et saisir le code d'autorisation (OTP)."
-          setModalError(msg)
-          onError(msg)
-          if (typeof window !== 'undefined' && window.innerWidth < 768) {
-            alert(msg)
-          }
-          return
-        }
-
-        setBusy(true)
-        setStatus('Envoi de la demande de débit à l\'API Payin Ikeepay…')
-        try {
-          const res = await walletApi.initiateDeposit({
-            amount: amt,
-            phone: rawPhone,
-            operator: f.momoOperator,
-            country: f.country || 'CM',
-            otp: String(f.otp || '').trim(),
-          })
-
-          if (res.payment_link) {
-            setStatus('Redirection vers la page de paiement sécurisée…')
-            window.location.href = res.payment_link
-            return
-          }
-
-          setStatus(`Demande de ${fmt(amt)} FCFA envoyée au +${currentCountry.dial} ${rawPhone} ! Confirmez le débit avec votre code PIN Mobile Money sur votre téléphone…`)
-
-          // Polling automatique pour détecter la validation du débit
-          let confirmed = false
-          for (let i = 0; i < 40; i++) {
-            await new Promise(r => setTimeout(r, 3000))
-            try {
-              const st = await paymentsApi.status(res.reference)
-              if (st && (st.status === 'approved' || st.fulfilled)) {
-                confirmed = true
-                break
-              }
-              if (st && st.status === 'rejected') {
-                throw new Error(st.reason || 'Paiement refusé ou annulé sur votre téléphone')
-              }
-            } catch (err) {
-              if (/refus|annul|rejet/i.test(err.message)) throw err
-            }
-          }
-
-          if (confirmed) {
-            onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`)
-          } else {
-            // Rattrapage par confirmation directe
-            try {
-              const fb = await paymentsApi.confirmInline(res.reference)
-              if (fb && (fb.status === 'approved' || fb.fulfilled)) {
-                onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`)
-                return
-              }
-            } catch (_) {}
-            throw new Error("Paiement en cours de confirmation. Si vous avez déjà validé le code secret sur votre téléphone, votre compte sera crédité sous peu.")
-          }
-        } catch (e) {
-          const errMsg = e.message || 'Erreur lors du dépôt'
-          let friendlyMsg = errMsg
-          if (/partenaire|rejet|failed|échec/i.test(errMsg)) {
-            friendlyMsg = `L'opérateur Mobile Money (${(f.momoOperator || 'opérateur').toUpperCase()}) a refusé l'initialisation du débit direct (${errMsg}). Vérifiez votre numéro et code OTP ou réessayez dans un instant.`
-          }
-          setModalError(friendlyMsg)
-          onError(friendlyMsg)
-          setStatus('')
-        } finally {
-          setBusy(false)
+      const isOrangeCameroon = (f.country || 'CM') === 'CM' && String(f.momoOperator || '').toLowerCase().includes('orange')
+      if (isOrangeCameroon && !String(f.otp || '').trim()) {
+        const msg = "Pour Orange Money Cameroun, composez le #150*4*4# sur votre téléphone et renseignez ici le code d'autorisation (OTP)."
+        setModalError(msg)
+        onError(msg)
+        if (typeof window !== 'undefined' && window.innerWidth < 768) {
+          alert(msg)
         }
         return
       }
 
-      // Mode 2 : Fenêtre Inline (officielle et garantie)
-      inlineCheckout.start(
-        () => walletApi.initiateDeposit({ amount: amt, country: f.country || 'CM' }),
-        async () => { onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`) }
-      )
+      setBusy(true)
+      setStatus("Envoi de la demande de débit à l'API Payin Ikeepay (Direct Charge)...")
+      try {
+        const res = await walletApi.initiateDeposit({
+          amount: amt,
+          phone: rawPhone,
+          operator: f.momoOperator,
+          country: f.country || 'CM',
+          otp: String(f.otp || '').trim(),
+        })
+
+        if (res.payment_link) {
+          setStatus('Redirection vers la page de paiement sécurisée…')
+          window.location.href = res.payment_link
+          return
+        }
+
+        setStatus(`Demande de ${fmt(amt)} FCFA envoyée au +${currentCountry.dial} ${rawPhone} ! Confirmez le débit avec votre code PIN Mobile Money sur votre téléphone…`)
+
+        // Polling automatique pour détecter la validation du débit
+        let confirmed = false
+        for (let i = 0; i < 40; i++) {
+          await new Promise(r => setTimeout(r, 3000))
+          try {
+            const st = await paymentsApi.status(res.reference)
+            if (st && (st.status === 'approved' || st.fulfilled)) {
+              confirmed = true
+              break
+            }
+            if (st && st.status === 'rejected') {
+              throw new Error(st.reason || 'Paiement refusé ou annulé sur votre téléphone')
+            }
+          } catch (err) {
+            if (/refus|annul|rejet/i.test(err.message)) throw err
+          }
+        }
+
+        if (confirmed) {
+          onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`)
+        } else {
+          // Rattrapage par confirmation directe
+          try {
+            const fb = await paymentsApi.confirmInline(res.reference)
+            if (fb && (fb.status === 'approved' || fb.fulfilled)) {
+              onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`)
+              return
+            }
+          } catch (_) {}
+          throw new Error("Paiement en cours de confirmation. Si vous avez déjà validé le code secret sur votre téléphone, votre compte sera crédité sous peu.")
+        }
+      } catch (e) {
+        const errMsg = e.message || 'Erreur lors du dépôt'
+        let friendlyMsg = errMsg
+        if (/partenaire|rejet|failed|échec/i.test(errMsg)) {
+          friendlyMsg = `L'opérateur Mobile Money (${(f.momoOperator || 'opérateur').toUpperCase()}) a refusé l'initialisation du débit direct (${errMsg}). Vérifiez votre numéro et code OTP ou réessayez dans un instant.`
+        }
+        setModalError(friendlyMsg)
+        onError(friendlyMsg)
+        setStatus('')
+      } finally {
+        setBusy(false)
+      }
       return
     }
     setBusy(true)
@@ -428,120 +338,82 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {type === 'deposit' && (<>
-          {/* Choix de la méthode : Fenêtre sécurisée Ikeepay (recommandé) vs Débit direct */}
-          <div className="flex bg-gray-100 p-1 rounded-xl gap-1 text-xs">
-            <button
-              type="button"
-              onClick={() => { setModalError(''); setDepositMethod('inline') }}
-              className={cn("flex-1 py-2 px-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5", depositMethod === 'inline' ? "bg-white text-blue-700 shadow-sm" : "text-gray-600 hover:text-gray-900")}
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Pays</label>
+            <select
+              value={f.country || 'CM'}
+              onChange={(e) => {
+                const c = e.target.value
+                const cObj = COUNTRIES.find(x => x.code === c) || COUNTRIES[0]
+                setModalError('')
+                setF({
+                  ...f,
+                  country: c,
+                  momoOperator: cObj.operators[0]?.value || 'mtn',
+                })
+              }}
+              className="input w-full font-medium"
             >
-              <span>💳</span> Fenêtre Ikeepay (Recommandé)
-            </button>
-            <button
-              type="button"
-              onClick={() => { setModalError(''); setDepositMethod('direct') }}
-              className={cn("flex-1 py-2 px-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5", depositMethod === 'direct' ? "bg-white text-emerald-700 shadow-sm" : "text-gray-600 hover:text-gray-900")}
+              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de débit ({currentCountry.currency})</label>
+            <select
+              value={f.momoOperator}
+              onChange={(e) => {
+                setModalError('')
+                setF({ ...f, momoOperator: e.target.value, otp: '' })
+              }}
+              className="input w-full"
             >
-              <span>⚡</span> Débit direct (API)
-            </button>
+              {currentOperators.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money à débiter</label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-xs text-gray-400 font-mono font-medium">+{currentCountry.dial}</span>
+              <input
+                type="tel"
+                value={f.momoNumber}
+                onChange={up('momoNumber')}
+                className="input w-full pl-14"
+                placeholder={currentCountry.placeholder}
+              />
+            </div>
           </div>
 
-          {depositMethod === 'inline' ? (
-            <div className="text-xs text-blue-950 bg-blue-50/80 border border-blue-200/80 rounded-xl p-3.5 space-y-2">
-              <p className="font-bold flex items-center gap-1.5 text-blue-900">
-                <span>🛡️</span> Guichet officiel sécurisé Ikeepay
-              </p>
-              <p className="text-gray-700 leading-relaxed text-[11.5px]">
-                En cliquant sur <b>Confirmer</b>, la fenêtre sécurisée Ikeepay s'affiche pour valider vos <b>{f.amount ? fmt(f.amount) : '...'} FCFA</b> par <b>Orange Money</b>, <b>MTN MoMo</b> ou par <b>carte bancaire</b>.
-              </p>
-              <div className="flex items-center gap-2 pt-1 text-[11px] text-blue-800 font-medium bg-blue-100/60 border border-blue-200 rounded-lg p-2">
-                <span>ℹ️</span>
-                <span>Si la fenêtre Ikeepay signale une indisponibilité, vous pouvez basculer sur le <b>Débit direct (API)</b>.</span>
-              </div>
-            </div>
-          ) : (<>
-            <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-start gap-1.5">
-              <span>ℹ️</span>
-              <span>Débit direct Mobile Money : une invite de confirmation ou un code PIN sera demandé sur votre téléphone.</span>
-            </div>
-
+          {(f.country || 'CM') === 'CM' && String(f.momoOperator || '').toLowerCase().includes('orange') ? (
             <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Pays</label>
-              <select
-                value={f.country || 'CM'}
-                onChange={(e) => {
-                  const c = e.target.value
-                  const cObj = COUNTRIES.find(x => x.code === c) || COUNTRIES[0]
-                  setModalError('')
-                  setF({
-                    ...f,
-                    country: c,
-                    momoOperator: cObj.operators[0]?.value || 'mtn',
-                  })
-                }}
-                className="input w-full font-medium"
-              >
-                {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de débit ({currentCountry.currency})</label>
-              <select
-                value={f.momoOperator}
-                onChange={(e) => {
-                  setModalError('')
-                  setF({ ...f, momoOperator: e.target.value, otp: '' })
-                }}
-                className="input w-full"
-              >
-                {currentOperators.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money à débiter</label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-xs text-gray-400 font-mono font-medium">+{currentCountry.dial}</span>
-                <input
-                  type="tel"
-                  value={f.momoNumber}
-                  onChange={up('momoNumber')}
-                  className="input w-full pl-14"
-                  placeholder={currentCountry.placeholder}
-                />
-              </div>
-            </div>
-
-            {(f.country || 'CM') === 'CM' && String(f.momoOperator || '').toLowerCase().includes('orange') ? (
-              <div>
-                <label className="text-xs font-medium text-gray-700 mb-1 flex items-center justify-between">
-                  <span>Code d'autorisation Orange Money (OTP) <span className="text-red-500">*</span></span>
-                  <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">#150*4*4#</span>
-                </label>
-                <input
-                  type="text"
-                  value={f.otp || ''}
-                  onChange={up('otp')}
-                  className="input w-full font-mono font-bold tracking-widest text-center text-lg"
-                  placeholder="Ex: 1234"
-                  maxLength={6}
-                />
-                <p className="text-[11px] text-amber-900 bg-amber-50 rounded-lg p-2.5 mt-1.5 border border-amber-200 leading-snug">
-                  👉 <b>Obligatoire pour Orange Cameroun :</b> Composez <b>#150*4*4#</b> sur votre téléphone Orange pour générer votre code d'autorisation temporaire (4 à 6 chiffres) et renseignez-le ici.
-                </p>
-              </div>
-            ) : (
-              <p className="text-[11px] text-gray-500 italic px-1">
-                ℹ️ Pour MTN : aucune démarche préalable, une invite apparaîtra directement sur votre écran de téléphone pour valider avec votre code PIN secret.
+              <label className="text-xs font-medium text-gray-700 mb-1 flex items-center justify-between">
+                <span>Code d'autorisation Orange Money (OTP) <span className="text-red-500">*</span></span>
+                <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">#150*4*4#</span>
+              </label>
+              <input
+                type="text"
+                value={f.otp || ''}
+                onChange={up('otp')}
+                className="input w-full font-mono font-bold tracking-widest text-center text-lg"
+                placeholder="Ex: 1234"
+                maxLength={6}
+              />
+              <p className="text-[11px] text-amber-900 bg-amber-50 rounded-lg p-2.5 mt-1.5 border border-amber-200 leading-snug">
+                👉 <b>Obligatoire pour Orange Cameroun :</b> Composez <b>#150*4*4#</b> sur votre téléphone Orange pour générer votre code d'autorisation temporaire (4 à 6 chiffres) et renseignez-le ici.
               </p>
-            )}
-
-            <div className="text-xs text-emerald-800 bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex items-start gap-2">
-              <span className="text-base">📲</span>
-              <span className="leading-relaxed">
-                <b>Recharge via l'API Payin Ikeepay :</b> En confirmant, {String(f.momoOperator || '').toLowerCase().includes('orange') ? "le débit sera validé grâce à votre code d'autorisation" : "une invite de débit apparaîtra directement sur votre téléphone pour valider les " + (f.amount ? fmt(f.amount) : '...') + " FCFA avec votre code secret Mobile Money"}.
-              </span>
             </div>
-          </>)}
+          ) : (
+            <p className="text-[11px] text-gray-500 italic px-1">
+              ℹ️ Pour MTN : aucune démarche préalable, une invite apparaîtra directement sur votre écran de téléphone pour valider avec votre code PIN secret.
+            </p>
+          )}
+
+          <div className="text-xs text-emerald-800 bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex items-start gap-2">
+            <span className="text-base">📲</span>
+            <span className="leading-relaxed">
+              <b>Paiement Direct Server-to-Server (H2H) :</b> En confirmant, {String(f.momoOperator || '').toLowerCase().includes('orange') ? "le débit sera validé grâce à votre code d'autorisation" : "une invite de débit apparaîtra directement sur votre téléphone pour valider les " + (f.amount ? fmt(f.amount) : '...') + " FCFA avec votre code secret Mobile Money"}. Les fonds alimentent directement le portefeuille.
+            </span>
+          </div>
         </>)}
 
         {type === 'withdraw' && (<>
@@ -621,43 +493,19 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {modalError && (
-          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 space-y-2 shadow-sm">
+          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 shadow-sm">
             <div className="flex items-start gap-2">
               <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
               <span className="flex-1 font-medium">{modalError}</span>
             </div>
-            {type === 'deposit' && depositMethod === 'direct' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setModalError('')
-                  setDepositMethod('inline')
-                  inlineCheckout.start(
-                    () => walletApi.initiateDeposit({ amount: Number(f.amount) || 100, country: f.country || 'CM' }),
-                    async () => { onDone(`Dépôt validé avec succès ! Votre portefeuille a été crédité.`) }
-                  )
-                }}
-                className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
-              >
-                <span>💳</span> Payer via la Fenêtre Sécurisée Ikeepay (Recommandé)
-              </button>
-            )}
           </div>
         )}
-        {inlineCheckout.error && (
-          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 shadow-sm">
-            <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
-            <span className="flex-1">{inlineCheckout.error}</span>
-          </div>
-        )}
-        {inlineCheckout.status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{inlineCheckout.status}</p>}
         {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
 
-        <button onClick={submit} disabled={busy || inlineCheckout.busy} className="btn-primary w-full justify-center">
-          {busy || inlineCheckout.busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : 'Confirmer'}
+        <button onClick={submit} disabled={busy} className="btn-primary w-full justify-center">
+          {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : 'Confirmer'}
         </button>
       </div>
-      {inlineCheckout.element}
     </div>
   )
 }

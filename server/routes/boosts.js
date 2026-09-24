@@ -149,7 +149,7 @@ router.post('/create', protect, async (req, res) => {
   if (rateLimited(req.user._id)) return res.status(429).json({ message: 'Trop de tentatives. Réessayez dans un instant.' })
   let campaign = null
   try {
-    const { postId, durationKey, objective, audience, provider, pin, phone, operator } = req.body
+    const { postId, durationKey, objective, audience, provider, pin, phone, operator, country, otp } = req.body
     const post = await assertBoostablePost(postId, req.user)
     const cfg = await boostPricing.getConfig()
     // PRIX OFFICIEL depuis la DB — on ignore totalement tout montant envoyé par le client.
@@ -172,7 +172,7 @@ router.post('/create', protect, async (req, res) => {
       status: 'pending_payment',
     })
 
-    const result = await boostPayment.charge({ user: req.user, campaign, provider: campaign.paymentProvider, pin, phone, operator })
+    const result = await boostPayment.charge({ user: req.user, campaign, provider: campaign.paymentProvider, pin, phone, operator, country, otp })
     auditBoost(req, { action: 'boost.create', label: 'Création campagne boost (' + campaign.paymentProvider + ')', entityId: campaign._id, statusCode: 201 })
 
     if (result.confirmed) {

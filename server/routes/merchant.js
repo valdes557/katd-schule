@@ -52,26 +52,39 @@ router.get('/me', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/merchant/initiate — paie les 6933 F via Mobile Money (collecte Ikeepay)
+// POST /api/merchant/initiate — paie les 6933 F via Mobile Money (collecte Ikeepay H2H)
 router.post('/initiate', protect, async (req, res) => {
   try {
-    const { phone, operator } = req.body
-    const u = await User.findById(req.user._id).select('isMerchant')
+    const { phone, operator, country = 'CM', otp } = req.body
+    const u = await User.findById(req.user._id).select('isMerchant email')
     if (u?.isMerchant) return res.status(400).json({ message: 'Vous êtes déjà marchand.' })
-    const inline = !(phone && operator)
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur Mobile Money requis pour le débit direct.' })
+    }
 
     const reference = genRef('mch')
     const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+
     const intent = await PaymentIntent.create({
-      reference, purpose: 'merchant', amount: MERCHANT_FEE, currency: 'XOF',
-      payerPhone: phone || '', payerOperator: operator || '', initiatedBy: req.user._id,
+      reference, purpose: 'merchant', amount: MERCHANT_FEE, currency: targetCurrency,
+      payerPhone: rawPhone, payerOperator: operator, initiatedBy: req.user._id,
       school: req.user.school?._id || null, mode,
     })
-    if (inline) return res.json(await ikeepay.inlineResponse(reference, MERCHANT_FEE))
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
-    const result = await ikeepay.createCollection({ amount: MERCHANT_FEE, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
+    const result = await ikeepay.createCollection({
+      amount: MERCHANT_FEE, phone: rawPhone, operator, reference,
+      callbackUrl: base + '/api/payments/webhook', country: normCountry,
+      currency: targetCurrency, customerEmail: u?.email || '', otp
+    })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
-    res.json({ success: true, reference, amount: MERCHANT_FEE, mode, message: 'Validez le paiement sur votre téléphone Mobile Money.' })
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+    res.json({
+      success: true, reference, amount: MERCHANT_FEE, mode, currency: targetCurrency,
+      payment_link: paymentLink, message: 'Validez le paiement sur votre téléphone Mobile Money.'
+    })
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
 

@@ -138,7 +138,7 @@ function ReferralCard({ code, count, earned }) {
 
 function PayModal({ fee, onClose, onDone }) {
   const { start, element, busy, status, error } = useInlineCheckout()
-  const pay = () => start(() => merchantApi.initiate({}), async () => { onDone() })
+  const pay = () => start((momo = {}) => merchantApi.initiate(momo), async () => { onDone() }, { amount: fee, title: 'Activation compte marchand' })
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && onClose()}>
@@ -147,7 +147,7 @@ function PayModal({ fee, onClose, onDone }) {
           <h3 className="font-bold text-gray-900">Activation marchand — {fmt(fee)} F</h3>
           <button onClick={() => !busy && onClose()} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <p className="text-sm text-gray-500">Réglez {fmt(fee)} F par Mobile Money. L'opérateur et le numéro seront demandés dans la fenêtre de paiement sécurisée Ikeepay.</p>
+        <p className="text-sm text-gray-500">Réglez {fmt(fee)} F par Mobile Money direct (API H2H). Le débit sera validé directement depuis votre numéro Mobile Money.</p>
         {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{error}</p>}
         {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
         <button onClick={pay} disabled={busy} className="btn-primary w-full justify-center">

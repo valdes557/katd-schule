@@ -190,7 +190,8 @@ export default function SchoolRegistrationPage() {
 
     inlineCheckout.setError('')
     inlineCheckout.start(
-      () => paymentsApi.initiateSubscription({
+      (momo = {}) => paymentsApi.initiateSubscription({
+        ...momo,
         schoolName: form.schoolName.trim(),
         directorName: form.directorName.trim(),
         email: form.email.trim(),
@@ -212,7 +213,8 @@ export default function SchoolRegistrationPage() {
           } catch (_) {}
         }
         setSubmitted(true)
-      }
+      },
+      { amount: selected?.amount, currency: 'XAF', title: `Souscription Cycle ${selected?.cycle || ''}` }
     )
   }
 

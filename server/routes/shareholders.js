@@ -123,14 +123,17 @@ router.get('/dashboard', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/shareholders/subscribe — souscrit à un plan (paiement Mobile Money Ikeepay).
-// Body: { planKey, zone, phone, operator }. Le PRIX est résolu côté serveur depuis la
+// POST /api/shareholders/subscribe — souscrit à un plan (paiement Mobile Money Ikeepay H2H).
+// Body: { planKey, zone, phone, operator, country, otp }. Le PRIX est résolu côté serveur depuis la
 // config (jamais depuis le client). L'actionnariat est créé au webhook approuvé.
 router.post('/subscribe', protect, async (req, res) => {
   try {
-    const { planKey, zone, phone, operator } = req.body
+    const { planKey, zone, phone, operator, country = 'CM', otp } = req.body
     if (!planKey) return res.status(400).json({ message: 'Plan requis' })
-    const inline = !(phone && operator)
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur Mobile Money requis pour le débit direct.' })
+    }
 
     const cfg = await ShareholderConfig.getOrCreate()
     const plan = (cfg.plans || []).find((p) => p.key === planKey && p.isActive !== false)
@@ -142,20 +145,30 @@ router.post('/subscribe', protect, async (req, res) => {
 
     const reference = genRef('shr')
     const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+
     const intent = await PaymentIntent.create({
-      reference, purpose: 'shareholder', amount: plan.price, currency: 'XOF',
-      payerPhone: phone || '', payerOperator: operator || '', initiatedBy: req.user._id,
+      reference, purpose: 'shareholder', amount: plan.price, currency: targetCurrency,
+      payerPhone: rawPhone, payerOperator: operator, initiatedBy: req.user._id,
       school: req.user.school?._id || null, mode,
       meta: {
         planKey: plan.key, planLabel: plan.label, percent: plan.percent,
         durationYears: plan.durationYears, zone: String(zone || '').trim(),
       },
     })
-    if (inline) return res.json(await ikeepay.inlineResponse(reference, plan.price))
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
-    const result = await ikeepay.createCollection({ amount: plan.price, phone, operator, reference, callbackUrl: base + '/api/payments/webhook' })
+    const result = await ikeepay.createCollection({
+      amount: plan.price, phone: rawPhone, operator, reference,
+      callbackUrl: base + '/api/payments/webhook', country: normCountry,
+      currency: targetCurrency, customerEmail: req.user.email || '', otp
+    })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
-    res.json({ success: true, reference, amount: plan.price, mode, message: 'Validez le paiement sur votre téléphone Mobile Money.' })
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+    res.json({
+      success: true, reference, amount: plan.price, mode, currency: targetCurrency,
+      payment_link: paymentLink, message: 'Validez le paiement sur votre téléphone Mobile Money.'
+    })
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
 

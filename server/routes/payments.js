@@ -98,25 +98,28 @@ router.get('/operators', async (req, res) => {
   }
 })
 
-// GET /api/payments/config — config PUBLIQUE pour le paiement inline (clé publique, mode, devise). Aucun secret.
+// GET /api/payments/config — config pour le paiement Mobile Money Direct (mode, devise, pays).
 router.get('/config', async (req, res) => {
   try {
-    const { mode, publicKey } = await ikeepay.resolveConfig()
-    return res.json({ success: true, publicKey: publicKey || '', mode,
-      currency: ikeepay.DEFAULT_CURRENCY, country: ikeepay.DEFAULT_COUNTRY,
-      inlineBase: 'https://ikeepay.com/checkout/v1/inline' })
+    const { mode } = await ikeepay.resolveConfig()
+    return res.json({ success: true, mode,
+      currency: ikeepay.DEFAULT_CURRENCY, country: ikeepay.DEFAULT_COUNTRY })
   } catch (err) { return res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/payments/subscription/initiate — démarre la collecte de souscription directeur
+// POST /api/payments/subscription/initiate — démarre la collecte de souscription directeur via H2H Payin
 router.post('/subscription/initiate', async (req, res) => {
   try {
     const { schoolId, schoolName, directorName, email, whatsapp, cycle, plan, planId,
-            cityName, neighborhoodName, countryName, phone, operator } = req.body
-    // Sans numéro + opérateur → paiement « inline » (iframe Ikeepay avec clé publique pk_…).
-    const inline = !(phone && operator)
+            cityName, neighborhoodName, countryName, phone, operator, country, otp } = req.body
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur Mobile Money requis pour le débit direct.' })
+    }
     const reference = genRef('sub')
     const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || countryName || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
 
     // Cas 1 : renouvellement d'une école existante (paiement après essai, sans re-remplir le formulaire)
     let meta, resolved
@@ -141,11 +144,8 @@ router.post('/subscription/initiate', async (req, res) => {
     console.log('Souscription: planId=' + (planId || '(absent)') + ' cycle=' + (meta.cycle || meta.schoolName) +
                 ' plan=' + meta.plan + ' → source=' + resolved.source +
                 (resolved.planName ? " plan='" + resolved.planName + "'" : '') +
-                ' montant=' + amount + ' ' + ikeepay.DEFAULT_CURRENCY)
+                ' montant=' + amount + ' ' + targetCurrency)
 
-    // Si le plan choisi est introuvable/inactif, on REFUSE plutôt que de facturer
-    // silencieusement le tarif par défaut (SUBSCRIPTION_FEE_DIRECTOR). C'était la cause
-    // du « 80000 au lieu du plan choisi » : un planId périmé (liste de plans en cache).
     if (resolved.source === 'default' && (planId || meta.cycle)) {
       return res.status(409).json({
         message: "Le plan sélectionné n'est plus disponible (il a peut-être été modifié ou désactivé). " +
@@ -158,23 +158,15 @@ router.post('/subscription/initiate', async (req, res) => {
     }
 
     const intent = await PaymentIntent.create({
-      reference, purpose: 'subscription', amount, currency: ikeepay.DEFAULT_CURRENCY,
-      payerPhone: phone || '', payerOperator: operator || '', payerName: directorName || meta.schoolName,
+      reference, purpose: 'subscription', amount, currency: targetCurrency,
+      payerPhone: rawPhone, payerOperator: operator, payerName: directorName || meta.schoolName,
       payerEmail: email || '', mode, meta,
     })
-    // Paiement INLINE : on renvoie la clé publique ; l'iframe Ikeepay encaisse, le webhook confirme.
-    if (inline) {
-      const { publicKey } = await ikeepay.resolveConfig()
-      if (!publicKey) {
-        return res.status(400).json({ message: "Clé publique Ikeepay non configurée pour le mode " + mode +
-          " — renseignez-la dans Gestion Plateforme → Clés API." })
-      }
-      return res.json({ success: true, reference, amount, mode, currency: ikeepay.DEFAULT_CURRENCY, inline: true, publicKey })
-    }
     const result = await ikeepay.createCollection({
-      amount, phone, operator, reference, callbackUrl: callbackUrl(), customerEmail: email || '',
+      amount, phone: rawPhone, operator, reference, callbackUrl: callbackUrl(),
+      customerEmail: email || '', country: normCountry, currency: targetCurrency, otp
     })
-    console.log('Ikeepay collection créée [' + reference + '] amount=' + amount +
+    console.log('Ikeepay H2H collection créée [' + reference + '] amount=' + amount +
                 ' operator=' + operator + ' →', JSON.stringify(result))
     if (result.transaction_id || result.id) {
       intent.providerTransactionId = result.transaction_id || result.id
@@ -182,7 +174,7 @@ router.post('/subscription/initiate', async (req, res) => {
     }
     const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
     return res.json({
-      success: true, reference, amount, mode,
+      success: true, reference, amount, mode, currency: targetCurrency,
       transaction: result, payment_link: paymentLink,
       message: 'Demande de paiement envoyée. Validez le paiement sur votre téléphone Mobile Money.',
     })
@@ -196,9 +188,12 @@ router.post('/subscription/initiate', async (req, res) => {
 router.post('/enrollment/initiate', async (req, res) => {
   try {
     const { schoolId, studentName, studentId, classId, amount,
-            payerName, payerEmail, phone, operator } = req.body
+            payerName, payerEmail, phone, operator, country = 'CM', otp } = req.body
     if (!schoolId) return res.status(400).json({ message: 'École requise' })
-    const inline = !(phone && operator)
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur Mobile Money requis pour le débit direct.' })
+    }
     const school = await School.findById(schoolId)
     if (!school) return res.status(404).json({ message: 'École introuvable' })
     if (!school.director) return res.status(400).json({ message: "Cette école n'a pas de directeur associé" })
@@ -207,17 +202,22 @@ router.post('/enrollment/initiate', async (req, res) => {
 
     const reference = genRef('enr')
     const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+
     const intent = await PaymentIntent.create({
-      reference, purpose: 'enrollment', amount: fee, currency: ikeepay.DEFAULT_CURRENCY,
-      payerPhone: phone || '', payerOperator: operator || '', payerName: payerName || studentName || '',
+      reference, purpose: 'enrollment', amount: fee, currency: targetCurrency,
+      payerPhone: rawPhone, payerOperator: operator, payerName: payerName || studentName || '',
       payerEmail: payerEmail || '', school: school._id, beneficiary: school.director, mode,
       meta: { studentName, studentId, classId, schoolName: school.name },
     })
-    if (inline) return res.json(await ikeepay.inlineResponse(reference, fee))
-    const result = await ikeepay.createCollection({ amount: fee, phone, operator, reference, callbackUrl: callbackUrl(), customerEmail: payerEmail || '' })
+    const result = await ikeepay.createCollection({
+      amount: fee, phone: rawPhone, operator, reference, callbackUrl: callbackUrl(),
+      customerEmail: payerEmail || '', country: normCountry, currency: targetCurrency, otp
+    })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
     const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
-    return res.json({ success: true, reference, amount: fee, mode, transaction: result, payment_link: paymentLink,
+    return res.json({ success: true, reference, amount: fee, mode, currency: targetCurrency, transaction: result, payment_link: paymentLink,
       message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money.' })
   } catch (err) {
     console.error('initiate enrollment error:', err.message, err.data ? JSON.stringify(err.data) : '')
