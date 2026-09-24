@@ -276,28 +276,34 @@ router.post('/withdraw', protect, async (req, res) => {
       status: 'processing', providerRef, dueAt: new Date(Date.now() + SLA_HOURS * 3600 * 1000),
     })
 
-    // Déclenche le payout Ikeepay (montant NET). Si l'INITIATION échoue, on débloque et on
-    // rejette immédiatement : rien n'a été envoyé, donc aucun frais n'est prélevé.
+    // Déclenche le payout Ikeepay (montant NET). Si le solde marchand Ikeepay est insuffisant
+    // ou si la passerelle est indisponible, on bascule en traitement manuel (statut 'pending').
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
+    let autoPayout = false
     try {
       const payout = await ikeepay.createPayout({
         amount: netAmount, phone: momoNumber, operator: momoOperator, accountName: holderName,
         reference: providerRef, callbackUrl: base + '/api/payments/webhook',
       })
-      if (payout.transaction_id || payout.id) { wr.providerPayoutId = payout.transaction_id || payout.id; await wr.save() }
+      if (payout.transaction_id || payout.id) {
+        wr.providerPayoutId = payout.transaction_id || payout.id
+        wr.status = 'processing'
+        await wr.save()
+        autoPayout = true
+      }
     } catch (e) {
-      await wallet.unlock(req.user._id, amt)
-      wr.status = 'rejected'; wr.rejectionReason = "Échec de l'initiation du payout : " + e.message
+      console.warn('[Withdrawal] Payout Ikeepay direct non abouti (' + e.message + ') -> bascule en file manuelle admin (pending)')
+      wr.status = 'pending'
+      wr.adminNote = 'Tentative auto Ikeepay non aboutie (' + e.message + ") — En attente d'envoi par l'administration"
       await wr.save()
-      return res.status(e.status || 502).json({ message: "Le retrait n'a pas pu être initié : " + e.message })
     }
 
-    // Payout initié : on écrit le grand livre + les frais (encaissés par l'admin).
+    // Payout initié ou en attente manuelle : on écrit le grand livre + les frais (encaissés par l'admin).
     await WalletTransaction.create({ wallet: w._id, owner: req.user._id, direction: 'debit',
       amount: amt, currency: w.currency, type: 'withdrawal', balanceAfter: w.balance, withdrawal: wr._id,
       providerTransactionId: wr.providerPayoutId || null,
       description: 'Retrait vers ' + (momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber + ' (net ' + netAmount.toLocaleString('fr-FR') + ' F, frais 2%)',
-      meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName, providerRef } })
+      meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName, providerRef, autoPayout } })
     // Frais encaissés par l'admin → rubrique « gestion des frais » (best-effort)
     await wallet.collectFee({ fee, fromUserId: req.user._id,
       description: 'Frais de retrait (2%) — ' + (req.user.name || ''),
@@ -309,10 +315,15 @@ router.post('/withdraw', protect, async (req, res) => {
         externalAccount: { operator: momoOperator || '', number: momoNumber, name: holderName } } })
     } catch (e) {}
 
-    try { await sendEmail({ to: req.user.email, subject: 'Retrait en cours — KATD-SCHÜLE',
-      html: '<p>Votre retrait de <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> est en cours de traitement ' +
+    try { await sendEmail({ to: req.user.email, subject: 'Retrait enregistré — KATD-SCHÜLE',
+      html: '<p>Votre retrait de <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> est enregistré ' +
       '(frais 2% : ' + fee.toLocaleString('fr-FR') + ' F). Vous recevrez <b>' + netAmount.toLocaleString('fr-FR') + ' FCFA</b> sur ' + momoNumber + '.</p>' }) } catch(e){}
-    res.json({ success: true, message: 'Retrait en cours de traitement. Vous recevrez ' + netAmount.toLocaleString('fr-FR') + ' F (frais 2%) sur votre Mobile Money.', withdrawal: wr })
+
+    const message = autoPayout
+      ? `Retrait en cours d'envoi automatique. Vous recevrez ${netAmount.toLocaleString('fr-FR')} F sur votre Mobile Money.`
+      : `Demande de retrait de ${amt.toLocaleString('fr-FR')} F enregistrée. Traitement et envoi sous 24h par l'administration (${netAmount.toLocaleString('fr-FR')} F nets vers le ${momoNumber}).`
+
+    res.json({ success: true, message, withdrawal: wr, autoPayout })
   } catch (err) { res.status(400).json({ message: err.message }) }
 })
 

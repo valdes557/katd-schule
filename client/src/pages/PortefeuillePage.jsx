@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, RefreshCw, X, Loader2, Users, Copy, Check } from 'lucide-react'
+import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, RefreshCw, X, Loader2, Users, Copy, Check, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { walletApi } from '../lib/api'
 import { useInlineCheckout } from '../components/payments/useInlineCheckout'
@@ -119,9 +119,10 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const inlineCheckout = useInlineCheckout()
   const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '' })
   const [status, setStatus] = useState('')
+  const [modalError, setModalError] = useState('')
   const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
   const [minWithdrawal, setMinWithdrawal] = useState(100)
-  const up = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  const up = (k) => (e) => { setModalError(''); setF({ ...f, [k]: e.target.value }) }
 
   useEffect(() => {
     walletApi.getConfig().then((r) => {
@@ -148,11 +149,16 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   }
 
   const submit = async () => {
+    setModalError('')
     onError('')
     inlineCheckout.setError('')
     if (type === 'deposit') {
       const amt = Number(f.amount)
-      if (!amt || amt < 100) { onError('Montant minimum : 100 FCFA'); return }
+      if (!amt || amt < 100) {
+        setModalError('Montant minimum : 100 FCFA')
+        onError('Montant minimum : 100 FCFA')
+        return
+      }
       inlineCheckout.start(
         () => walletApi.initiateDeposit({ amount: amt }),
         async () => { onDone('Dépôt effectué avec succès sur votre portefeuille') }
@@ -162,33 +168,51 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
     setBusy(true)
     try {
       if (type === 'withdraw') {
-        if (Number(f.amount) < minWithdrawal) throw new Error(`Le retrait minimum est de ${fmt(minWithdrawal)} F`)
+        if (!f.amount || Number(f.amount) <= 0) throw new Error('Veuillez saisir un montant valide')
+        if (Number(f.amount) < minWithdrawal) throw new Error(`Le retrait minimum est de ${fmt(minWithdrawal)} FCFA`)
         if (!f.momoNumber.trim()) throw new Error('Numéro Mobile Money requis')
         if (!f.accountName.trim()) throw new Error('Le nom du titulaire du numéro est obligatoire')
-        if (!f.pin) throw new Error('Code PIN requis')
+        if (!f.pin) throw new Error('Code PIN requis pour valider le retrait')
         const r = await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, accountName: f.accountName, pin: f.pin })
         onDone(r?.message || 'Demande de retrait enregistrée. Traitement sous 24h.')
       } else if (type === 'transfer') {
+        if (!f.teacherUserId) throw new Error('Veuillez sélectionner un enseignant')
+        if (!f.amount || Number(f.amount) <= 0) throw new Error('Veuillez saisir un montant')
+        if (!f.pin) throw new Error('Code PIN requis')
         await walletApi.transfer({ teacherUserId: f.teacherUserId, amount: Number(f.amount), pin: f.pin })
         onDone('Salaire transféré avec succès')
       } else if (type === 'transferUser') {
+        if (!f.accountNo.trim()) throw new Error('Numéro de compte destinataire requis')
+        if (!f.amount || Number(f.amount) <= 0) throw new Error('Veuillez saisir un montant')
+        if (!f.pin) throw new Error('Code PIN requis')
         const r = await walletApi.transferUser({ accountNo: f.accountNo, amount: Number(f.amount), pin: f.pin })
         onDone(r.commission > 0
           ? `Transfert de ${fmt(r.amount)} F effectué (commission +${fmt(r.commission)} F)`
           : `Transfert de ${fmt(r.amount)} F effectué (frais ${fmt(r.fee)} F)`)
       } else if (type === 'pin') {
         if (!f.code) throw new Error('Saisissez le code reçu par email')
+        if (!f.pin || !/^[0-9]{4,6}$/.test(String(f.pin))) throw new Error('Le code PIN doit comporter 4 à 6 chiffres')
+        if (String(f.pin) !== String(f.confirmPin)) throw new Error('Les codes PIN ne correspondent pas')
         await walletApi.setPin({ code: f.code, pin: f.pin, confirmPin: f.confirmPin })
-        onDone('Code PIN créé')
+        onDone('Code PIN créé avec succès')
       } else if (type === 'forgotPin') {
+        if (!f.code) throw new Error('Saisissez le code reçu par email')
+        if (!f.newPin || !/^[0-9]{4,6}$/.test(String(f.newPin))) throw new Error('Le code PIN doit comporter 4 à 6 chiffres')
+        if (String(f.newPin) !== String(f.confirmPin)) throw new Error('Les codes PIN ne correspondent pas')
         await walletApi.resetPin({ code: f.code, newPin: f.newPin, confirmPin: f.confirmPin })
-        onDone('Code PIN modifié')
+        onDone('Code PIN modifié avec succès')
       }
-    } catch (e) { onError(e.message); setStatus('') } finally { setBusy(false) }
+    } catch (e) {
+      setModalError(e.message)
+      onError(e.message)
+      setStatus('')
+    } finally {
+      setBusy(false)
+    }
   }
 
-  const sendForgotCode = async () => { try { await walletApi.forgotPin(); setStatus('Code envoyé à votre email') } catch (e) { onError(e.message) } }
-  const sendCreateCode = async () => { try { await walletApi.requestPinCode(); setStatus('Code envoyé à votre email') } catch (e) { onError(e.message) } }
+  const sendForgotCode = async () => { try { setModalError(''); await walletApi.forgotPin(); setStatus('Code envoyé à votre email') } catch (e) { setModalError(e.message); onError(e.message) } }
+  const sendCreateCode = async () => { try { setModalError(''); await walletApi.requestPinCode(); setStatus('Code envoyé à votre email') } catch (e) { setModalError(e.message); onError(e.message) } }
 
   const titles = { deposit: 'Effectuer un dépôt', withdraw: 'Demande de retrait', transfer: 'Transférer un salaire', transferUser: 'Transférer à un utilisateur', pin: 'Créer un code PIN', forgotPin: 'Modifier le code PIN' }
 
@@ -277,7 +301,18 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Confirmer le nouveau PIN</label><input type="password" value={f.confirmPin} onChange={up('confirmPin')} className="input w-full" placeholder="••••" /></div>
         </>)}
 
-        {inlineCheckout.error && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{inlineCheckout.error}</p>}
+        {modalError && (
+          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 shadow-sm">
+            <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+            <span className="flex-1 font-medium">{modalError}</span>
+          </div>
+        )}
+        {inlineCheckout.error && (
+          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 shadow-sm">
+            <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+            <span className="flex-1">{inlineCheckout.error}</span>
+          </div>
+        )}
         {inlineCheckout.status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{inlineCheckout.status}</p>}
         {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
 
