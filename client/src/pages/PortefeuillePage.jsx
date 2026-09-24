@@ -187,7 +187,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const isMerchant = user?.isMerchant === true
   const inlineCheckout = useInlineCheckout()
   const [depositMethod, setDepositMethod] = useState('direct') // 'direct' (API Payin) | 'inline' (fenêtre Ikeepay)
-  const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '', country: 'CM' })
+  const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '', country: 'CM', otp: '' })
   const [status, setStatus] = useState('')
   const [modalError, setModalError] = useState('')
   const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
@@ -240,6 +240,18 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           setModalError('Veuillez saisir votre numéro Mobile Money pour le débit')
           return
         }
+
+        const isOrangeCameroon = (f.country || 'CM') === 'CM' && String(f.momoOperator || '').toLowerCase().includes('orange')
+        if (isOrangeCameroon && !String(f.otp || '').trim()) {
+          const msg = "Pour Orange Money Cameroun, veuillez composer le #150*4*4# sur votre téléphone et saisir le code d'autorisation (OTP)."
+          setModalError(msg)
+          onError(msg)
+          if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            alert(msg)
+          }
+          return
+        }
+
         setBusy(true)
         setStatus('Envoi de la demande de débit à l\'API Payin Ikeepay…')
         try {
@@ -248,6 +260,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
             phone: rawPhone,
             operator: f.momoOperator,
             country: f.country || 'CM',
+            otp: String(f.otp || '').trim(),
           })
 
           if (res.payment_link) {
@@ -453,7 +466,14 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de débit ({currentCountry.currency})</label>
-              <select value={f.momoOperator} onChange={up('momoOperator')} className="input w-full">
+              <select
+                value={f.momoOperator}
+                onChange={(e) => {
+                  setModalError('')
+                  setF({ ...f, momoOperator: e.target.value, otp: '' })
+                }}
+                className="input w-full"
+              >
                 {currentOperators.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
@@ -470,10 +490,35 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
                 />
               </div>
             </div>
+
+            {(f.country || 'CM') === 'CM' && String(f.momoOperator || '').toLowerCase().includes('orange') ? (
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1 flex items-center justify-between">
+                  <span>Code d'autorisation Orange Money (OTP) <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">#150*4*4#</span>
+                </label>
+                <input
+                  type="text"
+                  value={f.otp || ''}
+                  onChange={up('otp')}
+                  className="input w-full font-mono font-bold tracking-widest text-center text-lg"
+                  placeholder="Ex: 1234"
+                  maxLength={6}
+                />
+                <p className="text-[11px] text-amber-900 bg-amber-50 rounded-lg p-2.5 mt-1.5 border border-amber-200 leading-snug">
+                  👉 <b>Obligatoire pour Orange Cameroun :</b> Composez <b>#150*4*4#</b> sur votre téléphone Orange pour générer votre code d'autorisation temporaire (4 à 6 chiffres) et renseignez-le ici.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-500 italic px-1">
+                ℹ️ Pour MTN : aucune démarche préalable, une invite apparaîtra directement sur votre écran de téléphone pour valider avec votre code PIN secret.
+              </p>
+            )}
+
             <div className="text-xs text-emerald-800 bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex items-start gap-2">
               <span className="text-base">📲</span>
               <span className="leading-relaxed">
-                <b>Recharge via l'API Payin Ikeepay :</b> En confirmant, une invite de débit apparaîtra directement sur votre téléphone pour valider les {f.amount ? fmt(f.amount) : '...'} FCFA avec votre code secret Mobile Money.
+                <b>Recharge via l'API Payin Ikeepay :</b> En confirmant, {String(f.momoOperator || '').toLowerCase().includes('orange') ? "le débit sera validé grâce à votre code d'autorisation" : "une invite de débit apparaîtra directement sur votre téléphone pour valider les " + (f.amount ? fmt(f.amount) : '...') + " FCFA avec votre code secret Mobile Money"}.
               </span>
             </div>
           </>) : (

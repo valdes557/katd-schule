@@ -151,7 +151,13 @@ function buildMomoBody({ amount, phone, operator, reference, callbackUrl, countr
     reference: reference,
   }
   if (customerEmail) body.customer_email = customerEmail
-  if (otp) body.otp = otp
+  if (otp) {
+    const cleanOtp = String(otp).trim()
+    body.otp = cleanOtp
+    body.auth_code = cleanOtp
+    body.authorization_code = cleanOtp
+    body.code = cleanOtp
+  }
   if (accountName) {
     body.account_name = accountName
     body.accountName = accountName

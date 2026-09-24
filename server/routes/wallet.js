@@ -105,7 +105,7 @@ router.post('/transfer-user', protect, async (req, res) => {
 // POST /api/wallet/deposit/initiate — dépôt via Mobile Money (collecte Ikeepay)
 router.post('/deposit/initiate', protect, async (req, res) => {
   try {
-    const { amount, phone, operator, country = 'CM' } = req.body
+    const { amount, phone, operator, country = 'CM', otp } = req.body
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
     const inline = !(phone && operator)
@@ -125,6 +125,7 @@ router.post('/deposit/initiate', protect, async (req, res) => {
       amount: amt,
       phone,
       operator,
+      otp,
       reference,
       country: normCountry,
       currency: targetCurrency,
