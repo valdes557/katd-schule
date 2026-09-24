@@ -139,33 +139,19 @@ function buildMomoBody({ amount, phone, operator, reference, callbackUrl, countr
     err.status = 400
     throw err
   }
-  // Format attendu par Ikeepay (doc) : phoneNumber + operator (nom du fournisseur), external_reference.
+  // Format attendu par Ikeepay PRO (documentation officielle H2H) :
+  // { amount, currency, country, phoneNumber, operator, external_reference, customer_email, otp }
   const body = {
     amount: Math.round(Number(amount)),
     currency: resolvedCurrency,
     country: resolvedCountry,
     phoneNumber: natPhone,
-    phone: natPhone,
     operator: mapProvider(operator),
     external_reference: reference,
-    reference: reference,
   }
   if (customerEmail) body.customer_email = customerEmail
   if (otp) {
-    const cleanOtp = String(otp).trim()
-    body.otp = cleanOtp
-    body.auth_code = cleanOtp
-    body.authorization_code = cleanOtp
-    body.code = cleanOtp
-  }
-  if (accountName) {
-    body.account_name = accountName
-    body.accountName = accountName
-  }
-  // callback_url optionnel : uniquement s'il est absolu (http/https).
-  if (callbackUrl && /^https?:\/\//i.test(callbackUrl)) {
-    body.callback_url = callbackUrl
-    body.notify_url = callbackUrl
+    body.otp = String(otp).trim()
   }
   return body
 }
