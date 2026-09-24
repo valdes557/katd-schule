@@ -186,7 +186,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const { user } = useAuth()
   const isMerchant = user?.isMerchant === true
   const inlineCheckout = useInlineCheckout()
-  const [depositMethod, setDepositMethod] = useState('direct') // 'direct' (API Payin) | 'inline' (fenêtre Ikeepay)
+  const [depositMethod, setDepositMethod] = useState('inline') // 'inline' (fenêtre Ikeepay recommandée) | 'direct' (API Payin)
   const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '', country: 'CM', otp: '' })
   const [status, setStatus] = useState('')
   const [modalError, setModalError] = useState('')
@@ -303,11 +303,19 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
             throw new Error("Paiement en cours de confirmation. Si vous avez déjà validé le code secret sur votre téléphone, votre compte sera crédité sous peu.")
           }
         } catch (e) {
-          setModalError(e.message || 'Erreur lors du dépôt')
-          onError(e.message || 'Erreur lors du dépôt')
+          const errMsg = e.message || 'Erreur lors du dépôt'
+          setModalError(errMsg)
+          onError(errMsg)
           setStatus('')
-          if (typeof window !== 'undefined' && window.innerWidth < 768) {
-            alert("Erreur dépôt : " + (e.message || 'Échec'))
+          if (/partenaire|rejet|invalide|failed|échec/i.test(errMsg)) {
+            if (typeof window !== 'undefined' && window.confirm("L'opérateur Mobile Money a refusé l'initialisation du débit direct (" + errMsg + ").\n\nSouhaitez-vous ouvrir la Fenêtre Sécurisée Ikeepay pour finaliser votre dépôt de " + fmt(amt) + " FCFA ?")) {
+              setDepositMethod('inline')
+              inlineCheckout.start(
+                () => walletApi.initiateDeposit({ amount: amt, country: f.country || 'CM' }),
+                async () => { onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`) }
+              )
+              return
+            }
           }
         } finally {
           setBusy(false)
@@ -315,10 +323,10 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         return
       }
 
-      // Mode 2 : Fenêtre Inline
+      // Mode 2 : Fenêtre Inline (officielle et garantie)
       inlineCheckout.start(
         () => walletApi.initiateDeposit({ amount: amt, country: f.country || 'CM' }),
-        async () => { onDone('Dépôt effectué avec succès sur votre portefeuille') }
+        async () => { onDone(`Dépôt de ${fmt(amt)} FCFA validé avec succès ! Votre portefeuille a été crédité.`) }
       )
       return
     }
@@ -426,25 +434,43 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {type === 'deposit' && (<>
-          {/* Choix de la méthode : Direct (API Payin) vs Fenêtre sécurisée */}
+          {/* Choix de la méthode : Fenêtre sécurisée Ikeepay (recommandé) vs Débit direct */}
           <div className="flex bg-gray-100 p-1 rounded-xl gap-1 text-xs">
             <button
               type="button"
-              onClick={() => setDepositMethod('direct')}
-              className={cn("flex-1 py-1.5 px-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5", depositMethod === 'direct' ? "bg-white text-emerald-700 shadow-sm" : "text-gray-600 hover:text-gray-900")}
+              onClick={() => { setModalError(''); setDepositMethod('inline') }}
+              className={cn("flex-1 py-2 px-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5", depositMethod === 'inline' ? "bg-white text-blue-700 shadow-sm" : "text-gray-600 hover:text-gray-900")}
             >
-              <span>⚡</span> Débit direct (API Payin)
+              <span>💳</span> Fenêtre Ikeepay (Recommandé)
             </button>
             <button
               type="button"
-              onClick={() => setDepositMethod('inline')}
-              className={cn("flex-1 py-1.5 px-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5", depositMethod === 'inline' ? "bg-white text-blue-700 shadow-sm" : "text-gray-600 hover:text-gray-900")}
+              onClick={() => { setModalError(''); setDepositMethod('direct') }}
+              className={cn("flex-1 py-2 px-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5", depositMethod === 'direct' ? "bg-white text-emerald-700 shadow-sm" : "text-gray-600 hover:text-gray-900")}
             >
-              <span>💳</span> Fenêtre Ikeepay
+              <span>⚡</span> Débit direct (API)
             </button>
           </div>
 
-          {depositMethod === 'direct' ? (<>
+          {depositMethod === 'inline' ? (
+            <div className="text-xs text-blue-950 bg-blue-50/80 border border-blue-200/80 rounded-xl p-3.5 space-y-2">
+              <p className="font-bold flex items-center gap-1.5 text-blue-900">
+                <span>🛡️</span> Guichet officiel sécurisé Ikeepay
+              </p>
+              <p className="text-gray-700 leading-relaxed text-[11.5px]">
+                En cliquant sur <b>Confirmer</b> ci-dessous, la fenêtre officielle sécurisée Ikeepay s'ouvrira directement pour valider vos <b>{f.amount ? fmt(f.amount) : '...'} FCFA</b> avec votre compte <b>Orange Money</b>, <b>MTN MoMo</b> ou par <b>carte bancaire</b>.
+              </p>
+              <div className="flex items-center gap-2 pt-1 text-[11px] text-emerald-800 font-semibold bg-emerald-50 border border-emerald-200 rounded-lg p-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                <span>Méthode 100% fonctionnelle au Cameroun sans blocage opérateur.</span>
+              </div>
+            </div>
+          ) : (<>
+            <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-start gap-1.5">
+              <span>ℹ️</span>
+              <span><b>Note pour le Cameroun :</b> Si l'opérateur rejette l'invite directe (« Erreur partenaire »), basculez simplement sur l'onglet <b>Fenêtre Ikeepay</b> ci-dessus.</span>
+            </div>
+
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">Pays</label>
               <select
@@ -521,16 +547,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
                 <b>Recharge via l'API Payin Ikeepay :</b> En confirmant, {String(f.momoOperator || '').toLowerCase().includes('orange') ? "le débit sera validé grâce à votre code d'autorisation" : "une invite de débit apparaîtra directement sur votre téléphone pour valider les " + (f.amount ? fmt(f.amount) : '...') + " FCFA avec votre code secret Mobile Money"}.
               </span>
             </div>
-          </>) : (
-            <div className="text-xs text-blue-900 bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-1">
-              <p className="font-semibold flex items-center gap-1.5">
-                <span>💳</span> Paiement sécurisé via portail Ikeepay
-              </p>
-              <p className="text-gray-600 leading-relaxed">
-                Une fenêtre Ikeepay s'ouvrira pour choisir votre méthode de paiement (carte bancaire ou Mobile Money multi-pays).
-              </p>
-            </div>
-          )}
+          </>)}
         </>)}
 
         {type === 'withdraw' && (<>
@@ -610,9 +627,27 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {modalError && (
-          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 shadow-sm">
-            <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
-            <span className="flex-1 font-medium">{modalError}</span>
+          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 space-y-2 shadow-sm">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+              <span className="flex-1 font-medium">{modalError}</span>
+            </div>
+            {type === 'deposit' && depositMethod === 'direct' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setModalError('')
+                  setDepositMethod('inline')
+                  inlineCheckout.start(
+                    () => walletApi.initiateDeposit({ amount: Number(f.amount) || 100, country: f.country || 'CM' }),
+                    async () => { onDone(`Dépôt validé avec succès ! Votre portefeuille a été crédité.`) }
+                  )
+                }}
+                className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <span>💳</span> Payer via la Fenêtre Sécurisée Ikeepay (Recommandé)
+              </button>
+            )}
           </div>
         )}
         {inlineCheckout.error && (
