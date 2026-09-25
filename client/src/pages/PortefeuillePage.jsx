@@ -159,9 +159,9 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         return
       }
 
-      const isOrangeCameroon = (f.country || 'CM') === 'CM' && String(f.momoOperator || '').toLowerCase().includes('orange')
-      if (isOrangeCameroon && !String(f.otp || '').trim()) {
-        const msg = "Pour Orange Money Cameroun, composez le #150*4*4# sur votre téléphone et renseignez ici le code d'autorisation (OTP)."
+      const isOrangeBurkina = (f.country || '') === 'BF' && String(f.momoOperator || '').toLowerCase().includes('orange')
+      if (isOrangeBurkina && !String(f.otp || '').trim()) {
+        const msg = "Pour Orange Money Burkina Faso, veuillez renseigner le code d'autorisation (OTP)."
         setModalError(msg)
         onError(msg)
         if (typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -224,7 +224,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         const errMsg = e.message || 'Erreur lors du dépôt'
         let friendlyMsg = errMsg
         if (/partenaire|rejet|failed|échec/i.test(errMsg)) {
-          friendlyMsg = `L'opérateur Mobile Money (${(f.momoOperator || 'opérateur').toUpperCase()}) a refusé l'initialisation du débit direct (${errMsg}). Vérifiez votre numéro et code OTP ou réessayez dans un instant.`
+          friendlyMsg = `L'opérateur Mobile Money (${(f.momoOperator || 'opérateur').toUpperCase()}) a refusé l'initialisation du débit direct (${errMsg}). Vérifiez votre numéro ou réessayez dans un instant.`
         }
         setModalError(friendlyMsg)
         onError(friendlyMsg)
@@ -384,34 +384,30 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
             </div>
           </div>
 
-          {(f.country || 'CM') === 'CM' && String(f.momoOperator || '').toLowerCase().includes('orange') ? (
+          {(f.country || '') === 'BF' && String(f.momoOperator || '').toLowerCase().includes('orange') && (
             <div>
               <label className="text-xs font-medium text-gray-700 mb-1 flex items-center justify-between">
                 <span>Code d'autorisation Orange Money (OTP) <span className="text-red-500">*</span></span>
-                <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">#150*4*4#</span>
+                <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">Orange BF</span>
               </label>
               <input
                 type="text"
                 value={f.otp || ''}
                 onChange={up('otp')}
                 className="input w-full font-mono font-bold tracking-widest text-center text-lg"
-                placeholder="Ex: 1234"
+                placeholder="Ex: 123456"
                 maxLength={6}
               />
               <p className="text-[11px] text-amber-900 bg-amber-50 rounded-lg p-2.5 mt-1.5 border border-amber-200 leading-snug">
-                👉 <b>Obligatoire pour Orange Cameroun :</b> Composez <b>#150*4*4#</b> sur votre téléphone Orange pour générer votre code d'autorisation temporaire (4 à 6 chiffres) et renseignez-le ici.
+                👉 <b>Requis pour Orange Burkina Faso :</b> Renseignez le code d'autorisation (OTP) généré sur votre téléphone.
               </p>
             </div>
-          ) : (
-            <p className="text-[11px] text-gray-500 italic px-1">
-              ℹ️ Pour MTN : aucune démarche préalable, une invite apparaîtra directement sur votre écran de téléphone pour valider avec votre code PIN secret.
-            </p>
           )}
 
           <div className="text-xs text-emerald-800 bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex items-start gap-2">
             <span className="text-base">📲</span>
             <span className="leading-relaxed">
-              <b>Paiement Direct Server-to-Server (H2H) :</b> En confirmant, {String(f.momoOperator || '').toLowerCase().includes('orange') ? "le débit sera validé grâce à votre code d'autorisation" : "une invite de débit apparaîtra directement sur votre téléphone pour valider les " + (f.amount ? fmt(f.amount) : '...') + " FCFA avec votre code secret Mobile Money"}. Les fonds alimentent directement le portefeuille.
+              <b>Paiement Direct Server-to-Server (H2H) :</b> En confirmant, une invite de débit apparaîtra directement sur votre écran de téléphone pour valider les {f.amount ? fmt(f.amount) : '...'} FCFA avec votre code secret Mobile Money.
             </span>
           </div>
         </>)}

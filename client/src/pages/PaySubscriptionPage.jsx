@@ -54,9 +54,9 @@ export default function PaySubscriptionPage() {
     if (!rawPhone) return setErr("Veuillez saisir le numéro Mobile Money pour le débit.")
     if (!operator) return setErr("Veuillez sélectionner votre opérateur Mobile Money.")
 
-    const isOrangeCameroon = country === 'CM' && String(operator).toLowerCase().includes('orange')
-    if (isOrangeCameroon && !String(otp || '').trim()) {
-      return setErr("Pour Orange Money Cameroun, composez le #150*4*4# et saisissez ici le code d'autorisation (OTP).")
+    const isOrangeBurkina = country === 'BF' && String(operator).toLowerCase().includes('orange')
+    if (isOrangeBurkina && !String(otp || '').trim()) {
+      return setErr("Pour Orange Money Burkina Faso, veuillez renseigner le code d'autorisation (OTP).")
     }
 
     setBusy(true)
@@ -186,23 +186,23 @@ export default function PaySubscriptionPage() {
           </div>
         </div>
 
-        {country === 'CM' && String(operator).toLowerCase().includes('orange') && (
+        {country === 'BF' && String(operator).toLowerCase().includes('orange') && (
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1 flex items-center justify-between">
               <span>Code d'autorisation Orange Money (OTP) <span className="text-red-500">*</span></span>
-              <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">#150*4*4#</span>
+              <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">Orange BF</span>
             </label>
             <input
               type="text"
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
               className="input w-full font-mono font-bold tracking-widest text-center text-lg"
-              placeholder="Ex: 1234"
+              placeholder="Ex: 123456"
               maxLength={6}
               required
             />
             <p className="text-[11px] text-amber-900 bg-amber-50 rounded-lg p-2.5 mt-1.5 border border-amber-200 leading-snug">
-              👉 Composez <b>#150*4*4#</b> sur votre téléphone Orange pour générer votre code d'autorisation temporaire (4 à 6 chiffres).
+              👉 Renseignez le code d'autorisation (OTP) généré sur votre mobile Orange Burkina Faso.
             </p>
           </div>
         )}

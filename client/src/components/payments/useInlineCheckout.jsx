@@ -119,9 +119,9 @@ function DirectChargeModal({ checkout, onClose, busy, setBusy, status, setStatus
       return
     }
 
-    const isOrangeCameroon = country === 'CM' && String(operator).toLowerCase().includes('orange')
-    if (isOrangeCameroon && !String(otp || '').trim()) {
-      setFormErr("Pour Orange Money Cameroun, composez le #150*4*4# et saisissez ici le code d'autorisation (OTP).")
+    const isOrangeBurkina = country === 'BF' && String(operator).toLowerCase().includes('orange')
+    if (isOrangeBurkina && !String(otp || '').trim()) {
+      setFormErr("Pour Orange Money Burkina Faso, veuillez renseigner le code d'autorisation (OTP).")
       return
     }
 
@@ -167,7 +167,7 @@ function DirectChargeModal({ checkout, onClose, busy, setBusy, status, setStatus
       const msg = err.message || 'Erreur lors du débit Mobile Money'
       let friendly = msg
       if (/partenaire|rejet|failed|échec/i.test(msg)) {
-        friendly = `L'opérateur Mobile Money (${operator.toUpperCase()}) a rejeté l'initialisation du débit direct (${msg}). Vérifiez votre numéro et code OTP ou réessayez dans un instant.`
+        friendly = `L'opérateur Mobile Money (${operator.toUpperCase()}) a rejeté l'initialisation du débit direct (${msg}). Vérifiez votre numéro ou réessayez dans un instant.`
       }
       setFormErr(friendly)
       setError(friendly)
@@ -263,24 +263,24 @@ function DirectChargeModal({ checkout, onClose, busy, setBusy, status, setStatus
               </div>
             </div>
 
-            {country === 'CM' && String(operator).toLowerCase().includes('orange') && (
+            {country === 'BF' && String(operator).toLowerCase().includes('orange') && (
               <div>
                 <label className="text-xs font-medium text-gray-700 mb-1 flex items-center justify-between">
                   <span>Code d'autorisation Orange Money (OTP) <span className="text-red-500">*</span></span>
-                  <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">#150*4*4#</span>
+                  <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">Orange BF</span>
                 </label>
                 <input
                   type="text"
                   value={otp}
                   onChange={(e) => { setOtp(e.target.value); setFormErr('') }}
                   className="input w-full font-mono font-bold tracking-widest text-center text-lg"
-                  placeholder="Ex: 1234"
+                  placeholder="Ex: 123456"
                   maxLength={6}
                   disabled={busy}
                   required
                 />
                 <p className="text-[11px] text-amber-900 bg-amber-50 rounded-lg p-2.5 mt-1.5 border border-amber-200 leading-snug">
-                  👉 <b>Obligatoire pour Orange Cameroun :</b> Composez <b>#150*4*4#</b> sur votre téléphone pour générer votre code d'autorisation temporaire.
+                  👉 Renseignez le code d'autorisation (OTP) généré sur votre mobile Orange Burkina Faso.
                 </p>
               </div>
             )}
