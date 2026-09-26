@@ -75,9 +75,15 @@ export function AuthProvider({ children }) {
   }
 
   // Inscription publique en tant qu'utilisateur (grand public)
-  const register = async (name, email, password, referralCode) => {
+  const register = async (name, email, password, referralCode, privacyPolicyAccepted = true) => {
     try {
-      const res = await authApi.registerUser({ name, email, password, referralCode: referralCode || undefined })
+      const res = await authApi.registerUser({
+        name,
+        email,
+        password,
+        referralCode: referralCode || undefined,
+        privacyPolicyAccepted,
+      })
       // Vérification email obligatoire : pas de token tant que non confirmé
       if (res.requiresVerification) {
         return { success: true, requiresVerification: true, email: res.email || email }
@@ -91,6 +97,20 @@ export function AuthProvider({ children }) {
       return { success: true, user: u }
     } catch (err) {
       return { success: false, message: err.message || "Échec de l'inscription" }
+    }
+  }
+
+  // Accepte la politique de confidentialité (utilisateur connecté)
+  const acceptPrivacyPolicy = async () => {
+    try {
+      const res = await authApi.acceptPrivacyPolicy()
+      if (res?.user) {
+        setUser(res.user)
+        try { localStorage.setItem('katd_user', JSON.stringify(res.user)) } catch (_) {}
+      }
+      return { success: true }
+    } catch (err) {
+      return { success: false, message: err.message || "Impossible d'enregistrer votre acceptation" }
     }
   }
 
@@ -128,7 +148,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, setUser, school, setSchool, cycle, login, register, verifyEmail, logout, loading, changeCycle }}>
+    <AuthContext.Provider value={{ user, setUser, school, setSchool, cycle, login, register, verifyEmail, acceptPrivacyPolicy, logout, loading, changeCycle }}>
       {children}
     </AuthContext.Provider>
   )

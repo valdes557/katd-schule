@@ -59,6 +59,8 @@ async function provisionDirector(data) {
     phone: data.whatsapp || '',
     isActive: true,
     matricule,
+    privacyPolicyAccepted: data.privacyPolicyAccepted ?? true,
+    privacyPolicyAcceptedAt: new Date(),
   })
 
   school.director = user._id

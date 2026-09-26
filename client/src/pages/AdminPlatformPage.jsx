@@ -13,9 +13,11 @@ import { useAuth } from '../context/AuthContext'
 import RichTextEditor from '../components/ui/RichTextEditor'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 
 const TABS = [
   { id: 'identity', label: 'Identité', icon: Pencil },
+  { id: 'privacy', label: 'Politique de confidentialité', icon: ShieldCheck },
   { id: 'posts', label: 'Social', icon: Globe2 },
   { id: 'resources', label: 'Ressources', icon: FileText },
   { id: 'about', label: 'À propos', icon: Info },
@@ -105,6 +107,99 @@ function IdentityPanel({ platformData, refresh }) {
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Privacy Policy Panel ──────────────────────────────────────────────────────────
+function PrivacyPolicyPanel({ platformData, refresh }) {
+  const [privacy, setPrivacy] = useState(platformData?.help?.privacy || '')
+  const [saving, setSaving] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    setPrivacy(platformData?.help?.privacy || '')
+  }, [platformData?.help?.privacy])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSuccess('')
+    try {
+      const updatedHelp = { ...(platformData?.help || {}), privacy: privacy.trim() }
+      await platformApi.update({ help: updatedHelp })
+      cache.invalidate('/platform')
+      refresh()
+      setSuccess('Politique de confidentialité enregistrée avec succès !')
+      setTimeout(() => setSuccess(''), 5000)
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la sauvegarde')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-6 space-y-5 max-w-3xl">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <ShieldCheck size={20} className="text-blue-600" /> Politique de confidentialité
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            Ce texte officiel est présenté obligatoirement à tous les nouveaux utilisateurs et établissements lors de leur inscription. Ils doivent impérativement le lire et l'accepter pour créer leur compte et accéder à la plateforme.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowPreview(true)}
+          className="btn-secondary text-xs flex items-center gap-1.5 shrink-0"
+        >
+          <Eye size={14} /> Aperçu utilisateur
+        </button>
+      </div>
+
+      {success && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl p-3 flex items-center gap-2">
+          <CheckCircle size={15} className="text-emerald-600" />
+          <span>{success}</span>
+        </div>
+      )}
+
+      <div>
+        <label className="text-xs font-semibold text-gray-700 block mb-1.5">
+          Contenu de la politique de confidentialité
+        </label>
+        <textarea
+          rows={14}
+          value={privacy}
+          onChange={(e) => setPrivacy(e.target.value)}
+          placeholder="Rédigez ici la politique de confidentialité de votre plateforme..."
+          className="input w-full font-mono text-xs sm:text-sm leading-relaxed p-4 resize-y"
+        />
+        <p className="text-[11px] text-gray-400 mt-1">
+          Astuce : vous pouvez structurer le texte avec des numéros de section et des paragraphes clairs.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-primary text-sm flex items-center gap-2"
+        >
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          Enregistrer la politique de confidentialité
+        </button>
+      </div>
+
+      {showPreview && (
+        <PrivacyPolicyModal
+          isOpen={true}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
     </div>
   )
 }
@@ -1577,6 +1672,7 @@ export default function AdminPlatformPage() {
       ) : (
         <>
           {tab === 'identity' && <IdentityPanel platformData={platformData} refresh={refresh} />}
+          {tab === 'privacy' && <PrivacyPolicyPanel platformData={platformData} refresh={refresh} />}
           {tab === 'posts' && <PostsPanel />}
           {tab === 'resources' && <ResourcesPanel />}
           {tab === 'about' && <AboutPanel platformData={platformData} refresh={refresh} />}

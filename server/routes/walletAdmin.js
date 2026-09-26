@@ -4,12 +4,14 @@ const router = express.Router()
 const bcrypt = require('bcryptjs')
 const { protect } = require('../middleware/auth')
 const User = require('../models/User')
+const Wallet = require('../models/Wallet')
 const WithdrawalRequest = require('../models/WithdrawalRequest')
 const PaymentIntent = require('../models/PaymentIntent')
 const WalletTransaction = require('../models/WalletTransaction')
 const IkeepayConfig = require('../models/IkeepayConfig')
 const YoutubeConfig = require('../models/YoutubeConfig')
 const wallet = require('../services/walletService')
+const ikeepay = require('../services/ikeepayService')
 const { encrypt, decrypt, mask } = require('../utils/crypto')
 const { sendEmail } = require('../utils/emailService')
 
@@ -432,10 +434,10 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
       .populate('counterparty', 'name role email phone matricule walletAccountNo')
       .limit(10000).lean()
 
-    const FEE_LABELS = { transfer: 'Frais de transfert (0,25%)', withdrawal: 'Frais de retrait (2%)', maintenance: 'Frais de maintenance' }
+    const FEE_LABELS = { transfer: 'Frais de transfert (0,25%)', withdrawal: 'Frais de retrait (1%)', maintenance: 'Frais de maintenance' }
     let fees = docs.map((tx) => {
       const p = tx.counterparty || {}
-      // Distingue frais de transfert (0,25%), retrait (2%) et maintenance via meta.feeType.
+      // Distingue frais de transfert (0,25%), retrait (1%) et maintenance via meta.feeType.
       const ft = tx.meta && tx.meta.feeType
       const kind = ft === 'withdrawal' ? 'withdrawal' : ft === 'maintenance' ? 'maintenance' : 'transfer'
       return {
@@ -444,7 +446,7 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
         feeLabel: FEE_LABELS[kind] || FEE_LABELS.transfer,
         amount: tx.amount, currency: tx.currency || 'XOF',
         baseAmount: (tx.meta && tx.meta.baseAmount) || null,
-        rate: (tx.meta && tx.meta.rate) || (kind === 'withdrawal' ? 0.02 : kind === 'maintenance' ? null : 0.0025),
+        rate: (tx.meta && tx.meta.rate) || (kind === 'withdrawal' ? 0.01 : kind === 'maintenance' ? null : 0.0025),
         payer: {
           id: p._id, name: p.name || '—', role: p.role || '', email: p.email || '',
           phone: p.phone || '', matricule: p.matricule || '', accountNo: p.walletAccountNo || '',
@@ -490,8 +492,160 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
     const pages = Math.max(1, Math.ceil(total / limit))
     const paged = fees.slice((page - 1) * limit, (page - 1) * limit + limit)
 
-    res.json({ success: true, fees: paged, total, page, pages, stats })
+    let adminWallet = await Wallet.findOne({ owner: req.user._id })
+    if (!adminWallet) {
+      const superAdmin = await wallet.getPlatformAdmin()
+      if (superAdmin) adminWallet = await Wallet.findOne({ owner: superAdmin._id })
+    }
+    const availableBalance = adminWallet ? adminWallet.balance : 0
+
+    res.json({ success: true, fees: paged, total, page, pages, stats, availableBalance })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/admin/transaction-fees/withdraw — Retrait des frais de transaction vers Mobile Money
+router.post('/transaction-fees/withdraw', protect, adminOnly, async (req, res) => {
+  try {
+    const { amount, momoNumber, momoOperator, accountName, country = 'CM', pin, password } = req.body
+    const amt = Number(amount)
+    if (!amt || amt < 100) {
+      return res.status(400).json({ message: 'Le montant minimum de retrait est de 100 FCFA' })
+    }
+    if (!momoNumber || !String(momoNumber).trim()) {
+      return res.status(400).json({ message: 'Numéro Mobile Money requis' })
+    }
+    if (!accountName || !String(accountName).trim()) {
+      return res.status(400).json({ message: 'Le nom du titulaire Mobile Money est obligatoire' })
+    }
+    if (!momoOperator) {
+      return res.status(400).json({ message: "L'opérateur Mobile Money est requis" })
+    }
+
+    // Authentification de sécurité : vérification du PIN ou du mot de passe
+    const u = await User.findById(req.user._id).select('+walletPin +password')
+    let authValid = false
+    if (pin && u.walletPin) {
+      authValid = await bcrypt.compare(String(pin), u.walletPin)
+    }
+    if (!authValid && password && u.password) {
+      authValid = await bcrypt.compare(String(password), u.password)
+    }
+    if (!authValid) {
+      return res.status(401).json({ message: 'Code PIN ou mot de passe incorrect' })
+    }
+
+    // Portefeuille admin
+    let w = await Wallet.findOne({ owner: req.user._id })
+    if (!w) {
+      const superAdmin = await wallet.getPlatformAdmin()
+      if (superAdmin && String(superAdmin._id) !== String(req.user._id)) {
+        w = await Wallet.findOne({ owner: superAdmin._id })
+      }
+    }
+    if (!w) {
+      w = await wallet.getOrCreateWallet(req.user._id, { role: 'admin' })
+    }
+
+    if (w.balance < amt) {
+      return res.status(400).json({
+        message: `Solde insuffisant pour ce retrait. Solde disponible : ${w.balance.toLocaleString('fr-FR')} FCFA`,
+      })
+    }
+
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+    const providerRef = 'wd_admin_' + Date.now()
+    const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
+    const holderName = String(accountName).trim()
+
+    // 1. Déclenche le payout direct via Ikeepay vers le Mobile Money de l'administrateur
+    let payout
+    try {
+      payout = await ikeepay.createPayout({
+        amount: amt,
+        phone: String(momoNumber).trim(),
+        operator: momoOperator,
+        accountName: holderName,
+        country: normCountry,
+        currency: targetCurrency,
+        reference: providerRef,
+        callbackUrl: base + '/api/payments/webhook',
+      })
+    } catch (ikeepayErr) {
+      console.error('[Admin Fees Payout Error]:', ikeepayErr.message, ikeepayErr.data || '')
+      return res.status(400).json({
+        message: `Ikeepay a retourné une erreur : ${ikeepayErr.message}`,
+      })
+    }
+
+    const payoutId = payout?.transaction_id || payout?.id || providerRef
+
+    // 2. Débit atomique du portefeuille admin
+    const debitRes = await wallet.debit(w.owner, {
+      amount: amt,
+      type: 'withdrawal',
+      description: `Retrait des frais de transaction vers ${momoOperator.toUpperCase()} ${momoNumber} (${holderName})`,
+      meta: {
+        momoNumber,
+        momoOperator,
+        accountName: holderName,
+        country: normCountry,
+        currency: targetCurrency,
+        payoutId,
+        providerRef,
+        feeWithdrawal: true,
+      },
+    })
+
+    // 3. Enregistrement dans WithdrawalRequest pour la traçabilité
+    const wr = await WithdrawalRequest.create({
+      user: req.user._id,
+      wallet: w._id,
+      role: 'admin',
+      amount: amt,
+      fee: 0,
+      netAmount: amt,
+      currency: targetCurrency,
+      country: normCountry,
+      momoNumber: String(momoNumber).trim(),
+      momoOperator,
+      accountName: holderName,
+      status: 'paid',
+      providerRef,
+      providerPayoutId: payoutId,
+      processedBy: req.user._id,
+      processedAt: new Date(),
+      adminNote: `Retrait de frais transféré avec succès vers Mobile Money (${payoutId})`,
+    })
+
+    // Mémorise le dernier compte de retrait
+    try {
+      await User.updateOne(
+        { _id: req.user._id },
+        {
+          $set: {
+            externalAccount: {
+              operator: momoOperator || '',
+              number: String(momoNumber).trim(),
+              name: holderName,
+              country: normCountry,
+            },
+          },
+        }
+      )
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `Retrait de ${amt.toLocaleString('fr-FR')} FCFA envoyé avec succès sur votre compte Mobile Money ${momoNumber} !`,
+      transactionId: payoutId,
+      availableBalance: debitRes?.wallet?.balance ?? w.balance - amt,
+      withdrawal: wr,
+    })
+  } catch (err) {
+    console.error('[Admin Fees Withdraw Error]:', err)
+    res.status(500).json({ message: err.message || 'Erreur lors du traitement du retrait' })
+  }
 })
 
 // ───────────────────── CLÉS API IKEEPAY (sécurisées) ─────────────────────

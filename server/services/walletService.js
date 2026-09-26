@@ -6,8 +6,8 @@ const User = require('../models/User')
 
 // Frais de transfert entre utilisateurs : 0,25% du montant, payés EN PLUS par l'envoyeur.
 const TRANSFER_FEE_RATE = 0.0025
-// Frais de retrait vers un opérateur externe : 2% du montant, DÉDUITS du montant reçu.
-const WITHDRAWAL_FEE_RATE = 0.02
+// Frais de retrait vers un opérateur externe : 1% du montant, DÉDUITS du montant reçu.
+const WITHDRAWAL_FEE_RATE = 0.01
 // Commission marchand : 0,20% du montant, bonus virtuel crédité au marchand (envoyeur) sur ses transferts.
 const MERCHANT_COMMISSION_RATE = 0.002
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'valdeslando15@gmail.com').toLowerCase()
@@ -167,7 +167,7 @@ function computeTransferFee(amount) {
   return Math.round(amt * TRANSFER_FEE_RATE)
 }
 
-// Calcule les frais de retrait (2%, arrondi à l'entier) — DÉDUITS du montant reçu.
+// Calcule les frais de retrait (1%, arrondi à l'entier) — DÉDUITS du montant reçu.
 function computeWithdrawalFee(amount) {
   const amt = Number(amount)
   if (!amt || amt <= 0) return 0

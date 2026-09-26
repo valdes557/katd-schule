@@ -66,6 +66,7 @@ export const authApi = {
   adminResetPassword: (email) => api.post('/auth/admin-reset-password', { email }),
   verifyEmail: (email, code) => api.post('/auth/verify-email', { email, code }),
   resendVerification: (email) => api.post('/auth/resend-verification', { email }),
+  acceptPrivacyPolicy: () => api.post('/auth/accept-privacy-policy'),
   updateProfile: (data) => api.put('/auth/profile', data),
   uploadAvatar: async (file) => {
     const fd = new FormData()
@@ -400,6 +401,7 @@ export const platformApi = {
     return res.json()
   },
   deleteResource: (id) => api.del(`/platform/resources/${id}`),
+  getPrivacyPolicy: () => api.get('/platform/privacy-policy'),
 }
 
 // Boost d'une publication (espace utilisateur /u). Le prix est TOUJOURS résolu côté serveur ;
@@ -1091,6 +1093,7 @@ export const walletAdminApi = {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
     return api.get('/admin/transaction-fees' + (qs ? '?' + qs : ''))
   },
+  withdrawFees: (payload) => api.post('/admin/transaction-fees/withdraw', payload),
   getIkeepay: () => api.get('/admin/ikeepay'),
   requestIkeepayCode: () => api.post('/admin/ikeepay/request-code', {}),
   revealIkeepay: (code) => api.post('/admin/ikeepay/reveal', { code }),

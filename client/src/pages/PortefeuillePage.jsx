@@ -129,8 +129,8 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   const transferTotal = (Number(f.amount) || 0) + transferFee
   // Aperçu de la commission marchand (0,20%, bonus virtuel)
   const merchantCommission = Math.round((Number(f.amount) || 0) * 0.002)
-  // Aperçu des frais de retrait (2%, arrondi, déduits du montant reçu)
-  const withdrawFee = Math.round((Number(f.amount) || 0) * 0.02)
+  // Aperçu des frais de retrait (1%, arrondi, déduits du montant reçu)
+  const withdrawFee = Math.round((Number(f.amount) || 0) * 0.01)
   const withdrawNet = (Number(f.amount) || 0) - withdrawFee
 
   // Résout le numéro de compte du destinataire (KS######) -> nom
@@ -243,7 +243,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         if (!f.accountName.trim()) throw new Error('Le nom du titulaire du numéro est obligatoire')
         if (!f.pin) throw new Error('Code PIN requis pour valider le retrait')
         const r = await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, accountName: f.accountName, pin: f.pin, country: f.country || 'CM' })
-        onDone(r?.message || 'Demande de retrait enregistrée. Traitement et envoi sous 24h par Ikeepay.')
+        onDone(r?.message || 'Demande de retrait enregistrée.')
       } else if (type === 'transfer') {
         if (!f.teacherUserId) throw new Error('Veuillez sélectionner un enseignant')
         if (!f.amount || Number(f.amount) <= 0) throw new Error('Veuillez saisir un montant')
@@ -403,13 +403,6 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
               </p>
             </div>
           )}
-
-          <div className="text-xs text-emerald-800 bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex items-start gap-2">
-            <span className="text-base">📲</span>
-            <span className="leading-relaxed">
-              <b>Paiement Direct Server-to-Server (H2H) :</b> En confirmant, une invite de débit apparaîtra directement sur votre écran de téléphone pour valider les {f.amount ? fmt(f.amount) : '...'} FCFA avec votre code secret Mobile Money.
-            </span>
-          </div>
         </>)}
 
         {type === 'withdraw' && (<>
@@ -455,7 +448,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           {Number(f.amount) > 0 && (
             <div className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
               <div className="flex justify-between"><span>Montant demandé</span><b>{fmt(Number(f.amount))} FCFA</b></div>
-              <div className="flex justify-between text-gray-500"><span>Frais de retrait (2%)</span><span>− {fmt(withdrawFee)} FCFA</span></div>
+              <div className="flex justify-between text-gray-500"><span>Frais de retrait (1%)</span><span>− {fmt(withdrawFee)} FCFA</span></div>
               <div className="flex justify-between border-t border-blue-100 pt-1 mt-1">
                 <span>Vous recevrez</span>
                 <b className="text-green-700 font-bold">{fmt(withdrawNet)} {currentCountry.currency}</b>
@@ -464,7 +457,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           )}
           <div><label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN</label><input type="password" value={f.pin} onChange={up('pin')} className="input w-full" placeholder="••••" /></div>
           <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">
-            Retrait minimum : {fmt(minWithdrawal)} FCFA. Frais de 2% déduits. Traitement et envoi sous 24h par Ikeepay.
+            Retrait minimum : {fmt(minWithdrawal)} FCFA. Frais de 1% déduits.
           </p>
         </>)}
 

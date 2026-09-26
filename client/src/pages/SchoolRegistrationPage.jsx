@@ -10,6 +10,7 @@ import { locationsApi, schoolRegistrationApi, platformApi, plansApi, paymentsApi
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { dialCodeFor } from '../data/countryDialCodes'
 import { useInlineCheckout } from '../components/payments/useInlineCheckout'
+import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 
 const CYCLE_META = {
   Maternelle: { icon: '🌸', gradient: 'from-orange-500 to-amber-400', color: 'text-orange-600', ring: 'ring-orange-400', btn: 'bg-orange-500 hover:bg-orange-600' },
@@ -34,6 +35,8 @@ export default function SchoolRegistrationPage() {
   const [credentials, setCredentials] = useState(null) // { email, password, matricule, whatsapp }
   const [copiedCreds, setCopiedCreds] = useState(false)
   const [error, setError] = useState('')
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false)
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false)
   const [proofFile, setProofFile] = useState(null)
   const [proofPreview, setProofPreview] = useState(null)
   const [statusMsg, setStatusMsg] = useState('')
@@ -153,6 +156,10 @@ export default function SchoolRegistrationPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (!acceptPrivacy) {
+      setError('Vous devez lire et accepter la politique de confidentialité pour continuer.')
+      return
+    }
     if (isTrial) {
       setSubmitting(true)
       setStatusMsg("Création de votre espace d'essai gratuit...")
@@ -541,7 +548,30 @@ export default function SchoolRegistrationPage() {
               </div>
             )}
 
-            <button type="submit" disabled={submitting || inlineCheckout.busy} className="btn-primary w-full justify-center py-3.5 text-sm">
+            {/* Acceptation de la Politique de Confidentialité */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-gray-50 border border-gray-200">
+              <input
+                type="checkbox"
+                id="acceptPrivacySchool"
+                checked={acceptPrivacy}
+                onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                required
+              />
+              <label htmlFor="acceptPrivacySchool" className="text-xs text-gray-700 cursor-pointer select-none">
+                J'ai lu et j'accepte la{' '}
+                <button
+                  type="button"
+                  onClick={() => setShowPrivacyModal(true)}
+                  className="text-primary-600 hover:text-primary-700 font-semibold underline inline"
+                >
+                  politique de confidentialité
+                </button>{' '}
+                de la plateforme KATD-SCHÜLE.
+              </label>
+            </div>
+
+            <button type="submit" disabled={submitting || inlineCheckout.busy || !acceptPrivacy} className="btn-primary w-full justify-center py-3.5 text-sm">
               {submitting || inlineCheckout.busy ? (
                 <><Loader2 size={16} className="animate-spin" /> Traitement en cours...</>
               ) : (
@@ -556,6 +586,14 @@ export default function SchoolRegistrationPage() {
         </div>
       </div>
       {inlineCheckout.element}
+      <PrivacyPolicyModal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+        onAccepted={() => {
+          setAcceptPrivacy(true)
+          setShowPrivacyModal(false)
+        }}
+      />
       <Footer />
     </div>
   )

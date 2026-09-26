@@ -268,7 +268,7 @@ router.post('/transfer', protect, authorize('directeur'), async (req, res) => {
 })
 
 // ───────────────────────── RETRAIT (payout automatique Ikeepay) ─────────────────────────
-// POST /api/wallet/withdraw — retrait (min 2000 F, PIN obligatoire, frais 2% déduits).
+// POST /api/wallet/withdraw — retrait (min 2000 F, PIN obligatoire, frais 1% déduits).
 // Le payout Ikeepay part IMMÉDIATEMENT vers le Mobile Money de l'utilisateur ; le webhook
 // finalise ensuite (payé → settle, échec → remboursement). L'admin garde un filet manuel.
 router.post('/withdraw', protect, async (req, res) => {
@@ -290,7 +290,7 @@ router.post('/withdraw', protect, async (req, res) => {
     const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
     if (w.balance < amt) return res.status(400).json({ message: 'Solde insuffisant' })
 
-    // Frais 2% déduits du montant (gratuit si <= 100 FCFA pour garantir le minimum opérateur de 100 FCFA).
+    // Frais 1% déduits du montant (gratuit si <= 100 FCFA pour garantir le minimum opérateur de 100 FCFA).
     const fee = amt <= 100 ? 0 : wallet.computeWithdrawalFee(amt)
     const netAmount = amt - fee
     const holderName = String(accountName).trim()
@@ -334,11 +334,11 @@ router.post('/withdraw', protect, async (req, res) => {
     await WalletTransaction.create({ wallet: w._id, owner: req.user._id, direction: 'debit',
       amount: amt, currency: targetCurrency, type: 'withdrawal', balanceAfter: w.balance, withdrawal: wr._id,
       providerTransactionId: wr.providerPayoutId || null,
-      description: 'Retrait vers ' + (momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber + ' (net ' + netAmount.toLocaleString('fr-FR') + ' ' + targetCurrency + ', frais 2%)',
+      description: 'Retrait vers ' + (momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber + ' (net ' + netAmount.toLocaleString('fr-FR') + ' ' + targetCurrency + ', frais 1%)',
       meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName, country: normCountry, currency: targetCurrency, providerRef, autoPayout } })
     // Frais encaissés par l'admin → rubrique « gestion des frais » (best-effort)
     await wallet.collectFee({ fee, fromUserId: req.user._id,
-      description: 'Frais de retrait (2%) — ' + (req.user.name || ''),
+      description: 'Frais de retrait (1%) — ' + (req.user.name || ''),
       meta: { feeType: 'withdrawal', rate: wallet.WITHDRAWAL_FEE_RATE, baseAmount: amt, withdrawal: String(wr._id) } })
 
     // Mémorise le dernier compte externe utilisé (consultable par le super_admin)
@@ -349,11 +349,11 @@ router.post('/withdraw', protect, async (req, res) => {
 
     try { await sendEmail({ to: req.user.email, subject: 'Retrait enregistré — KATD-SCHÜLE',
       html: '<p>Votre retrait de <b>' + amt.toLocaleString('fr-FR') + ' FCFA</b> est enregistré ' +
-      '(frais 2% : ' + fee.toLocaleString('fr-FR') + ' F). Vous recevrez <b>' + netAmount.toLocaleString('fr-FR') + ' ' + targetCurrency + '</b> sur ' + momoNumber + ' via Ikeepay.</p>' }) } catch(e){}
+      '(frais 1% : ' + fee.toLocaleString('fr-FR') + ' F). Vous recevrez <b>' + netAmount.toLocaleString('fr-FR') + ' ' + targetCurrency + '</b> sur ' + momoNumber + ' via Ikeepay.</p>' }) } catch(e){}
 
     const message = autoPayout
       ? `Retrait en cours d'envoi automatique via Ikeepay. Vous recevrez ${netAmount.toLocaleString('fr-FR')} ${targetCurrency} sur votre Mobile Money.`
-      : `Demande de retrait de ${amt.toLocaleString('fr-FR')} FCFA enregistrée. Traitement et envoi sous 24h par Ikeepay (${netAmount.toLocaleString('fr-FR')} ${targetCurrency} nets vers le ${momoNumber}).`
+      : `Demande de retrait de ${amt.toLocaleString('fr-FR')} FCFA enregistrée (${netAmount.toLocaleString('fr-FR')} ${targetCurrency} nets vers le ${momoNumber}).`
 
     res.json({ success: true, message, withdrawal: wr, autoPayout })
   } catch (err) { res.status(400).json({ message: err.message }) }

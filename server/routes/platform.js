@@ -42,6 +42,20 @@ router.get('/', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// GET /api/platform/privacy-policy — Public: get privacy policy content
+router.get('/privacy-policy', async (req, res) => {
+  try {
+    let page = await PlatformPage.findOne()
+    const content = page?.help?.privacy || ''
+    res.json({
+      success: true,
+      content,
+      updatedAt: page?.updatedAt || null,
+      siteName: page?.siteName || 'KATD-SCHÜLE',
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // PUT /api/platform — Super Admin: update platform page content
 router.put('/', protect, authorize('super_admin'), async (req, res) => {
   try {

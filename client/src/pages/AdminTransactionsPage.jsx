@@ -504,7 +504,7 @@ export default function AdminTransactionsPage() {
                             <div className="text-xs text-gray-500 mt-1 space-y-0.5">
                               <div>📱 <span className="font-mono font-semibold">{t.withdrawal.momoNumber}</span>{t.withdrawal.momoOperator && <span className="uppercase"> · {t.withdrawal.momoOperator}</span>}</div>
                               {t.withdrawal.accountName && <div>👤 {t.withdrawal.accountName}</div>}
-                              <div>Net à payer : <b className="text-green-700">{fmt(t.withdrawal.netAmount)} F</b> <span className="text-gray-400">(frais 2% : {fmt(t.withdrawal.fee)} F)</span></div>
+                              <div>Net à payer : <b className="text-green-700">{fmt(t.withdrawal.netAmount)} F</b> <span className="text-gray-400">(frais 1% : {fmt(t.withdrawal.fee)} F)</span></div>
                             </div>
                           )}
                         </td>

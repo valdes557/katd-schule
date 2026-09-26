@@ -68,6 +68,9 @@ const userSchema = new mongoose.Schema(
     walletPin: { type: String, default: null, select: false },
     pinResetCode: { type: String, default: null, select: false },
     pinResetExpires: { type: Date, default: null, select: false },
+    // Acceptation de la politique de confidentialité
+    privacyPolicyAccepted: { type: Boolean, default: false },
+    privacyPolicyAcceptedAt: { type: Date, default: null },
   },
   { timestamps: true }
 )

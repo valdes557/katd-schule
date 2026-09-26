@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, X, GraduationCap, Users, User, UserPlus, Gift } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../lib/api'
+import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -20,6 +21,8 @@ export default function LoginPage() {
   const [mode, setMode] = useState('user')
   const [userMode, setUserMode] = useState(referralCode ? 'signup' : 'login') // 'login' | 'signup'
   const [name, setName] = useState('')
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false)
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false)
   // Vérification email après inscription
   const [verifyMode, setVerifyMode] = useState(false)
   const [verifyCode, setVerifyCode] = useState('')
@@ -50,10 +53,14 @@ export default function LoginPage() {
   const handleUserSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (userMode === 'signup' && !acceptPrivacy) {
+      setError('Vous devez lire et accepter la politique de confidentialité pour créer votre compte.')
+      return
+    }
     setLoading(true)
     const result =
       userMode === 'signup'
-        ? await register(name, email, password, referralCode)
+        ? await register(name, email, password, referralCode, acceptPrivacy)
         : await login(email, password, 'user')
     setLoading(false)
     if (result.success && result.requiresVerification) {
@@ -324,6 +331,33 @@ export default function LoginPage() {
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
                 </div>
               </div>
+              {userMode === 'signup' && (
+                <div className="flex items-start gap-2.5 pt-1">
+                  <input
+                    type="checkbox"
+                    id="privacySignup"
+                    checked={acceptPrivacy}
+                    onChange={(e) => {
+                      setError('')
+                      setAcceptPrivacy(e.target.checked)
+                    }}
+                    className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                    required
+                  />
+                  <label htmlFor="privacySignup" className="text-xs text-gray-600 leading-snug cursor-pointer select-none">
+                    J'ai lu et j'accepte la{' '}
+                    <button
+                      type="button"
+                      onClick={() => setShowPrivacyModal(true)}
+                      className="text-blue-600 underline font-semibold hover:text-blue-800"
+                    >
+                      Politique de Confidentialité
+                    </button>{' '}
+                    de la plateforme KATD-SCHÜLE.
+                  </label>
+                </div>
+              )}
+
               <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2">
                 {userMode === 'signup' ? <UserPlus size={16} /> : null}
                 {loading ? 'Veuillez patienter...' : userMode === 'signup' ? 'Créer mon compte' : 'Se connecter'}
@@ -407,6 +441,17 @@ export default function LoginPage() {
             )}
           </div>
         </div>
+      )}
+
+      {showPrivacyModal && (
+        <PrivacyPolicyModal
+          isOpen={true}
+          onClose={() => setShowPrivacyModal(false)}
+          onAccepted={() => {
+            setAcceptPrivacy(true)
+            setShowPrivacyModal(false)
+          }}
+        />
       )}
     </div>
   )

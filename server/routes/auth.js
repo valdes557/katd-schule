@@ -40,13 +40,24 @@ router.post(
         return res.status(400).json({ message: 'Cet email est déjà utilisé' })
       }
 
-      const user = await User.create({ name, email, password, role: role || 'directeur' })
+      if (req.body.privacyPolicyAccepted !== true && req.body.privacyPolicyAccepted !== 'true') {
+        return res.status(400).json({ message: 'Vous devez lire et accepter la politique de confidentialité pour créer un compte.' })
+      }
+
+      const user = await User.create({
+        name,
+        email,
+        password,
+        role: role || 'directeur',
+        privacyPolicyAccepted: true,
+        privacyPolicyAcceptedAt: new Date(),
+      })
       const token = generateToken(user._id)
 
       res.status(201).json({
         success: true,
         token,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role },
+        user: { id: user._id, name: user.name, email: user.email, role: user.role, privacyPolicyAccepted: true },
       })
     } catch (err) {
       res.status(500).json({ message: err.message })
@@ -70,6 +81,11 @@ router.post(
     try {
       const { name, password } = req.body
       const email = (req.body.email || '').trim().toLowerCase()
+
+      if (req.body.privacyPolicyAccepted !== true && req.body.privacyPolicyAccepted !== 'true') {
+        return res.status(400).json({ message: 'Vous devez lire et accepter la politique de confidentialité pour créer un compte.' })
+      }
+
       let existing = await User.findOne({ email })
       if (existing) {
         // Compte JAMAIS vérifié => suppression complète (et données liées) pour
@@ -97,7 +113,18 @@ router.post(
       // Rôle forcé à 'utilisateur'. Compte créé NON vérifié : code envoyé par email.
       const code = gen6()
       const bcrypt = require('bcryptjs')
-      const user = await User.create({ name, email, password, role: 'utilisateur', referredBy, emailVerified: false, emailVerifyCode: await bcrypt.hash(code, 10), emailVerifyExpires: new Date(Date.now() + 30 * 60000) })
+      const user = await User.create({
+        name,
+        email,
+        password,
+        role: 'utilisateur',
+        referredBy,
+        emailVerified: false,
+        emailVerifyCode: await bcrypt.hash(code, 10),
+        emailVerifyExpires: new Date(Date.now() + 30 * 60000),
+        privacyPolicyAccepted: true,
+        privacyPolicyAcceptedAt: new Date(),
+      })
       try {
         await sendEmail({
           to: user.email,
@@ -214,7 +241,17 @@ router.post(
       res.json({
         success: true,
         token,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone, matricule: user.matricule, aiAccess: user.aiAccess },
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          avatar: user.avatar,
+          phone: user.phone,
+          matricule: user.matricule,
+          aiAccess: user.aiAccess,
+          privacyPolicyAccepted: user.privacyPolicyAccepted === true,
+        },
         school: user.school,
       })
     } catch (err) {
@@ -228,9 +265,47 @@ router.get('/me', protect, async (req, res) => {
   const u = req.user
   res.json({
     success: true,
-    user: { id: u._id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, phone: u.phone, matricule: u.matricule, aiAccess: u.aiAccess },
+    user: {
+      id: u._id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      avatar: u.avatar,
+      phone: u.phone,
+      matricule: u.matricule,
+      aiAccess: u.aiAccess,
+      privacyPolicyAccepted: u.privacyPolicyAccepted === true,
+    },
     school: u.school || null,
   })
+})
+
+// @route  POST /api/auth/accept-privacy-policy — Accepter la politique de confidentialité
+router.post('/accept-privacy-policy', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
+    user.privacyPolicyAccepted = true
+    user.privacyPolicyAcceptedAt = new Date()
+    await user.save({ validateBeforeSave: false })
+    res.json({
+      success: true,
+      message: 'Politique de confidentialité acceptée avec succès',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        phone: user.phone,
+        matricule: user.matricule,
+        aiAccess: user.aiAccess,
+        privacyPolicyAccepted: true,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 // @route  PUT /api/auth/password
@@ -355,7 +430,7 @@ router.post('/verify-email', async (req, res) => {
     if (!user) return res.status(404).json({ message: 'Compte introuvable' })
     if (user.emailVerified) {
       const token = generateToken(user._id)
-      return res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar || '' }, school: user.school || null })
+      return res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar || '', privacyPolicyAccepted: user.privacyPolicyAccepted === true }, school: user.school || null })
     }
     if (!user.emailVerifyCode || !user.emailVerifyExpires) return res.status(400).json({ message: 'Aucun code en attente. Demandez un renvoi.' })
     if (user.emailVerifyExpires < Date.now()) return res.status(400).json({ message: 'Code expiré. Demandez un renvoi.' })
@@ -369,7 +444,7 @@ router.post('/verify-email', async (req, res) => {
     user.lastSeen = new Date()
     await user.save({ validateBeforeSave: false })
     const token = generateToken(user._id)
-    res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar || '' }, school: user.school || null })
+    res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar || '', privacyPolicyAccepted: user.privacyPolicyAccepted === true }, school: user.school || null })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

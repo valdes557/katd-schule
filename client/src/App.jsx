@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense, useEffect, Component } from 'react'
 import { useAuth } from './context/AuthContext'
+import PrivacyPolicyModal from './components/PrivacyPolicyModal'
 
 // Eager: public landing + login + layout + espace utilisateur (small, needed immediately)
 import LandingPage from './pages/LandingPage'
@@ -249,7 +250,7 @@ function PageFallback() {
 }
 
 function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth()
+  const { user, loading, acceptPrivacyPolicy, logout } = useAuth()
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -263,7 +264,23 @@ function ProtectedRoute({ children }) {
       </div>
     )
   }
-  return user ? children : <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/login" replace />
+
+  // L'utilisateur ne doit pas pouvoir naviguer sans accepter la politique de confidentialité
+  if (user.role !== 'super_admin' && !user.privacyPolicyAccepted) {
+    return (
+      <PrivacyPolicyModal
+        isOpen={true}
+        isMandatory={true}
+        onAccepted={async () => {
+          await acceptPrivacyPolicy()
+        }}
+        onLogout={logout}
+      />
+    )
+  }
+
+  return children
 }
 
 export default function App() {
