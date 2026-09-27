@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store, Landmark, Youtube, Rocket } from 'lucide-react'
+import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store, Landmark, Youtube, Rocket, ShoppingBag } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { messagesApi, platformApi, newsApi } from '../../lib/api'
 import WhatsAppFab from '../../components/WhatsAppFab'
@@ -20,15 +20,13 @@ function Badge({ count }) {
   )
 }
 
-// En-tête « Fil social » professionnel + barre de navigation flottante à 4 boutons
-// (Accueil · Amis · Publier · Notifications). La barre est masquée sur la messagerie
-// pour ne pas recouvrir la zone de saisie du message.
 export default function UserLayout() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
-  const onHome = pathname === '/u' || pathname === '/u/'
+  const onHome = pathname === '/u' || pathname === '/u/' || pathname === '/u/videos'
+  const isStore = pathname.startsWith('/u/store')
   const isMessages = pathname.startsWith('/u/messages')
   const isProfil = pathname.startsWith('/u/profil')
   const isNotif = pathname.startsWith('/u/notifications')
@@ -183,6 +181,7 @@ export default function UserLayout() {
 
           <div className="flex items-center gap-1 flex-shrink-0">
             <HeaderIcon active={onHome} onClick={() => navigate('/u')} icon={Home} />
+            <HeaderIcon active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} />
             <HeaderIcon active={isWallet} onClick={() => navigate('/u/portefeuille')} icon={Wallet} />
             <HeaderIcon active={isProfil} onClick={() => navigate('/u/profil')} icon={User} avatar={user?.avatar} />
             <HeaderIcon active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} badge={unreadNotifs} />
@@ -199,12 +198,8 @@ export default function UserLayout() {
       {!isMessages && (
         <div className="fixed right-2 sm:right-3 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-3 pointer-events-auto">
           <NavButton active={onHome} onClick={() => navigate('/u')} icon={Home} label="Accueil" gradient="from-blue-500 to-indigo-600" />
-          <NavButton active={isNews} onClick={() => navigate('/u/news')} icon={Newspaper} label="News" gradient="from-amber-500 to-orange-600" badge={unreadNews} />
+          <NavButton active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} label="Store" gradient="from-amber-500 to-rose-600" />
           <NavButton active={isMessages} onClick={() => navigate('/u/messages')} icon={Users} label="Amis" gradient="from-teal-500 to-emerald-600" badge={unreadMessages} />
-          <NavButton active={isMerchant} onClick={() => navigate('/u/marchand')} icon={Store} label="Marchand" gradient="from-orange-500 to-amber-600" />
-          <NavButton active={isShareholder} onClick={() => navigate('/u/actionnaires')} icon={Landmark} label="Actions" gradient="from-indigo-500 to-violet-600" />
-          <NavButton active={isVideos} onClick={() => navigate('/u/videos')} icon={Youtube} label="Vidéos" gradient="from-red-500 to-rose-600" />
-          <NavButton active={isBoosts} onClick={() => navigate('/u/mes-boosts')} icon={Rocket} label="Boosts" gradient="from-purple-500 to-fuchsia-600" />
 
           {/* Bouton Publier (mis en avant) */}
           <button

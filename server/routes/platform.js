@@ -56,6 +56,15 @@ router.get('/privacy-policy', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// GET /api/platform/adsense — Public: get AdSense configuration for blogs
+router.get('/adsense', async (req, res) => {
+  try {
+    let page = await PlatformPage.findOne()
+    const adsense = page?.adsense || { client: '', blogSlot: '', enabled: false }
+    res.json({ success: true, adsense })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // PUT /api/platform — Super Admin: update platform page content
 router.put('/', protect, authorize('super_admin'), async (req, res) => {
   try {

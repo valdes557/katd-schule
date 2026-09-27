@@ -34,12 +34,12 @@ export default function UserVideosPage() {
         <span className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center text-red-600 flex-shrink-0"><Youtube size={18} /></span>
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-gray-900">Vidéos</h1>
-          <p className="text-xs text-gray-500">Regardez KATDtube et les vidéos KATD sans quitter la plateforme.</p>
+          <p className="text-xs text-gray-500">Regardez KATDTUBE et les vidéos KATD sans quitter la plateforme.</p>
         </div>
       </div>
 
       <div className="flex gap-2 mb-4 border-b border-gray-200">
-        {[['youtube', 'KATDtube'], ['katd', 'KATD']].map(([k, label]) => (
+        {[['youtube', 'KATDTUBE'], ['katd', 'KATD']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === k ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
             {label}
@@ -55,6 +55,8 @@ export default function UserVideosPage() {
 function Empty({ icon: Icon, text }) {
   return <div className="text-center py-16 text-gray-400"><Icon size={40} className="mx-auto mb-3 opacity-30" /><p>{text}</p></div>
 }
+
+const DEFAULT_YOUTUBE_QUERY = 'Afrique éducation documentaires'
 
 function YoutubeTab() {
   const [sub, setSub] = useState('search') // search | favorites | history
@@ -88,11 +90,12 @@ function YoutubeTab() {
     return () => clearTimeout(debRef.current)
   }, [input, sub])
 
+  // Charge immédiatement le flux YouTube par défaut dès l'ouverture, sans attendre de recherche utilisateur
   const runSearch = useCallback(async () => {
-    if (!query) { setItems([]); setNextToken(''); return }
     setLoading(true); setError('')
     try {
-      const r = await youtubeApi.search({ q: query, order, duration })
+      const effectiveQ = query || DEFAULT_YOUTUBE_QUERY
+      const r = await youtubeApi.search({ q: effectiveQ, order, duration })
       setItems(r.items || []); setNextToken(r.nextPageToken || '')
     } catch (e) { setError(e.message || 'Recherche impossible'); setItems([]) }
     setLoading(false)
@@ -103,7 +106,8 @@ function YoutubeTab() {
     if (!nextToken) return
     setLoadingMore(true)
     try {
-      const r = await youtubeApi.search({ q: query, order, duration, pageToken: nextToken })
+      const effectiveQ = query || DEFAULT_YOUTUBE_QUERY
+      const r = await youtubeApi.search({ q: effectiveQ, order, duration, pageToken: nextToken })
       setItems((prev) => [...prev, ...(r.items || [])]); setNextToken(r.nextPageToken || '')
     } catch (e) { /* on garde la liste actuelle */ }
     setLoadingMore(false)

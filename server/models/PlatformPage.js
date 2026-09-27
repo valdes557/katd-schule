@@ -56,6 +56,13 @@ const platformPageSchema = new mongoose.Schema(
       utilisateur: { type: String, default: '' },
       accueil: { type: String, default: '' },
     },
+
+    // Publicité Google AdSense (blog et pages publiques)
+    adsense: {
+      client: { type: String, default: '' }, // ca-pub-XXXXXXXXXXXXXXXX
+      blogSlot: { type: String, default: '' },
+      enabled: { type: Boolean, default: false },
+    },
   },
   { timestamps: true }
 )

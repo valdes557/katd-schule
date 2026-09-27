@@ -148,18 +148,26 @@ export default function LandingPage() {
             Digitalisation complète — simple, rapide et sécurisée.
           </p>
 
-          <div className="flex flex-wrap gap-4 justify-center mb-14">
+          <div className="flex flex-col items-center gap-3 mb-14">
+            <div className="flex flex-wrap gap-4 justify-center">
+              <Link
+                to="/souscrire"
+                className="inline-flex items-center gap-2 bg-white text-blue-800 font-bold px-7 py-4 rounded-xl hover:bg-yellow-50 transition-all text-base shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transform"
+              >
+                Inscrire mon école <ArrowRight size={18} />
+              </Link>
+              <Link
+                to="/ecoles"
+                className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/30 text-white font-semibold px-7 py-4 rounded-xl hover:bg-white/20 transition-all text-base"
+              >
+                <School size={16} /> Voir les écoles
+              </Link>
+            </div>
             <Link
-              to="/souscrire"
-              className="inline-flex items-center gap-2 bg-white text-blue-800 font-bold px-7 py-4 rounded-xl hover:bg-yellow-50 transition-all text-base shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transform"
+              to="/login?mode=user"
+              className="text-sm text-blue-200 hover:text-white underline underline-offset-4 transition-colors font-medium"
             >
-              Inscrire mon école <ArrowRight size={18} />
-            </Link>
-            <Link
-              to="/ecoles"
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/30 text-white font-semibold px-7 py-4 rounded-xl hover:bg-white/20 transition-all text-base"
-            >
-              <School size={16} /> Voir les écoles
+              ou connecte-toi en tant qu'utilisateur
             </Link>
           </div>
 

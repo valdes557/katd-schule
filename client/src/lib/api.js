@@ -327,6 +327,7 @@ export const plansApi = {
 export const platformApi = {
   get: () => api.get('/platform'),
   update: (data) => api.put('/platform', data),
+  getAdsense: () => api.get('/platform/adsense'),
   uploadImages: async (files) => {
     const fd = new FormData()
     files.forEach((f) => fd.append('images', f))
@@ -402,6 +403,7 @@ export const platformApi = {
   },
   deleteResource: (id) => api.del(`/platform/resources/${id}`),
   getPrivacyPolicy: () => api.get('/platform/privacy-policy'),
+  getAdsense: () => api.get('/platform/adsense'),
 }
 
 // Boost d'une publication (espace utilisateur /u). Le prix est TOUJOURS résolu côté serveur ;
@@ -446,6 +448,39 @@ export const youtubeApi = {
     try { filename = decodeURIComponent(m ? m[1] : filename) } catch (_) { filename = m ? m[1] : filename }
     return { blob, filename }
   },
+}
+
+// Blogs (articles de blog, catégories, interactions, statistiques)
+export const blogsApi = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/blogs' + (qs ? '?' + qs : ''))
+  },
+  categories: () => api.get('/blogs/categories'),
+  createCategory: (data) => api.post('/blogs/categories', data),
+  get: (idOrSlug) => api.get(`/blogs/${idOrSlug}`),
+  create: async (formData) => {
+    const token = localStorage.getItem('token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const res = await fetch(`${API_URL}/blogs`, { method: 'POST', headers, body: formData })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    return data
+  },
+  update: async (id, formData) => {
+    const token = localStorage.getItem('token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const res = await fetch(`${API_URL}/blogs/${id}`, { method: 'PUT', headers, body: formData })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    return data
+  },
+  remove: (id) => api.del(`/blogs/${id}`),
+  like: (id) => api.post(`/blogs/${id}/like`),
+  addComment: (id, content) => api.post(`/blogs/${id}/comments`, { content }),
+  share: (id) => api.post(`/blogs/${id}/share`),
+  recordShare: (id) => api.post(`/blogs/${id}/share`),
+  myStats: () => api.get('/blogs/my/stats'),
 }
 
 export const subjectsApi = {

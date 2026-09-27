@@ -202,6 +202,7 @@ export const navSections = [
     items: [
       { label: 'Informations générales', icon: Info, path: '/dashboard/infos', roles: ['directeur', 'enseignant', 'parent', 'vice_principal', 'secretaire'] },
       { label: 'News & recrutement', icon: Newspaper, path: '/dashboard/news', roles: ['directeur', 'enseignant', 'parent'] },
+      { label: 'Blogs & Articles', icon: Newspaper, path: '/dashboard/blogs', roles: ['directeur', 'enseignant', 'vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier'] },
       { label: 'Messenger', icon: MessageSquare, path: '/dashboard/messagerie' },
       { label: 'Annonces', icon: Bell, path: '/dashboard/annonces', roles: ['directeur', 'enseignant', 'parent', 'vice_principal', 'surveillant_general', 'secretaire', 'eleve'] },
       { label: 'Documents partagés', icon: FolderOpen, path: '/dashboard/documents', roles: ['directeur', 'enseignant', 'parent', 'vice_principal', 'secretaire'] },
@@ -255,6 +256,7 @@ export const navSections = [
       { label: 'Gestion des actionnaires', icon: Landmark, path: '/dashboard/actionnaires-admin' },
       { label: 'Gestion des boosts', icon: Rocket, path: '/dashboard/boosts-admin' },
       { label: 'Gestion des transactions', icon: ArrowLeftRight, path: '/dashboard/transactions-admin' },
+      { label: 'Blogs & Articles', icon: Newspaper, path: '/dashboard/blogs' },
       { label: 'Paiements Ikeepay', icon: CreditCard, path: '/dashboard/paiements-admin' },
       { label: 'Frais de transaction', icon: Coins, path: '/dashboard/frais-transaction-admin' },
       { label: 'Bannières', icon: ImageIcon, path: '/dashboard/bannieres' },

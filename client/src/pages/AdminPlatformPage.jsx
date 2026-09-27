@@ -4,7 +4,7 @@ import {
   Globe2, Plus, Trash2, CheckCircle, XCircle,
   Image, Film, Save, Loader2, Star,
   MessageCircle, CreditCard, Phone, Info, Pencil, X, FileText, Link, Music,
-  KeyRound, Eye, EyeOff, Send, ShieldCheck,
+  KeyRound, Eye, EyeOff, Send, ShieldCheck, Sparkles,
 } from 'lucide-react'
 import { platformApi, plansApi, newsApi, walletAdminApi } from '../lib/api'
 import { uploadToCloudinary } from '../lib/cloudinaryUpload'
@@ -27,6 +27,7 @@ const TABS = [
   { id: 'payments', label: 'Paiements', icon: CreditCard },
   { id: 'plans', label: 'Plans tarifaires', icon: Star },
   { id: 'api', label: 'Clés API', icon: KeyRound },
+  { id: 'adsense', label: 'Google AdSense', icon: Sparkles },
   { id: 'news', label: 'News / Démos', icon: Film },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
 ]
@@ -200,6 +201,118 @@ function PrivacyPolicyPanel({ platformData, refresh }) {
           onClose={() => setShowPreview(false)}
         />
       )}
+    </div>
+  )
+}
+
+// ─── AdSense Panel (Monétisation Google AdSense du Blog) ─────────────────────
+function AdSensePanel({ platformData, refresh }) {
+  const [client, setClient] = useState(platformData?.adsense?.client || '')
+  const [blogSlot, setBlogSlot] = useState(platformData?.adsense?.blogSlot || '')
+  const [enabled, setEnabled] = useState(!!platformData?.adsense?.enabled)
+  const [saving, setSaving] = useState(false)
+  const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    setClient(platformData?.adsense?.client || '')
+    setBlogSlot(platformData?.adsense?.blogSlot || '')
+    setEnabled(!!platformData?.adsense?.enabled)
+  }, [platformData?.adsense])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSuccess('')
+    try {
+      await platformApi.update({
+        adsense: {
+          client: client.trim(),
+          blogSlot: blogSlot.trim(),
+          enabled,
+        },
+      })
+      cache.invalidate('/platform')
+      refresh()
+      setSuccess('Configuration Google AdSense enregistrée avec succès !')
+      setTimeout(() => setSuccess(''), 5000)
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la sauvegarde')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-6 space-y-5 max-w-2xl">
+      <div>
+        <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+          <Sparkles size={20} className="text-amber-500" /> Monétisation Google AdSense (Blog)
+        </h3>
+        <p className="text-xs text-gray-500 mt-1">
+          Configurez vos blocs d'annonces Google AdSense qui s'afficheront sur le fil des articles et les pages de lecture du blog.
+        </p>
+      </div>
+
+      <div className="bg-amber-50/70 border border-amber-200/70 rounded-xl p-4 text-xs text-amber-900 space-y-1">
+        <p className="font-semibold flex items-center gap-1.5">
+          <Info size={14} className="text-amber-600" /> Comment obtenir vos identifiants AdSense :
+        </p>
+        <p>1. Connectez-vous sur votre compte <b>Google AdSense</b> (adsense.google.com).</p>
+        <p>2. Récupérez votre <b>ID éditeur</b> (ex: <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">ca-pub-1234567890123456</code>) dans Compte &gt; Paramètres.</p>
+        <p>3. Créez un bloc d'annonce Display responsive et copiez le <b>data-ad-slot</b> (ex: <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">9876543210</code>).</p>
+      </div>
+
+      <div className="space-y-4">
+        <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100/70 cursor-pointer transition">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+          />
+          <div>
+            <span className="text-sm font-semibold text-gray-900 block">Activer les bannières Google AdSense sur le blog</span>
+            <span className="text-xs text-gray-500">Les annonces s'afficheront automatiquement aux lecteurs d'articles.</span>
+          </div>
+        </label>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-700 block mb-1">
+            Identifiant Éditeur AdSense (Client ID)
+          </label>
+          <input
+            type="text"
+            value={client}
+            onChange={(e) => setClient(e.target.value)}
+            placeholder="ca-pub-1234567890123456"
+            className="input text-sm w-full font-mono"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-700 block mb-1">
+            ID du bloc d'annonce pour le Blog (Blog Slot ID)
+          </label>
+          <input
+            type="text"
+            value={blogSlot}
+            onChange={(e) => setBlogSlot(e.target.value)}
+            placeholder="1234567890"
+            className="input text-sm w-full font-mono"
+          />
+        </div>
+      </div>
+
+      {success && (
+        <div className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
+          <CheckCircle size={15} /> {success}
+        </div>
+      )}
+
+      <div className="pt-2">
+        <button onClick={handleSave} disabled={saving} className="btn-primary text-sm flex items-center gap-2">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer la configuration
+        </button>
+      </div>
     </div>
   )
 }
@@ -1682,6 +1795,7 @@ export default function AdminPlatformPage() {
           {tab === 'payments' && <PaymentsPanel />}
           {tab === 'plans' && <PlansPanel />}
           {tab === 'api' && <><IkeepayKeysPanel /><YoutubeKeyPanel /></>}
+          {tab === 'adsense' && <AdSensePanel platformData={platformData} refresh={refresh} />}
           {tab === 'news' && <NewsDemoPanel />}
           {tab === 'whatsapp' && <WhatsAppPanel platformData={platformData} refresh={refresh} />}
         </>

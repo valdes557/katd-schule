@@ -168,6 +168,10 @@ const UserMerchantPage = lazyPage(() => import('./pages/user/UserMerchantPage'))
 const UserShareholdersPage = lazyPage(() => import('./pages/user/UserShareholdersPage'))
 const UserVideosPage = lazyPage(() => import('./pages/user/UserVideosPage'))
 const UserBoostsPage = lazyPage(() => import('./pages/user/UserBoostsPage'))
+const UserStorePage = lazyPage(() => import('./pages/user/UserStorePage'))
+const BlogListPage = lazyPage(() => import('./pages/blog/BlogListPage'))
+const BlogDetailPage = lazyPage(() => import('./pages/blog/BlogDetailPage'))
+const StaffBlogsPage = lazyPage(() => import('./pages/blog/StaffBlogsPage'))
 const ParentChildDetailPage = lazyPage(() => import('./pages/ParentChildDetailPage'))
 const ParentChildrenPage = lazyPage(() => import('./pages/ParentChildrenPage'))
 const ParentFinancesPage = lazyPage(() => import('./pages/ParentFinancesPage'))
@@ -325,6 +329,9 @@ export default function App() {
       <Route path="/souscrire" element={<SchoolRegistrationPage />} />
       <Route path="/ecole/:schoolId" element={<SchoolDetailPage />} />
       <Route path="/news" element={<NewsPage />} />
+      <Route path="/blogs" element={<BlogListPage />} />
+      <Route path="/blogs/:id" element={<BlogDetailPage />} />
+      <Route path="/b/:id" element={<BlogDetailPage />} />
 
       {/* Protected dashboard routes */}
       <Route
@@ -448,9 +455,10 @@ export default function App() {
         <Route path="parent/activites" element={<ParentActivitiesPage section="activities" />} />
         <Route path="parent/ressources" element={<ParentActivitiesPage section="resources" />} />
         <Route path="social" element={<DashboardSocialPage />} />
+        <Route path="blogs" element={<StaffBlogsPage />} />
       </Route>
 
-      {/* Espace utilisateur (grand public) — atterrissage direct sur le social */}
+      {/* Espace utilisateur (grand public) — atterrissage direct sur les vidéos (KATDTUBE & KATD) */}
       <Route
         path="/u"
         element={
@@ -459,7 +467,12 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<UserSocialPage />} />
+        <Route index element={<UserVideosPage />} />
+        <Route path="videos" element={<UserVideosPage />} />
+        <Route path="social" element={<UserSocialPage />} />
+        <Route path="store" element={<UserStorePage />} />
+        <Route path="blogs" element={<BlogListPage />} />
+        <Route path="blogs/:id" element={<BlogDetailPage />} />
         <Route path="publier" element={<UserPublishPage />} />
         <Route path="messages" element={<UserMessengerPage />} />
         <Route path="notifications" element={<UserNotificationsPage />} />
@@ -468,7 +481,6 @@ export default function App() {
         <Route path="portefeuille" element={<PortefeuillePage />} />
         <Route path="marchand" element={<UserMerchantPage />} />
         <Route path="actionnaires" element={<UserShareholdersPage />} />
-        <Route path="videos" element={<UserVideosPage />} />
         <Route path="mes-boosts" element={<UserBoostsPage />} />
       </Route>
 

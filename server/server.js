@@ -112,6 +112,62 @@ app.use('/api/news', require('./routes/news'))
 app.use('/api/push', require('./routes/push'))
 app.use('/api/uploads', require('./routes/uploads'))
 app.use('/api/audit-logs', require('./routes/auditLogs'))
+app.use('/api/blogs', require('./routes/blogs'))
+
+// Route spéciale de partage social (WhatsApp, Facebook, Twitter, Telegram, etc.)
+// Sert les métadonnées Open Graph (titre, image grand format, description) pour les aperçus sociaux,
+// et redirige les visiteurs humains vers l'article sur l'application frontend.
+app.get(['/b/:idOrSlug', '/blog/:idOrSlug'], async (req, res) => {
+  try {
+    const BlogPost = require('./models/BlogPost')
+    const { idOrSlug } = req.params
+    const isMongoId = /^[0-9a-fA-F]{24}$/.test(idOrSlug)
+    const post = await BlogPost.findOne(isMongoId ? { _id: idOrSlug } : { slug: idOrSlug })
+    const clientUrl = process.env.CLIENT_URL || 'https://katdschool.com'
+    if (!post) {
+      return res.redirect(`${clientUrl}/u/blogs`)
+    }
+    const targetUrl = `${clientUrl}/u/blogs/${post.slug || post._id}`
+    const userAgent = req.headers['user-agent'] || ''
+    const isBot = /facebookexternalhit|WhatsApp|TelegramBot|Twitterbot|LinkedInBot|Slackbot|Discordbot|bot|crawler|spider/i.test(userAgent)
+
+    if (!isBot) {
+      return res.redirect(targetUrl)
+    }
+
+    const title = (post.title || 'Article de blog').replace(/"/g, '&quot;')
+    const desc = (post.excerpt || 'Découvrez cet article sur KATD-SCHÜLE').replace(/"/g, '&quot;')
+    const image = post.coverImage || `${clientUrl}/og-preview.png`
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${title} — KATD-SCHÜLE</title>
+  <meta name="description" content="${desc}">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${desc}">
+  <meta property="og:image" content="${image}">
+  <meta property="og:url" content="${targetUrl}">
+  <meta property="og:site_name" content="KATD-SCHÜLE">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${desc}">
+  <meta name="twitter:image" content="${image}">
+  <meta http-equiv="refresh" content="0;url=${targetUrl}">
+</head>
+<body>
+  <p>Redirection vers <a href="${targetUrl}">${title}</a>...</p>
+</body>
+</html>`
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.send(html)
+  } catch (err) {
+    const clientUrl = process.env.CLIENT_URL || 'https://katdschool.com'
+    res.redirect(`${clientUrl}/u/blogs`)
+  }
+})
 
 app.get('/api/health', (req, res) => {
   res.json({
