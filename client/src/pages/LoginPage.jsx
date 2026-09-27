@@ -141,6 +141,7 @@ export default function LoginPage() {
       await authApi.resetPassword(forgot.email, forgot.code.trim(), forgot.newPassword)
       setForgotDone(true)
       setEmail(forgot.email)
+      setUserMode('login')
     } catch (err) {
       setForgotError(err.message || 'Impossible de réinitialiser le mot de passe.')
     }
@@ -324,7 +325,14 @@ export default function LoginPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Mot de passe</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-gray-700">Mot de passe</label>
+                  {userMode === 'login' && (
+                    <button type="button" onClick={openForgot} className="text-xs text-blue-600 hover:underline">
+                      Mot de passe oublié ?
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="input pl-9 pr-10" required />
