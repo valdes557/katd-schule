@@ -6,6 +6,7 @@ const BlogCategory = require('../models/BlogCategory')
 const User = require('../models/User')
 const { protect } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
+const { sendNewBlogNotificationEmail } = require('../utils/emailService')
 
 // Rôles autorisés à publier des articles de blog (Super Admin + tout le personnel Primaire et Secondaire)
 const STAFF_ROLES = [
@@ -372,6 +373,21 @@ router.post('/', protect, staffOnly, upload.single('coverImage'), async (req, re
       isPublic: true,
     })
 
+    // Notification par email à tous les utilisateurs si l'article est publié
+    if (post.status === 'published') {
+      setImmediate(async () => {
+        try {
+          const users = await User.find({ email: { $exists: true, $ne: '' }, isActive: { $ne: false } })
+            .select('email name')
+            .lean()
+          const clientUrl = process.env.CLIENT_URL || 'https://katdschool.com'
+          await sendNewBlogNotificationEmail({ post, users, clientUrl })
+        } catch (emailErr) {
+          console.error('[Blog Notification Email Error]:', emailErr.message)
+        }
+      })
+    }
+
     res.status(201).json({
       success: true,
       data: post,
@@ -394,6 +410,7 @@ router.put('/:id', protect, staffOnly, upload.single('coverImage'), async (req, 
       return res.status(403).json({ message: 'Vous ne pouvez modifier que vos propres articles' })
     }
 
+    const wasDraft = post.status === 'draft'
     const { title, content, categoryName, excerpt, status } = req.body
 
     if (title && title.trim()) post.title = title.trim()
@@ -420,6 +437,22 @@ router.put('/:id', protect, staffOnly, upload.single('coverImage'), async (req, 
     }
 
     await post.save()
+
+    // Si l'article passe de brouillon à publié, on notifie tous les utilisateurs
+    if (wasDraft && post.status === 'published') {
+      setImmediate(async () => {
+        try {
+          const users = await User.find({ email: { $exists: true, $ne: '' }, isActive: { $ne: false } })
+            .select('email name')
+            .lean()
+          const clientUrl = process.env.CLIENT_URL || 'https://katdschool.com'
+          await sendNewBlogNotificationEmail({ post, users, clientUrl })
+        } catch (emailErr) {
+          console.error('[Blog Notification Email Error]:', emailErr.message)
+        }
+      })
+    }
+
     res.json({ success: true, data: post, message: 'Article mis à jour' })
   } catch (err) {
     res.status(500).json({ message: err.message })

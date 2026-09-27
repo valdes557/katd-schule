@@ -179,11 +179,8 @@ export default function UserLayout() {
             />
           </div>
 
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <HeaderIcon active={onHome} onClick={() => navigate('/u')} icon={Home} />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <HeaderIcon active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} />
-            <HeaderIcon active={isWallet} onClick={() => navigate('/u/portefeuille')} icon={Wallet} />
-            <HeaderIcon active={isProfil} onClick={() => navigate('/u/profil')} icon={User} avatar={user?.avatar} />
             <HeaderIcon active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} badge={unreadNotifs} />
           </div>
         </div>
@@ -191,28 +188,13 @@ export default function UserLayout() {
 
       {/* ── Contenu ── */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5">
-        <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen, searchTerm }} />
+        <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen, searchTerm, unreadMessages, unreadNotifs, unreadNews }} />
       </main>
 
-      {/* ── Barre de navigation flottante VERTICALE ancrée à droite — masquée en messagerie ── */}
+      {/* ── Barre de navigation flottante : uniquement Store et Notifications ── */}
       {!isMessages && (
         <div className="fixed right-2 sm:right-3 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-3 pointer-events-auto">
-          <NavButton active={onHome} onClick={() => navigate('/u')} icon={Home} label="Accueil" gradient="from-blue-500 to-indigo-600" />
-          <NavButton active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} label="Store" gradient="from-amber-500 to-rose-600" />
-          <NavButton active={isMessages} onClick={() => navigate('/u/messages')} icon={Users} label="Amis" gradient="from-teal-500 to-emerald-600" badge={unreadMessages} />
-
-          {/* Bouton Publier (mis en avant) */}
-          <button
-            onClick={() => navigate('/u/publier')}
-            className="flex flex-col items-center gap-0.5 text-[10px] font-semibold text-gray-600"
-            title="Publier"
-          >
-            <span className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg border-4 border-white text-white">
-              <Plus size={24} strokeWidth={3} />
-            </span>
-            <span className="mt-0.5">Publier</span>
-          </button>
-
+          <NavButton active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} label="Store" gradient="from-blue-600 to-indigo-600" />
           <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-purple-500 to-pink-500" badge={unreadNotifs} />
         </div>
       )}

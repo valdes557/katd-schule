@@ -81,14 +81,17 @@ function YoutubeTab() {
 
   useEffect(() => { youtubeApi.categories().then((r) => setCategories(r.categories || [])).catch(() => {}) }, [])
 
-  // Debounce ~500 ms : on ne lance pas de recherche à chaque caractère.
+  // Debounce ~500 ms : on ne lance pas de recherche à chaque caractère si query est déjà identique.
   const debRef = useRef()
   useEffect(() => {
     if (sub !== 'search') return
     clearTimeout(debRef.current)
-    debRef.current = setTimeout(() => setQuery(input.trim()), 500)
+    debRef.current = setTimeout(() => {
+      const clean = input.trim()
+      if (clean && clean !== query) setQuery(clean)
+    }, 500)
     return () => clearTimeout(debRef.current)
-  }, [input, sub])
+  }, [input, sub, query])
 
   // Charge immédiatement le flux YouTube par défaut dès l'ouverture, sans attendre de recherche utilisateur
   const runSearch = useCallback(async () => {
@@ -97,7 +100,9 @@ function YoutubeTab() {
       const effectiveQ = query || DEFAULT_YOUTUBE_QUERY
       const r = await youtubeApi.search({ q: effectiveQ, order, duration })
       setItems(r.items || []); setNextToken(r.nextPageToken || '')
-    } catch (e) { setError(e.message || 'Recherche impossible'); setItems([]) }
+    } catch (e) {
+      setError(e.message || 'Recherche impossible')
+    }
     setLoading(false)
   }, [query, order, duration])
   useEffect(() => { runSearch() }, [runSearch])
@@ -113,8 +118,17 @@ function YoutubeTab() {
     setLoadingMore(false)
   }
 
-  const pickCategory = (cat) => { setActiveCat(cat.key); setInput(cat.query); setQuery(cat.query) }
-  const submit = (e) => { e?.preventDefault(); clearTimeout(debRef.current); setQuery(input.trim()) }
+  const pickCategory = (cat) => {
+    setActiveCat(cat.key)
+    clearTimeout(debRef.current)
+    setInput(cat.query)
+    setQuery(cat.query)
+  }
+  const submit = (e) => {
+    e?.preventDefault()
+    clearTimeout(debRef.current)
+    setQuery(input.trim())
+  }
 
   useEffect(() => {
     if (sub === 'favorites') { setListLoading(true); youtubeApi.favorites().then((r) => setFavorites(r.data || [])).catch(() => setFavorites([])).finally(() => setListLoading(false)) }
@@ -167,11 +181,25 @@ function YoutubeTab() {
           </div>
 
           {loading ? <YoutubeSkeleton />
-            : error ? <div className="text-center py-16 text-gray-500"><Youtube size={40} className="mx-auto mb-3 text-red-200" /><p>{error}</p></div>
-            : !query ? <Empty icon={Search} text="Recherchez une vidéo ou choisissez une catégorie." />
+            : error && items.length === 0 ? (
+              <div className="text-center py-16 text-gray-500">
+                <Youtube size={40} className="mx-auto mb-3 text-red-200" />
+                <p className="max-w-md mx-auto">{error}</p>
+                <button onClick={() => runSearch()} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700">
+                  Réessayer
+                </button>
+              </div>
+            )
+            : !query && items.length === 0 ? <Empty icon={Search} text="Recherchez une vidéo ou choisissez une catégorie." />
             : items.length === 0 ? <Empty icon={Youtube} text="Aucune vidéo trouvée." />
             : (
               <>
+                {error && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs flex items-center justify-between">
+                    <span>{error}</span>
+                    <button onClick={() => setError('')} className="font-semibold text-amber-900 underline ml-2">Fermer</button>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {items.map((v) => <YoutubeCard key={v.videoId} video={v} onClick={() => setPlayer(v.videoId)} onDownload={() => setDownloadVideo(v)} />)}
                 </div>

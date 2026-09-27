@@ -32,14 +32,23 @@ function downloadRateLimited(userId) {
   arr.push(now); dlHits.set(String(userId), arr); return false
 }
 
-// Traduit une erreur du service en réponse utilisateur — sans jamais divulguer de détail sensible.
+// Traduit une erreur du service en réponse utilisateur explicite
 function handleYtError(res, err) {
   const code = err && err.code
-  if (['quotaExceeded', 'noKey', 'disabled', 'keyInvalid', 'network', 'ytError'].includes(code)) {
-    return res.status(503).json({ code, message: 'Le service vidéo est temporairement indisponible. Veuillez réessayer plus tard.' })
+  if (code === 'noKey') {
+    return res.status(503).json({ code: 'noKey', message: "L'API YouTube n'est pas encore configurée. Ajoutez votre clé API dans l'administration (Plateforme > Clés API)." })
+  }
+  if (code === 'keyInvalid') {
+    return res.status(502).json({ code: 'keyInvalid', message: "La clé API YouTube est invalide ou restreinte dans Google Cloud Console. Veillez à activer 'YouTube Data API v3' sans restriction de domaine web." })
+  }
+  if (code === 'quotaExceeded') {
+    return res.status(503).json({ code: 'quotaExceeded', message: "Le quota journalier de l'API YouTube a été atteint. Il se réinitialise à minuit." })
+  }
+  if (code === 'disabled') {
+    return res.status(503).json({ code: 'disabled', message: "Le service vidéo est temporairement désactivé par l'administrateur." })
   }
   if (code === 'notFound') return res.status(404).json({ message: 'Vidéo introuvable.' })
-  return res.status((err && err.status) || 500).json({ message: 'Erreur du service vidéo.' })
+  return res.status((err && err.status) || 500).json({ message: err?.message || 'Erreur du service vidéo.' })
 }
 
 // GET /api/youtube/categories — liste de catégories rapides (statique côté serveur)

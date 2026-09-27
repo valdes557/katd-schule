@@ -1,137 +1,108 @@
-import { Link } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import {
-  Newspaper, Users, Store, Landmark, Rocket, Wallet,
-  Plus, User, Globe2, Briefcase, ChevronRight, Sparkles,
-  ShoppingBag
+  Home, Newspaper, Globe, Plus, Users, Briefcase,
+  Wallet, Store, Landmark, Rocket, User, Bell,
+  ShoppingBag,
 } from 'lucide-react'
 
+// Palette de couleurs foncées (fond saturé + icône blanche) tournant par bouton, identique à AppLauncher des autres dashboards.
+const PALETTE = [
+  { bg: 'bg-blue-600 group-hover:bg-blue-700', icon: 'text-white' },
+  { bg: 'bg-orange-500 group-hover:bg-orange-600', icon: 'text-white' },
+  { bg: 'bg-green-600 group-hover:bg-green-700', icon: 'text-white' },
+  { bg: 'bg-purple-600 group-hover:bg-purple-700', icon: 'text-white' },
+  { bg: 'bg-teal-600 group-hover:bg-teal-700', icon: 'text-white' },
+  { bg: 'bg-pink-600 group-hover:bg-pink-700', icon: 'text-white' },
+  { bg: 'bg-amber-500 group-hover:bg-amber-600', icon: 'text-white' },
+  { bg: 'bg-indigo-600 group-hover:bg-indigo-700', icon: 'text-white' },
+]
+
 export default function UserStorePage() {
-  const storeItems = [
+  const ctx = useOutletContext() || {}
+  const unreadMessages = ctx.unreadMessages || 0
+  const unreadNotifs = ctx.unreadNotifs || 0
+  const unreadNews = ctx.unreadNews || 0
+
+  const sections = [
     {
-      title: 'Blogs & Articles',
-      desc: 'Articles pédagogiques, conseils éducatifs et actualités rédigés par l\'administration et les enseignants.',
-      path: '/u/blogs',
-      icon: Newspaper,
-      gradient: 'from-blue-600 to-indigo-600',
-      badge: 'Nouveau',
-      badgeColor: 'bg-yellow-400 text-slate-900',
+      label: 'NAVIGATION & MÉDIAS',
+      items: [
+        { label: 'Accueil (Vidéos)', icon: Home, path: '/u' },
+        { label: 'Blogs & Articles', icon: Newspaper, path: '/u/blogs', badgeText: 'Nouveau' },
+        { label: 'Fil Social', icon: Globe, path: '/u/social' },
+        { label: 'Publier', icon: Plus, path: '/u/publier' },
+        { label: 'Amis & Messages', icon: Users, path: '/u/messages', badge: unreadMessages },
+        { label: 'News & Recrutement', icon: Briefcase, path: '/u/news', badge: unreadNews },
+      ],
     },
     {
-      title: 'Fil Social KATD',
-      desc: 'Publications, partages et réussites partagés par la communauté des écoles et utilisateurs.',
-      path: '/u/social',
-      icon: Globe2,
-      gradient: 'from-indigo-500 to-blue-600',
+      label: 'COMMERCE & SERVICES',
+      items: [
+        { label: 'Mon Portefeuille', icon: Wallet, path: '/u/portefeuille' },
+        { label: 'Espace Marchand', icon: Store, path: '/u/marchand' },
+        { label: 'Actionnaires', icon: Landmark, path: '/u/actionnaires' },
+        { label: 'Mes Boosts', icon: Rocket, path: '/u/mes-boosts' },
+      ],
     },
     {
-      title: 'Amis & Messagerie',
-      desc: 'Discussions privées, messagerie instantanée et contacts avec d\'autres membres.',
-      path: '/u/messages',
-      icon: Users,
-      gradient: 'from-teal-500 to-emerald-600',
-    },
-    {
-      title: 'News & Recrutements',
-      desc: 'Avis de recrutement d\'enseignants, postes vacants et annonces officielles des écoles.',
-      path: '/u/news',
-      icon: Briefcase,
-      gradient: 'from-amber-500 to-orange-600',
-    },
-    {
-      title: 'Espace Marchand',
-      desc: 'Boutiques partenaires, vente de fournitures scolaires, livres et services éducatifs.',
-      path: '/u/marchand',
-      icon: Store,
-      gradient: 'from-orange-500 to-amber-600',
-    },
-    {
-      title: 'Actionnaires & Parts',
-      desc: 'Devenez actionnaire de KATD-SCHÜLE, suivez l\'évolution de vos parts et percevez vos dividendes.',
-      path: '/u/actionnaires',
-      icon: Landmark,
-      gradient: 'from-indigo-600 to-violet-600',
-    },
-    {
-      title: 'Mes Boosts',
-      desc: 'Donnez une visibilité maximale à vos publications pour toucher des milliers d\'utilisateurs.',
-      path: '/u/mes-boosts',
-      icon: Rocket,
-      gradient: 'from-purple-500 to-fuchsia-600',
-    },
-    {
-      title: 'Mon Portefeuille',
-      desc: 'Solde, recharges, retraits Mobile Money (Orange, MTN, Wave, Moov) et transferts instantanés.',
-      path: '/u/portefeuille',
-      icon: Wallet,
-      gradient: 'from-emerald-500 to-green-600',
-    },
-    {
-      title: 'Créer une Publication',
-      desc: 'Partagez un message, une photo ou une vidéo sur le réseau social de la plateforme.',
-      path: '/u/publier',
-      icon: Plus,
-      gradient: 'from-pink-500 to-rose-600',
-    },
-    {
-      title: 'Mon Profil & Paramètres',
-      desc: 'Gérez vos informations de compte, votre photo de profil, votre sécurité et vos coordonnées.',
-      path: '/u/profil',
-      icon: User,
-      gradient: 'from-slate-600 to-gray-800',
+      label: 'COMPTE & PARAMÈTRES',
+      items: [
+        { label: 'Mon Profil', icon: User, path: '/u/profil' },
+        { label: 'Notifications', icon: Bell, path: '/u/notifications', badge: unreadNotifs },
+      ],
     },
   ]
 
+  let colorIndex = 0
+
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-12 animate-in fade-in duration-200">
-      {/* En-tête du Store */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 bottom-0 translate-x-8 translate-y-8 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 max-w-xl">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-blue-200 text-xs font-semibold mb-3 backdrop-blur-sm">
-            <ShoppingBag size={14} className="text-yellow-400" />
-            KATD Store & Services
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">
-            Toutes vos fonctionnalités réunies
-          </h1>
-          <p className="text-blue-200 text-xs sm:text-sm leading-relaxed">
-            Accédez facilement à l'ensemble des modules, des blogs officiels et des services sans encombrer votre écran principal.
-          </p>
+    <div className="space-y-6 max-w-4xl mx-auto pb-12 animate-fade-in">
+      {/* En-tête Store */}
+      <div className="flex items-center gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm">
+        <span className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md shrink-0">
+          <ShoppingBag size={24} />
+        </span>
+        <div>
+          <h1 className="text-lg sm:text-xl font-bold text-gray-900">Store Utilisateur</h1>
+          <p className="text-xs text-gray-500">Toutes les fonctionnalités et services de votre espace réunis en un seul endroit.</p>
         </div>
       </div>
 
-      {/* Grille de cartes */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {storeItems.map((item) => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-200 flex items-start gap-4 hover:-translate-y-0.5"
-          >
-            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${item.gradient} text-white flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform`}>
-              <item.icon size={22} />
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <h2 className="font-bold text-gray-900 text-sm sm:text-base group-hover:text-blue-600 transition-colors">
-                  {item.title}
-                </h2>
-                {item.badge && (
-                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${item.badgeColor || 'bg-blue-100 text-blue-700'}`}>
-                    {item.badge}
+      {/* Grille de sections avec exactement les mêmes formes et alignements que dans AppLauncher */}
+      {sections.map((section) => (
+        <div key={section.label} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+          <h3 className="text-[11px] font-semibold tracking-wider text-gray-400 uppercase mb-4">{section.label}</h3>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-x-3 gap-y-5 justify-items-center">
+            {section.items.map((item) => {
+              const color = PALETTE[colorIndex++ % PALETTE.length]
+              return (
+                <Link
+                  key={item.path + item.label}
+                  to={item.path}
+                  className="group flex flex-col items-center gap-1.5 text-center focus:outline-none"
+                >
+                  <span className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-sm transition-all duration-200 group-hover:shadow-card-lg group-hover:-translate-y-0.5 ${color.bg}`}>
+                    <item.icon size={24} className={`transition-colors ${color.icon}`} />
+                    {item.badge > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
+                        {item.badge > 9 ? '9+' : item.badge}
+                      </span>
+                    )}
+                    {item.badgeText && (
+                      <span className="absolute -top-1 -right-2 px-1.5 py-0.5 bg-yellow-400 text-slate-900 text-[9px] font-extrabold rounded-full shadow ring-2 ring-white uppercase">
+                        {item.badgeText}
+                      </span>
+                    )}
                   </span>
-                )}
-              </div>
-              <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
-                {item.desc}
-              </p>
-            </div>
-
-            <ChevronRight size={18} className="text-gray-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all shrink-0 self-center" />
-          </Link>
-        ))}
-      </div>
+                  <span className="text-[11px] leading-tight text-gray-600 group-hover:text-gray-900 line-clamp-2 max-w-[80px]">
+                    {item.label}
+                  </span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

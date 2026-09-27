@@ -321,6 +321,50 @@ const sendRecruitmentDecisionEmail = async ({ to, fullName, postTitle, schoolNam
   })
 }
 
+// → Notification à tous les utilisateurs lorsqu'un nouvel article de blog est publié
+const sendNewBlogNotificationEmail = async ({ post, users, clientUrl }) => {
+  if (!users || !users.length) return
+  const siteUrl = clientUrl || process.env.CLIENT_URL || 'https://katdschool.com'
+  const postUrl = `${siteUrl}/b/${post.slug || post._id}`
+  const subject = `📰 Nouvel article : ${post.title} | KATD-SCHÜLE`
+
+  for (let i = 0; i < users.length; i += 10) {
+    const batch = users.slice(i, i + 10)
+    await Promise.allSettled(
+      batch.map((u) => {
+        const body = `
+          <h2 style="color: #111827; font-size: 18px; margin-bottom: 8px;">Bonjour ${u.name || 'Membre KATD-SCHÜLE'},</h2>
+          <p style="color: #4B5563; line-height: 1.6; margin-bottom: 20px;">
+            Un nouvel article vient d'être publié sur le blog officiel de la plateforme par <strong>${post.authorName || 'la rédaction'}</strong>.
+          </p>
+          <div style="background: white; border: 1px solid #E5E7EB; border-radius: 10px; padding: 20px; margin: 20px 0;">
+            ${post.coverImage ? `<img src="${post.coverImage}" alt="${post.title}" style="width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 15px;" />` : ''}
+            <span style="display: inline-block; background: #DBEAFE; color: #1E40AF; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; margin-bottom: 8px;">
+              ${post.categoryName || 'Blog'}
+            </span>
+            <h3 style="color: #111827; font-size: 16px; margin: 4px 0 10px 0;">${post.title}</h3>
+            <p style="color: #6B7280; font-size: 13px; line-height: 1.6; margin: 0;">${post.excerpt || ''}</p>
+          </div>
+          <div style="text-align: center; margin: 25px 0;">
+            <a href="${postUrl}" style="display: inline-block; background: #2563EB; color: white; text-decoration: none; padding: 12px 26px; border-radius: 8px; font-size: 14px; font-weight: bold;">
+              Lire l'article complet →
+            </a>
+          </div>
+        `
+        return sendEmail({
+          to: u.email,
+          subject,
+          html: aiEmailLayout({
+            headerColor: 'linear-gradient(135deg, #1E40AF, #3B82F6)',
+            badge: '📰 Nouvel article de blog',
+            body,
+          }),
+        })
+      })
+    )
+  }
+}
+
 module.exports = {
   sendEmail,
   sendEnrollmentApprovalEmail,
@@ -332,4 +376,5 @@ module.exports = {
   sendSubscriptionReactivatedEmail,
   sendRecruitmentApplicationEmail,
   sendRecruitmentDecisionEmail,
+  sendNewBlogNotificationEmail,
 }
