@@ -181,6 +181,8 @@ export default function UserLayout() {
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <HeaderIcon active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} />
+            <HeaderIcon active={isWallet} onClick={() => navigate('/u/portefeuille')} icon={Wallet} />
+            <HeaderIcon active={isProfil} onClick={() => navigate('/u/profil')} icon={User} avatar={user?.avatar} />
             <HeaderIcon active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} badge={unreadNotifs} />
           </div>
         </div>
@@ -191,9 +193,9 @@ export default function UserLayout() {
         <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen, searchTerm, unreadMessages, unreadNotifs, unreadNews }} />
       </main>
 
-      {/* ── Barre de navigation flottante : uniquement Store et Notifications ── */}
+      {/* ── Barre de navigation flottante : position abaissée (Store et Notifications) ── */}
       {!isMessages && (
-        <div className="fixed right-2 sm:right-3 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-3 pointer-events-auto">
+        <div className="fixed right-2 sm:right-3 top-[65%] -translate-y-1/2 z-50 flex flex-col items-center gap-3 pointer-events-auto">
           <NavButton active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} label="Store" gradient="from-blue-600 to-indigo-600" />
           <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-purple-500 to-pink-500" badge={unreadNotifs} />
         </div>

@@ -373,8 +373,9 @@ router.post('/', protect, staffOnly, upload.single('coverImage'), async (req, re
       isPublic: true,
     })
 
-    // Notification par email à tous les utilisateurs si l'article est publié
-    if (post.status === 'published') {
+    // Notification par email à tous les utilisateurs UNIQUEMENT si l'article est publié par le super_admin
+    const isSuperAdmin = req.user.role === 'super_admin'
+    if (post.status === 'published' && isSuperAdmin) {
       setImmediate(async () => {
         try {
           const users = await User.find({ email: { $exists: true, $ne: '' }, isActive: { $ne: false } })
@@ -438,8 +439,8 @@ router.put('/:id', protect, staffOnly, upload.single('coverImage'), async (req, 
 
     await post.save()
 
-    // Si l'article passe de brouillon à publié, on notifie tous les utilisateurs
-    if (wasDraft && post.status === 'published') {
+    // Si l'article passe de brouillon à publié, on notifie UNIQUEMENT si l'auteur/modificateur est le super_admin
+    if (wasDraft && post.status === 'published' && isSuperAdmin) {
       setImmediate(async () => {
         try {
           const users = await User.find({ email: { $exists: true, $ne: '' }, isActive: { $ne: false } })

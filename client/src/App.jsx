@@ -456,6 +456,8 @@ export default function App() {
         <Route path="parent/ressources" element={<ParentActivitiesPage section="resources" />} />
         <Route path="social" element={<DashboardSocialPage />} />
         <Route path="blogs" element={<StaffBlogsPage />} />
+        <Route path="videos" element={<UserVideosPage />} />
+        <Route path="store" element={<UserStorePage />} />
       </Route>
 
       {/* Espace utilisateur (grand public) — atterrissage direct sur les vidéos (KATDTUBE & KATD) */}

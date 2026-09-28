@@ -1,5 +1,5 @@
 import { useEffect, useState, Suspense } from 'react'
-import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import DashboardHeader from './DashboardHeader'
 import PublicNavBar from './PublicNavBar'
@@ -40,6 +40,11 @@ export default function DashboardLayout() {
   const { user, school } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
+
+  // Un compte utilisateur grand public n'a pas accès au dashboard école
+  if (user?.role === 'utilisateur') {
+    return <Navigate to="/u" replace />
+  }
   const isDirecteur = user?.role === 'directeur'
   const subscribedCycle = isDirecteur && school?.subscription?.cycle ? school.subscription.cycle : null
   // Masquer le bouton Retour sur la page d'accueil du dashboard

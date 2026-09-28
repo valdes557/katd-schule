@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar,
@@ -393,6 +393,12 @@ function DirectorDashboard({ user, school }) {
 
 export default function DashboardPage() {
   const { user, school } = useAuth()
+
+  // Un compte utilisateur grand public est redirigé vers son espace dédié
+  if (user?.role === 'utilisateur') {
+    return <Navigate to="/u" replace />
+  }
+
   // Dashboards du cycle Secondaire (chacun gère son propre en-tête + AppLauncher)
   const SECONDARY_DASHBOARDS = {
     vice_principal: VicePrincipalDashboard,

@@ -472,16 +472,68 @@ async function applyOutcome(intent, status, raw) {
         })
       }
     } else if (intent.purpose === 'deposit') {
-      // Dépôt sur son propre portefeuille (directeur OU utilisateur /u)
-      if (intent.initiatedBy) {
-        await wallet.credit(intent.initiatedBy, {
+      // Dépôt sur son propre portefeuille (directeur OU utilisateur /u) ou sur compte désigné
+      const targetUserId = intent.beneficiary || intent.initiatedBy
+      if (targetUserId) {
+        const isOwn = !intent.initiatedBy || String(intent.initiatedBy) === String(targetUserId)
+        await wallet.credit(targetUserId, {
           amount: intent.amount, type: 'deposit', school: intent.school,
+          counterparty: isOwn ? null : intent.initiatedBy,
           paymentIntent: intent._id, providerTransactionId: intent.providerTransactionId,
-          description: 'Dépôt sur le portefeuille',
+          description: isOwn ? 'Dépôt sur le portefeuille' : 'Dépôt reçu d\'un utilisateur',
         })
+
+        // Commission Marchand sur dépôt (0,20%) :
+        // 1. Le marchand recevant le dépôt (son propre dépôt OU reçu d'un autre utilisateur)
+        // 2. Le marchand initiateur (effectuant un dépôt pour un tiers)
+        // Seuls les marchands participant à la transaction reçoivent la commission.
+        try {
+          const depositCommission = wallet.computeMerchantCommission(intent.amount)
+          if (depositCommission > 0) {
+            const [targetUser, initiatorUser] = await Promise.all([
+              User.findById(targetUserId).select('name isMerchant role school'),
+              (!isOwn && intent.initiatedBy) ? User.findById(intent.initiatedBy).select('name isMerchant role school') : null,
+            ])
+
+            // Si le compte crédité est marchand
+            if (targetUser?.isMerchant) {
+              await wallet.credit(targetUserId, {
+                amount: depositCommission,
+                type: 'merchant_commission',
+                role: targetUser.role,
+                school: targetUser.school || null,
+                counterparty: intent.initiatedBy,
+                paymentIntent: intent._id,
+                providerTransactionId: intent.providerTransactionId,
+                description: isOwn
+                  ? 'Commission marchand (0,20%) — dépôt sur votre portefeuille'
+                  : 'Commission marchand (0,20%) — dépôt reçu de ' + (initiatorUser?.name || 'un utilisateur'),
+                meta: { rate: wallet.MERCHANT_COMMISSION_RATE || 0.002, baseAmount: intent.amount, operation: 'deposit', own: isOwn },
+              })
+            }
+
+            // Si l'initiateur est un marchand ayant effectué un dépôt pour un tiers
+            if (initiatorUser?.isMerchant) {
+              await wallet.credit(intent.initiatedBy, {
+                amount: depositCommission,
+                type: 'merchant_commission',
+                role: initiatorUser.role,
+                school: initiatorUser.school || null,
+                counterparty: targetUserId,
+                paymentIntent: intent._id,
+                providerTransactionId: intent.providerTransactionId,
+                description: 'Commission marchand (0,20%) — dépôt effectué pour ' + (targetUser?.name || 'un utilisateur'),
+                meta: { rate: wallet.MERCHANT_COMMISSION_RATE || 0.002, baseAmount: intent.amount, operation: 'deposit_sent' },
+              })
+            }
+          }
+        } catch (mErr) {
+          console.error('[deposit:merchant_commission]', mErr.message)
+        }
+
         // Parrainage : au TOUT PREMIER dépôt du filleul, le parrain gagne 70 F (chantier 16).
         try {
-          const u = await User.findById(intent.initiatedBy).select('name firstDepositDone referredBy')
+          const u = await User.findById(targetUserId).select('name firstDepositDone referredBy')
           if (u && !u.firstDepositDone) {
             u.firstDepositDone = true
             await u.save()
@@ -493,12 +545,12 @@ async function applyOutcome(intent, status, raw) {
               })
             }
           }
-        } catch (e) { console.error('[deposit:referral] ' + intent.initiatedBy + ' :', e.message) }
+        } catch (e) { console.error('[deposit:referral] ' + targetUserId + ' :', e.message) }
         // Règlement de l'arriéré de frais de maintenance au prochain dépôt (chantier 20).
         try {
           const { applyMaintenanceOnDeposit } = require('../jobs/scheduler')
-          await applyMaintenanceOnDeposit(intent.initiatedBy)
-        } catch (e) { console.error('[deposit:maintenance] ' + intent.initiatedBy + ' :', e.message) }
+          await applyMaintenanceOnDeposit(targetUserId)
+        } catch (e) { console.error('[deposit:maintenance] ' + targetUserId + ' :', e.message) }
       }
     } else if (intent.purpose === 'merchant') {
       // Activation d'un compte marchand : bascule le statut + s'assure du portefeuille

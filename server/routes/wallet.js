@@ -61,15 +61,17 @@ router.get('/me', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// GET /api/wallet/lookup/:accountNo — résout un numéro de compte -> nom du destinataire (avant transfert)
+// GET /api/wallet/lookup/:accountNo — résout un numéro de compte -> nom du destinataire (avant transfert ou dépôt)
 router.get('/lookup/:accountNo', protect, async (req, res) => {
   try {
     const acc = String(req.params.accountNo || '').trim().toUpperCase()
     if (!/^KS[0-9]{6}$/.test(acc)) return res.status(400).json({ message: 'Numéro de compte invalide (format KS000000)' })
-    const u = await User.findOne({ walletAccountNo: acc }).select('name role')
+    const u = await User.findOne({ walletAccountNo: acc }).select('name role isMerchant')
     if (!u) return res.status(404).json({ message: 'Aucun utilisateur avec ce numéro de compte' })
-    if (String(u._id) === String(req.user._id)) return res.status(400).json({ message: 'Ceci est votre propre compte' })
-    res.json({ success: true, id: u._id, name: u.name, role: u.role })
+    const isSelf = String(u._id) === String(req.user._id)
+    const allowSelf = req.query.allowSelf === '1' || req.query.allowSelf === 'true'
+    if (!allowSelf && isSelf) return res.status(400).json({ message: 'Ceci est votre propre compte' })
+    res.json({ success: true, id: u._id, name: u.name, role: u.role, isMerchant: !!u.isMerchant, isSelf })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -105,7 +107,7 @@ router.post('/transfer-user', protect, async (req, res) => {
 // POST /api/wallet/deposit/initiate — dépôt via Mobile Money (collecte Ikeepay)
 router.post('/deposit/initiate', protect, async (req, res) => {
   try {
-    const { amount, phone, operator, country = 'CM', otp } = req.body
+    const { amount, phone, operator, country = 'CM', otp, targetAccountNo } = req.body
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
     const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
@@ -117,9 +119,17 @@ router.post('/deposit/initiate', protect, async (req, res) => {
     const normCountry = String(country || 'CM').trim().toUpperCase()
     const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
 
+    let beneficiary = req.user._id
+    if (targetAccountNo && String(targetAccountNo).trim()) {
+      const acc = String(targetAccountNo).trim().toUpperCase()
+      const tUser = await User.findOne({ walletAccountNo: acc }).select('_id')
+      if (tUser) beneficiary = tUser._id
+    }
+
     const intent = await PaymentIntent.create({
       reference, purpose: 'deposit', amount: amt, currency: targetCurrency,
       payerPhone: rawPhone, payerOperator: operator, initiatedBy: req.user._id,
+      beneficiary,
       school: req.user.school?._id || null, mode,
     })
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')

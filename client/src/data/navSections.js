@@ -5,6 +5,7 @@ import {
   BarChart2, LineChart, PieChart, UserPlus, MapPin, Globe, LayoutGrid, Shield, Wallet, QrCode,
   Bot, Sparkles, Image as ImageIcon, Briefcase, Newspaper, KeyRound,
   ArrowLeftRight, Coins, Store, Landmark, Gavel, Rocket,
+  Youtube, ShoppingBag,
 } from 'lucide-react'
 
 // roles: array of allowed roles. undefined = all roles.
@@ -198,11 +199,13 @@ export const navSections = [
   },
   {
     label: 'COMMUNICATION',
-    roles: ['directeur', 'enseignant', 'parent', 'vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier', 'eleve'],
+    roles: ['directeur', 'enseignant', 'parent', 'vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier', 'eleve', 'super_admin'],
     items: [
+      { label: 'Vidéos (KATDTUBE & KATD)', icon: Youtube, path: '/dashboard/videos' },
+      { label: 'Store Utilisateur', icon: ShoppingBag, path: '/dashboard/store' },
       { label: 'Informations générales', icon: Info, path: '/dashboard/infos', roles: ['directeur', 'enseignant', 'parent', 'vice_principal', 'secretaire'] },
       { label: 'News & recrutement', icon: Newspaper, path: '/dashboard/news', roles: ['directeur', 'enseignant', 'parent'] },
-      { label: 'Blogs & Articles', icon: Newspaper, path: '/dashboard/blogs', roles: ['directeur', 'enseignant', 'vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier'] },
+      { label: 'Blogs & Articles', icon: Newspaper, path: '/dashboard/blogs', roles: ['directeur', 'enseignant', 'vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier', 'super_admin'] },
       { label: 'Messenger', icon: MessageSquare, path: '/dashboard/messagerie' },
       { label: 'Annonces', icon: Bell, path: '/dashboard/annonces', roles: ['directeur', 'enseignant', 'parent', 'vice_principal', 'surveillant_general', 'secretaire', 'eleve'] },
       { label: 'Documents partagés', icon: FolderOpen, path: '/dashboard/documents', roles: ['directeur', 'enseignant', 'parent', 'vice_principal', 'secretaire'] },
@@ -245,6 +248,8 @@ export const navSections = [
     label: 'ADMINISTRATION',
     roles: ['super_admin'],
     items: [
+      { label: 'Vidéos (KATDTUBE & KATD)', icon: Youtube, path: '/dashboard/videos' },
+      { label: 'Store Utilisateur', icon: ShoppingBag, path: '/dashboard/store' },
       { label: 'Écoles', icon: School, path: '/dashboard/ecoles-admin' },
       { label: 'Demandes d\'écoles', icon: UserPlus, path: '/dashboard/demandes-ecoles' },
       { label: 'Matières par école', icon: ClipboardList, path: '/dashboard/matieres-ecoles' },

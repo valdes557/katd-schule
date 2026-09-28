@@ -1098,8 +1098,8 @@ export const walletApi = {
   withdraw: (payload) => api.post('/wallet/withdraw', payload),
   // Configuration générale portefeuille (seuil min retrait, etc.)
   getConfig: () => api.get('/wallet/config'),
-  // Transfert entre utilisateurs (frais 0,25%)
-  lookup: (accountNo) => api.get('/wallet/lookup/' + encodeURIComponent(accountNo)),
+  // Transfert entre utilisateurs (frais 0,25%) / vérification compte dépôt
+  lookup: (accountNo, allowSelf = false) => api.get('/wallet/lookup/' + encodeURIComponent(accountNo) + (allowSelf ? '?allowSelf=1' : '')),
   transferUser: (payload) => api.post('/wallet/transfer-user', payload),
 }
 

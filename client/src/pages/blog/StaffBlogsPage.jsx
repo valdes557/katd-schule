@@ -526,21 +526,39 @@ export default function StaffBlogsPage() {
           ) : allPosts.length === 0 ? (
             <p className="text-xs text-gray-400 py-8 text-center">Aucun article publié pour le moment.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {allPosts.map((p) => (
-                <div key={p._id} className="p-4 rounded-2xl border border-gray-100 bg-gray-50 hover:bg-blue-50/30 transition-all flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-blue-600 bg-blue-100/60 px-2 py-0.5 rounded-full inline-block mb-1.5">
-                      {p.categoryName}
-                    </span>
-                    <h3 className="font-bold text-gray-900 text-sm line-clamp-2">{p.title}</h3>
-                    <p className="text-xs text-gray-500 line-clamp-2 mt-1">{p.excerpt}</p>
+            <div className="space-y-6">
+              {Object.entries(
+                allPosts.reduce((acc, p) => {
+                  const c = p.categoryName || 'Général'
+                  if (!acc[c]) acc[c] = []
+                  acc[c].push(p)
+                  return acc
+                }, {})
+              ).map(([catName, cPosts]) => (
+                <div key={catName} className="space-y-3">
+                  <div className="flex items-center gap-2 border-b border-gray-100 pb-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                    <h3 className="font-bold text-gray-900 text-sm">{catName}</h3>
+                    <span className="text-[11px] text-gray-400 font-medium">({cPosts.length})</span>
                   </div>
-                  <div className="mt-3 pt-3 border-t border-gray-200/60 flex items-center justify-between text-[11px] text-gray-400">
-                    <span>Par {p.authorName}</span>
-                    <Link to={`/u/blogs/${p.slug || p._id}`} target="_blank" className="text-blue-600 font-bold hover:underline flex items-center gap-0.5">
-                      Voir <ArrowRight size={11} />
-                    </Link>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {cPosts.map((p) => (
+                      <div key={p._id} className="p-4 rounded-2xl border border-gray-100 bg-gray-50 hover:bg-blue-50/30 transition-all flex flex-col justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-100/60 px-2 py-0.5 rounded-full inline-block mb-1.5">
+                            {p.categoryName}
+                          </span>
+                          <h3 className="font-bold text-gray-900 text-sm line-clamp-2">{p.title}</h3>
+                          <p className="text-xs text-gray-500 line-clamp-2 mt-1">{p.excerpt}</p>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-gray-200/60 flex items-center justify-between text-[11px] text-gray-400">
+                          <span>Par {p.authorName}</span>
+                          <Link to={`/u/blogs/${p.slug || p._id}`} target="_blank" className="text-blue-600 font-bold hover:underline flex items-center gap-0.5">
+                            Voir <ArrowRight size={11} />
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}

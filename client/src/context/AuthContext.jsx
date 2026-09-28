@@ -31,13 +31,15 @@ export function AuthProvider({ children }) {
           setSchool(s)
           localStorage.setItem('katd_user', JSON.stringify(u))
           if (s) localStorage.setItem('katd_school', JSON.stringify(s))
+          else localStorage.removeItem('katd_school')
         })
         .catch(() => {
           if (!storedUser) {
             const u2 = localStorage.getItem('katd_user')
             const s2 = localStorage.getItem('katd_school')
             if (u2) setUser(JSON.parse(u2))
-            if (s2) setSchool(JSON.parse(s2))
+            if (s2 && s2 !== 'null') setSchool(JSON.parse(s2))
+            else setSchool(null)
           }
         })
         .finally(() => setLoading(false))
@@ -65,7 +67,11 @@ export function AuthProvider({ children }) {
       const s = res.school || null
       localStorage.setItem('token', res.token)
       localStorage.setItem('katd_user', JSON.stringify(u))
-      localStorage.setItem('katd_school', JSON.stringify(s))
+      if (s) {
+        localStorage.setItem('katd_school', JSON.stringify(s))
+      } else {
+        localStorage.removeItem('katd_school')
+      }
       setUser(u)
       setSchool(s)
       return { success: true, user: u }

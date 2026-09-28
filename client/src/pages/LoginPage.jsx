@@ -11,15 +11,24 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { login, register, verifyEmail } = useAuth()
+  const { user, login, register, verifyEmail } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   // Parrainage : lien .../login?ref=CODE → pré-remplit et force l'inscription utilisateur.
-  const referralCode = (searchParams.get('ref') || '').trim().toUpperCase()
+  const initialRef = (searchParams.get('ref') || '').trim().toUpperCase()
+  const [referralCode, setReferralCode] = useState(initialRef)
+
+  // Si l'utilisateur est déjà connecté, rediriger automatiquement vers son espace dédié
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'utilisateur') navigate('/u', { replace: true })
+      else navigate('/dashboard', { replace: true })
+    }
+  }, [user, navigate])
 
   // Mode d'authentification : 'user' (grand public) par défaut, ou 'ecole' (personnel).
   const [mode, setMode] = useState('user')
-  const [userMode, setUserMode] = useState(referralCode ? 'signup' : 'login') // 'login' | 'signup'
+  const [userMode, setUserMode] = useState(initialRef ? 'signup' : 'login') // 'login' | 'signup'
   const [name, setName] = useState('')
   const [acceptPrivacy, setAcceptPrivacy] = useState(false)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
@@ -314,6 +323,24 @@ export default function LoginPage() {
                   <div className="relative">
                     <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Votre nom" className="input pl-9" required />
+                  </div>
+                </div>
+              )}
+              {userMode === 'signup' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center justify-between">
+                    <span>Code de parrainage</span>
+                    <span className="text-xs text-gray-400 font-normal">Optionnel</span>
+                  </label>
+                  <div className="relative">
+                    <Gift size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={referralCode}
+                      onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                      placeholder="Ex: KATD7F3K9"
+                      className="input pl-9 uppercase tracking-wider font-mono text-sm"
+                    />
                   </div>
                 </div>
               )}

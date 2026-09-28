@@ -92,9 +92,15 @@ export default function PublicHeader() {
               )}
             </Link>
             {user ? (
-              <Link to="/dashboard" className="btn-primary text-sm py-1.5 px-4">
-                Mon école
-              </Link>
+              user.role === 'utilisateur' ? (
+                <Link to="/u" className="btn-primary text-sm py-1.5 px-4">
+                  Mon espace
+                </Link>
+              ) : (
+                <Link to="/dashboard" className="btn-primary text-sm py-1.5 px-4">
+                  Mon école
+                </Link>
+              )
             ) : (
               <>
                 <Link to="/login" className="hidden sm:inline-flex text-sm font-medium text-gray-600 hover:text-blue-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
@@ -160,9 +166,15 @@ export default function PublicHeader() {
           ))}
           <div className="pt-2 border-t border-gray-100 mt-2">
             {user ? (
-              <Link to="/dashboard" className="btn-primary w-full text-center block text-sm" onClick={() => setMobileOpen(false)}>
-                Mon école
-              </Link>
+              user.role === 'utilisateur' ? (
+                <Link to="/u" className="btn-primary w-full text-center block text-sm" onClick={() => setMobileOpen(false)}>
+                  Mon espace
+                </Link>
+              ) : (
+                <Link to="/dashboard" className="btn-primary w-full text-center block text-sm" onClick={() => setMobileOpen(false)}>
+                  Mon école
+                </Link>
+              )
             ) : (
               <div className="flex gap-2">
                 <Link to="/login" className="flex-1 text-center text-sm font-medium text-gray-600 border border-gray-200 py-2 rounded-lg" onClick={() => setMobileOpen(false)}>

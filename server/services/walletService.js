@@ -195,37 +195,58 @@ async function collectFee({ fee, fromUserId, description, meta = {} }) {
   } catch (e) { /* frais tracés côté payeur même si le crédit admin échoue */ }
 }
 
-// Crédite une commission marchand de 0,20% (bonus virtuel) à CHAQUE compte marchand actif,
-// sur n'importe quel transfert de la plateforme (y compris ceux du super admin).
-// Best-effort : n'interrompt jamais le transfert. Retourne la commission unitaire versée.
-async function creditMerchantsCommission(amt, { fromUserId, toUserId, fromLabel, toLabel }) {
+// Crédite la commission marchand (0,20%) UNIQUEMENT au(x) marchand(s) effectuant ou recevant la transaction.
+// - Un marchand effectuant un transfert depuis son compte reçoit sa commission de 0,20%.
+// - Un marchand recevant un transfert d'un utilisateur reçoit sa commission de 0,20%.
+// - Un marchand n'ayant pas participé à la transaction NE REÇOIT AUCUNE commission.
+async function creditMerchantsCommission(amt, { fromUserId, toUserId, fromLabel, toLabel, fromU, toU }) {
   const commission = computeMerchantCommission(amt)
   if (commission <= 0) return 0
-  try {
-    const merchants = await User.find({ isMerchant: true, isActive: { $ne: false } }).select('_id name role school')
-    for (const m of merchants) {
-      try {
-        // Le libellé précise s'il s'agit de son propre transfert ou d'un transfert tiers.
-        const own = String(m._id) === String(fromUserId)
-        await credit(m._id, {
-          amount: commission, type: 'merchant_commission',
-          counterparty: own ? toUserId : fromUserId, role: m.role, school: m.school || null,
-          description: own
-            ? 'Commission marchand (0,20%) — transfert vers ' + toLabel
-            : 'Commission marchand (0,20%) — transfert ' + fromLabel + ' → ' + toLabel,
-          meta: { rate: MERCHANT_COMMISSION_RATE, baseAmount: amt, from: String(fromUserId), to: String(toUserId), own },
-        })
-      } catch (e) { /* commission best-effort par marchand */ }
+  let creditedTotal = 0
+
+  // 1. Si l'envoyeur est un compte marchand : commission sur le transfert qu'il effectue
+  if (fromU?.isMerchant) {
+    try {
+      await credit(fromUserId, {
+        amount: commission,
+        type: 'merchant_commission',
+        counterparty: toUserId,
+        role: fromU.role,
+        school: fromU.school || null,
+        description: 'Commission marchand (0,20%) — transfert vers ' + toLabel,
+        meta: { rate: MERCHANT_COMMISSION_RATE, baseAmount: amt, role: 'sender', to: String(toUserId) },
+      })
+      creditedTotal = commission
+    } catch (e) {
+      console.error('[merchant_commission:sender]', e.message)
     }
-  } catch (e) { /* pas de marchand / erreur : transfert déjà effectué */ }
-  return commission
+  }
+
+  // 2. Si le destinataire est un compte marchand : commission sur le transfert qu'un utilisateur lui fait
+  if (toU?.isMerchant && String(toUserId) !== String(fromUserId)) {
+    try {
+      await credit(toUserId, {
+        amount: commission,
+        type: 'merchant_commission',
+        counterparty: fromUserId,
+        role: toU.role,
+        school: toU.school || null,
+        description: 'Commission marchand (0,20%) — transfert reçu de ' + fromLabel,
+        meta: { rate: MERCHANT_COMMISSION_RATE, baseAmount: amt, role: 'receiver', from: String(fromUserId) },
+      })
+      creditedTotal = commission
+    } catch (e) {
+      console.error('[merchant_commission:receiver]', e.message)
+    }
+  }
+
+  return creditedTotal
 }
 
 // Transfert entre deux utilisateurs quelconques.
 // - Utilisateur normal : frais 0,25% payés EN PLUS par l'envoyeur, encaissés par l'admin.
 // - Marchand (envoyeur) : EXONÉRÉ des 0,25%.
-// - TOUS les comptes marchands actifs reçoivent 0,20% de commission (bonus virtuel) sur CE transfert,
-//   qu'ils en soient l'auteur ou non (commission sur toutes les transactions de la plateforme).
+// - Seuls les marchands participant à la transaction reçoivent la commission de 0,20%.
 // Dans tous les cas le destinataire reçoit le montant plein.
 async function transferBetweenUsers(fromUserId, toUserId, { amount, description = '' }) {
   const amt = Number(amount)
@@ -234,8 +255,8 @@ async function transferBetweenUsers(fromUserId, toUserId, { amount, description 
 
   // Noms/comptes + statut marchand pour libellés + tarification (chantiers 4 & marchands).
   const [fromU, toU] = await Promise.all([
-    User.findById(fromUserId).select('name walletAccountNo isMerchant'),
-    User.findById(toUserId).select('name walletAccountNo'),
+    User.findById(fromUserId).select('name walletAccountNo isMerchant role school'),
+    User.findById(toUserId).select('name walletAccountNo isMerchant role school'),
   ])
   const fromLabel = (fromU?.name || 'Utilisateur') + (fromU?.walletAccountNo ? ' (' + fromU.walletAccountNo + ')' : '')
   const toLabel = (toU?.name || 'Utilisateur') + (toU?.walletAccountNo ? ' (' + toU.walletAccountNo + ')' : '')
@@ -263,8 +284,8 @@ async function transferBetweenUsers(fromUserId, toUserId, { amount, description 
   await collectFee({ fee, fromUserId,
     description: 'Frais de transfert encaissés (0,25%) — ' + fromLabel,
     meta: { feeType: 'transfer', rate: TRANSFER_FEE_RATE, baseAmount: amt, from: String(fromUserId), to: String(toUserId) } })
-  // Commission marchand : 0,20% (bonus virtuel) versé à CHAQUE marchand actif de la plateforme.
-  const commission = await creditMerchantsCommission(amt, { fromUserId, toUserId, fromLabel, toLabel })
+  // Commission marchand : 0,20% versé UNIQUEMENT aux marchands impliqués dans ce transfert.
+  const commission = await creditMerchantsCommission(amt, { fromUserId, toUserId, fromLabel, toLabel, fromU, toU })
   const fromWalletAfter = await getOrCreateWallet(fromUserId)
   return { from: fromWalletAfter, to: c.wallet, amount: amt, fee, commission, total, debitTx: d.tx, creditTx: c.tx }
 }

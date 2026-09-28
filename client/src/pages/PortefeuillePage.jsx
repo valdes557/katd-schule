@@ -138,8 +138,12 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
     const acc = String(f.accountNo || '').trim().toUpperCase()
     setRecipient(null)
     if (!/^KS[0-9]{6}$/i.test(acc)) return
-    try { const r = await walletApi.lookup(acc); setRecipient({ name: r.name, role: r.role }) }
-    catch (e) { setRecipient({ error: e.message }) }
+    try {
+      const r = await walletApi.lookup(acc, type === 'deposit')
+      setRecipient({ name: r.name, role: r.role, isMerchant: r.isMerchant, isSelf: r.isSelf })
+    } catch (e) {
+      setRecipient({ error: e.message })
+    }
   }
 
   const submit = async () => {
@@ -179,6 +183,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           operator: f.momoOperator,
           country: f.country || 'CM',
           otp: String(f.otp || '').trim(),
+          targetAccountNo: f.accountNo?.trim() ? f.accountNo.trim().toUpperCase() : undefined,
         })
 
         if (res.payment_link) {
@@ -338,6 +343,49 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {type === 'deposit' && (<>
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-medium text-gray-600 block">Compte destinataire à créditer (optionnel)</label>
+              <span className="text-[11px] text-gray-400">Par défaut : Votre propre compte</span>
+            </div>
+            <input
+              type="text"
+              value={f.accountNo}
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase()
+                setF({ ...f, accountNo: val })
+                if (/^KS[0-9]{6}$/i.test(val)) {
+                  walletApi.lookup(val, true)
+                    .then(r => setRecipient({ name: r.name, role: r.role, isMerchant: r.isMerchant, isSelf: r.isSelf }))
+                    .catch(err => setRecipient({ error: err.message }))
+                } else {
+                  setRecipient(null)
+                }
+              }}
+              onBlur={lookupRecipient}
+              className="input w-full uppercase font-mono tracking-wider text-sm"
+              placeholder="Ex: KS930021 (laisser vide pour votre compte)"
+            />
+            {recipient?.name && (
+              <div className="text-xs mt-1.5 p-2 rounded-lg bg-green-50 border border-green-200 text-green-800 space-y-0.5">
+                <p>✓ Crédit vers : <b>{recipient.name}</b> {recipient.isSelf ? '(Votre compte)' : ''}</p>
+                {recipient.isMerchant && (
+                  <p className="text-[11px] text-emerald-700 font-semibold">
+                    ★ Bénéficiaire Marchand : reçoit 0,20% de commission (+{fmt(merchantCommission)} F)
+                  </p>
+                )}
+              </div>
+            )}
+            {recipient?.error && (
+              <p className="text-xs text-red-500 mt-1">{recipient.error}</p>
+            )}
+            {isMerchant && !recipient?.name && Number(f.amount) > 0 && (
+              <p className="text-[11px] text-emerald-700 mt-1 bg-emerald-50 p-2 rounded border border-emerald-200">
+                ★ En tant que compte marchand, vous recevrez <b>0,20%</b> de commission (+{fmt(merchantCommission)} F) sur ce dépôt.
+              </p>
+            )}
+          </div>
+
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">Pays</label>
             <select
