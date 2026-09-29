@@ -119,7 +119,7 @@ export default function YoutubePlayerModal({ videoId: initialId, onClose, onShar
           )}
         </div>
       </div>
-      {showDownload && <DownloadAdGate videoId={videoId} title={video?.title} onClose={() => setShowDownload(false)} />}
+      {showDownload && <DownloadAdGate video={video} videoId={videoId} title={video?.title} onClose={() => setShowDownload(false)} />}
     </div>
   )
 }

@@ -106,93 +106,146 @@ router.get('/ad-config', protect, async (req, res) => {
   } catch (err) { res.json({ success: true, downloadEnabled: true, adsenseClient: '', adSlot: '', adCountdown: 5 }) }
 })
 
-const { Readable } = require('stream')
-const { Innertube, Platform } = require('youtubei.js')
-
-// Évaluateur JavaScript requis par youtubei.js pour déchiffrer les signatures de flux
-Platform.shim.eval = async (data, env) => {
-  const code = data.output + '\nreturn { ...env }'
-  return new Function('env', code)(env)
+// ───────────────────────── MOTEUR DE TÉLÉCHARGEMENT MULTI-FORMAT (SNAPTUBE ENGINE) ─────────────────────────
+// Normalise les formats demandés (musique: mp3, m4a ; vidéo: 360, 480, 720, 1080)
+function normalizeDownloadFormat(format, quality) {
+  const f = String(format || '').toLowerCase().trim()
+  const q = String(quality || '').toLowerCase().trim()
+  if (f === 'm4a' || q === 'm4a') return 'm4a'
+  if (f.includes('mp3') || f === 'music' || f === 'audio') return 'mp3'
+  if (f === '360' || q === '360p' || q === '360') return '360'
+  if (f === '480' || q === '480p' || q === '480') return '480'
+  if (f === '1080' || q === '1080p' || q === '1080') return '1080'
+  return '720' // Qualité vidéo par défaut : 720p HD
 }
 
-let innertubeInstance = null
-let innertubePromise = null
-async function getInnertube() {
-  if (innertubeInstance) return innertubeInstance
-  if (!innertubePromise) {
-    innertubePromise = Innertube.create({ generate_session_locally: true })
-      .then((yt) => {
-        innertubeInstance = yt
-        return yt
-      })
-      .catch((err) => {
-        innertubePromise = null
-        throw err
-      })
+// 1. Initialise la tâche de conversion
+async function initDownloadJob(videoId, format) {
+  const fmt = normalizeDownloadFormat(format)
+  const initUrl = `https://loader.to/ajax/download.php?button=1&start=1&end=1&format=${encodeURIComponent(fmt)}&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`
+
+  const res = await fetch(initUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!res.ok) throw new Error(`Moteur de conversion indisponible (${res.status})`)
+  const data = await res.json()
+  if (!data || !data.success) throw new Error(data?.message || 'Impossible d\'initialiser le téléchargement.')
+  return {
+    id: data.id,
+    progressUrl: data.progress_url,
+    title: data.title || '',
+    format: fmt,
   }
-  return innertubePromise
 }
 
-// GET /api/youtube/download/:videoId — télécharge directement la vidéo dans l'appareil
-// de l'utilisateur (flux MP4 natif audio+vidéo) SANS AUCUNE REDIRECTION vers un site tiers.
+// 2. Vérifie la progression d'un téléchargement en cours
+async function pollDownloadProgress(progressUrl) {
+  const res = await fetch(progressUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) throw new Error(`Erreur lors du suivi de conversion (${res.status})`)
+  const data = await res.json()
+  return {
+    progress: Number(data.progress) || 0,
+    text: data.text || '',
+    downloadUrl: data.download_url || null,
+    title: data.title || '',
+    format: data.format || '',
+  }
+}
+
+// POST /api/youtube/download/init — Démarre la préparation d'un fichier audio ou vidéo
+router.post('/download/init', protect, async (req, res) => {
+  const { videoId, format, quality } = req.body || {}
+  if (!VIDEO_ID_RE.test(String(videoId || ''))) return res.status(400).json({ message: 'Identifiant vidéo invalide.' })
+  try {
+    const cfg = await youtube.resolveConfig()
+    if (cfg.downloadEnabled === false) return res.status(403).json({ message: 'Le téléchargement des vidéos est désactivé.' })
+  } catch (_) {}
+  if (downloadRateLimited(req.user._id)) return res.status(429).json({ message: 'Trop de requêtes de téléchargement. Réessayez dans un instant.' })
+
+  try {
+    const job = await initDownloadJob(videoId, format || quality)
+    res.json({ success: true, ...job })
+  } catch (err) {
+    console.error('[youtube] download init error:', err.message)
+    res.status(502).json({ success: false, message: 'Impossible d\'initialiser la conversion du fichier. Réessayez.' })
+  }
+})
+
+// GET /api/youtube/download/progress — Vérifie l'état de conversion pour la barre de progression SnapTube
+router.get('/download/progress', protect, async (req, res) => {
+  const progressUrl = String(req.query.url || '').trim()
+  if (!progressUrl) return res.status(400).json({ message: 'URL de suivi manquante.' })
+
+  // Sécurité : autoriser uniquement les domaines du moteur de conversion
+  try {
+    const parsed = new URL(progressUrl)
+    const allowed = ['loader.to', 'affadaffa.com', 'savenow.to', 'oceansaver.net']
+    if (!allowed.some((d) => parsed.hostname === d || parsed.hostname.endsWith('.' + d))) {
+      return res.status(400).json({ message: 'Domaine de conversion non autorisé.' })
+    }
+  } catch (_) {
+    return res.status(400).json({ message: 'URL de progression invalide.' })
+  }
+
+  try {
+    const status = await pollDownloadProgress(progressUrl)
+    res.json({ success: true, ...status })
+  } catch (err) {
+    res.status(502).json({ success: false, message: err.message })
+  }
+})
+
+// GET /api/youtube/download/:videoId — Téléchargement direct avec redirection 302 vers le flux préparé
+// Compatible avec les liens <a href="..." download> directs sur mobile et PC
 router.get('/download/:videoId', protect, async (req, res) => {
   const videoId = req.params.videoId
   if (!VIDEO_ID_RE.test(videoId)) return res.status(400).json({ message: 'Identifiant vidéo invalide.' })
   try {
     const cfg = await youtube.resolveConfig()
     if (cfg.downloadEnabled === false) return res.status(403).json({ message: 'Le téléchargement des vidéos est désactivé.' })
-  } catch (_) { /* on continue : repli permissif */ }
+  } catch (_) {}
   if (downloadRateLimited(req.user._id)) return res.status(429).json({ message: 'Trop de téléchargements. Réessayez dans un instant.' })
 
+  const fmt = normalizeDownloadFormat(req.query.format, req.query.quality)
+
   try {
-    const yt = await getInnertube()
+    const job = await initDownloadJob(videoId, fmt)
+    const pUrl = job.progressUrl
+    if (!pUrl) throw new Error('URL de conversion introuvable.')
 
-    // Récupération du titre réel pour nommer proprement le fichier MP4 téléchargé
-    let title = videoId
-    try {
-      const basic = await yt.getBasicInfo(videoId)
-      const raw = basic?.basic_info?.title || ''
-      if (raw) title = raw.replace(/[^\w\s.-]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || videoId
-    } catch (_) {}
+    // Attend la fin de la conversion (jusqu'à 25 secondes)
+    const maxWaitMs = 25000
+    const start = Date.now()
+    let finalUrl = null
 
-    // Obtenir le flux MP4 direct audio+vidéo
-    let stream = null
-    try {
-      stream = await yt.download(videoId, { type: 'video+audio', quality: 'best' })
-    } catch (e1) {
+    while (Date.now() - start < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, 1200))
       try {
-        stream = await yt.download(videoId, { client: 'ANDROID', type: 'video+audio', quality: 'best' })
-      } catch (e2) {
-        try {
-          stream = await yt.download(videoId, { client: 'ANDROID_VR', type: 'video+audio' })
-        } catch (e3) {
-          stream = await yt.download(videoId, { quality: 'best' })
+        const pStatus = await pollDownloadProgress(pUrl)
+        if (pStatus.downloadUrl) {
+          finalUrl = pStatus.downloadUrl
+          break
         }
-      }
+      } catch (_) {}
     }
 
-    if (!stream) {
-      throw new Error('Aucun flux vidéo direct accessible.')
+    if (!finalUrl) {
+      return res.status(504).json({
+        success: false,
+        message: 'La conversion prend plus de temps que prévu. Veuillez utiliser la fenêtre de téléchargement pour suivre la progression.',
+      })
     }
 
-    const filename = `${title}.mp4`
-    res.setHeader('Content-Type', 'video/mp4')
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}"`)
-
-    const nodeStream = Readable.fromWeb(stream)
-    nodeStream.on('error', (err) => {
-      console.warn('[youtube] download stream error:', err.message)
-      try { res.destroy() } catch (_) {}
-    })
-    req.on('close', () => {
-      try { nodeStream.destroy() } catch (_) {}
-    })
-
-    nodeStream.pipe(res)
+    // Redirection directe vers le fichier final avec Content-Disposition: attachment
+    res.redirect(302, finalUrl)
   } catch (err) {
-    console.error('[youtube] download direct stream failed (' + err.message + ')')
+    console.error('[youtube] direct download failed:', err.message)
     if (!res.headersSent) {
-      res.status(500).json({ success: false, message: 'Téléchargement direct impossible pour cette vidéo. Veuillez réessayer.' })
+      res.status(500).json({ success: false, message: 'Téléchargement direct impossible pour cette vidéo. Veuillez réessayer avec un autre format.' })
     }
   }
 })

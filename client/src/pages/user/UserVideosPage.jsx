@@ -276,7 +276,7 @@ function YoutubeTab() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {favorites.map((f) => (
                 <div key={f._id} className="relative">
-                  <YoutubeCard video={{ videoId: f.youtubeVideoId, title: f.title, channelTitle: f.channelTitle, thumbnail: f.thumbnail }} onClick={() => setPlayer(f.youtubeVideoId)} onDownload={() => setDownloadVideo({ videoId: f.youtubeVideoId, title: f.title })} />
+                  <YoutubeCard video={{ videoId: f.youtubeVideoId, title: f.title, channelTitle: f.channelTitle, thumbnail: f.thumbnail }} onClick={() => setPlayer(f.youtubeVideoId)} onDownload={() => setDownloadVideo({ videoId: f.youtubeVideoId, title: f.title, thumbnail: f.thumbnail, channelTitle: f.channelTitle })} />
                   <button onClick={() => removeFav(f.youtubeVideoId)} title="Retirer des favoris" className="absolute top-1.5 left-1.5 p-1.5 rounded-lg bg-white/90 text-red-600 hover:bg-white shadow"><Trash2 size={13} /></button>
                 </div>
               ))}
@@ -293,14 +293,14 @@ function YoutubeTab() {
                 <button onClick={clearHistory} className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg px-3 py-1.5"><Trash2 size={13} /> Effacer l'historique</button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {history.map((h) => <YoutubeCard key={h._id} video={{ videoId: h.youtubeVideoId, title: h.title, channelTitle: h.channelTitle, thumbnail: h.thumbnail }} onClick={() => setPlayer(h.youtubeVideoId)} onDownload={() => setDownloadVideo({ videoId: h.youtubeVideoId, title: h.title })} />)}
+                {history.map((h) => <YoutubeCard key={h._id} video={{ videoId: h.youtubeVideoId, title: h.title, channelTitle: h.channelTitle, thumbnail: h.thumbnail }} onClick={() => setPlayer(h.youtubeVideoId)} onDownload={() => setDownloadVideo({ videoId: h.youtubeVideoId, title: h.title, thumbnail: h.thumbnail, channelTitle: h.channelTitle })} />)}
               </div>
             </>
           )
       )}
 
       {player && <YoutubePlayerModal videoId={player} onClose={() => setPlayer(null)} />}
-      {downloadVideo && <DownloadAdGate videoId={downloadVideo.videoId} title={downloadVideo.title} onClose={() => setDownloadVideo(null)} />}
+      {downloadVideo && <DownloadAdGate video={downloadVideo} videoId={downloadVideo.videoId} title={downloadVideo.title} onClose={() => setDownloadVideo(null)} />}
     </div>
   )
 }
