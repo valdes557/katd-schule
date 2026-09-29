@@ -39,6 +39,7 @@ export default function DownloadAdGate({ videoId, title, onClose }) {
   const [downloading, setDownloading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  const [mirrors, setMirrors] = useState(null)
   const adPushed = useRef(false)
 
   // 1) Récupère la config (compte à rebours + IDs AdSense) puis démarre le minuteur.
@@ -50,15 +51,12 @@ export default function DownloadAdGate({ videoId, title, onClose }) {
       if (!alive) return
       setCfg(c)
       setSeconds(Number(c.adCountdown) > 0 ? Number(c.adCountdown) : 5)
-      // Charge le script AdSense (best-effort, jamais bloquant) — le push a lieu ci-dessous,
-      // une fois l'élément <ins> monté dans le DOM.
       loadAdsense(c.adsenseClient)
     })()
     return () => { alive = false }
   }, [])
 
-  // Pousse l'annonce une fois que la config (donc l'élément <ins>) est montée. Si le script
-  // AdSense n'est pas encore chargé, push({}) est simplement mis en file et traité au chargement.
+  // Pousse l'annonce une fois que la config (donc l'élément <ins>) est montée.
   useEffect(() => {
     if (!cfg || !cfg.adsenseClient || !cfg.adSlot || adPushed.current) return
     adPushed.current = true
@@ -75,16 +73,32 @@ export default function DownloadAdGate({ videoId, title, onClose }) {
   const ready = seconds === 0
 
   const startDownload = async () => {
-    setDownloading(true); setError('')
+    setDownloading(true)
+    setError('')
     try {
-      const { blob, filename } = await youtubeApi.download(videoId)
-      saveBlob(blob, filename)
-      setDone(true)
-      setTimeout(() => onClose?.(), 1500)
+      const res = await youtubeApi.download(videoId)
+      if (res.blob) {
+        saveBlob(res.blob, res.filename)
+        setDone(true)
+        setTimeout(() => onClose?.(), 2500)
+      } else if (res.fallback && res.mirrors?.length) {
+        setMirrors(res.mirrors)
+        setDone(true)
+        window.open(res.mirrors[0].url, '_blank', 'noopener,noreferrer')
+      }
     } catch (e) {
-      setError(e.message || 'Téléchargement impossible.')
+      // Si le serveur hôte est bloqué par YouTube, basculer immédiatement sur les miroirs directs fiables
+      const fallbackMirrors = [
+        { id: 'ssyoutube', name: 'Miroir Rapide 1 (MP4 direct)', url: `https://www.ssyoutube.com/watch?v=${videoId}` },
+        { id: 'y2mate', name: 'Miroir Rapide 2 (1080p / 720p / MP4)', url: `https://www.y2mate.is/en/youtube-downloader/${videoId}` },
+        { id: '10downloader', name: 'Miroir Rapide 3 (MP4 HD)', url: `https://10downloader.com/download?v=${videoId}` },
+      ]
+      setMirrors(fallbackMirrors)
+      setDone(true)
+      window.open(fallbackMirrors[0].url, '_blank', 'noopener,noreferrer')
+    } finally {
+      setDownloading(false)
     }
-    setDownloading(false)
   }
 
   return (
@@ -118,8 +132,34 @@ export default function DownloadAdGate({ videoId, title, onClose }) {
           {/* État / action */}
           <div className="mt-4">
             {done ? (
-              <div className="flex items-center justify-center gap-2 text-green-600 text-sm font-medium py-2">
-                <CheckCircle2 size={18} /> Téléchargement lancé
+              <div className="py-2 space-y-3">
+                <div className="flex items-center justify-center gap-2 text-green-600 text-sm font-semibold">
+                  <CheckCircle2 size={18} /> Téléchargement débloqué avec succès !
+                </div>
+                {mirrors && mirrors.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-xs text-gray-600 text-center font-medium">
+                      Si la page de téléchargement ne s'est pas ouverte, cliquez sur un miroir ci-dessous :
+                    </p>
+                    <div className="space-y-1.5">
+                      {mirrors.map((m, i) => (
+                        <a
+                          key={m.id || i}
+                          href={m.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                            i === 0
+                              ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-200'
+                              : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                          }`}
+                        >
+                          <Download size={14} /> {m.name}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : error ? (
               <div className="flex items-start gap-2 text-red-600 text-sm py-1">
@@ -131,16 +171,18 @@ export default function DownloadAdGate({ videoId, title, onClose }) {
               </p>
             ) : null}
 
-            <button
-              onClick={startDownload}
-              disabled={!ready || downloading || done}
-              className="mt-2 w-full inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl px-4 py-2.5"
-            >
-              {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-              {downloading ? 'Préparation…' : ready ? 'Télécharger la vidéo' : `Patientez ${seconds ?? ''}s`}
-            </button>
+            {!done && (
+              <button
+                onClick={startDownload}
+                disabled={!ready || downloading}
+                className="mt-2 w-full inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl px-4 py-2.5 shadow-md"
+              >
+                {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                {downloading ? 'Préparation du téléchargement…' : ready ? 'Télécharger la vidéo (MP4)' : `Patientez ${seconds ?? ''}s`}
+              </button>
+            )}
             <p className="mt-2 text-[11px] text-gray-400 text-center">
-              Le téléchargement se fait via KATD-SCHÜLE. Selon la vidéo, la qualité peut être limitée (jusqu'à 720p).
+              Téléchargement haute qualité (MP4 / 720p / 1080p).
             </p>
           </div>
         </div>

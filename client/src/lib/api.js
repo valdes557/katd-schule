@@ -436,11 +436,22 @@ export const youtubeApi = {
   share: (payload) => api.post('/youtube/share', payload),
   // Réglages publicité/téléchargement (non secrets) pour le « gate » AdSense avant download.
   adConfig: () => api.get('/youtube/ad-config'),
-  // Télécharge la vidéo via le backend (flux MP4). Requiert le token → fetch authentifié → blob.
+  // Télécharge la vidéo via le backend (flux MP4 direct ou miroirs de téléchargement rapides).
   download: async (videoId) => {
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/youtube/download/${videoId}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || `Erreur HTTP ${res.status}`) }
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const data = await res.json().catch(() => ({}))
+      if (data.fallback && data.mirrors) {
+        return { fallback: true, mirrors: data.mirrors, title: data.title }
+      }
+      if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+    }
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      throw new Error(d.message || `Erreur HTTP ${res.status}`)
+    }
     const blob = await res.blob()
     const cd = res.headers.get('content-disposition') || ''
     const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd)
