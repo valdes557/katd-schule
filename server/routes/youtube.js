@@ -106,24 +106,35 @@ router.get('/ad-config', protect, async (req, res) => {
   } catch (err) { res.json({ success: true, downloadEnabled: true, adsenseClient: '', adSlot: '', adCountdown: 5 }) }
 })
 
-// Helper pour générer les miroirs de téléchargement directs et rapides
-function getDownloadMirrors(vid, rawTitle = '') {
-  const title = (rawTitle || vid).replace(/[^\w\s.-]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || vid
-  return {
-    success: true,
-    fallback: true,
-    videoId: vid,
-    title,
-    mirrors: [
-      { id: 'ssyoutube', name: 'Miroir Rapide 1 (MP4 direct)', url: `https://www.ssyoutube.com/watch?v=${vid}` },
-      { id: 'y2mate', name: 'Miroir Rapide 2 (1080p / 720p / MP4)', url: `https://www.y2mate.is/en/youtube-downloader/${vid}` },
-      { id: '10downloader', name: 'Miroir Rapide 3 (MP4 HD)', url: `https://10downloader.com/download?v=${vid}` },
-    ]
-  }
+const { Readable } = require('stream')
+const { Innertube, Platform } = require('youtubei.js')
+
+// Évaluateur JavaScript requis par youtubei.js pour déchiffrer les signatures de flux
+Platform.shim.eval = async (data, env) => {
+  const code = data.output + '\nreturn { ...env }'
+  return new Function('env', code)(env)
 }
 
-// GET /api/youtube/download/:videoId — télécharge la vidéo (flux MP4 progressif audio+vidéo,
-// ≤720p, sans ffmpeg) avec bascule automatique vers miroirs directs si YouTube bloque le serveur hôte.
+let innertubeInstance = null
+let innertubePromise = null
+async function getInnertube() {
+  if (innertubeInstance) return innertubeInstance
+  if (!innertubePromise) {
+    innertubePromise = Innertube.create({ generate_session_locally: true })
+      .then((yt) => {
+        innertubeInstance = yt
+        return yt
+      })
+      .catch((err) => {
+        innertubePromise = null
+        throw err
+      })
+  }
+  return innertubePromise
+}
+
+// GET /api/youtube/download/:videoId — télécharge directement la vidéo dans l'appareil
+// de l'utilisateur (flux MP4 natif audio+vidéo) SANS AUCUNE REDIRECTION vers un site tiers.
 router.get('/download/:videoId', protect, async (req, res) => {
   const videoId = req.params.videoId
   if (!VIDEO_ID_RE.test(videoId)) return res.status(400).json({ message: 'Identifiant vidéo invalide.' })
@@ -133,43 +144,55 @@ router.get('/download/:videoId', protect, async (req, res) => {
   } catch (_) { /* on continue : repli permissif */ }
   if (downloadRateLimited(req.user._id)) return res.status(429).json({ message: 'Trop de téléchargements. Réessayez dans un instant.' })
 
-  let ytdl
-  try { ytdl = require('@distube/ytdl-core') }
-  catch (e) { return res.json(getDownloadMirrors(videoId)) }
-
-  const url = 'https://www.youtube.com/watch?v=' + videoId
   try {
-    // Timeout de 6 secondes pour éviter de bloquer l'utilisateur si YouTube throttle l'IP hôte
-    const infoPromise = ytdl.getInfo(url, {
-      requestOptions: {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
+    const yt = await getInnertube()
+
+    // Récupération du titre réel pour nommer proprement le fichier MP4 téléchargé
+    let title = videoId
+    try {
+      const basic = await yt.getBasicInfo(videoId)
+      const raw = basic?.basic_info?.title || ''
+      if (raw) title = raw.replace(/[^\w\s.-]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || videoId
+    } catch (_) {}
+
+    // Obtenir le flux MP4 direct audio+vidéo
+    let stream = null
+    try {
+      stream = await yt.download(videoId, { type: 'video+audio', quality: 'best' })
+    } catch (e1) {
+      try {
+        stream = await yt.download(videoId, { client: 'ANDROID', type: 'video+audio', quality: 'best' })
+      } catch (e2) {
+        try {
+          stream = await yt.download(videoId, { client: 'ANDROID_VR', type: 'video+audio' })
+        } catch (e3) {
+          stream = await yt.download(videoId, { quality: 'best' })
         }
       }
-    })
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 6000))
-    const info = await Promise.race([infoPromise, timeoutPromise])
+    }
 
-    const raw = (info.videoDetails && info.videoDetails.title) || videoId
-    const title = raw.replace(/[^\w\s.-]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || videoId
+    if (!stream) {
+      throw new Error('Aucun flux vidéo direct accessible.')
+    }
+
+    const filename = `${title}.mp4`
     res.setHeader('Content-Type', 'video/mp4')
-    res.setHeader('Content-Disposition', `attachment; filename="${title}.mp4"`)
-    const stream = ytdl.downloadFromInfo(info, { filter: 'audioandvideo', quality: 'highest' })
-    stream.on('error', (err) => {
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}"`)
+
+    const nodeStream = Readable.fromWeb(stream)
+    nodeStream.on('error', (err) => {
       console.warn('[youtube] download stream error:', err.message)
-      if (!res.headersSent) {
-        res.json(getDownloadMirrors(videoId, title))
-      } else {
-        try { res.destroy() } catch (_) {}
-      }
+      try { res.destroy() } catch (_) {}
     })
-    req.on('close', () => { try { stream.destroy() } catch (_) {} })
-    stream.pipe(res)
+    req.on('close', () => {
+      try { nodeStream.destroy() } catch (_) {}
+    })
+
+    nodeStream.pipe(res)
   } catch (err) {
-    console.warn('[youtube] download direct stream failed (' + err.message + ') -> repli automatique miroirs')
+    console.error('[youtube] download direct stream failed (' + err.message + ')')
     if (!res.headersSent) {
-      res.json(getDownloadMirrors(videoId))
+      res.status(500).json({ success: false, message: 'Téléchargement direct impossible pour cette vidéo. Veuillez réessayer.' })
     }
   }
 })

@@ -436,17 +436,14 @@ export const youtubeApi = {
   share: (payload) => api.post('/youtube/share', payload),
   // Réglages publicité/téléchargement (non secrets) pour le « gate » AdSense avant download.
   adConfig: () => api.get('/youtube/ad-config'),
-  // Télécharge la vidéo via le backend (flux MP4 direct ou miroirs de téléchargement rapides).
+  // Télécharge la vidéo via le backend (flux MP4 direct sans redirection vers un site tiers).
   download: async (videoId) => {
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/youtube/download/${videoId}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
     const contentType = res.headers.get('content-type') || ''
     if (contentType.includes('application/json')) {
       const data = await res.json().catch(() => ({}))
-      if (data.fallback && data.mirrors) {
-        return { fallback: true, mirrors: data.mirrors, title: data.title }
-      }
-      if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
+      throw new Error(data.message || `Erreur de téléchargement (${res.status})`)
     }
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))
@@ -458,6 +455,10 @@ export const youtubeApi = {
     let filename = `${videoId}.mp4`
     try { filename = decodeURIComponent(m ? m[1] : filename) } catch (_) { filename = m ? m[1] : filename }
     return { blob, filename }
+  },
+  getDownloadUrl: (videoId) => {
+    const token = localStorage.getItem('token') || ''
+    return `${API_URL}/youtube/download/${videoId}?token=${encodeURIComponent(token)}`
   },
 }
 
