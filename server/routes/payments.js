@@ -487,6 +487,8 @@ async function applyOutcome(intent, status, raw) {
         // 1. Le marchand recevant le dépôt (son propre dépôt OU reçu d'un autre utilisateur)
         // 2. Le marchand initiateur (effectuant un dépôt pour un tiers)
         // Seuls les marchands participant à la transaction reçoivent la commission.
+        // RÈGLE STRICTE : Si l'initiateur ET le destinataire sont tous les deux des comptes marchands,
+        // AUCUN D'EUX NE PERÇOIT DE COMMISSION (0% de commission).
         try {
           const depositCommission = wallet.computeMerchantCommission(intent.amount)
           if (depositCommission > 0) {
@@ -495,36 +497,40 @@ async function applyOutcome(intent, status, raw) {
               (!isOwn && intent.initiatedBy) ? User.findById(intent.initiatedBy).select('name isMerchant role school') : null,
             ])
 
-            // Si le compte crédité est marchand
-            if (targetUser?.isMerchant) {
-              await wallet.credit(targetUserId, {
-                amount: depositCommission,
-                type: 'merchant_commission',
-                role: targetUser.role,
-                school: targetUser.school || null,
-                counterparty: intent.initiatedBy,
-                paymentIntent: intent._id,
-                providerTransactionId: intent.providerTransactionId,
-                description: isOwn
-                  ? 'Commission marchand (0,20%) — dépôt sur votre portefeuille'
-                  : 'Commission marchand (0,20%) — dépôt reçu de ' + (initiatorUser?.name || 'un utilisateur'),
-                meta: { rate: wallet.MERCHANT_COMMISSION_RATE || 0.002, baseAmount: intent.amount, operation: 'deposit', own: isOwn },
-              })
-            }
+            const bothAreMerchants = !isOwn && !!targetUser?.isMerchant && !!initiatorUser?.isMerchant
 
-            // Si l'initiateur est un marchand ayant effectué un dépôt pour un tiers
-            if (initiatorUser?.isMerchant) {
-              await wallet.credit(intent.initiatedBy, {
-                amount: depositCommission,
-                type: 'merchant_commission',
-                role: initiatorUser.role,
-                school: initiatorUser.school || null,
-                counterparty: targetUserId,
-                paymentIntent: intent._id,
-                providerTransactionId: intent.providerTransactionId,
-                description: 'Commission marchand (0,20%) — dépôt effectué pour ' + (targetUser?.name || 'un utilisateur'),
-                meta: { rate: wallet.MERCHANT_COMMISSION_RATE || 0.002, baseAmount: intent.amount, operation: 'deposit_sent' },
-              })
+            if (!bothAreMerchants) {
+              // Si le compte crédité est marchand
+              if (targetUser?.isMerchant) {
+                await wallet.credit(targetUserId, {
+                  amount: depositCommission,
+                  type: 'merchant_commission',
+                  role: targetUser.role,
+                  school: targetUser.school || null,
+                  counterparty: intent.initiatedBy,
+                  paymentIntent: intent._id,
+                  providerTransactionId: intent.providerTransactionId,
+                  description: isOwn
+                    ? 'Commission marchand (0,20%) — dépôt sur votre portefeuille'
+                    : 'Commission marchand (0,20%) — dépôt reçu de ' + (initiatorUser?.name || 'un utilisateur'),
+                  meta: { rate: wallet.MERCHANT_COMMISSION_RATE || 0.002, baseAmount: intent.amount, operation: 'deposit', own: isOwn },
+                })
+              }
+
+              // Si l'initiateur est un marchand ayant effectué un dépôt pour un tiers
+              if (initiatorUser?.isMerchant) {
+                await wallet.credit(intent.initiatedBy, {
+                  amount: depositCommission,
+                  type: 'merchant_commission',
+                  role: initiatorUser.role,
+                  school: initiatorUser.school || null,
+                  counterparty: targetUserId,
+                  paymentIntent: intent._id,
+                  providerTransactionId: intent.providerTransactionId,
+                  description: 'Commission marchand (0,20%) — dépôt effectué pour ' + (targetUser?.name || 'un utilisateur'),
+                  meta: { rate: wallet.MERCHANT_COMMISSION_RATE || 0.002, baseAmount: intent.amount, operation: 'deposit_sent' },
+                })
+              }
             }
           }
         } catch (mErr) {

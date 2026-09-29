@@ -49,8 +49,9 @@ export default function UserMerchantPage() {
           </div>
           <p className="text-sm text-gray-600 leading-relaxed">
             En tant que marchand, vous gagnez automatiquement <b>0,20% de commission</b> sur chaque transfert que vous
-            effectuez vers un autre utilisateur, et vous êtes <b>exonéré des frais de transfert de 0,25%</b>. L'administration
-            peut également approvisionner votre portefeuille.
+            effectuez vers un utilisateur standard, et vous êtes <b>exonéré des frais de transfert de 0,25%</b>.
+            (Règle : aucune commission n'est générée lors d'une transaction entre deux comptes marchands).
+            L'administration peut également approvisionner votre portefeuille.
           </p>
           <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex items-center justify-between">
             <span className="text-sm text-orange-800">Frais d'activation unique</span>
@@ -80,7 +81,7 @@ export default function UserMerchantPage() {
           </div>
 
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
-            💡 Vous gagnez <b>0,20%</b> sur chaque transfert que vous effectuez depuis votre <a href="/u/portefeuille" className="underline font-medium">portefeuille</a> vers un autre utilisateur. La commission est automatique.
+            💡 Vous gagnez <b>0,20%</b> sur chaque transfert ou dépôt vers/depuis un utilisateur standard. Note : lors d'une transaction entre deux comptes marchands, aucune commission n'est générée.
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">

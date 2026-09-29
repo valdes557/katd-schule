@@ -199,9 +199,17 @@ async function collectFee({ fee, fromUserId, description, meta = {} }) {
 // - Un marchand effectuant un transfert depuis son compte reçoit sa commission de 0,20%.
 // - Un marchand recevant un transfert d'un utilisateur reçoit sa commission de 0,20%.
 // - Un marchand n'ayant pas participé à la transaction NE REÇOIT AUCUNE commission.
+// - RÈGLE STRICTE : Si l'envoyeur ET le destinataire sont tous les deux des comptes marchands,
+//   AUCUN D'EUX NE REÇOIT DE COMMISSION (0% de commission).
 async function creditMerchantsCommission(amt, { fromUserId, toUserId, fromLabel, toLabel, fromU, toU }) {
   const commission = computeMerchantCommission(amt)
   if (commission <= 0) return 0
+
+  // Si les deux parties sont des comptes marchands distincts : AUCUNE commission versée
+  if (fromU?.isMerchant && toU?.isMerchant && String(fromUserId) !== String(toUserId)) {
+    return 0
+  }
+
   let creditedTotal = 0
 
   // 1. Si l'envoyeur est un compte marchand : commission sur le transfert qu'il effectue

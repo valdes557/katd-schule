@@ -322,14 +322,30 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">N° de compte du destinataire (KS930021)</label>
             <input value={f.accountNo} onChange={(e) => setF({ ...f, accountNo: e.target.value.toUpperCase() })} onBlur={lookupRecipient} className="input w-full font-mono tracking-wider" placeholder="KS930021" />
-            {recipient?.name && <p className="text-xs text-green-700 mt-1">Destinataire : <b>{recipient.name}</b></p>}
+            {recipient?.name && (
+              <p className="text-xs text-green-700 mt-1">
+                Destinataire : <b>{recipient.name}</b> {recipient.isMerchant ? ' • Compte Marchand' : ''}
+              </p>
+            )}
             {recipient?.error && <p className="text-xs text-red-600 mt-1">{recipient.error}</p>}
           </div>
           {Number(f.amount) > 0 && (isMerchant ? (
             <div className="text-xs bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-1">
               <div className="flex justify-between"><span>Montant reçu par le destinataire</span><b>{fmt(Number(f.amount))} F</b></div>
               <div className="flex justify-between text-gray-500"><span>Frais</span><span>Aucun (marchand)</span></div>
-              <div className="flex justify-between text-emerald-700"><span>Commission gagnée (0,20%)</span><b>+{fmt(merchantCommission)} F</b></div>
+              {recipient?.isMerchant && !recipient?.isSelf ? (
+                <div className="flex justify-between text-amber-800 pt-0.5">
+                  <span>Commission marchand</span>
+                  <span className="font-semibold text-amber-700">0 F (Transaction entre marchands)</span>
+                </div>
+              ) : (
+                <div className="flex justify-between text-emerald-700"><span>Commission gagnée (0,20%)</span><b>+{fmt(merchantCommission)} F</b></div>
+              )}
+              {recipient?.isMerchant && !recipient?.isSelf && (
+                <p className="text-[11px] text-amber-700 mt-1 italic">
+                  ℹ️ L'initiateur et le destinataire sont tous deux marchands : aucune commission n'est versée.
+                </p>
+              )}
               <div className="flex justify-between border-t border-amber-100 pt-1 mt-1"><span>Total débité de votre solde</span><b>{fmt(Number(f.amount))} F</b></div>
             </div>
           ) : (
@@ -368,18 +384,26 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
             />
             {recipient?.name && (
               <div className="text-xs mt-1.5 p-2 rounded-lg bg-green-50 border border-green-200 text-green-800 space-y-0.5">
-                <p>✓ Crédit vers : <b>{recipient.name}</b> {recipient.isSelf ? '(Votre compte)' : ''}</p>
-                {recipient.isMerchant && (
+                <p>✓ Crédit vers : <b>{recipient.name}</b> {recipient.isSelf ? '(Votre compte)' : ''} {recipient.isMerchant ? ' • Compte Marchand' : ''}</p>
+                {isMerchant && recipient.isMerchant && !recipient.isSelf ? (
+                  <p className="text-[11px] text-amber-700 font-semibold bg-amber-50 p-1.5 rounded border border-amber-200 mt-1">
+                    ℹ️ Transaction entre marchands : Aucune commission n'est versée (initiateur et bénéficiaire sont tous deux marchands).
+                  </p>
+                ) : recipient.isMerchant && !recipient.isSelf ? (
                   <p className="text-[11px] text-emerald-700 font-semibold">
                     ★ Bénéficiaire Marchand : reçoit 0,20% de commission (+{fmt(merchantCommission)} F)
                   </p>
-                )}
+                ) : isMerchant && !recipient.isSelf ? (
+                  <p className="text-[11px] text-emerald-700 font-semibold">
+                    ★ En tant que marchand initiateur, vous recevrez 0,20% de commission (+{fmt(merchantCommission)} F).
+                  </p>
+                ) : null}
               </div>
             )}
             {recipient?.error && (
               <p className="text-xs text-red-500 mt-1">{recipient.error}</p>
             )}
-            {isMerchant && !recipient?.name && Number(f.amount) > 0 && (
+            {isMerchant && (!recipient?.name || recipient?.isSelf) && Number(f.amount) > 0 && (
               <p className="text-[11px] text-emerald-700 mt-1 bg-emerald-50 p-2 rounded border border-emerald-200">
                 ★ En tant que compte marchand, vous recevrez <b>0,20%</b> de commission (+{fmt(merchantCommission)} F) sur ce dépôt.
               </p>
