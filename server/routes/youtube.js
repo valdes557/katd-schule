@@ -56,14 +56,13 @@ router.get('/categories', protect, (req, res) => {
   res.json({ success: true, categories: youtube.categories() })
 })
 
-// GET /api/youtube/search?q=&pageToken=&order=&duration=
+// GET /api/youtube/search?q=&pageToken=&order=&duration= (si q est vide, renvoie le flux d'accueil YouTube)
 router.get('/search', protect, async (req, res) => {
   try {
     if (searchRateLimited(req.user._id)) return res.status(429).json({ message: 'Trop de recherches. Réessayez dans un instant.' })
     const q = String(req.query.q || '').trim()
-    if (!q) return res.status(400).json({ message: 'Terme de recherche requis.' })
     const cfg = await youtube.resolveConfig()
-    if (q.length > (cfg.maxSearchLen || 120)) return res.status(400).json({ message: 'Terme de recherche trop long.' })
+    if (q && q.length > (cfg.maxSearchLen || 120)) return res.status(400).json({ message: 'Terme de recherche trop long.' })
     const data = await youtube.search({
       q,
       pageToken: String(req.query.pageToken || ''),

@@ -99,136 +99,100 @@ function pickThumb(sn) {
 // Utilisée si aucune clé API n'est encore configurée ou si le quota YouTube de Google est dépassé.
 const FALLBACK_VIDEOS = [
   {
-    videoId: 'M7lc1UVf-VE',
-    title: 'Histoire de l\'Afrique et des grandes civilisations',
-    description: 'Documentaire pédagogique complet sur l\'histoire des grands empires et civilisations africaines.',
-    channelTitle: 'Éducation & Découverte',
-    channelId: 'UC_edu_afrique',
-    publishedAt: '2023-09-15T10:00:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=600&auto=format&fit=crop&q=80',
-    duration: '24:18',
-    viewCount: 145200,
-    categoryKey: 'education',
+    videoId: 'kJQP7kiw5Fk',
+    title: 'Clip Officiel — Les Meilleurs Hits Afrobeat & Musique Urbaine du Moment',
+    description: 'Compilation des plus grands hits musicaux et rythmes dansants de l\'année.',
+    channelTitle: 'Afro Hits TV',
+    channelId: 'UC_afro_hits',
+    publishedAt: '2024-03-01T18:00:00Z',
+    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+    duration: '04:15',
+    viewCount: 3820000,
+    categoryKey: 'musique',
   },
   {
     videoId: 'dQw4w9WgXcQ',
-    title: 'Cours de Mathématiques : Géométrie dans l\'espace et Trigonométrie',
-    description: 'Leçon claire et détaillée avec exercices corrigés pour élèves du secondaire et lycée.',
-    channelTitle: 'Maths Faciles',
-    channelId: 'UC_maths_faciles',
-    publishedAt: '2024-01-10T14:30:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600&auto=format&fit=crop&q=80',
-    duration: '18:45',
-    viewCount: 98400,
-    categoryKey: 'cours',
-  },
-  {
-    videoId: 'kJQP7kiw5Fk',
-    title: 'Sciences de la Vie et de la Terre (SVT) : La Génétique et l\'ADN',
-    description: 'Comprendre facilement la transmission des gènes, la mitose et la méiose en classe.',
-    channelTitle: 'SVT Pour Tous',
-    channelId: 'UC_svt_cours',
-    publishedAt: '2023-11-20T09:15:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=600&auto=format&fit=crop&q=80',
-    duration: '15:20',
-    viewCount: 67300,
-    categoryKey: 'cours',
-  },
-  {
-    videoId: 'fJ9rUzIMcZQ',
-    title: 'Cours de Français & Expression écrite : Rédiger une dissertation parfaite',
-    description: 'Méthodologie pas à pas pour réussir l\'introduction, le plan dialectique et la conclusion.',
-    channelTitle: 'Lettres & Langue',
-    channelId: 'UC_lettres_fr',
-    publishedAt: '2023-10-05T11:00:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=600&auto=format&fit=crop&q=80',
-    duration: '21:05',
-    viewCount: 82500,
-    categoryKey: 'education',
+    title: 'Les 10 plus beaux buts et actions légendaires du Football Mondial',
+    description: 'Résumé spectaculaire des meilleurs moments de football, dribbles et arrêts décisifs.',
+    channelTitle: 'Football Passion',
+    channelId: 'UC_foot_passion',
+    publishedAt: '2024-02-15T19:30:00Z',
+    thumbnail: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=600&auto=format&fit=crop&q=80',
+    duration: '11:40',
+    viewCount: 2450000,
+    categoryKey: 'sport',
   },
   {
     videoId: 'rfscVS0vtbw',
-    title: 'Apprendre la Programmation Python en partant de zéro (Débutant complet)',
-    description: 'Tutoriel complet pour apprendre à coder en Python : variables, boucles, conditions et fonctions.',
-    channelTitle: 'Tech Afrique Code',
-    channelId: 'UC_tech_code',
-    publishedAt: '2024-02-12T16:00:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80',
-    duration: '32:40',
-    viewCount: 210000,
+    title: 'Top des Nouvelles Technologies et Smartphones Révolutionnaires en 2024',
+    description: 'Test complet des dernières innovations high-tech, IA et gadgets du futur.',
+    channelTitle: 'Tech Hub Monde',
+    channelId: 'UC_tech_hub',
+    publishedAt: '2024-01-20T14:00:00Z',
+    thumbnail: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=600&auto=format&fit=crop&q=80',
+    duration: '14:22',
+    viewCount: 890000,
     categoryKey: 'technologie',
   },
   {
     videoId: 'dpw9EHDh2bM',
-    title: 'Intelligence Artificielle et Robotique : L\'avenir technologique',
-    description: 'Comment l\'IA transforme l\'éducation, l\'agriculture et la médecine en Afrique et dans le monde.',
-    channelTitle: 'Innovations Digitales',
-    channelId: 'UC_innovations_ia',
-    publishedAt: '2024-03-01T12:00:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=600&auto=format&fit=crop&q=80',
-    duration: '19:15',
-    viewCount: 134000,
-    categoryKey: 'technologie',
-  },
-  {
-    videoId: '4f4lT2kP-5M',
-    title: 'Musique Traditionnelle et Acoustique d\'Afrique de l\'Ouest (Kora, Balafon, Djembé)',
-    description: 'Une immersion sonore apaisante et inspirante dans le patrimoine musical d\'Afrique subsaharienne.',
-    channelTitle: 'Rythmes d\'Afrique',
-    channelId: 'UC_musique_afrique',
-    publishedAt: '2023-08-14T18:00:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-    duration: '45:10',
-    viewCount: 389000,
-    categoryKey: 'musique',
-  },
-  {
-    videoId: '7wtfhZwyrcc',
-    title: 'Entraînement Athlétique & Préparation Physique Scolaire',
-    description: 'Exercices d\'échauffement, endurance et agilité pour les cours d\'EPS et les sportifs en herbe.',
-    channelTitle: 'Sport & Santé Éducation',
-    channelId: 'UC_sport_sante',
-    publishedAt: '2023-12-05T08:00:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=600&auto=format&fit=crop&q=80',
-    duration: '14:22',
-    viewCount: 54000,
-    categoryKey: 'sport',
-  },
-  {
-    videoId: 'g7Y_Z7g3q5s',
-    title: 'L\'essor de l\'Éducation Numérique en Afrique — Grand Reportage',
-    description: 'Documentaire captivant sur les écoles connectées, la digitalisation scolaire et les réussites locales.',
-    channelTitle: 'Afrique Horizons',
-    channelId: 'UC_afrique_horizons',
-    publishedAt: '2024-02-18T19:30:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=600&auto=format&fit=crop&q=80',
-    duration: '26:50',
-    viewCount: 178000,
-    categoryKey: 'actualites',
-  },
-  {
-    videoId: '26U_seo0a1g',
-    title: 'Comment mémoriser plus vite et réussir ses examens sans stress',
-    description: 'Techniques prouvées de révision active, carte mentale et gestion du temps de travail.',
-    channelTitle: 'Réussite Scolaire',
-    channelId: 'UC_reussite_scolaire',
-    publishedAt: '2024-01-25T11:00:00Z',
-    thumbnail: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=600&auto=format&fit=crop&q=80',
-    duration: '16:45',
-    viewCount: 112000,
-    categoryKey: 'dev-perso',
+    title: 'Les Meilleurs Moments Gaming & Fous Rires en Ligne',
+    description: 'Compilation hilarante de fails, actions épiques et gaming multijoueur.',
+    channelTitle: 'Game Mania',
+    channelId: 'UC_game_mania',
+    publishedAt: '2024-02-10T15:45:00Z',
+    thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
+    duration: '17:50',
+    viewCount: 1650000,
+    categoryKey: 'gaming',
   },
   {
     videoId: 'fL2A1v7b2aE',
-    title: 'Quiz de Culture Générale Spécial Écoles & Collèges',
-    description: '30 questions amusantes pour tester vos connaissances en géographie, sciences, histoire et littérature.',
-    channelTitle: 'Culture & Jeux',
-    channelId: 'UC_culture_quiz',
-    publishedAt: '2023-09-28T15:00:00Z',
+    title: 'Sketch & Comédie : Quand la famille se réunit le week-end',
+    description: 'Humour et comédie du quotidien, parodies et rires garantis en famille.',
+    channelTitle: 'Rires Sans Limites',
+    channelId: 'UC_rires_tv',
+    publishedAt: '2023-11-28T16:00:00Z',
     thumbnail: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&auto=format&fit=crop&q=80',
     duration: '12:35',
-    viewCount: 95000,
+    viewCount: 1200000,
     categoryKey: 'divertissement',
+  },
+  {
+    videoId: '26U_seo0a1g',
+    title: 'Les Clés de la Réussite et de la Discipline : Discours de Motivation',
+    description: 'Comment développer un mental d\'acier, vaincre la procrastination et atteindre ses objectifs.',
+    channelTitle: 'Motivation Quotidienne',
+    channelId: 'UC_motivation_hd',
+    publishedAt: '2024-01-25T11:00:00Z',
+    thumbnail: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=600&auto=format&fit=crop&q=80',
+    duration: '16:45',
+    viewCount: 950000,
+    categoryKey: 'dev-perso',
+  },
+  {
+    videoId: 'M7lc1UVf-VE',
+    title: 'Histoire et Civilisations du Monde : Les Grands Mystères',
+    description: 'Documentaire captivant sur les grandes découvertes et l\'histoire de l\'humanité.',
+    channelTitle: 'Découvertes & Savoirs',
+    channelId: 'UC_decouvertes',
+    publishedAt: '2023-09-15T10:00:00Z',
+    thumbnail: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=600&auto=format&fit=crop&q=80',
+    duration: '24:18',
+    viewCount: 1452000,
+    categoryKey: 'actualites',
+  },
+  {
+    videoId: 'fJ9rUzIMcZQ',
+    title: 'Cours & Savoirs : Maîtriser l\'art de la communication et de l\'éloquence',
+    description: 'Techniques pour parler en public avec assurance et convaincre son auditoire.',
+    channelTitle: 'Savoir & Expression',
+    channelId: 'UC_savoir_expression',
+    publishedAt: '2023-10-05T11:00:00Z',
+    thumbnail: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=600&auto=format&fit=crop&q=80',
+    duration: '21:05',
+    viewCount: 780000,
+    categoryKey: 'education',
   },
 ]
 
@@ -247,69 +211,113 @@ function getFallbackResults(queryStr) {
   return { items: filtered, nextPageToken: '', prevPageToken: '', fallback: true }
 }
 
-// ───────────────────────── Recherche ─────────────────────────
+// ───────────────────────── Recherche & Flux d'accueil ─────────────────────────
 const ORDERS = ['relevance', 'date', 'viewCount', 'rating', 'title']
 const DURATIONS = ['', 'short', 'medium', 'long', 'any']
 
-async function search({ q, pageToken = '', order = 'relevance', videoDuration = '', maxResults = 24 }) {
+async function search({ q = '', pageToken = '', order = 'relevance', videoDuration = '', maxResults = 24 }) {
   const cfg = await resolveConfig()
   if (!cfg.enabled) throw typedError('disabled', 'disabled', 503)
 
   const ord = ORDERS.includes(order) ? order : 'relevance'
   const dur = DURATIONS.includes(videoDuration) ? videoDuration : ''
   const mr = Math.min(Math.max(Number(maxResults) || 24, 1), 50)
+  const queryClean = String(q || '').trim()
 
-  const key = 'search:' + JSON.stringify({ q, pageToken, ord, dur, mr })
+  const key = 'search:' + JSON.stringify({ q: queryClean, pageToken, ord, dur, mr })
   const cached = cacheGet(key)
   if (cached) return cached
 
-  // Si pas de clé API configurée, renvoie immédiatement les vidéos de la catégorie sans erreur 503
+  // Si pas de clé API configurée, renvoie immédiatement les vidéos de repli sans erreur 503
   if (!cfg.apiKey) {
-    return getFallbackResults(q)
+    return getFallbackResults(queryClean)
   }
 
   try {
-    const searchData = await ytFetch('/search', {
-      part: 'snippet', type: 'video', q, maxResults: mr, order: ord, pageToken,
-      videoDuration: dur || undefined, safeSearch: 'moderate',
-    }, cfg.apiKey)
+    let items = []
+    let nextPageToken = ''
+    let prevPageToken = ''
 
-    const ids = (searchData.items || []).map((it) => it.id && it.id.videoId).filter(Boolean)
-    const detailsById = {}
-    if (ids.length) {
-      try {
-        const vids = await ytFetch('/videos', { part: 'contentDetails,statistics,snippet', id: ids.join(',') }, cfg.apiKey)
-        for (const v of (vids.items || [])) detailsById[v.id] = v
-      } catch (_) { /* continuer avec les snippets */ }
-    }
+    if (!queryClean) {
+      // Pas de mot-clé spécifique -> Flux d'accueil YouTube (Vidéos populaires & tendances de tous types)
+      const feedData = await ytFetch('/videos', {
+        part: 'snippet,contentDetails,statistics',
+        chart: 'mostPopular',
+        maxResults: mr,
+        pageToken: pageToken || undefined,
+      }, cfg.apiKey)
 
-    const items = (searchData.items || []).map((it) => {
-      const id = it.id && it.id.videoId
-      const d = detailsById[id]
-      const sn = (d && d.snippet) || it.snippet || {}
-      return {
-        videoId: id,
-        title: sn.title || '',
-        description: sn.description || '',
-        channelTitle: sn.channelTitle || '',
-        channelId: sn.channelId || '',
-        publishedAt: sn.publishedAt || '',
-        thumbnail: pickThumb(sn),
-        duration: isoDurationToLabel(d && d.contentDetails && d.contentDetails.duration),
-        viewCount: d && d.statistics && d.statistics.viewCount ? Number(d.statistics.viewCount) : null,
+      items = (feedData.items || []).map((it) => {
+        const id = typeof it.id === 'string' ? it.id : (it.id && it.id.videoId)
+        const sn = it.snippet || {}
+        return {
+          videoId: id,
+          title: sn.title || '',
+          description: sn.description || '',
+          channelTitle: sn.channelTitle || '',
+          channelId: sn.channelId || '',
+          publishedAt: sn.publishedAt || '',
+          thumbnail: pickThumb(sn),
+          duration: isoDurationToLabel(it.contentDetails && it.contentDetails.duration),
+          viewCount: it.statistics && it.statistics.viewCount ? Number(it.statistics.viewCount) : null,
+        }
+      }).filter((x) => x.videoId)
+
+      nextPageToken = feedData.nextPageToken || ''
+      prevPageToken = feedData.prevPageToken || ''
+    } else {
+      // Recherche personnalisée sur tout le catalogue YouTube (sans filtre restrictif)
+      const searchData = await ytFetch('/search', {
+        part: 'snippet',
+        type: 'video',
+        q: queryClean,
+        maxResults: mr,
+        order: ord,
+        pageToken: pageToken || undefined,
+        videoDuration: dur || undefined,
+        safeSearch: 'moderate',
+      }, cfg.apiKey)
+
+      const ids = (searchData.items || []).map((it) => it.id && it.id.videoId).filter(Boolean)
+      const detailsById = {}
+      if (ids.length) {
+        try {
+          const vids = await ytFetch('/videos', { part: 'contentDetails,statistics,snippet', id: ids.join(',') }, cfg.apiKey)
+          for (const v of (vids.items || [])) detailsById[v.id] = v
+        } catch (_) { /* continuer avec les snippets */ }
       }
-    }).filter((x) => x.videoId)
+
+      items = (searchData.items || []).map((it) => {
+        const id = it.id && it.id.videoId
+        const d = detailsById[id]
+        const sn = (d && d.snippet) || it.snippet || {}
+        return {
+          videoId: id,
+          title: sn.title || '',
+          description: sn.description || '',
+          channelTitle: sn.channelTitle || '',
+          channelId: sn.channelId || '',
+          publishedAt: sn.publishedAt || '',
+          thumbnail: pickThumb(sn),
+          duration: isoDurationToLabel(d && d.contentDetails && d.contentDetails.duration),
+          viewCount: d && d.statistics && d.statistics.viewCount ? Number(d.statistics.viewCount) : null,
+        }
+      }).filter((x) => x.videoId)
+
+      nextPageToken = searchData.nextPageToken || ''
+      prevPageToken = searchData.prevPageToken || ''
+    }
 
     if (items.length === 0 && !pageToken) {
-      return getFallbackResults(q)
+      return getFallbackResults(queryClean)
     }
 
-    const result = { items, nextPageToken: searchData.nextPageToken || '', prevPageToken: searchData.prevPageToken || '' }
+    const result = { items, nextPageToken, prevPageToken }
     cacheSet(key, result, cfg.cacheTtl)
     return result
   } catch (err) {
     console.warn('[youtube] Recherche YouTube en direct échouée (' + err.message + ') → repli vers les vidéos intégrées.')
-    return getFallbackResults(q)
+    return getFallbackResults(queryClean)
   }
 }
 
@@ -407,15 +415,16 @@ async function related(videoId) {
 // ───────────────────────── Catégories rapides (extensible) ─────────────────────────
 // Chaque catégorie mappe vers une requête de recherche. Ajouter une entrée suffit.
 const CATEGORIES = [
-  { key: 'education', label: 'Éducation', emoji: '🎓', query: 'éducation cours' },
-  { key: 'cours', label: 'Cours', emoji: '📚', query: 'cours scolaire' },
+  { key: '', label: 'Tous', emoji: '✨', query: '' },
   { key: 'musique', label: 'Musique', emoji: '🎵', query: 'musique' },
+  { key: 'gaming', label: 'Gaming', emoji: '🎮', query: 'gaming' },
   { key: 'sport', label: 'Sport', emoji: '⚽', query: 'sport' },
-  { key: 'gaming', label: 'Gaming', emoji: '🎮', query: 'gaming jeux vidéo' },
-  { key: 'technologie', label: 'Technologie', emoji: '💻', query: 'technologie' },
-  { key: 'actualites', label: 'Actualités', emoji: '🌍', query: 'actualités' },
   { key: 'divertissement', label: 'Divertissement', emoji: '😂', query: 'divertissement' },
-  { key: 'dev-perso', label: 'Développement personnel', emoji: '🧠', query: 'développement personnel motivation' },
+  { key: 'actualites', label: 'Actualités', emoji: '🌍', query: 'actualités' },
+  { key: 'technologie', label: 'Technologie', emoji: '💻', query: 'technologie' },
+  { key: 'cinema', label: 'Cinéma & Séries', emoji: '🎬', query: 'bande annonce film' },
+  { key: 'education', label: 'Éducation & Savoirs', emoji: '🎓', query: 'éducation cours' },
+  { key: 'dev-perso', label: 'Motivation', emoji: '🧠', query: 'motivation' },
 ]
 function categories() { return CATEGORIES }
 

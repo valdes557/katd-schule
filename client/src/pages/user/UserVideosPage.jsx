@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Loader2, Youtube, Search, PlaySquare, Heart, History, Trash2, SlidersHorizontal } from 'lucide-react'
+import { Loader2, Youtube, Search, PlaySquare, Heart, History, Trash2, SlidersHorizontal, X } from 'lucide-react'
 import { platformApi, youtubeApi } from '../../lib/api'
 import ResourcePreview from '../../components/ResourcePreview'
 import YoutubeCard from '../../components/youtube/YoutubeCard'
@@ -56,8 +56,6 @@ function Empty({ icon: Icon, text }) {
   return <div className="text-center py-16 text-gray-400"><Icon size={40} className="mx-auto mb-3 opacity-30" /><p>{text}</p></div>
 }
 
-const DEFAULT_YOUTUBE_QUERY = 'Afrique éducation documentaires'
-
 function YoutubeTab() {
   const [sub, setSub] = useState('search') // search | favorites | history
   const [input, setInput] = useState('')
@@ -69,7 +67,9 @@ function YoutubeTab() {
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
-  const [categories, setCategories] = useState([])
+  const [categories, setCategories] = useState([
+    { key: '', label: 'Tous', emoji: '✨', query: '' },
+  ])
   const [activeCat, setActiveCat] = useState('')
   const [player, setPlayer] = useState(null)
 
@@ -79,25 +79,34 @@ function YoutubeTab() {
   // Vidéo en cours de téléchargement (ouvre le « gate » publicitaire AdSense).
   const [downloadVideo, setDownloadVideo] = useState(null)
 
-  useEffect(() => { youtubeApi.categories().then((r) => setCategories(r.categories || [])).catch(() => {}) }, [])
+  useEffect(() => {
+    youtubeApi.categories().then((r) => {
+      const list = r.categories || []
+      if (!list.some(c => c.key === '')) {
+        setCategories([{ key: '', label: 'Tous', emoji: '✨', query: '' }, ...list])
+      } else {
+        setCategories(list)
+      }
+    }).catch(() => {})
+  }, [])
 
-  // Debounce ~500 ms : on ne lance pas de recherche à chaque caractère si query est déjà identique.
+  // Debounce ~500 ms : synchronise query si l'utilisateur arrête de taper
   const debRef = useRef()
   useEffect(() => {
     if (sub !== 'search') return
     clearTimeout(debRef.current)
     debRef.current = setTimeout(() => {
       const clean = input.trim()
-      if (clean && clean !== query) setQuery(clean)
+      if (clean !== query) setQuery(clean)
     }, 500)
     return () => clearTimeout(debRef.current)
   }, [input, sub, query])
 
-  // Charge immédiatement le flux YouTube par défaut dès l'ouverture, sans attendre de recherche utilisateur
-  const runSearch = useCallback(async () => {
+  // Charge le flux de vidéos (flux d'accueil YouTube "Tous" si query est vide, ou recherche spécifique)
+  const runSearch = useCallback(async (customQ = null) => {
     setLoading(true); setError('')
     try {
-      const effectiveQ = query || DEFAULT_YOUTUBE_QUERY
+      const effectiveQ = customQ !== null ? customQ : query
       const r = await youtubeApi.search({ q: effectiveQ, order, duration })
       setItems(r.items || []); setNextToken(r.nextPageToken || '')
     } catch (e) {
@@ -105,29 +114,46 @@ function YoutubeTab() {
     }
     setLoading(false)
   }, [query, order, duration])
+
   useEffect(() => { runSearch() }, [runSearch])
 
   const loadMore = async () => {
     if (!nextToken) return
     setLoadingMore(true)
     try {
-      const effectiveQ = query || DEFAULT_YOUTUBE_QUERY
-      const r = await youtubeApi.search({ q: effectiveQ, order, duration, pageToken: nextToken })
+      const r = await youtubeApi.search({ q: query, order, duration, pageToken: nextToken })
       setItems((prev) => [...prev, ...(r.items || [])]); setNextToken(r.nextPageToken || '')
     } catch (e) { /* on garde la liste actuelle */ }
     setLoadingMore(false)
   }
 
+  // Clic sur une catégorie
   const pickCategory = (cat) => {
-    setActiveCat(cat.key)
     clearTimeout(debRef.current)
-    setInput(cat.query)
-    setQuery(cat.query)
+    setActiveCat(cat.key)
+    const qVal = cat.query || ''
+    setInput(qVal)
+    setQuery(qVal)
+    runSearch(qVal)
   }
+
+  // Soumission manuelle de la recherche (clic bouton ou touche Entrée)
   const submit = (e) => {
     e?.preventDefault()
     clearTimeout(debRef.current)
-    setQuery(input.trim())
+    const clean = input.trim()
+    setQuery(clean)
+    setActiveCat('')
+    runSearch(clean)
+  }
+
+  // Effacer la recherche pour revenir au flux d'accueil
+  const clearSearch = () => {
+    clearTimeout(debRef.current)
+    setInput('')
+    setQuery('')
+    setActiveCat('')
+    runSearch('')
   }
 
   useEffect(() => {
@@ -155,16 +181,44 @@ function YoutubeTab() {
           <form onSubmit={submit} className="flex gap-2 mb-3">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Rechercher des vidéos..."
-                className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500" />
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Rechercher des vidéos sur tout YouTube..."
+                className="w-full pl-9 pr-9 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
+              />
+              {input && (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+                  title="Effacer la recherche"
+                >
+                  <X size={15} />
+                </button>
+              )}
             </div>
-            <button type="submit" className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl px-4">Rechercher</button>
+            <button
+              type="submit"
+              className="bg-red-600 hover:bg-red-700 active:scale-95 text-white text-sm font-semibold rounded-xl px-5 py-2.5 transition-all shadow-sm flex items-center gap-1.5 shrink-0"
+            >
+              <Search size={15} /> Rechercher
+            </button>
           </form>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 no-scrollbar">
             {categories.map((c) => (
-              <button key={c.key} onClick={() => pickCategory(c)}
-                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${activeCat === c.key ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => pickCategory(c)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  activeCat === c.key
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
                 {c.emoji} {c.label}
               </button>
             ))}
