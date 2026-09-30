@@ -37,10 +37,10 @@ async function generateChatResponse({ messages, config }) {
       )
     }
 
-    let rawModel = (config?.model || process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim()
-    // Si un ancien modèle n'est plus supporté par Google (ex: gemini-2.0-flash ou gemini-1.5-flash), basculer vers gemini-3.8-flash
+    let rawModel = (config?.model || process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim()
+    // Si un ancien modèle n'est plus supporté par Google (ex: gemini-2.0-flash ou gemini-1.5-flash), basculer vers gemini-3.5-flash
     if (rawModel.includes('gemini-2.0') || rawModel.includes('gemini-1.5') || !rawModel) {
-      rawModel = 'gemini-3.8-flash'
+      rawModel = 'gemini-3.5-flash'
     }
     const cleanModel = rawModel.replace(/^models\//, '')
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
@@ -79,21 +79,39 @@ async function generateChatResponse({ messages, config }) {
 
     let data = await res.json().catch(() => ({}))
 
-    // Secours automatique si le modèle demandé est désactivé par Google
-    if (!res.ok && data?.error?.message && /no longer available/i.test(data.error.message) && cleanModel !== 'gemini-3.8-flash') {
-      try {
-        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`
-        const fbRes = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        if (fbRes.ok) {
-          res = fbRes
-          data = await fbRes.json().catch(() => ({}))
-          rawModel = 'gemini-3.8-flash'
+    // Secours automatique si le modèle demandé est surchargé (high demand 503), désactivé (404) ou quota restreint (429)
+    if (!res.ok) {
+      const errMsg = data?.error?.message || ''
+      const isHighDemand = res.status === 503 || /high demand|temporarily unavailable|overloaded/i.test(errMsg)
+      const isRetired = res.status === 404 || /no longer available|not found/i.test(errMsg)
+      const isQuota = res.status === 429 && /quota/i.test(errMsg)
+
+      if (isHighDemand || isRetired || isQuota) {
+        const fallbacks = ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite'].filter(
+          (m) => m !== cleanModel
+        )
+        for (const fbModel of fallbacks) {
+          try {
+            const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+              fbModel
+            )}:generateContent?key=${apiKey}`
+            const fbRes = await fetch(fallbackUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            })
+            if (fbRes.ok) {
+              const fbData = await fbRes.json().catch(() => ({}))
+              if (fbData?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                res = fbRes
+                data = fbData
+                rawModel = fbModel
+                break
+              }
+            }
+          } catch (_) {}
         }
-      } catch (_) {}
+      }
     }
 
     if (!res.ok) {

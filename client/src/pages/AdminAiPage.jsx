@@ -281,9 +281,9 @@ const PROVIDERS = [
     name: 'Google Gemini',
     badge: 'Recommandé',
     badgeColor: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    description: 'Dernière génération Gemini 3.8 : vitesse fulgurante, raisonnement multimodal et précision pédagogique.',
-    models: ['gemini-3.8-flash', 'gemini-3.8-pro', 'gemini-3.5-flash', 'gemini-3.1-pro', 'gemini-2.5-flash'],
-    defaultModel: 'gemini-3.8-flash',
+    description: 'Modèle Gemini 3.5 Flash ultra-stable et rapide via Google AI Studio : haute disponibilité, grande vitesse et précision.',
+    models: ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.1-flash-lite'],
+    defaultModel: 'gemini-3.5-flash',
     keyField: 'geminiApiKey',
     maskedField: 'geminiApiKeyMasked',
     hasKeyField: 'hasGeminiKey',
@@ -359,8 +359,8 @@ function ConfigTab() {
   const cfg = q.data
   if (cfg && !form) {
     let initialModel = cfg.model
-    if (cfg.provider === 'gemini' && (!initialModel || initialModel.includes('gemini-2.0') || initialModel.includes('gemini-1.5'))) {
-      initialModel = 'gemini-3.8-flash'
+    if (cfg.provider === 'gemini' && (!initialModel || initialModel.includes('gemini-2.0') || initialModel.includes('gemini-1.5') || initialModel === 'gemini-3.8-flash')) {
+      initialModel = 'gemini-3.5-flash'
     }
     setForm({
       ...cfg,
@@ -718,15 +718,15 @@ function ConfigTab() {
         <div className="space-y-2 text-xs">
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              1. Google Gemini (Gemini 3.8 Flash & Pro — Option recommandée)
+              1. Google Gemini (Gemini 3.5 Flash & 3.6 Flash — Option recommandée)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-emerald-400">
               <p>1. Rendez-vous sur <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">Google AI Studio</a>.</p>
               <p>2. Connectez-vous avec votre compte Google (Gmail).</p>
               <p>3. Cliquez sur le bouton bleu <strong>« Create API key »</strong>.</p>
               <p>4. Choisissez un projet ou laissez le projet par défaut, puis cliquez sur <strong>« Create API key in new project »</strong>.</p>
-              <p>5. Copiez la clé générée (commence par <code className="bg-gray-200 px-1 rounded">AIzaSy...</code>) et collez-la ci-dessus dans le champ <strong>Clé API Google Gemini</strong>.</p>
-              <p>6. Sélectionnez le modèle recommandé <strong>gemini-3.8-flash</strong> (ou <strong>gemini-3.8-pro</strong>), cliquez sur <strong>« Tester la connexion IA »</strong> puis <strong>« Enregistrer »</strong>.</p>
+              <p>5. Copiez la clé générée (commence par <code className="bg-gray-200 px-1 rounded">AIzaSy...</code> ou <code className="bg-gray-200 px-1 rounded">AQ.Ab...</code>) et collez-la ci-dessus dans le champ <strong>Clé API Google Gemini</strong>.</p>
+              <p>6. Sélectionnez le modèle recommandé <strong>gemini-3.5-flash</strong> (ultra-stable et rapide), cliquez sur <strong>« Tester la connexion IA »</strong> puis <strong>« Enregistrer »</strong>.</p>
             </div>
           </details>
 

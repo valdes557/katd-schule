@@ -65,7 +65,7 @@ router.get('/config', ...adminOnly, async (req, res) => {
 
     // Migration automatique si un ancien modèle Gemini déprécié était resté stocké
     if (cfg.provider === 'gemini' && (!cfg.model || cfg.model.includes('gemini-1.5') || cfg.model.includes('gemini-2.0'))) {
-      cfg.model = 'gemini-3.8-flash'
+      cfg.model = 'gemini-3.5-flash'
       await cfg.save()
     }
 
@@ -148,7 +148,7 @@ router.post('/test-key', ...adminOnly, async (req, res) => {
     let resolvedModel = (model || '').trim()
     if (provider === 'gemini') {
       if (!resolvedModel || resolvedModel.includes('gemini-2.0') || resolvedModel.includes('gemini-1.5')) {
-        resolvedModel = 'gemini-3.8-flash'
+        resolvedModel = 'gemini-3.5-flash'
       }
     } else if (provider === 'openai') {
       resolvedModel = resolvedModel || 'gpt-4o-mini'
