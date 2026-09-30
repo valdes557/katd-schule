@@ -130,68 +130,127 @@ export function stopSpeaking() {
 }
 
 /**
- * Crée une instance de reconnaissance vocale pour écouter la question de l'élève.
+ * Crée une instance de reconnaissance vocale mains libres pour écouter la question de l'élève.
  */
-export function createSpeechRecognizer({ lang = 'fr-FR', onResult, onError, onEnd }) {
+export function createSpeechRecognizer({
+  lang = 'fr-FR',
+  continuous = true,
+  autoRestart = false,
+  onResult,
+  onError,
+  onEnd,
+  onStart,
+}) {
   if (!isSpeechRecognitionSupported()) {
     return {
       isSupported: false,
       start: () => {},
       stop: () => {},
+      pause: () => {},
+      resume: () => {},
+      isListening: () => false,
     }
   }
 
   const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition
-  const recognizer = new SpeechRecognitionClass()
+  let recognizer = null
+  let running = false
+  let manuallyStopped = false
 
-  recognizer.continuous = false
-  recognizer.interimResults = true
-  recognizer.lang = lang
+  const initRecognizer = () => {
+    recognizer = new SpeechRecognitionClass()
+    recognizer.continuous = continuous
+    recognizer.interimResults = true
+    recognizer.lang = lang
 
-  recognizer.onresult = (event) => {
-    let finalTranscript = ''
-    let interimTranscript = ''
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-      const res = event.results[i]
-      if (res.isFinal) {
-        finalTranscript += res[0].transcript
-      } else {
-        interimTranscript += res[0].transcript
+    recognizer.onstart = () => {
+      running = true
+      if (onStart) onStart()
+    }
+
+    recognizer.onresult = (event) => {
+      let finalTranscript = ''
+      let interimTranscript = ''
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const res = event.results[i]
+        if (res.isFinal) {
+          finalTranscript += res[0].transcript
+        } else {
+          interimTranscript += res[0].transcript
+        }
+      }
+      if (onResult) {
+        onResult({
+          final: finalTranscript.trim(),
+          interim: interimTranscript.trim(),
+          full: (finalTranscript + ' ' + interimTranscript).trim(),
+        })
       }
     }
-    if (onResult) {
-      onResult({
-        final: finalTranscript.trim(),
-        interim: interimTranscript.trim(),
-        full: (finalTranscript + ' ' + interimTranscript).trim(),
-      })
-    }
-  }
 
-  if (onError) {
     recognizer.onerror = (e) => {
-      console.warn('[speechService:mic]', e.error)
-      onError(e)
+      // Ignorer les erreurs non bloquantes 'no-speech' et 'aborted'
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        console.warn('[speechService:mic]', e.error)
+      }
+      if (onError) onError(e)
+    }
+
+    recognizer.onend = () => {
+      running = false
+      if (onEnd) onEnd()
+      // Si autoRestart est activé et qu'on ne l'a pas arrêté manuellement, on relance l'écoute
+      if (autoRestart && !manuallyStopped) {
+        try {
+          recognizer.start()
+        } catch (_) {}
+      }
     }
   }
 
-  if (onEnd) {
-    recognizer.onend = onEnd
-  }
+  initRecognizer()
 
   return {
     isSupported: true,
     start: () => {
+      manuallyStopped = false
+      if (running) return
       try {
         recognizer.start()
       } catch (err) {
-        console.warn('[speechService] mic start failed:', err.message)
+        try {
+          initRecognizer()
+          recognizer.start()
+        } catch (err2) {
+          console.warn('[speechService] mic start failed:', err2.message)
+        }
       }
     },
     stop: () => {
+      manuallyStopped = true
+      running = false
       try {
         recognizer.stop()
       } catch (_) {}
     },
+    pause: () => {
+      running = false
+      try {
+        recognizer.stop()
+      } catch (_) {}
+    },
+    resume: () => {
+      manuallyStopped = false
+      if (running) return
+      try {
+        recognizer.start()
+      } catch (_) {
+        try {
+          initRecognizer()
+          recognizer.start()
+        } catch (_) {}
+      }
+    },
+    isListening: () => running,
   }
 }

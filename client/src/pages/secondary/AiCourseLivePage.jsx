@@ -49,10 +49,17 @@ export default function AiCourseLivePage() {
   const [playingAnswerId, setPlayingAnswerId] = useState(null)
   const [readingFullCourse, setReadingFullCourse] = useState(false)
 
-  // Reconnaissance vocale (Élève au micro depuis sa table)
+  // Reconnaissance vocale mains libres (Élève pose sa question sans appuyer sur le micro)
+  const [handsFreeActive, setHandsFreeActive] = useState(false)
+  const [speechDetected, setSpeechDetected] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const recognizerRef = useRef(null)
+  const handsFreeActiveRef = useRef(false)
+  const askingRef = useRef(false)
+  const isSpeakingRef = useRef(false)
+  const lastFullTextRef = useRef('')
+  const silenceTimerRef = useRef(null)
 
   // Synchronisation vocale du cours en direct
   const spokenUnitsCountRef = useRef(0)
@@ -125,6 +132,7 @@ export default function AiCourseLivePage() {
   useEffect(() => {
     return () => {
       stopSpeaking()
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       recognizerRef.current?.stop()
     }
   }, [])
@@ -138,6 +146,7 @@ export default function AiCourseLivePage() {
     if (!nextText) return
 
     isQueueRunningRef.current = true
+    isSpeakingRef.current = true
     setIsSpeaking(true)
 
     speakText(nextText, {
@@ -145,12 +154,16 @@ export default function AiCourseLivePage() {
       gender: data?.voice || 'female',
       cancelBefore: false,
       enqueue: true,
-      onStart: () => setIsSpeaking(true),
+      onStart: () => {
+        isSpeakingRef.current = true
+        setIsSpeaking(true)
+      },
       onEnd: () => {
         isQueueRunningRef.current = false
         if (speechQueueRef.current.length > 0) {
           processSpeechQueue()
         } else {
+          isSpeakingRef.current = false
           setIsSpeaking(false)
         }
       },
@@ -159,6 +172,7 @@ export default function AiCourseLivePage() {
         if (speechQueueRef.current.length > 0) {
           processSpeechQueue()
         } else {
+          isSpeakingRef.current = false
           setIsSpeaking(false)
         }
       },
@@ -177,27 +191,131 @@ export default function AiCourseLivePage() {
     }
   }, [data?.units, data?.status, voiceEnabled, processSpeechQueue])
 
-  // Annonce vocale de fin de cours & ouverture des questions
+  // Démarre l'écoute mains libres (élève parle depuis sa table sans toucher au micro)
+  const startHandsFreeListening = useCallback(() => {
+    if (!isSpeechRecognitionSupported()) return
+    handsFreeActiveRef.current = true
+    setHandsFreeActive(true)
+
+    if (recognizerRef.current) {
+      try { recognizerRef.current.stop() } catch (_) {}
+    }
+
+    const recognizer = createSpeechRecognizer({
+      lang: data?.language || 'fr-FR',
+      continuous: true,
+      autoRestart: true,
+      onStart: () => {
+        setIsListening(true)
+      },
+      onResult: ({ final, full, interim }) => {
+        const text = (full || final || interim || '').trim()
+        if (!text) return
+        if (askingRef.current || isSpeakingRef.current) return
+
+        lastFullTextRef.current = text
+        setVoiceTranscript(text)
+        setQuestion(text)
+        setSpeechDetected(true)
+
+        // Détection de fin de phrase : 1.6 seconde de silence après que l'élève a parlé
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+        silenceTimerRef.current = setTimeout(() => {
+          const candidate = (lastFullTextRef.current || '').trim()
+          if (candidate.length >= 8 && !askingRef.current && !isSpeakingRef.current) {
+            recognizerRef.current?.pause()
+            setSpeechDetected(false)
+            handleAsk(null, candidate)
+          }
+        }, 1600)
+      },
+      onError: (err) => {
+        if (err.error !== 'no-speech' && err.error !== 'aborted') {
+          console.warn('[HandsFree:mic]', err.error)
+        }
+      },
+      onEnd: () => {
+        if (!handsFreeActiveRef.current) {
+          setIsListening(false)
+        }
+      },
+    })
+
+    recognizerRef.current = recognizer
+    recognizer.start()
+  }, [data?.language]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stopHandsFreeListening = useCallback(() => {
+    handsFreeActiveRef.current = false
+    setHandsFreeActive(false)
+    setIsListening(false)
+    setSpeechDetected(false)
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+    if (recognizerRef.current) {
+      try { recognizerRef.current.stop() } catch (_) {}
+    }
+  }, [])
+
+  const handleToggleHandsFree = () => {
+    if (handsFreeActive) {
+      stopHandsFreeListening()
+    } else {
+      if (!isSpeechRecognitionSupported()) {
+        alert('La reconnaissance vocale nécessite Google Chrome, Microsoft Edge ou Safari.')
+        return
+      }
+      startHandsFreeListening()
+    }
+  }
+
+  const handleCancelDetectedSpeech = () => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+    lastFullTextRef.current = ''
+    setVoiceTranscript('')
+    setQuestion('')
+    setSpeechDetected(false)
+  }
+
+  // Annonce vocale de fin de cours & ouverture automatique du mode mains libres
   useEffect(() => {
     if (data?.status === 'termine' && !courseEndAnnouncedRef.current) {
       courseEndAnnouncedRef.current = true
       if (voiceEnabled) {
         const qaMins = data.qaDurationMinutes ?? 10
         const endAnnouncement = data.language === 'en-US'
-          ? `The lesson has finished. We now have ${qaMins} minutes reserved for questions. Students, you may ask your questions using your microphone or by typing.`
-          : `Le cours est maintenant terminé. Nous ouvrons la séance de questions-réponses pendant ${qaMins} minutes. Chers élèves, vous pouvez me poser vos questions vocalement depuis votre table au micro, ou par écrit.`
+          ? `The lesson has finished. Hands-free question mode is now active. Students, you may ask your questions directly from your desk aloud without touching any button. I am listening and will answer you.`
+          : `Le cours est maintenant terminé. Le mode questions mains libres est activé. Chers élèves, posez directement vos questions depuis votre table à voix haute sans appuyer sur aucun bouton, je vous écoute et je vous réponds.`
         setTimeout(() => {
+          isSpeakingRef.current = true
+          setIsSpeaking(true)
           speakText(endAnnouncement, {
             lang: data.language || 'fr-FR',
             gender: data.voice || 'female',
-            onStart: () => setIsSpeaking(true),
-            onEnd: () => setIsSpeaking(false),
-            onError: () => setIsSpeaking(false),
+            onStart: () => {
+              isSpeakingRef.current = true
+              setIsSpeaking(true)
+            },
+            onEnd: () => {
+              isSpeakingRef.current = false
+              setIsSpeaking(false)
+              if (isStudent && isSpeechRecognitionSupported()) {
+                startHandsFreeListening()
+              }
+            },
+            onError: () => {
+              isSpeakingRef.current = false
+              setIsSpeaking(false)
+              if (isStudent && isSpeechRecognitionSupported()) {
+                startHandsFreeListening()
+              }
+            },
           })
         }, 1000)
+      } else if (isStudent && isSpeechRecognitionSupported()) {
+        startHandsFreeListening()
       }
     }
-  }, [data?.status, data?.language, data?.voice, data?.qaDurationMinutes, voiceEnabled])
+  }, [data?.status, data?.language, data?.voice, data?.qaDurationMinutes, voiceEnabled, isStudent, startHandsFreeListening])
 
   // Décompte de la session Q&R
   useEffect(() => {
@@ -217,6 +335,7 @@ export default function AiCourseLivePage() {
       stopSpeaking()
       speechQueueRef.current = []
       isQueueRunningRef.current = false
+      isSpeakingRef.current = false
       setIsSpeaking(false)
       setPlayingAnswerId(null)
       setReadingFullCourse(false)
@@ -232,96 +351,123 @@ export default function AiCourseLivePage() {
     }
   }
 
-  // Enregistrement micro de la question de l'élève depuis sa table
-  const handleToggleMic = () => {
-    if (isListening) {
-      recognizerRef.current?.stop()
-      setIsListening(false)
-      return
-    }
-    if (!isSpeechRecognitionSupported()) {
-      alert('La reconnaissance vocale nécessite Google Chrome, Microsoft Edge ou Safari.')
-      return
-    }
-    setVoiceTranscript('')
-    const recognizer = createSpeechRecognizer({
-      lang: data?.language || 'fr-FR',
-      onResult: ({ final, full }) => {
-        const text = final || full
-        setVoiceTranscript(text)
-        setQuestion(text)
-      },
-      onError: (err) => {
-        console.warn('Erreur micro:', err)
-        setIsListening(false)
-      },
-      onEnd: () => {
-        setIsListening(false)
-      },
-    })
-    recognizerRef.current = recognizer
-    recognizer.start()
-    setIsListening(true)
-  }
-
-  // Soumission de question (texte ou vocale) et réponse vocale immédiate de l'IA
+  // Soumission de question (texte ou vocale mains libres) et réponse vocale immédiate de l'IA
   const handleAsk = async (e, customText) => {
     if (e) e.preventDefault()
-    if (isListening) {
-      recognizerRef.current?.stop()
-      setIsListening(false)
-    }
-    const q = (customText || question).trim()
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+    const q = (customText || question || lastFullTextRef.current).trim()
     if (!q) return
+
+    askingRef.current = true
     setAsking(true)
     setAskError('')
+    setSpeechDetected(false)
+
+    // Met en pause le micro pendant que l'IA analyse et formule sa réponse
+    if (recognizerRef.current) {
+      recognizerRef.current.pause()
+    }
+
     try {
       const res = await aiCoursesApi.askQuestion(id, q)
       setQuestion('')
       setVoiceTranscript('')
+      lastFullTextRef.current = ''
       await fetchLive()
+
       // L'IA répond vocalement à l'élève à voix haute
       const answer = res?.data?.question?.answer
       if (answer && voiceEnabled) {
+        isSpeakingRef.current = true
         setIsSpeaking(true)
         speakText(answer, {
           lang: data?.language || 'fr-FR',
           gender: data?.voice || 'female',
-          onStart: () => setIsSpeaking(true),
-          onEnd: () => setIsSpeaking(false),
-          onError: () => setIsSpeaking(false),
+          onStart: () => {
+            isSpeakingRef.current = true
+            setIsSpeaking(true)
+          },
+          onEnd: () => {
+            isSpeakingRef.current = false
+            setIsSpeaking(false)
+            askingRef.current = false
+            setAsking(false)
+            // L'IA a fini de parler : on rouvre automatiquement le micro pour la question suivante !
+            if (handsFreeActiveRef.current && recognizerRef.current) {
+              recognizerRef.current.resume()
+            }
+          },
+          onError: () => {
+            isSpeakingRef.current = false
+            setIsSpeaking(false)
+            askingRef.current = false
+            setAsking(false)
+            if (handsFreeActiveRef.current && recognizerRef.current) {
+              recognizerRef.current.resume()
+            }
+          },
         })
+      } else {
+        askingRef.current = false
+        setAsking(false)
+        if (handsFreeActiveRef.current && recognizerRef.current) {
+          recognizerRef.current.resume()
+        }
       }
+
       // Descend vers la réponse fraîchement ajoutée
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 300)
-    } catch (e2) { setAskError(e2.message) }
-    setAsking(false)
+    } catch (e2) {
+      setAskError(e2.message)
+      askingRef.current = false
+      setAsking(false)
+      if (handsFreeActiveRef.current && recognizerRef.current) {
+        recognizerRef.current.resume()
+      }
+    }
   }
 
   const handlePlayAnswer = (q) => {
     if (playingAnswerId === q._id) {
       stopSpeaking()
       setPlayingAnswerId(null)
+      isSpeakingRef.current = false
       setIsSpeaking(false)
+      if (handsFreeActiveRef.current && recognizerRef.current) {
+        recognizerRef.current.resume()
+      }
       return
     }
     stopSpeaking()
+    if (recognizerRef.current) {
+      recognizerRef.current.pause()
+    }
     setPlayingAnswerId(q._id)
+    isSpeakingRef.current = true
     setIsSpeaking(true)
     speakText(q.answer, {
       lang: data?.language || 'fr-FR',
       gender: data?.voice || 'female',
       onStart: () => {
         setPlayingAnswerId(q._id)
+        isSpeakingRef.current = true
         setIsSpeaking(true)
       },
       onEnd: () => {
         setPlayingAnswerId(null)
+        isSpeakingRef.current = false
         setIsSpeaking(false)
+        if (handsFreeActiveRef.current && recognizerRef.current) {
+          recognizerRef.current.resume()
+        }
       },
       onError: () => {
         setPlayingAnswerId(null)
+        isSpeakingRef.current = false
         setIsSpeaking(false)
+        if (handsFreeActiveRef.current && recognizerRef.current) {
+          recognizerRef.current.resume()
+        }
       },
     })
   }
@@ -330,26 +476,43 @@ export default function AiCourseLivePage() {
     if (readingFullCourse) {
       stopSpeaking()
       setReadingFullCourse(false)
+      isSpeakingRef.current = false
       setIsSpeaking(false)
+      if (handsFreeActiveRef.current && recognizerRef.current) {
+        recognizerRef.current.resume()
+      }
       return
     }
     stopSpeaking()
+    if (recognizerRef.current) {
+      recognizerRef.current.pause()
+    }
     setReadingFullCourse(true)
+    isSpeakingRef.current = true
     setIsSpeaking(true)
     speakText(data?.text || '', {
       lang: data?.language || 'fr-FR',
       gender: data?.voice || 'female',
       onStart: () => {
         setReadingFullCourse(true)
+        isSpeakingRef.current = true
         setIsSpeaking(true)
       },
       onEnd: () => {
         setReadingFullCourse(false)
+        isSpeakingRef.current = false
         setIsSpeaking(false)
+        if (handsFreeActiveRef.current && recognizerRef.current) {
+          recognizerRef.current.resume()
+        }
       },
       onError: () => {
         setReadingFullCourse(false)
+        isSpeakingRef.current = false
         setIsSpeaking(false)
+        if (handsFreeActiveRef.current && recognizerRef.current) {
+          recognizerRef.current.resume()
+        }
       },
     })
   }
@@ -358,12 +521,32 @@ export default function AiCourseLivePage() {
     const text = data?.language === 'en-US'
       ? `For our next class titled ${data.nextCourseTitle || 'Next Session'} : ${data.nextCourseInstructions || ''}`
       : `Pour notre prochain cours intitulé ${data.nextCourseTitle || 'Séance suivante'} : ${data.nextCourseInstructions || ''}`
+    if (recognizerRef.current) {
+      recognizerRef.current.pause()
+    }
+    isSpeakingRef.current = true
+    setIsSpeaking(true)
     speakText(text, {
       lang: data?.language || 'fr-FR',
       gender: data?.voice || 'female',
-      onStart: () => setIsSpeaking(true),
-      onEnd: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
+      onStart: () => {
+        isSpeakingRef.current = true
+        setIsSpeaking(true)
+      },
+      onEnd: () => {
+        isSpeakingRef.current = false
+        setIsSpeaking(false)
+        if (handsFreeActiveRef.current && recognizerRef.current) {
+          recognizerRef.current.resume()
+        }
+      },
+      onError: () => {
+        isSpeakingRef.current = false
+        setIsSpeaking(false)
+        if (handsFreeActiveRef.current && recognizerRef.current) {
+          recognizerRef.current.resume()
+        }
+      },
     })
   }
 
@@ -610,38 +793,104 @@ export default function AiCourseLivePage() {
           ))}
 
           {isStudent && (
-            <div className="sticky bottom-4 space-y-2">
-              {/* Alerte visuelle quand le micro écoute l'élève depuis sa table */}
-              {isListening && (
-                <div className="bg-purple-900 text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center justify-between text-xs animate-pulse">
-                  <span className="flex items-center gap-2 font-medium">
-                    <Mic size={15} className="text-red-400 animate-bounce" />
-                    Parlez à voix haute depuis votre table... L'IA vous écoute !
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleToggleMic}
-                    className="bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-md text-white text-[11px] font-semibold"
-                  >
-                    Arrêter
-                  </button>
+            <div className="sticky bottom-4 space-y-2.5">
+              {/* Bandeau d'état du Mode Mains Libres */}
+              {handsFreeActive ? (
+                <div className={`rounded-2xl p-3 border shadow-md transition-all ${
+                  asking
+                    ? 'bg-purple-950 text-white border-purple-800 animate-pulse'
+                    : isSpeaking
+                    ? 'bg-indigo-950 text-white border-indigo-800'
+                    : speechDetected
+                    ? 'bg-amber-950 text-white border-amber-800 ring-2 ring-amber-500/50'
+                    : 'bg-emerald-950/95 text-white border-emerald-800'
+                }`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="relative flex h-3 w-3 shrink-0">
+                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                          asking ? 'bg-purple-400' : isSpeaking ? 'bg-indigo-400' : speechDetected ? 'bg-amber-400' : 'bg-emerald-400'
+                        }`} />
+                        <span className={`relative inline-flex rounded-full h-3 w-3 ${
+                          asking ? 'bg-purple-500' : isSpeaking ? 'bg-indigo-500' : speechDetected ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold truncate">
+                          {asking
+                            ? "🧠 L'IA analyse votre question..."
+                            : isSpeaking
+                            ? "🗣️ L'IA vous répond oralement..."
+                            : speechDetected
+                            ? "🎙️ Voix détectée ! Envoi automatique à l'IA..."
+                            : "🟢 Mains Libres ACTIF : Parlez simplement depuis votre table !"}
+                        </p>
+                        {speechDetected && voiceTranscript && (
+                          <p className="text-[11px] text-amber-200 italic mt-0.5 truncate max-w-sm sm:max-w-md">
+                            « {voiceTranscript} »
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {speechDetected && (
+                        <button
+                          type="button"
+                          onClick={handleCancelDetectedSpeech}
+                          className="text-[11px] bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-md transition-colors"
+                        >
+                          Annuler
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleToggleHandsFree}
+                        className="text-[11px] bg-white/20 hover:bg-white/30 text-white px-2.5 py-1 rounded-md font-semibold transition-colors"
+                      >
+                        Suspendre
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <Mic size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-purple-950">Mode Questions Mains Libres</p>
+                      <p className="text-[11px] text-purple-700/80 truncate">Posez vos questions depuis votre table sans toucher au micro : l'IA répond vocalement.</p>
+                    </div>
+                  </div>
+                  {isSpeechRecognitionSupported() && (
+                    <button
+                      type="button"
+                      onClick={handleToggleHandsFree}
+                      className="btn-primary text-xs py-1.5 px-3 shrink-0 flex items-center gap-1.5 shadow-sm font-semibold"
+                    >
+                      <Mic size={13} /> Activer Mains Libres
+                    </button>
+                  )}
                 </div>
               )}
 
+              {/* Formulaire de saisie (mains libres ou écrit) */}
               <form onSubmit={(e) => handleAsk(e)} className="bg-white border border-gray-200 rounded-2xl shadow-card p-2 flex items-end gap-2">
                 {isSpeechRecognitionSupported() && (
                   <button
                     type="button"
-                    onClick={handleToggleMic}
-                    title="Poser ma question au micro depuis ma table"
+                    onClick={handleToggleHandsFree}
+                    title={handsFreeActive ? "Mode mains libres actif (cliquer pour suspendre)" : "Activer le mode mains libres"}
                     className={`p-2.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold ${
-                      isListening
-                        ? 'bg-red-500 text-white animate-pulse shadow-md'
-                        : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                      handsFreeActive
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
                     }`}
                   >
-                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-                    <span className="hidden sm:inline">{isListening ? 'Écoute...' : 'Parler au micro'}</span>
+                    {handsFreeActive ? <Mic size={16} /> : <MicOff size={16} />}
+                    <span className="hidden sm:inline">{handsFreeActive ? 'Mains libres ON' : 'Mains libres OFF'}</span>
                   </button>
                 )}
                 <textarea
@@ -649,7 +898,7 @@ export default function AiCourseLivePage() {
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAsk(e) } }}
-                  placeholder={isListening ? "Parlez depuis votre table, l'IA transcrit en direct..." : "Posez votre question (parlez au micro ou écrivez ici)..."}
+                  placeholder={handsFreeActive ? "Parlez depuis votre table, l'IA détecte et répond..." : "Posez votre question (ou activez le mode mains libres)..."}
                   maxLength={500}
                   className="flex-1 resize-none text-sm px-3 py-2 outline-none bg-transparent"
                 />
@@ -660,7 +909,13 @@ export default function AiCourseLivePage() {
             </div>
           )}
           {askError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{askError}</p>}
-          {isStudent && <p className="text-[10px] text-gray-400 text-center">3 questions maximum par élève et par cours · L'IA répondra vocalement à vos questions.</p>}
+          {isStudent && (
+            <p className="text-[10px] text-gray-400 text-center">
+              {handsFreeActive
+                ? "🎙️ Mode mains libres actif : parlez depuis votre table, l'IA détecte la fin de votre phrase et répond vocalement."
+                : "3 questions maximum par élève et par cours · Réponse vocale immédiate de l'IA."}
+            </p>
+          )}
         </div>
       )}
 
