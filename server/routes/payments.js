@@ -366,7 +366,7 @@ async function webhookHandler(req, res) {
 
     // Si la clé n'est pas standard, extrait le pattern de nos références
     if (!reference) {
-      const match = JSON.stringify(payload).match(/\b(dep|sub|enr|boost|merch|share|wd)_[a-zA-Z0-9_]+\b/)
+      const match = JSON.stringify(payload).match(/\b(dep|sub|enr|boost|merch|share|wd|ais)_[a-zA-Z0-9_]+\b/)
       if (match) reference = match[0]
     }
     const providerId = payload.transaction_id || payload.id || payload.provider_reference || payload.ikeepay_ref || d.transaction_id || d.id || d.provider_reference || d.ikeepay_ref
@@ -628,6 +628,79 @@ async function applyOutcome(intent, status, raw) {
           await lifecycle.activateCampaign(campaign)
         }
       } catch (e) { console.error('[payment:boost] ' + intent.reference + ' :', e.message) }
+    } else if (intent.purpose === 'ai_subscription') {
+      // Souscription IA payée par Mobile Money (Ikeepay H2H)
+      // Active la souscription de l'école, donne accès au directeur et crédite le revenu admin
+      try {
+        const AiSubscription = require('../models/AiSubscription')
+        const AiPackage = require('../models/AiPackage')
+        const m = intent.meta || {}
+        const sid = intent.school || m.schoolId
+        const directorId = intent.initiatedBy || m.directorId
+
+        // Résout l'offre IA
+        let pkg = null
+        if (m.packageId) {
+          pkg = await AiPackage.findById(m.packageId)
+        }
+
+        // Marque toute ancienne souscription épuisée comme expirée
+        if (sid) {
+          await AiSubscription.updateMany(
+            { school: sid, status: 'approved', remainingQuestions: { $lte: 0 } },
+            { $set: { status: 'expired' } }
+          )
+        }
+
+        const questions = pkg?.totalQuestions || Number(m.totalQuestions) || 100
+        const pkgName = pkg?.name || m.packageName || 'Forfait IA'
+
+        // Crée la souscription immédiatement approuvée
+        const sub = await AiSubscription.create({
+          director: directorId,
+          school: sid,
+          package: pkg?._id || m.packageId,
+          packageName: pkgName,
+          totalQuestions: questions,
+          usedQuestions: 0,
+          remainingQuestions: questions,
+          price: intent.amount,
+          currency: intent.currency || 'F CFA',
+          paymentMethod: 'mobile_money',
+          paymentReference: intent.reference,
+          paymentIntent: intent._id,
+          status: 'approved',
+          approvedAt: new Date(),
+        })
+
+        // Donne d'office l'accès au chat IA au directeur
+        if (directorId) {
+          await User.updateOne({ _id: directorId }, { $set: { aiAccess: true, aiAccessGrantedAt: new Date() } })
+        }
+
+        // Encaisse le revenu souscription IA côté admin plateforme (best-effort)
+        try {
+          const admin = await wallet.getPlatformAdmin()
+          if (admin) {
+            await wallet.credit(admin._id, {
+              amount: intent.amount,
+              type: 'ai_subscription_revenue',
+              role: 'admin',
+              counterparty: directorId,
+              paymentIntent: intent._id,
+              providerTransactionId: intent.providerTransactionId,
+              description: `Souscription IA (Mobile Money) — ${pkgName}`,
+              meta: { aiSubscription: String(sub._id), packageId: String(sub.package) },
+            })
+          }
+        } catch (creditErr) {
+          console.error('[payment:ai_subscription] credit admin error:', creditErr.message)
+        }
+
+        console.log(`[payment:ai_subscription] Souscription IA activée avec succès [${intent.reference}] pour école ${sid}`)
+      } catch (subErr) {
+        console.error('[payment:ai_subscription] ' + intent.reference + ' :', subErr.message)
+      }
     }
     intent.fulfilled = true
     await intent.save()

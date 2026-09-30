@@ -15,7 +15,14 @@ const aiSubscriptionSchema = new mongoose.Schema(
     remainingQuestions: { type: Number, required: true, min: 0 },
     price: { type: Number, required: true, min: 0 },
     currency: { type: String, default: 'F CFA' },
-    paymentScreenshot: { type: String }, // URL Cloudinary de la capture de paiement
+    paymentMethod: {
+      type: String,
+      enum: ['wallet', 'mobile_money', 'manual', 'screenshot'],
+      default: 'manual',
+    },
+    paymentReference: { type: String, default: null },
+    paymentIntent: { type: mongoose.Schema.Types.ObjectId, ref: 'PaymentIntent', default: null },
+    paymentScreenshot: { type: String }, // URL Cloudinary de la capture de paiement (si virement/manuel)
     status: {
       type: String,
       enum: ['pending', 'approved', 'rejected', 'expired', 'suspended'],

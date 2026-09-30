@@ -38,6 +38,8 @@ const txSchema = new mongoose.Schema(
         'boost',             // paiement d'un boost de publication depuis le solde (débit)
         'boost_revenue',     // revenu d'un boost encaissé par l'admin plateforme (crédit)
         'boost_refund',      // remboursement d'un boost au propriétaire (crédit)
+        'ai_subscription',   // paiement souscription IA établissement depuis le solde (débit)
+        'ai_subscription_revenue', // revenu souscription IA encaissé par l'admin plateforme (crédit)
       ],
       required: true,
       index: true,

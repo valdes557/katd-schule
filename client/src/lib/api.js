@@ -1069,6 +1069,8 @@ export const aiApi = {
     if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
     return data
   },
+  subscribeWallet: ({ packageId, pin }) => api.post('/ai/subscription/subscribe-wallet', { packageId, pin }),
+  subscribeMobile: (payload) => api.post('/ai/subscription/subscribe-mobile', payload),
   subscriptionStatus: () => api.get('/ai/subscription/status'),
   listSubscriptions: (status = '') => api.get(`/ai/subscriptions${status ? `?status=${status}` : ''}`),
   approveSubscription: (id) => api.post('/ai/subscription/approve', { id }),

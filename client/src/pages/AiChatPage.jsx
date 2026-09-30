@@ -3,10 +3,11 @@ import { aiApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import {
   Bot, Send, Loader2, Plus, Trash2, MessageSquare, Sparkles, AlertTriangle, Menu, X,
+  Globe, ExternalLink,
 } from 'lucide-react'
 
 // Bulle de message (utilisateur à droite en bleu, assistant à gauche en gris).
-function Bubble({ role, content }) {
+function Bubble({ role, content, webSearch }) {
   const mine = role === 'user'
   return (
     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
@@ -20,6 +21,32 @@ function Bubble({ role, content }) {
           mine ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'
         }`}>
           {content}
+
+          {!mine && webSearch?.performed && (
+            <div className="mt-2.5 pt-2 border-t border-gray-200/60 text-xs">
+              <div className="flex items-center gap-1.5 text-emerald-700 font-medium mb-1">
+                <Globe size={13} className="text-emerald-600 flex-shrink-0" />
+                <span>Recherche web en direct effectuée & vérifiée</span>
+              </div>
+              {Array.isArray(webSearch.sources) && webSearch.sources.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {webSearch.sources.slice(0, 3).map((s, idx) => (
+                    <a
+                      key={idx}
+                      href={s.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 bg-white border border-gray-200 px-2 py-0.5 rounded max-w-[180px] truncate"
+                      title={s.title}
+                    >
+                      <span className="truncate">{s.title}</span>
+                      <ExternalLink size={10} className="flex-shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -110,7 +137,7 @@ export default function AiChatPage() {
     try {
       const res = await aiApi.chat(text, convId)
       const d = res.data
-      setMessages((m) => [...m, { role: 'assistant', content: d.answer }])
+      setMessages((m) => [...m, { role: 'assistant', content: d.answer, webSearch: d.webSearch }])
       setQuota({ remaining: d.remainingQuestions, used: d.usedQuestions, total: d.totalQuestions })
       if (d.remainingQuestions <= 0) setAccess('exhausted')
       if (!convId) {
@@ -182,7 +209,7 @@ export default function AiChatPage() {
             <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center"><Bot size={17} /></div>
             <div>
               <h1 className="text-sm font-bold text-gray-900">Assistant IA</h1>
-              <p className="text-[11px] text-gray-400">Questions pédagogiques & administratives</p>
+              <p className="text-[11px] text-gray-400">Questions pédagogiques & recherche web en direct</p>
             </div>
           </div>
           {quota && (
@@ -198,15 +225,18 @@ export default function AiChatPage() {
             <div className="h-full flex flex-col items-center justify-center text-center text-gray-400">
               <Sparkles size={32} className="mb-3 text-indigo-300" />
               <p className="text-sm font-medium text-gray-500">Posez votre première question</p>
-              <p className="text-xs mt-1 max-w-xs">L'assistant répond aux questions pédagogiques, administratives et éducatives.</p>
+              <p className="text-xs mt-1 max-w-xs">L'assistant répond avec précision aux questions pédagogiques, administratives et effectue des recherches sur le web pour vous.</p>
             </div>
           )}
-          {messages.map((m, i) => <Bubble key={i} role={m.role} content={m.content} />)}
+          {messages.map((m, i) => <Bubble key={i} role={m.role} content={m.content} webSearch={m.webSearch} />)}
           {sending && (
             <div className="flex justify-start">
               <div className="flex items-end gap-2">
                 <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center"><Bot size={15} /></div>
-                <div className="px-4 py-3 rounded-2xl bg-gray-100"><Loader2 size={15} className="animate-spin text-gray-400" /></div>
+                <div className="px-4 py-2.5 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center gap-2 text-xs text-indigo-700">
+                  <Loader2 size={14} className="animate-spin text-indigo-600" />
+                  <span>Recherche sur le web et formulation de la réponse...</span>
+                </div>
               </div>
             </div>
           )}

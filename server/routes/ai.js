@@ -1,5 +1,7 @@
 const express = require('express')
 const router = express.Router()
+const crypto = require('crypto')
+const bcrypt = require('bcryptjs')
 const mongoose = require('mongoose')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
@@ -9,6 +11,10 @@ const AiPackage = require('../models/AiPackage')
 const AiSubscription = require('../models/AiSubscription')
 const AiConversation = require('../models/AiConversation')
 const AiUsageLog = require('../models/AiUsageLog')
+const PaymentIntent = require('../models/PaymentIntent')
+const wallet = require('../services/walletService')
+const ikeepay = require('../services/ikeepayService')
+const { performWebSearch, buildSearchContext } = require('../services/webSearchService')
 const { generateChatResponse, OpenAiError } = require('../services/openaiService')
 const {
   sendAiSubscriptionRequestEmail,
@@ -17,6 +23,14 @@ const {
 } = require('../utils/emailService')
 
 function schoolId(req) { return req.user.school?._id || req.user.school }
+
+function genRef(prefix) {
+  return prefix + '_' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex')
+}
+function callbackUrl() {
+  const base = process.env.SERVER_URL || ''
+  return base.replace(/\/$/, '') + '/api/payments/webhook'
+}
 
 const QUOTA_EXHAUSTED_MSG = 'Votre quota de questions IA est épuisé. Veuillez renouveler votre abonnement.'
 
@@ -44,6 +58,15 @@ function rateLimit({ windowMs = 60000, max = 20 } = {}) {
 // Renvoie la souscription IA active (approuvée) d'une école, ou null.
 async function getActiveSubscription(sid) {
   if (!sid) return null
+  // Cherche en priorité une souscription approuvée avec du quota restant
+  const withQuota = await AiSubscription.findOne({
+    school: sid,
+    status: 'approved',
+    remainingQuestions: { $gt: 0 },
+  }).sort({ approvedAt: -1 })
+  if (withQuota) return withQuota
+
+  // Repli : souscription approuvée la plus récente (pour renvoyer le quota épuisé si applicable)
   return AiSubscription.findOne({ school: sid, status: 'approved' }).sort({ approvedAt: -1 })
 }
 
@@ -236,19 +259,25 @@ router.delete('/packages/:id', ...adminOnly, async (req, res) => {
 // SOUSCRIPTIONS
 // ═════════════════════════════════════════════════════════════════════════════
 
-// POST /api/ai/subscription/request — directeur soumet une demande + capture paiement
+// POST /api/ai/subscription/request — directeur soumet une demande + capture paiement (manuel / virement)
 router.post('/subscription/request', ...directorOnly, upload.single('paymentScreenshot'), async (req, res) => {
   try {
     const sid = schoolId(req)
     if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
 
-    // Bloque les demandes en double (déjà en attente ou déjà approuvée active)
-    const existing = await AiSubscription.findOne({ school: sid, status: { $in: ['pending', 'approved'] } })
+    // Bloque les demandes en double (déjà en attente ou déjà approuvée active avec quota)
+    const existing = await AiSubscription.findOne({
+      school: sid,
+      $or: [
+        { status: 'pending' },
+        { status: 'approved', remainingQuestions: { $gt: 0 } },
+      ],
+    })
     if (existing) {
       return res.status(400).json({
         message: existing.status === 'pending'
           ? 'Une demande est déjà en attente de validation.'
-          : 'Votre établissement dispose déjà d\'une souscription IA active.',
+          : `Votre établissement dispose déjà d'une souscription active (${existing.remainingQuestions} questions restantes).`,
       })
     }
 
@@ -265,6 +294,7 @@ router.post('/subscription/request', ...directorOnly, upload.single('paymentScre
       remainingQuestions: pkg.totalQuestions,
       price: pkg.price,
       currency: pkg.currency,
+      paymentMethod: 'screenshot',
       paymentScreenshot: req.file?.path || null,
       status: 'pending',
     })
@@ -287,6 +317,200 @@ router.post('/subscription/request', ...directorOnly, upload.single('paymentScre
 
     res.status(201).json({ success: true, data: sub })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/ai/subscription/subscribe-wallet — paiement DIRECT avec le solde portefeuille (avec PIN)
+router.post('/subscription/subscribe-wallet', ...directorOnly, async (req, res) => {
+  try {
+    const { packageId, pin } = req.body
+    const sid = schoolId(req)
+    if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+    if (!packageId) return res.status(400).json({ message: 'Offre IA requise' })
+    if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
+
+    const pkg = await AiPackage.findById(packageId)
+    if (!pkg || !pkg.isActive) return res.status(404).json({ message: 'Offre IA introuvable ou indisponible' })
+
+    // Vérifie si une souscription active a encore du quota
+    const activeSub = await AiSubscription.findOne({
+      school: sid,
+      status: 'approved',
+      remainingQuestions: { $gt: 0 },
+    }).sort({ approvedAt: -1 })
+
+    if (activeSub) {
+      return res.status(400).json({
+        message: `Votre établissement dispose déjà d'une souscription active (${activeSub.remainingQuestions} questions restantes).`,
+      })
+    }
+
+    // Vérifie le code PIN du portefeuille
+    const u = await User.findById(req.user._id).select('+walletPin')
+    if (!u.walletPin) {
+      return res.status(400).json({ message: "Veuillez d'abord créer votre code PIN dans votre portefeuille." })
+    }
+    const pinOk = await bcrypt.compare(String(pin), u.walletPin)
+    if (!pinOk) return res.status(401).json({ message: 'Code PIN incorrect.' })
+
+    // Vérifie le solde du portefeuille
+    const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: sid })
+    const price = Number(pkg.price)
+    if (w.balance < price) {
+      return res.status(400).json({
+        message: `Solde insuffisant (${w.balance.toLocaleString()} FCFA disponible, ${price.toLocaleString()} FCFA requis). Veuillez recharger votre portefeuille.`,
+      })
+    }
+
+    // Marque toute ancienne souscription comme expirée
+    await AiSubscription.updateMany(
+      { school: sid, status: { $in: ['pending', 'approved'] } },
+      { $set: { status: 'expired' } }
+    )
+
+    // Débit du solde du directeur
+    await wallet.debit(req.user._id, {
+      amount: price,
+      type: 'ai_subscription',
+      description: `Souscription IA — ${pkg.name}`,
+      meta: { packageId: pkg._id, packageName: pkg.name, questions: pkg.totalQuestions },
+    })
+
+    // Création immédiate de la souscription approuvée
+    const sub = await AiSubscription.create({
+      director: req.user._id,
+      school: sid,
+      package: pkg._id,
+      packageName: pkg.name,
+      totalQuestions: pkg.totalQuestions,
+      usedQuestions: 0,
+      remainingQuestions: pkg.totalQuestions,
+      price,
+      currency: pkg.currency || 'F CFA',
+      paymentMethod: 'wallet',
+      status: 'approved',
+      approvedAt: new Date(),
+      approvedBy: req.user._id,
+    })
+
+    // Activation immédiate de l'accès chat IA du directeur
+    await User.updateOne({ _id: req.user._id }, { $set: { aiAccess: true, aiAccessGrantedAt: new Date() } })
+
+    // Encaissement du revenu par l'administrateur de la plateforme (best-effort)
+    try {
+      const admin = await wallet.getPlatformAdmin()
+      if (admin) {
+        await wallet.credit(admin._id, {
+          amount: price,
+          type: 'ai_subscription_revenue',
+          role: 'admin',
+          counterparty: req.user._id,
+          description: `Souscription IA (portefeuille) — ${pkg.name} (${req.user.school?.name || 'École'})`,
+          meta: { aiSubscription: String(sub._id), packageId: String(pkg._id), method: 'wallet' },
+        })
+      }
+    } catch (e) {
+      console.error('[subscribe-wallet:admin_credit] error:', e.message)
+    }
+
+    res.status(201).json({
+      success: true,
+      data: sub,
+      message: 'Souscription IA activée avec succès depuis votre portefeuille !',
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/ai/subscription/subscribe-mobile — souscrit via débit Mobile Money Ikeepay H2H
+router.post('/subscription/subscribe-mobile', ...directorOnly, async (req, res) => {
+  try {
+    const { packageId, phone, operator, country = 'CM', otp } = req.body
+    const sid = schoolId(req)
+    if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+    if (!packageId) return res.status(400).json({ message: 'Offre IA requise' })
+
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur Mobile Money requis pour le débit direct.' })
+    }
+
+    const pkg = await AiPackage.findById(packageId)
+    if (!pkg || !pkg.isActive) return res.status(404).json({ message: 'Offre IA introuvable ou indisponible' })
+
+    // Vérifie si une souscription active a encore du quota
+    const activeSub = await AiSubscription.findOne({
+      school: sid,
+      status: 'approved',
+      remainingQuestions: { $gt: 0 },
+    }).sort({ approvedAt: -1 })
+
+    if (activeSub) {
+      return res.status(400).json({
+        message: `Votre établissement dispose déjà d'une souscription active (${activeSub.remainingQuestions} questions restantes).`,
+      })
+    }
+
+    const reference = genRef('ais')
+    const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+    const amount = Number(pkg.price)
+
+    const intent = await PaymentIntent.create({
+      reference,
+      purpose: 'ai_subscription',
+      amount,
+      currency: targetCurrency,
+      payerPhone: rawPhone,
+      payerOperator: operator,
+      payerName: req.user.name,
+      payerEmail: req.user.email || '',
+      initiatedBy: req.user._id,
+      school: sid,
+      mode,
+      meta: {
+        packageId: String(pkg._id),
+        packageName: pkg.name,
+        totalQuestions: pkg.totalQuestions,
+        schoolId: String(sid),
+        directorId: String(req.user._id),
+      },
+    })
+
+    const result = await ikeepay.createCollection({
+      amount,
+      phone: rawPhone,
+      operator,
+      reference,
+      callbackUrl: callbackUrl(),
+      customerEmail: req.user.email || '',
+      country: normCountry,
+      currency: targetCurrency,
+      otp,
+    })
+
+    if (result.transaction_id || result.id) {
+      intent.providerTransactionId = result.transaction_id || result.id
+      await intent.save()
+    }
+
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+
+    res.json({
+      success: true,
+      reference,
+      amount,
+      mode,
+      currency: targetCurrency,
+      transaction: result,
+      payment_link: paymentLink,
+      message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money.',
+    })
+  } catch (err) {
+    console.error('subscribe-mobile error:', err.message)
+    res.status(err.status || 500).json({ message: err.message, data: err.data })
+  }
 })
 
 // GET /api/ai/subscription/status — directeur: statut + quota de son école
@@ -482,9 +706,34 @@ router.post('/chat', protect, rateLimit({ windowMs: 60000, max: 20 }), async (re
     const history = conversation.messages.slice(-10).map((m) => ({ role: m.role, content: m.content }))
     const userMessage = { role: 'user', content: String(message).trim() }
 
+    // Recherche web en direct (navigateur) pour enrichir la réponse et garantir une exactitude irréprochable
+    let webSearch = { results: [], query: '' }
+    try {
+      webSearch = await performWebSearch(userMessage.content)
+    } catch (searchErr) {
+      console.error('[AiChat web search error]:', searchErr.message)
+    }
+
+    const searchContext = buildSearchContext(webSearch.results, webSearch.query)
+
+    const basePrompt = cfg.systemPrompt || "Tu es l'assistant pédagogique et administratif d'excellence de KATD-SCHÜLE."
+    const accuracyInstruction = `
+CONSIGNES ESSENTIELLES :
+- Réponds toujours dans un français parfait, irréprochable et sans la moindre faute d'orthographe ou de syntaxe.
+- Sois rigoureux, exact, clair et exhaustif.
+- Si la question porte sur un sujet d'enseignement ou pédagogique, structure ta réponse avec méthode (concepts clés, définitions précises, formules ou démarches, exemples concrets).
+`
+
+    const effectiveSystemPrompt = [basePrompt, searchContext, accuracyInstruction].filter(Boolean).join('\n\n')
+
+    const chatConfig = {
+      ...(cfg.toObject ? cfg.toObject() : cfg),
+      systemPrompt: effectiveSystemPrompt,
+    }
+
     let result
     try {
-      result = await generateChatResponse({ messages: [...history, userMessage], config: cfg })
+      result = await generateChatResponse({ messages: [...history, userMessage], config: chatConfig })
     } catch (err) {
       const status = err instanceof OpenAiError ? err.status : 500
       return res.status(status).json({ message: err.message })
@@ -528,6 +777,11 @@ router.post('/chat', protect, rateLimit({ windowMs: 60000, max: 20 }), async (re
         remainingQuestions: updated.remainingQuestions,
         usedQuestions: updated.usedQuestions,
         totalQuestions: updated.totalQuestions,
+        webSearch: {
+          performed: webSearch.results.length > 0,
+          sourcesCount: webSearch.results.length,
+          sources: webSearch.results.map((r) => ({ title: r.title, link: r.link })),
+        },
       },
     })
   } catch (err) { res.status(500).json({ message: err.message }) }
