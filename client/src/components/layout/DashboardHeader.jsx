@@ -125,7 +125,22 @@ export default function DashboardHeader() {
                 <div className="text-xs text-gray-400">{user?.role ? roleLabel(user.role, school) : 'Admin école'}</div>
               </div>
               <button onClick={() => { setProfileOpen(true); setUserOpen(false); setPForm({ name: user?.name || '', phone: user?.phone || '' }) }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Mon profil</button>
-              <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Paramètres</button>
+              <button
+                onClick={() => {
+                  setUserOpen(false)
+                  if (user?.role === 'super_admin' || user?.role === 'admin') {
+                    navigate('/dashboard/parametres')
+                  } else if (user?.role === 'directeur') {
+                    navigate('/dashboard/page-ecole')
+                  } else {
+                    setProfileOpen(true)
+                    setPForm({ name: user?.name || '', phone: user?.phone || '' })
+                  }
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Paramètres
+              </button>
               <button
                 onClick={() => { setUserOpen(false); logout(); navigate('/') }}
                 className="w-full flex items-center gap-2 text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 hover:text-red-600 border-t border-gray-100"

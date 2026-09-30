@@ -11,9 +11,11 @@ const NEWS_SEEN_KEY = 'home_news_seen'
 
 const NAV_TABS = [
   { label: 'Social', path: '/social', icon: Globe2 },
+  { label: 'Blog', path: '/blogs', icon: Newspaper },
   { label: 'À propos', path: '/apropos', icon: Users },
   { label: 'Contacts', path: '/contacts', icon: Phone },
   { label: 'Aide', path: '/aide', icon: HelpCircle },
+  { label: 'CGU', path: '/cgu', icon: BookOpen },
   { label: 'Ressources', path: '/ressources', icon: BookMarked },
   { label: 'Nos écoles', path: '/ecoles', icon: School },
   { label: 'Tarifs', path: '/tarifs', icon: GraduationCap },

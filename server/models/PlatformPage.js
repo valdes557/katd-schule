@@ -21,6 +21,9 @@ const platformPageSchema = new mongoose.Schema(
       },
     ],
 
+    // Email de réception des formulaires de contact
+    contactNotificationEmail: { type: String, default: 'royalkatdcameroun@gmail.com' },
+
     // Aide: support, FAQ, privacy, terms
     help: {
       support: { type: String, default: '' },

@@ -7,7 +7,11 @@ const { protect } = require('../middleware/auth')
 const User = require('../models/User')
 const Wallet = require('../models/Wallet')
 const WalletTransaction = require('../models/WalletTransaction')
+const PaymentIntent = require('../models/PaymentIntent')
+const WithdrawalRequest = require('../models/WithdrawalRequest')
 const wallet = require('../services/walletService')
+const ikeepay = require('../services/ikeepayService')
+const bcrypt = require('bcryptjs')
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'valdeslando15@gmail.com').toLowerCase()
 function isAdmin(u) { return u && (u.role === 'super_admin' || u.role === 'admin' || (u.email || '').toLowerCase() === ADMIN_EMAIL) }
@@ -74,6 +78,250 @@ router.get('/', protect, adminOnly, async (req, res) => {
     const paged = rows.slice((page - 1) * limit, (page - 1) * limit + limit)
     res.json({ success: true, merchants: paged, total, page, pages, stats })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/admin/merchants/subscriptions — Total revenus des souscriptions marchands, répartition mensuelle, historique et frais de transaction
+router.get('/subscriptions', protect, adminOnly, async (req, res) => {
+  try {
+    const [intents, adminUser] = await Promise.all([
+      PaymentIntent.find({ purpose: 'merchant', status: 'approved' })
+        .populate('initiatedBy', 'name email phone matricule walletAccountNo merchantSince')
+        .sort({ createdAt: -1 })
+        .lean(),
+      wallet.getPlatformAdmin(),
+    ])
+
+    const adminWallet = adminUser ? await Wallet.findOne({ owner: adminUser._id }).lean() : null
+    const adminBalance = adminWallet?.balance || 0
+
+    // Grouping by month
+    const monthsMap = {}
+    let totalRevenue = 0
+
+    const history = intents.map((i) => {
+      const date = i.createdAt
+      const amount = i.amount || 6933
+      totalRevenue += amount
+
+      const d = new Date(date)
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const monthLabel = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+
+      if (!monthsMap[monthKey]) {
+        monthsMap[monthKey] = { key: monthKey, label: monthLabel, count: 0, total: 0 }
+      }
+      monthsMap[monthKey].count += 1
+      monthsMap[monthKey].total += amount
+
+      const user = i.initiatedBy || {}
+      return {
+        _id: i._id,
+        reference: i.reference,
+        amount,
+        currency: i.currency || 'XAF',
+        date: i.createdAt,
+        operator: i.payerOperator || 'momo',
+        phone: i.payerPhone || user.phone || '',
+        user: {
+          _id: user._id,
+          name: user.name || 'Marchand',
+          email: user.email || '',
+          matricule: user.matricule || '',
+          accountNo: user.walletAccountNo || '',
+          merchantSince: user.merchantSince || i.createdAt,
+        },
+      }
+    })
+
+    const byMonth = Object.values(monthsMap).sort((a, b) => b.key.localeCompare(a.key))
+
+    // Track monthly & cumulative transaction fees and operations for all active merchants
+    const allMerchants = await User.find({ isMerchant: true })
+      .select('name email phone matricule walletAccountNo merchantSince')
+      .lean()
+
+    const merchantIds = allMerchants.map((m) => m._id)
+
+    // Aggrégation des transactions des marchands
+    const merchantTxs = await WalletTransaction.aggregate([
+      { $match: { owner: { $in: merchantIds } } },
+      {
+        $group: {
+          _id: '$owner',
+          commissionTotal: {
+            $sum: { $cond: [{ $eq: ['$type', 'merchant_commission'] }, '$amount', 0] },
+          },
+          commissionCount: {
+            $sum: { $cond: [{ $eq: ['$type', 'merchant_commission'] }, 1, 0] },
+          },
+          volumeDeposit: {
+            $sum: { $cond: [{ $eq: ['$type', 'deposit'] }, '$amount', 0] },
+          },
+          volumeWithdrawal: {
+            $sum: { $cond: [{ $eq: ['$type', 'withdrawal'] }, '$amount', 0] },
+          },
+          volumeTransfer: {
+            $sum: { $cond: [{ $eq: ['$type', 'transfer'] }, '$amount', 0] },
+          },
+          totalOperations: { $sum: 1 },
+        },
+      },
+    ])
+
+    const txMap = {}
+    for (const r of merchantTxs) {
+      txMap[String(r._id)] = r
+    }
+
+    const merchantFees = allMerchants.map((m) => {
+      const stats = txMap[String(m._id)] || {}
+      return {
+        _id: m._id,
+        name: m.name,
+        email: m.email,
+        phone: m.phone || '',
+        matricule: m.matricule || '',
+        walletAccountNo: m.walletAccountNo || '',
+        merchantSince: m.merchantSince,
+        commissionTotal: stats.commissionTotal || 0,
+        commissionCount: stats.commissionCount || 0,
+        volumeDeposit: stats.volumeDeposit || 0,
+        volumeWithdrawal: stats.volumeWithdrawal || 0,
+        volumeTransfer: stats.volumeTransfer || 0,
+        totalOperations: stats.totalOperations || 0,
+      }
+    })
+
+    res.json({
+      success: true,
+      totalRevenue,
+      totalCount: history.length,
+      adminBalance,
+      byMonth,
+      history,
+      merchantFees,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/admin/merchants/subscriptions/withdraw — Retrait Mobile Money depuis les fonds de souscriptions marchands
+router.post('/subscriptions/withdraw', protect, adminOnly, async (req, res) => {
+  try {
+    const { amount, momoNumber, momoOperator, accountName, country = 'CM', pin, password } = req.body
+    const amt = Number(amount)
+    if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant de retrait invalide' })
+    if (!momoNumber || !String(momoNumber).trim()) {
+      return res.status(400).json({ message: 'Le numéro de téléphone Mobile Money est obligatoire' })
+    }
+    if (!momoOperator) {
+      return res.status(400).json({ message: "L'opérateur Mobile Money est requis (mtn, orange, moov, celtiis)" })
+    }
+
+    // Authentification de sécurité : vérification du PIN ou du mot de passe
+    const u = await User.findById(req.user._id).select('+walletPin +password')
+    let authValid = false
+    if (pin && u?.walletPin) {
+      authValid = await bcrypt.compare(String(pin), u.walletPin)
+    }
+    if (!authValid && password && u?.password) {
+      authValid = await bcrypt.compare(String(password), u.password)
+    }
+    if (!authValid) {
+      return res.status(401).json({ message: 'Code PIN ou mot de passe incorrect' })
+    }
+
+    // Portefeuille admin
+    let w = await Wallet.findOne({ owner: req.user._id })
+    if (!w) {
+      const superAdmin = await wallet.getPlatformAdmin()
+      if (superAdmin && String(superAdmin._id) !== String(req.user._id)) {
+        w = await Wallet.findOne({ owner: superAdmin._id })
+      }
+    }
+    if (!w) {
+      w = await wallet.getOrCreateWallet(req.user._id, { role: 'admin' })
+    }
+
+    if (w.balance < amt) {
+      return res.status(400).json({
+        message: `Solde insuffisant pour ce retrait. Solde disponible : ${w.balance.toLocaleString('fr-FR')} FCFA`,
+      })
+    }
+
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+    const providerRef = 'wd_mch_' + Date.now()
+    const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
+    const holderName = String(accountName || req.user.name || 'Admin KATD').trim()
+
+    // 1. Déclenche le payout direct via Ikeepay vers le Mobile Money de l'administrateur
+    let payout
+    try {
+      payout = await ikeepay.createPayout({
+        amount: amt,
+        phone: String(momoNumber).trim(),
+        operator: momoOperator,
+        accountName: holderName,
+        country: normCountry,
+        currency: targetCurrency,
+        reference: providerRef,
+        callbackUrl: base + '/api/payments/webhook',
+      })
+    } catch (ikeepayErr) {
+      console.error('[Admin Merchant Subscriptions Payout Error]:', ikeepayErr.message, ikeepayErr.data || '')
+      return res.status(400).json({
+        message: `Ikeepay a retourné une erreur : ${ikeepayErr.message}`,
+      })
+    }
+
+    const payoutId = payout?.transaction_id || payout?.id || providerRef
+
+    // 2. Débit atomique du portefeuille admin
+    const debitRes = await wallet.debit(w.owner, {
+      amount: amt,
+      type: 'withdrawal',
+      description: `Retrait souscriptions marchands vers ${momoOperator.toUpperCase()} ${momoNumber} (${holderName})`,
+      meta: {
+        momoNumber,
+        momoOperator,
+        accountName: holderName,
+        payoutId,
+        providerRef,
+        source: 'merchant_subscriptions',
+      },
+    })
+
+    // 3. Enregistrement de la demande de retrait pour la traçabilité
+    await WithdrawalRequest.create({
+      user: w.owner,
+      amount: amt,
+      netAmount: amt,
+      fee: 0,
+      currency: targetCurrency,
+      momoNumber: String(momoNumber).trim(),
+      momoOperator,
+      accountName: holderName,
+      status: 'paid',
+      processedAt: new Date(),
+      providerPayoutId: payoutId,
+      providerRef,
+      mode: payout?.mode || 'live',
+      role: 'admin',
+      school: null,
+      note: 'Retrait automatique des souscriptions marchands (Payout Ikeepay)',
+    })
+
+    res.json({
+      success: true,
+      message: `Retrait de ${amt.toLocaleString('fr-FR')} FCFA envoyé avec succès vers ${momoOperator.toUpperCase()} (${momoNumber}) !`,
+      balance: debitRes.wallet.balance,
+      payoutId,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 // GET /api/admin/merchants/:id — détail marchand + dernières transactions (toutes catégories)

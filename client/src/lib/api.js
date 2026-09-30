@@ -403,6 +403,13 @@ export const platformApi = {
   },
   deleteResource: (id) => api.del(`/platform/resources/${id}`),
   getPrivacyPolicy: () => api.get('/platform/privacy-policy'),
+  sendContactMessage: (data) => api.post('/platform/contact-message', data),
+  getContactMessages: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/platform/contact-messages' + (qs ? '?' + qs : ''))
+  },
+  markContactMessageRead: (id) => api.put(`/platform/contact-messages/${id}/read`),
+  deleteContactMessage: (id) => api.del(`/platform/contact-messages/${id}`),
 }
 
 // Boost d'une publication (espace utilisateur /u). Le prix est TOUJOURS résolu côté serveur ;
@@ -1035,6 +1042,7 @@ export const aiApi = {
   // Config globale (admin)
   getConfig: () => api.get('/ai/config'),
   updateConfig: (data) => api.put('/ai/config', data),
+  testKey: (data) => api.post('/ai/test-key', data),
   // Offres (admin: CRUD ; directeur: liste active)
   listPackages: () => api.get('/ai/packages'),
   createPackage: (data) => api.post('/ai/packages', data),
@@ -1168,6 +1176,11 @@ export const adminMerchantsApi = {
   get: (id) => api.get('/admin/merchants/' + id),
   grant: (id, isMerchant) => api.put('/admin/merchants/' + id + '/grant', { isMerchant }),
   fund: (id, amount, reason) => api.put('/admin/merchants/' + id + '/fund', { amount, reason }),
+  subscriptions: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/admin/merchants/subscriptions' + (qs ? '?' + qs : ''))
+  },
+  withdrawSubscriptions: (payload) => api.post('/admin/merchants/subscriptions/withdraw', payload),
 }
 
 // Programme actionnaires : plans/termes + souscription (utilisateur), gestion (super admin)

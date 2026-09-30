@@ -255,35 +255,8 @@ router.get('/:idOrSlug', optionalAuth, async (req, res) => {
     const userId = req.user?._id ? String(req.user._id) : null
     const isLiked = userId ? post.likes.some((l) => String(l) === userId) : false
 
-    // VÉRIFICATION DE CONNEXION POUR LA LECTURE COMPLÈTE
-    // Si l'utilisateur n'est pas connecté : on renvoie les métadonnées + l'amorce mais on masque le contenu intégral
-    const isAuthenticated = !!req.user
-    if (!isAuthenticated) {
-      return res.json({
-        success: true,
-        requiresAuth: true,
-        data: {
-          _id: post._id,
-          title: post.title,
-          slug: post.slug,
-          excerpt: post.excerpt,
-          coverImage: post.coverImage,
-          categoryName: post.categoryName,
-          category: post.category,
-          authorName: post.authorName || post.author?.name || 'Auteur',
-          authorRole: post.authorRole || post.author?.role || 'Personnel',
-          authorAvatar: post.authorAvatar || post.author?.avatar || '',
-          schoolName: post.schoolName || '',
-          views: post.views,
-          likesCount: post.likes?.length || 0,
-          commentsCount: post.comments?.length || 0,
-          sharesCount: post.sharesCount || 0,
-          createdAt: post.createdAt,
-          // Contenu bridé : amorce seulement
-          teaserContent: post.excerpt || post.content.replace(/<[^>]+>/g, '').slice(0, 300) + '...',
-        },
-      })
-    }
+    // Lecture publique complète de l'article (accessible à tous les visiteurs et aux robots Google)
+    // Seules les actions d'écriture (aimer, commenter) nécessitent une connexion.
 
     // Utilisateur connecté : contenu complet et commentaires
     res.json({

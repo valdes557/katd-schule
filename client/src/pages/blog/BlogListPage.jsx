@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useLocation } from 'react-router-dom'
 import {
   Newspaper, Search, Eye, Heart, MessageSquare,
   Calendar, User, ArrowRight, Loader2, Sparkles, SlidersHorizontal
@@ -7,6 +7,8 @@ import {
 import { blogsApi } from '../../lib/api'
 import SocialShareButtons from '../../components/blog/SocialShareButtons'
 import BlogAdSenseBanner from '../../components/blog/BlogAdSenseBanner'
+import PublicHeader from '../../components/layout/PublicHeader'
+import Footer from '../../components/layout/Footer'
 
 export default function BlogListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -76,7 +78,10 @@ export default function BlogListPage() {
     return groups
   }, [posts, isCategorizedView])
 
-  return (
+  const location = useLocation()
+  const isPublicView = !location.pathname.startsWith('/u')
+
+  const content = (
     <div className="space-y-6 max-w-5xl mx-auto pb-12 animate-in fade-in duration-200">
       {/* En-tête */}
       <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
@@ -230,13 +235,28 @@ export default function BlogListPage() {
       <BlogAdSenseBanner format="auto" />
     </div>
   )
+
+  if (isPublicView) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <PublicHeader />
+        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
+          {content}
+        </main>
+        <Footer />
+      </div>
+    )
+  }
+
+  return content
 }
 
 function PostArticleCard({ post }) {
+  const targetLink = `/blogs/${post.slug || post._id}`
   return (
     <article className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col group">
       {/* Image de couverture */}
-      <Link to={`/u/blogs/${post.slug || post._id}`} className="relative h-48 w-full bg-slate-100 overflow-hidden block">
+      <Link to={targetLink} className="relative h-48 w-full bg-slate-100 overflow-hidden block">
         {post.coverImage ? (
           <img
             src={post.coverImage}
@@ -267,7 +287,7 @@ function PostArticleCard({ post }) {
             </span>
           </div>
 
-          <Link to={`/u/blogs/${post.slug || post._id}`}>
+          <Link to={targetLink}>
             <h2 className="font-bold text-gray-900 text-base leading-snug group-hover:text-blue-600 transition-colors line-clamp-2 mb-2">
               {post.title}
             </h2>
@@ -294,7 +314,7 @@ function PostArticleCard({ post }) {
             </div>
 
             <Link
-              to={`/u/blogs/${post.slug || post._id}`}
+              to={targetLink}
               className="text-blue-600 font-semibold text-xs flex items-center gap-1 hover:gap-1.5 transition-all"
             >
               Lire <ArrowRight size={13} />

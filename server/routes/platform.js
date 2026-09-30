@@ -12,7 +12,8 @@ const { protect, authorize } = require('../middleware/auth')
 const { upload, videoThumbnailUrl } = require('../config/cloudinary')
 const pushService = require('../services/pushService')
 const boostFeedService = require('../services/boostFeedService')
-const boostPricing = require('../services/boostPricingService')
+const ContactMessage = require('../models/ContactMessage')
+const { sendEmail } = require('../utils/emailService')
 const http = require('http')
 const https = require('https')
 
@@ -82,6 +83,110 @@ router.post('/upload', protect, authorize('super_admin'), upload.array('images',
     const urls = req.files?.map((f) => f.path) || []
     res.json({ success: true, data: urls })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ===================== MESSAGES DE CONTACT (Public + Admin) =====================
+
+// POST /api/platform/contact-message — Public : envoi d'un message depuis le formulaire de contact
+router.post('/contact-message', async (req, res) => {
+  try {
+    const { name, email, phone, subject, message } = req.body
+    if (!name || !name.trim()) return res.status(400).json({ message: 'Le nom est obligatoire.' })
+    if (!email || !email.trim()) return res.status(400).json({ message: "L'adresse email est obligatoire." })
+    if (!message || !message.trim()) return res.status(400).json({ message: 'Le message ne peut pas être vide.' })
+
+    const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || ''
+    const msgDoc = await ContactMessage.create({
+      name: name.trim(),
+      email: email.trim(),
+      phone: (phone || '').trim(),
+      subject: (subject || 'Message depuis le site KATD-SCHÜLE').trim(),
+      message: message.trim(),
+      ip: String(clientIp).split(',')[0].trim(),
+    })
+
+    // Récupération de l'email de notification configuré par l'admin (défaut : royalkatdcameroun@gmail.com)
+    let page = await PlatformPage.findOne()
+    const targetEmail = page?.contactNotificationEmail || 'royalkatdcameroun@gmail.com'
+
+    // Envoi de l'email de notification
+    try {
+      await sendEmail({
+        to: targetEmail,
+        subject: `[KATD-SCHÜLE] Nouveau message de ${name.trim()} : ${subject || 'Contact'}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; rounded: 12px;">
+            <h2 style="color: #2563eb; margin-top: 0;">📬 Nouveau message de contact — KATD-SCHÜLE</h2>
+            <p style="font-size: 14px; color: #4b5563;">Un utilisateur a soumis le formulaire de contact sur votre site :</p>
+            <div style="background-color: #f9fafb; padding: 16px; border-radius: 8px; margin: 16px 0;">
+              <p style="margin: 6px 0;"><strong>Nom :</strong> ${name.trim()}</p>
+              <p style="margin: 6px 0;"><strong>Email :</strong> <a href="mailto:${email.trim()}">${email.trim()}</a></p>
+              ${phone ? `<p style="margin: 6px 0;"><strong>Téléphone :</strong> ${phone.trim()}</p>` : ''}
+              <p style="margin: 6px 0;"><strong>Sujet :</strong> ${subject || 'Contact général'}</p>
+              <p style="margin: 6px 0;"><strong>Date :</strong> ${new Date().toLocaleString('fr-FR')}</p>
+            </div>
+            <div style="background-color: #ffffff; padding: 16px; border-left: 4px solid #2563eb; margin: 16px 0;">
+              <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #1f2937; white-space: pre-wrap;">${message.trim()}</p>
+            </div>
+            <p style="font-size: 12px; color: #9ca3af; margin-top: 24px; border-top: 1px solid #f3f4f6; padding-top: 12px;">
+              Vous pouvez répondre directement à cet email pour contacter l'expéditeur (${email.trim()}).
+            </p>
+          </div>
+        `,
+      })
+    } catch (mailErr) {
+      console.error('[Contact Form Email Error]:', mailErr.message)
+    }
+
+    res.json({
+      success: true,
+      message: 'Votre message a été transmis avec succès à notre équipe !',
+      id: msgDoc._id,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/platform/contact-messages — Super Admin : liste des messages reçus
+router.get('/contact-messages', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const { page = 1, limit = 50 } = req.query
+    const skip = (Number(page) - 1) * Number(limit)
+    const [messages, total, unread] = await Promise.all([
+      ContactMessage.find().sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+      ContactMessage.countDocuments(),
+      ContactMessage.countDocuments({ read: false }),
+    ])
+    res.json({ success: true, messages, total, unread, page: Number(page) })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// PUT /api/platform/contact-messages/:id/read — Super Admin : marquer un message comme lu
+router.put('/contact-messages/:id/read', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    const msg = await ContactMessage.findByIdAndUpdate(
+      req.params.id,
+      { read: true, readAt: new Date() },
+      { new: true }
+    )
+    if (!msg) return res.status(404).json({ message: 'Message introuvable' })
+    res.json({ success: true, message: msg })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// DELETE /api/platform/contact-messages/:id — Super Admin : supprimer un message
+router.delete('/contact-messages/:id', protect, authorize('super_admin'), async (req, res) => {
+  try {
+    await ContactMessage.findByIdAndDelete(req.params.id)
+    res.json({ success: true, message: 'Message supprimé' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 // ===================== SOCIAL FEED (platform-level posts) =====================

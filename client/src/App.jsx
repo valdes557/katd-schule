@@ -148,6 +148,7 @@ const AdminPlatformPage = lazyPage(() => import('./pages/AdminPlatformPage'))
 const SocialPage = lazyPage(() => import('./pages/SocialPage'))
 const AboutPage = lazyPage(() => import('./pages/AboutPage'))
 const ContactsPage = lazyPage(() => import('./pages/ContactsPage'))
+const CguPage = lazyPage(() => import('./pages/CguPage'))
 const AidePage = lazyPage(() => import('./pages/AidePage'))
 const ResourcesPage = lazyPage(() => import('./pages/ResourcesPage'))
 const ExperiencesPage = lazyPage(() => import('./pages/ExperiencesPage'))
@@ -321,6 +322,7 @@ export default function App() {
       <Route path="/social" element={<SocialPage />} />
       <Route path="/apropos" element={<AboutPage />} />
       <Route path="/contacts" element={<ContactsPage />} />
+      <Route path="/cgu" element={<CguPage />} />
       <Route path="/aide" element={<AidePage />} />
       <Route path="/ressources" element={<ResourcesPage />} />
       <Route path="/experiences" element={<ExperiencesPage />} />
@@ -390,6 +392,7 @@ export default function App() {
         <Route path="repetitions" element={<TutoringPage />} />
         <Route path="news" element={<NewsPage />} />
         <Route path="plateforme" element={<AdminPlatformPage />} />
+        <Route path="parametres" element={<AdminPlatformPage />} />
         <Route path="boosts-admin" element={<AdminBoostsPage />} />
         <Route path="matieres-ecoles" element={<AdminSchoolSubjectsPage />} />
 

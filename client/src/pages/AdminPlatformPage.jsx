@@ -4,7 +4,7 @@ import {
   Globe2, Plus, Trash2, CheckCircle, XCircle,
   Image, Film, Save, Loader2, Star,
   MessageCircle, CreditCard, Phone, Info, Pencil, X, FileText, Link, Music,
-  KeyRound, Eye, EyeOff, Send, ShieldCheck, Sparkles,
+  KeyRound, Eye, EyeOff, Send, ShieldCheck, Sparkles, Mail, Inbox, Clock,
 } from 'lucide-react'
 import { platformApi, plansApi, newsApi, walletAdminApi } from '../lib/api'
 import { uploadToCloudinary } from '../lib/cloudinaryUpload'
@@ -18,10 +18,11 @@ import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 const TABS = [
   { id: 'identity', label: 'Identité', icon: Pencil },
   { id: 'privacy', label: 'Politique de confidentialité', icon: ShieldCheck },
+  { id: 'cgu', label: "Conditions Générales (CGU)", icon: FileText },
   { id: 'posts', label: 'Social', icon: Globe2 },
   { id: 'resources', label: 'Ressources', icon: FileText },
   { id: 'about', label: 'À propos', icon: Info },
-  { id: 'contacts', label: 'Contacts', icon: Phone },
+  { id: 'contacts', label: 'Contacts & Messages', icon: Phone },
   { id: 'support', label: 'Donations', icon: CreditCard },
   { id: 'experiences', label: 'Témoignages', icon: Star },
   { id: 'payments', label: 'Paiements', icon: CreditCard },
@@ -201,6 +202,92 @@ function PrivacyPolicyPanel({ platformData, refresh }) {
           onClose={() => setShowPreview(false)}
         />
       )}
+    </div>
+  )
+}
+
+// ─── CGU Panel (Conditions Générales d'Utilisation) ──────────────────────────
+function CguPanel({ platformData, refresh }) {
+  const [terms, setTerms] = useState(platformData?.help?.terms || '')
+  const [saving, setSaving] = useState(false)
+  const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    setTerms(platformData?.help?.terms || '')
+  }, [platformData?.help?.terms])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSuccess('')
+    try {
+      const updatedHelp = { ...(platformData?.help || {}), terms: terms.trim() }
+      await platformApi.update({ help: updatedHelp })
+      cache.invalidate('/platform')
+      refresh()
+      setSuccess("Conditions Générales d'Utilisation (CGU) enregistrées avec succès !")
+      setTimeout(() => setSuccess(''), 5000)
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la sauvegarde')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-6 space-y-5 max-w-3xl">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <FileText size={20} className="text-blue-600" /> Conditions Générales d'Utilisation (CGU)
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            Ce texte officiel définit les règles régissant l'utilisation de la plateforme KATD-SCHÜLE. Il est affiché publiquement sur la page <a href="/cgu" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">/cgu</a> accessible depuis le menu principal et le pied de page.
+          </p>
+        </div>
+        <a
+          href="/cgu"
+          target="_blank"
+          rel="noreferrer"
+          className="btn-secondary text-xs flex items-center gap-1.5 shrink-0"
+        >
+          <Eye size={14} /> Voir la page publique
+        </a>
+      </div>
+
+      {success && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl p-3 flex items-center gap-2">
+          <CheckCircle size={15} className="text-emerald-600" />
+          <span>{success}</span>
+        </div>
+      )}
+
+      <div>
+        <label className="text-xs font-semibold text-gray-700 block mb-1.5">
+          Contenu des Conditions Générales d'Utilisation
+        </label>
+        <textarea
+          rows={16}
+          value={terms}
+          onChange={(e) => setTerms(e.target.value)}
+          placeholder="Rédigez ici les termes et conditions générales d'utilisation de KATD-SCHÜLE..."
+          className="input w-full font-mono text-xs sm:text-sm leading-relaxed p-4 resize-y"
+        />
+        <p className="text-[11px] text-gray-400 mt-1">
+          Astuce : vous pouvez structurer le texte avec des titres d'articles (ex: Article 1 - Objet, Article 2 - Inscription, etc.).
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-primary text-sm flex items-center gap-2"
+        >
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          Enregistrer les CGU
+        </button>
+      </div>
     </div>
   )
 }
@@ -803,11 +890,47 @@ function AboutPanel({ platformData, refresh }) {
   )
 }
 
-// ─── Contacts Panel ───────────────────────────────────────────────────────────
+// ─── Contacts Panel & Messages Inbox ─────────────────────────────────────────
 function ContactsPanel({ platformData, refresh }) {
   const [contacts, setContacts] = useState(platformData?.contacts || [])
+  const [notificationEmail, setNotificationEmail] = useState(
+    platformData?.contactNotificationEmail || 'royalkatdcameroun@gmail.com'
+  )
   const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState('')
   const [help, setHelp] = useState(platformData?.help || { support: '', faq: '', privacy: '', terms: '' })
+
+  // Messages inbox state
+  const [messages, setMessages] = useState([])
+  const [totalMessages, setTotalMessages] = useState(0)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [loadingMessages, setLoadingMessages] = useState(true)
+  const [selectedMessage, setSelectedMessage] = useState(null)
+  const [msgActionId, setMsgActionId] = useState(null)
+
+  useEffect(() => {
+    setContacts(platformData?.contacts || [])
+    setNotificationEmail(platformData?.contactNotificationEmail || 'royalkatdcameroun@gmail.com')
+    setHelp(platformData?.help || { support: '', faq: '', privacy: '', terms: '' })
+  }, [platformData])
+
+  const fetchMessages = async () => {
+    setLoadingMessages(true)
+    try {
+      const res = await platformApi.getContactMessages()
+      setMessages(res.messages || [])
+      setTotalMessages(res.total || 0)
+      setUnreadCount(res.unread || 0)
+    } catch (err) {
+      console.error('[Inbox Error]:', err)
+    } finally {
+      setLoadingMessages(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchMessages()
+  }, [])
 
   const addContact = () => setContacts([...contacts, { type: 'phone', label: '', value: '' }])
   const removeContact = (i) => setContacts(contacts.filter((_, idx) => idx !== i))
@@ -817,64 +940,357 @@ function ContactsPanel({ platformData, refresh }) {
     setContacts(c)
   }
 
-  const handleSave = async () => {
+  const handleSaveConfig = async () => {
     setSaving(true)
+    setSaveSuccess('')
     try {
-      await platformApi.update({ contacts, help })
+      await platformApi.update({
+        contacts,
+        help,
+        contactNotificationEmail: notificationEmail.trim() || 'royalkatdcameroun@gmail.com',
+      })
+      cache.invalidate('/platform')
       refresh()
-    } catch (err) { alert(err.message) }
-    setSaving(false)
+      setSaveSuccess('Configuration des contacts enregistrée avec succès !')
+      setTimeout(() => setSaveSuccess(''), 5000)
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la sauvegarde')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleRead = async (msg) => {
+    setMsgActionId(msg._id)
+    try {
+      await platformApi.markContactMessageRead(msg._id)
+      setMessages((prev) =>
+        prev.map((m) => (m._id === msg._id ? { ...m, read: !m.read } : m))
+      )
+      setUnreadCount((c) => Math.max(0, msg.read ? c + 1 : c - 1))
+      if (selectedMessage && selectedMessage._id === msg._id) {
+        setSelectedMessage({ ...selectedMessage, read: !selectedMessage.read })
+      }
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setMsgActionId(null)
+    }
+  }
+
+  const handleDeleteMessage = async (id) => {
+    if (!confirm('Voulez-vous vraiment supprimer ce message ?')) return
+    setMsgActionId(id)
+    try {
+      await platformApi.deleteContactMessage(id)
+      setMessages((prev) => prev.filter((m) => m._id !== id))
+      setTotalMessages((t) => Math.max(0, t - 1))
+      if (selectedMessage && selectedMessage._id === id) {
+        setSelectedMessage(null)
+      }
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setMsgActionId(null)
+    }
+  }
+
+  const openMessage = async (msg) => {
+    setSelectedMessage(msg)
+    if (!msg.read) {
+      try {
+        await platformApi.markContactMessageRead(msg._id)
+        setMessages((prev) =>
+          prev.map((m) => (m._id === msg._id ? { ...m, read: true } : m))
+        )
+        setUnreadCount((c) => Math.max(0, c - 1))
+      } catch (_) {}
+    }
   }
 
   return (
     <div className="space-y-6">
+      {/* ── Coordonnées & Email de notification ── */}
       <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-gray-900">Coordonnées de contact</h3>
-          <button onClick={addContact} className="btn-ghost text-sm border border-gray-200">
-            <Plus size={13} /> Ajouter
+        <div>
+          <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+            <Mail size={16} className="text-blue-600" /> Email de réception des messages
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            Les messages soumis via le formulaire de contact du site seront automatiquement envoyés par email à cette adresse.
+          </p>
+        </div>
+
+        <div className="max-w-md">
+          <label className="text-xs font-semibold text-gray-700 block mb-1">
+            Adresse email destinataire des formulaires
+          </label>
+          <input
+            type="email"
+            value={notificationEmail}
+            onChange={(e) => setNotificationEmail(e.target.value)}
+            className="input text-sm w-full"
+            placeholder="royalkatdcameroun@gmail.com"
+          />
+          <p className="text-[11px] text-gray-400 mt-1">
+            Défaut : <span className="font-mono">royalkatdcameroun@gmail.com</span>. L'envoi est assuré par l'infrastructure SMTP professionnelle.
+          </p>
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h4 className="text-sm font-bold text-gray-900">Coordonnées affichées sur le site</h4>
+              <p className="text-xs text-gray-500">Boutons cliquables affichés sur la page d'accueil (WhatsApp, téléphone, email).</p>
+            </div>
+            <button onClick={addContact} className="btn-ghost text-xs border border-gray-200">
+              <Plus size={13} /> Ajouter un contact
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {contacts.map((c, i) => (
+              <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center bg-gray-50/60 p-2.5 rounded-lg border border-gray-100">
+                <select value={c.type} onChange={(e) => updateContact(i, 'type', e.target.value)} className="input text-xs">
+                  <option value="phone">Téléphone</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="email">Email</option>
+                </select>
+                <input value={c.label} onChange={(e) => updateContact(i, 'label', e.target.value)} className="input text-xs" placeholder="Libellé (ex: Support WhatsApp)" />
+                <div className="flex gap-1">
+                  <input value={c.value} onChange={(e) => updateContact(i, 'value', e.target.value)} className="input text-xs flex-1" placeholder="+237 6..." />
+                  <button onClick={() => removeContact(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {saveSuccess && (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg p-2.5 flex items-center gap-2">
+            <CheckCircle size={14} className="text-emerald-600" />
+            <span>{saveSuccess}</span>
+          </div>
+        )}
+
+        <div className="pt-2">
+          <button onClick={handleSaveConfig} disabled={saving} className="btn-primary text-sm flex items-center gap-2">
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Enregistrer les coordonnées & l'email
           </button>
         </div>
-        {contacts.map((c, i) => (
-          <div key={i} className="grid grid-cols-3 gap-2 items-center">
-            <select value={c.type} onChange={(e) => updateContact(i, 'type', e.target.value)} className="input text-sm">
-              <option value="phone">Téléphone</option>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="email">Email</option>
-            </select>
-            <input value={c.label} onChange={(e) => updateContact(i, 'label', e.target.value)} className="input text-sm" placeholder="Label" />
-            <div className="flex gap-1">
-              <input value={c.value} onChange={(e) => updateContact(i, 'value', e.target.value)} className="input text-sm flex-1" placeholder="Valeur" />
-              <button onClick={() => removeContact(i)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={14} /></button>
+      </div>
+
+      {/* ── Boîte de réception des messages de contact ── */}
+      <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Inbox size={18} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                Messages de contact reçus
+                {unreadCount > 0 && (
+                  <span className="bg-blue-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
+                    {unreadCount} non lu{unreadCount > 1 ? 's' : ''}
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-gray-500">
+                Total de {totalMessages} message{totalMessages > 1 ? 's' : ''} reçu{totalMessages > 1 ? 's' : ''} depuis le site.
+              </p>
             </div>
           </div>
-        ))}
-      </div>
+          <button
+            onClick={fetchMessages}
+            disabled={loadingMessages}
+            className="btn-ghost text-xs border border-gray-200"
+          >
+            {loadingMessages ? <Loader2 size={12} className="animate-spin" /> : 'Actualiser'}
+          </button>
+        </div>
 
-      <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-4">
-        <h3 className="text-sm font-bold text-gray-900">Sections Aide</h3>
-        {[
-          { key: 'support', label: 'Support' },
-          { key: 'faq', label: 'FAQ' },
-          { key: 'privacy', label: 'Confidentialité' },
-          { key: 'terms', label: 'Conditions' },
-        ].map(({ key, label }) => (
-          <div key={key}>
-            <label className="text-xs font-medium text-gray-700 mb-1 block">{label}</label>
-            <textarea
-              value={help[key] || ''}
-              onChange={(e) => setHelp({ ...help, [key]: e.target.value })}
-              rows={3}
-              className="input text-sm resize-none w-full"
-              placeholder={`Contenu pour "${label}"...`}
-            />
+        {loadingMessages ? (
+          <div className="py-10 text-center">
+            <Loader2 size={24} className="animate-spin text-blue-600 mx-auto mb-2" />
+            <p className="text-xs text-gray-400">Chargement de la boîte de réception...</p>
           </div>
-        ))}
+        ) : messages.length === 0 ? (
+          <div className="py-12 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+            <Mail size={32} className="text-gray-300 mx-auto mb-2" />
+            <p className="text-sm font-medium text-gray-700">Aucun message pour le moment</p>
+            <p className="text-xs text-gray-400 mt-1">Les messages soumis par les visiteurs apparaîtront ici.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 text-gray-500 font-semibold bg-gray-50/70">
+                  <th className="py-2.5 px-3">Statut</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Expéditeur</th>
+                  <th className="py-2.5 px-3">Sujet & Aperçu</th>
+                  <th className="py-2.5 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {messages.map((m) => (
+                  <tr
+                    key={m._id}
+                    className={`hover:bg-blue-50/40 transition-colors ${
+                      !m.read ? 'bg-blue-50/20 font-semibold' : ''
+                    }`}
+                  >
+                    <td className="py-2.5 px-3">
+                      <span
+                        className={`inline-block w-2.5 h-2.5 rounded-full ${
+                          m.read ? 'bg-gray-300' : 'bg-blue-600 animate-pulse'
+                        }`}
+                        title={m.read ? 'Message lu' : 'Nouveau message non lu'}
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-gray-500 whitespace-nowrap">
+                      {new Date(m.createdAt).toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <div className="text-gray-900 font-medium">{m.name}</div>
+                      <div className="text-gray-500 text-[11px]">{m.email}</div>
+                      {m.phone && <div className="text-gray-400 text-[10px]">{m.phone}</div>}
+                    </td>
+                    <td className="py-2.5 px-3 max-w-xs">
+                      <div className="text-gray-900 truncate">{m.subject || 'Sans objet'}</div>
+                      <p className="text-gray-500 text-[11px] truncate font-normal">{m.message}</p>
+                    </td>
+                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => openMessage(m)}
+                          className="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded text-[11px] font-medium"
+                        >
+                          Lire
+                        </button>
+                        <a
+                          href={`mailto:${m.email}?subject=${encodeURIComponent(
+                            `Re: ${m.subject || 'Votre message à KATD-SCHÜLE'}`
+                          )}`}
+                          className="p-1 text-gray-500 hover:text-blue-600 rounded hover:bg-gray-100"
+                          title="Répondre par email"
+                        >
+                          <Send size={13} />
+                        </a>
+                        <button
+                          onClick={() => handleToggleRead(m)}
+                          disabled={msgActionId === m._id}
+                          className="p-1 text-gray-400 hover:text-gray-700 rounded hover:bg-gray-100"
+                          title={m.read ? 'Marquer comme non lu' : 'Marquer comme lu'}
+                        >
+                          <Clock size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMessage(m._id)}
+                          disabled={msgActionId === m._id}
+                          className="p-1 text-red-400 hover:text-red-600 rounded hover:bg-red-50"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      <button onClick={handleSave} disabled={saving} className="btn-primary text-sm">
-        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Sauvegarder
-      </button>
+      {/* ── Modal lecture message ── */}
+      {selectedMessage && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-start justify-between border-b border-gray-100 pb-3">
+              <div>
+                <span className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
+                  Message de contact
+                </span>
+                <h3 className="text-base font-bold text-gray-900 mt-1">
+                  {selectedMessage.subject || 'Message sans objet'}
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Reçu le {new Date(selectedMessage.createdAt).toLocaleString('fr-FR')}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedMessage(null)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5 text-xs text-gray-700">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Expéditeur :</span>
+                <span className="font-semibold text-gray-900">{selectedMessage.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Email :</span>
+                <a href={`mailto:${selectedMessage.email}`} className="text-blue-600 hover:underline">
+                  {selectedMessage.email}
+                </a>
+              </div>
+              {selectedMessage.phone && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Téléphone :</span>
+                  <a href={`tel:${selectedMessage.phone}`} className="text-gray-900">
+                    {selectedMessage.phone}
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-4 max-h-60 overflow-y-auto">
+              <p className="text-xs sm:text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                {selectedMessage.message}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+              <button
+                onClick={() => handleDeleteMessage(selectedMessage._id)}
+                className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
+              >
+                <Trash2 size={13} /> Supprimer ce message
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedMessage(null)}
+                  className="btn-ghost text-xs"
+                >
+                  Fermer
+                </button>
+                <a
+                  href={`mailto:${selectedMessage.email}?subject=${encodeURIComponent(
+                    `Re: ${selectedMessage.subject || 'Votre message à KATD-SCHÜLE'}`
+                  )}`}
+                  className="btn-primary text-xs flex items-center gap-1.5"
+                >
+                  <Send size={13} /> Répondre par email
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1786,6 +2202,7 @@ export default function AdminPlatformPage() {
         <>
           {tab === 'identity' && <IdentityPanel platformData={platformData} refresh={refresh} />}
           {tab === 'privacy' && <PrivacyPolicyPanel platformData={platformData} refresh={refresh} />}
+          {tab === 'cgu' && <CguPanel platformData={platformData} refresh={refresh} />}
           {tab === 'posts' && <PostsPanel />}
           {tab === 'resources' && <ResourcesPanel />}
           {tab === 'about' && <AboutPanel platformData={platformData} refresh={refresh} />}

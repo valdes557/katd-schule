@@ -5,6 +5,7 @@ import { cache } from '../lib/cache'
 import {
   Bot, Sparkles, Loader2, Plus, Pencil, Trash2, X, CheckCircle2, XCircle, Ban, Play,
   Settings, Package, ClipboardList, BarChart2, Image as ImageIcon, Clock,
+  Key, Eye, EyeOff, ExternalLink, HelpCircle, AlertCircle, Check,
 } from 'lucide-react'
 
 const STATUS_BADGE = {
@@ -273,76 +274,485 @@ function PackagesTab() {
   )
 }
 
-// ── Configuration ─────────────────────────────────────────────────────────────
+// ── Configuration Multi-Fournisseurs & Clés API ──────────────────────────────
+const PROVIDERS = [
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    badge: 'Recommandé (Gratuit)',
+    badgeColor: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    description: 'Quota gratuit très généreux et réponse ultra-rapide via Google AI Studio.',
+    models: ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+    defaultModel: 'gemini-1.5-flash',
+    keyField: 'geminiApiKey',
+    maskedField: 'geminiApiKeyMasked',
+    hasKeyField: 'hasGeminiKey',
+    url: 'https://aistudio.google.com/app/apikey',
+    urlLabel: 'Obtenir la clé Google AI Studio (Gratuit)',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI (ChatGPT)',
+    badge: 'Standard',
+    badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
+    description: 'Les modèles de référence GPT-4o et GPT-4o-mini fiables et précis.',
+    models: ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'],
+    defaultModel: 'gpt-4o-mini',
+    keyField: 'openaiApiKey',
+    maskedField: 'openaiApiKeyMasked',
+    hasKeyField: 'hasOpenaiKey',
+    url: 'https://platform.openai.com/api-keys',
+    urlLabel: 'Console OpenAI API',
+  },
+  {
+    id: 'groq',
+    name: 'Groq (Llama / Mixtral)',
+    badge: 'Ultra-Rapide',
+    badgeColor: 'bg-amber-100 text-amber-700 border-amber-200',
+    description: 'Vitesse de génération fulgurante (>500 tokens/sec) avec Llama 3.3.',
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+    defaultModel: 'llama-3.3-70b-versatile',
+    keyField: 'groqApiKey',
+    maskedField: 'groqApiKeyMasked',
+    hasKeyField: 'hasGroqKey',
+    url: 'https://console.groq.com/keys',
+    urlLabel: 'Groq Cloud Console (Gratuit)',
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic (Claude)',
+    badge: 'Pédagogique',
+    badgeColor: 'bg-purple-100 text-purple-700 border-purple-200',
+    description: 'Remarquable finesse de rédaction en français et raisonnement pédagogique.',
+    models: ['claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'],
+    defaultModel: 'claude-3-5-sonnet-20241022',
+    keyField: 'anthropicApiKey',
+    maskedField: 'anthropicApiKeyMasked',
+    hasKeyField: 'hasAnthropicKey',
+    url: 'https://console.anthropic.com/settings/keys',
+    urlLabel: 'Console Anthropic Claude',
+  },
+]
+
 function ConfigTab() {
   const q = useCachedFetch('/ai/config', async () => {
     const r = await aiApi.getConfig()
     return r.data
   }, [])
+
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showKey, setShowKey] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null) // { success: boolean, message: string, answer?: string }
+  const [activeHelp, setActiveHelp] = useState(null)
 
-  // Initialise le formulaire dès que la config arrive
   const cfg = q.data
-  if (cfg && !form) setForm({ ...cfg })
+  if (cfg && !form) {
+    setForm({
+      ...cfg,
+      provider: cfg.provider || 'gemini',
+      geminiApiKey: '',
+      openaiApiKey: '',
+      anthropicApiKey: '',
+      groqApiKey: '',
+    })
+  }
+
+  const currentProvider = PROVIDERS.find((p) => p.id === (form?.provider || 'gemini')) || PROVIDERS[0]
+  const currentKeyVal = form ? form[currentProvider.keyField] : ''
+  const currentMaskedKey = cfg ? cfg[currentProvider.maskedField] : ''
+  const isKeyConfigured = cfg ? cfg[currentProvider.hasKeyField] : false
+
+  const handleProviderChange = (pId) => {
+    const p = PROVIDERS.find((item) => item.id === pId)
+    setForm({
+      ...form,
+      provider: pId,
+      model: p?.defaultModel || form.model,
+    })
+    setTestResult(null)
+  }
+
+  const handleTestKey = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await aiApi.testKey({
+        provider: form.provider,
+        apiKey: form[currentProvider.keyField],
+        model: form.model,
+      })
+      setTestResult({
+        success: true,
+        message: res.message || 'Connexion réussie avec le modèle IA !',
+        answer: res.answer,
+      })
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: err.message || 'Échec du test de connexion.',
+      })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const save = async (e) => {
     e.preventDefault()
-    setSaving(true); setSaved(false)
+    setSaving(true)
+    setSaved(false)
     try {
-      await aiApi.updateConfig({
+      const payload = {
         enabled: form.enabled,
+        provider: form.provider,
         model: form.model,
         systemPrompt: form.systemPrompt,
         temperature: Number(form.temperature),
         maxTokens: Number(form.maxTokens),
-      })
+      }
+      if (form.geminiApiKey) payload.geminiApiKey = form.geminiApiKey
+      if (form.openaiApiKey) payload.openaiApiKey = form.openaiApiKey
+      if (form.anthropicApiKey) payload.anthropicApiKey = form.anthropicApiKey
+      if (form.groqApiKey) payload.groqApiKey = form.groqApiKey
+
+      await aiApi.updateConfig(payload)
       cache.invalidate('/ai/config')
+      q.refetch()
       setSaved(true)
-    } catch (err) { alert(err.message) }
+      setTimeout(() => setSaved(false), 4000)
+    } catch (err) {
+      alert(err.message)
+    }
     setSaving(false)
   }
 
-  if (q.loading || !form) return <div className="py-12 text-center"><Loader2 size={24} className="animate-spin mx-auto text-blue-600" /></div>
+  if (q.loading || !form) {
+    return (
+      <div className="py-12 text-center">
+        <Loader2 size={24} className="animate-spin mx-auto text-blue-600" />
+      </div>
+    )
+  }
 
   return (
-    <form onSubmit={save} className="card p-5 space-y-4 max-w-2xl">
-      <label className="flex items-center gap-3 text-sm">
-        <button type="button" onClick={() => setForm({ ...form, enabled: !form.enabled })}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.enabled ? 'bg-green-600' : 'bg-gray-300'}`}>
-          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+    <div className="space-y-6 max-w-3xl">
+      {/* ── Interrupteur Principal ── */}
+      <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">État du service IA</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Activez ou désactivez globalement l'IA pour l'ensemble des établissements scolaires.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setForm({ ...form, enabled: !form.enabled })}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            form.enabled ? 'bg-indigo-600' : 'bg-gray-300'
+          }`}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              form.enabled ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
         </button>
-        <span className="font-medium text-gray-900">Assistant IA {form.enabled ? 'activé' : 'désactivé'}</span>
-      </label>
-
-      <div>
-        <label className="text-xs font-medium text-gray-600">Modèle OpenAI</label>
-        <input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="input text-sm w-full mt-1" placeholder="gpt-4o-mini" />
-        <p className="text-[11px] text-gray-400 mt-1">Saisissez l'identifiant exact du modèle exposé par votre compte OpenAI (ex. gpt-4o-mini, gpt-4o).</p>
       </div>
 
-      <div>
-        <label className="text-xs font-medium text-gray-600">Consigne système (rôle & sécurité)</label>
-        <textarea value={form.systemPrompt} onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })} rows={6} className="input text-sm w-full mt-1 resize-y" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
+      {/* ── Sélection du Fournisseur ── */}
+      <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm space-y-4">
         <div>
-          <label className="text-xs font-medium text-gray-600">Température (0–2)</label>
-          <input type="number" step="0.1" min="0" max="2" value={form.temperature} onChange={(e) => setForm({ ...form, temperature: e.target.value })} className="input text-sm w-full mt-1" />
+          <h3 className="text-sm font-bold text-gray-900">Fournisseur & Moteur d'IA</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Choisissez le fournisseur d'intelligence artificielle qui alimentera le chat et les cours IA.
+          </p>
         </div>
-        <div>
-          <label className="text-xs font-medium text-gray-600">Tokens max / réponse</label>
-          <input type="number" min="50" max="4000" value={form.maxTokens} onChange={(e) => setForm({ ...form, maxTokens: e.target.value })} className="input text-sm w-full mt-1" />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {PROVIDERS.map((p) => {
+            const isSelected = form.provider === p.id
+            const hasKey = cfg && cfg[p.hasKeyField]
+            return (
+              <div
+                key={p.id}
+                onClick={() => handleProviderChange(p.id)}
+                className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                  isSelected
+                    ? 'border-indigo-600 bg-indigo-50/30 shadow-sm'
+                    : 'border-gray-100 hover:border-gray-200 bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="font-bold text-sm text-gray-900 flex items-center gap-1.5">
+                    {p.name}
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${p.badgeColor}`}>
+                    {p.badge}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mb-2 leading-relaxed">{p.description}</p>
+                <div className="flex items-center justify-between text-[11px] pt-2 border-t border-gray-100">
+                  <span className="text-gray-400">Statut clé API :</span>
+                  {hasKey ? (
+                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                      <Check size={12} /> Configurée
+                    </span>
+                  ) : (
+                    <span className="text-amber-700 font-medium">Non configurée</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={saving} className="btn-primary justify-center text-sm">{saving ? <Loader2 size={15} className="animate-spin" /> : <Settings size={15} />} Enregistrer</button>
-        {saved && <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 size={14} /> Enregistré</span>}
+      {/* ── Configuration de la clé API et du modèle actif ── */}
+      <form onSubmit={save} className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm space-y-5">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+            <Key size={16} className="text-indigo-600" />
+            Paramètres {currentProvider.name}
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Insérez votre clé API et sélectionnez le modèle à exécuter pour les requêtes des écoles.
+          </p>
+        </div>
+
+        {/* Saisie de la Clé API */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+              Clé API {currentProvider.name} *
+              {isKeyConfigured && (
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-normal">
+                  Actuellement configurée ({currentMaskedKey})
+                </span>
+              )}
+            </label>
+            <a
+              href={currentProvider.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+            >
+              {currentProvider.urlLabel} <ExternalLink size={12} />
+            </a>
+          </div>
+
+          <div className="relative">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={currentKeyVal}
+              onChange={(e) => setForm({ ...form, [currentProvider.keyField]: e.target.value })}
+              className="input text-sm w-full font-mono pr-20"
+              placeholder={isKeyConfigured ? currentMaskedKey : `Collez votre clé API ${currentProvider.name} ici...`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1 rounded bg-gray-50 border border-gray-200"
+            >
+              {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
+              {showKey ? 'Masquer' : 'Afficher'}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">
+            Laissez vide pour conserver la clé actuelle. La clé reste chiffrée et sécurisée côté serveur.
+          </p>
+        </div>
+
+        {/* Sélection du modèle */}
+        <div>
+          <label className="text-xs font-semibold text-gray-700 block mb-1.5">Modèle d'IA</label>
+          <div className="flex gap-2 flex-wrap mb-2">
+            {currentProvider.models.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setForm({ ...form, model: m })}
+                className={`text-xs px-2.5 py-1 rounded-lg border font-mono transition-colors ${
+                  form.model === m
+                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 font-bold'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <input
+            value={form.model}
+            onChange={(e) => setForm({ ...form, model: e.target.value })}
+            className="input text-sm w-full font-mono"
+            placeholder={currentProvider.defaultModel}
+          />
+        </div>
+
+        {/* Bouton de Test en Direct */}
+        <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h4 className="text-xs font-bold text-gray-800">Tester la connectivité</h4>
+              <p className="text-[11px] text-gray-500">
+                Envoie une requête de vérification instantanée pour confirmer la validité de la clé et du modèle.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleTestKey}
+              disabled={testing || (!currentKeyVal && !isKeyConfigured)}
+              className="btn-secondary text-xs inline-flex items-center gap-1.5 shrink-0"
+            >
+              {testing ? <Loader2 size={13} className="animate-spin text-indigo-600" /> : <Play size={13} />}
+              {testing ? 'Test en cours...' : 'Tester la connexion IA'}
+            </button>
+          </div>
+
+          {testResult && (
+            <div
+              className={`mt-3 p-3 rounded-lg text-xs flex items-start gap-2 border ${
+                testResult.success
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-red-50 text-red-800 border-red-200'
+              }`}
+            >
+              {testResult.success ? (
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+              )}
+              <div>
+                <p className="font-semibold">{testResult.message}</p>
+                {testResult.answer && (
+                  <p className="mt-1 text-[11px] bg-white/70 p-2 rounded border border-emerald-200 text-gray-700">
+                    Réponse du modèle : <span className="italic">« {testResult.answer} »</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Consigne système */}
+        <div>
+          <label className="text-xs font-semibold text-gray-700 block mb-1">
+            Consigne système (rôle pédagogique & sécurité)
+          </label>
+          <textarea
+            value={form.systemPrompt}
+            onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
+            rows={5}
+            className="input text-xs sm:text-sm w-full resize-y font-sans leading-relaxed"
+          />
+        </div>
+
+        {/* Hyperparamètres */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Température (0 à 2)</label>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+              value={form.temperature}
+              onChange={(e) => setForm({ ...form, temperature: e.target.value })}
+              className="input text-sm w-full"
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">0.2 = précis et factuel, 0.7 = créatif.</p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Longueur max (Tokens)</label>
+            <input
+              type="number"
+              min="50"
+              max="8000"
+              value={form.maxTokens}
+              onChange={(e) => setForm({ ...form, maxTokens: e.target.value })}
+              className="input text-sm w-full"
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">Environ 1 token = 4 caractères en français.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-primary text-sm inline-flex items-center gap-2"
+          >
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Settings size={15} />}
+            Enregistrer la configuration IA
+          </button>
+          {saved && (
+            <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+              <CheckCircle2 size={15} /> Paramètres enregistrés avec succès !
+            </span>
+          )}
+        </div>
+      </form>
+
+      {/* ── Guide Étape par Étape : Comment obtenir les clés API ── */}
+      <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm space-y-3">
+        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+          <HelpCircle size={16} className="text-blue-600" />
+          Guide : Comment obtenir vos clés API pour les insérer ?
+        </h3>
+
+        <div className="space-y-2 text-xs">
+          <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
+            <summary className="font-semibold text-gray-800">
+              1. Google Gemini (100% Gratuit — Option fortement recommandée)
+            </summary>
+            <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-emerald-400">
+              <p>1. Rendez-vous sur <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">Google AI Studio</a>.</p>
+              <p>2. Connectez-vous avec votre compte Google (Gmail).</p>
+              <p>3. Cliquez sur le bouton bleu <strong>« Create API key »</strong>.</p>
+              <p>4. Choisissez un projet ou laissez le projet par défaut, puis cliquez sur <strong>« Create API key in new project »</strong>.</p>
+              <p>5. Copiez la clé générée (commence par <code className="bg-gray-200 px-1 rounded">AIzaSy...</code>) et collez-la ci-dessus dans le champ <strong>Clé API Google Gemini</strong>.</p>
+              <p>6. Cliquez sur <strong>« Tester la connexion IA »</strong> puis <strong>« Enregistrer »</strong>.</p>
+            </div>
+          </details>
+
+          <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
+            <summary className="font-semibold text-gray-800">
+              2. OpenAI (ChatGPT — gpt-4o-mini & gpt-4o)
+            </summary>
+            <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-blue-400">
+              <p>1. Rendez-vous sur <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">platform.openai.com/api-keys</a>.</p>
+              <p>2. Créez un compte ou connectez-vous.</p>
+              <p>3. Cliquez sur <strong>« Create new secret key »</strong>, donnez-lui un nom (ex: <code className="bg-gray-200 px-1 rounded">KATD-SCHÜLE</code>).</p>
+              <p>4. Copiez immédiatement la clé secrète (<code className="bg-gray-200 px-1 rounded">sk-proj-...</code>) et collez-la dans le champ ci-dessus.</p>
+            </div>
+          </details>
+
+          <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
+            <summary className="font-semibold text-gray-800">
+              3. Groq (Llama 3.3 — Gratuit et ultra-rapide)
+            </summary>
+            <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-amber-400">
+              <p>1. Rendez-vous sur <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">console.groq.com/keys</a>.</p>
+              <p>2. Connectez-vous avec votre compte Google ou GitHub.</p>
+              <p>3. Cliquez sur <strong>« Create API Key »</strong>.</p>
+              <p>4. Copiez la clé (<code className="bg-gray-200 px-1 rounded">gsk_...</code>) et collez-la dans le champ Groq.</p>
+            </div>
+          </details>
+
+          <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
+            <summary className="font-semibold text-gray-800">
+              4. Anthropic Claude (claude-3-5-sonnet)
+            </summary>
+            <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-purple-400">
+              <p>1. Rendez-vous sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">console.anthropic.com</a>.</p>
+              <p>2. Créez une clé API (<code className="bg-gray-200 px-1 rounded">sk-ant-...</code>) et insérez-la ci-dessus.</p>
+            </div>
+          </details>
+        </div>
       </div>
-    </form>
+    </div>
   )
 }
 

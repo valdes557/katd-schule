@@ -9,6 +9,8 @@ import { blogsApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import SocialShareButtons from '../../components/blog/SocialShareButtons'
 import BlogAdSenseBanner from '../../components/blog/BlogAdSenseBanner'
+import PublicHeader from '../../components/layout/PublicHeader'
+import Footer from '../../components/layout/Footer'
 
 export default function BlogDetailPage() {
   const { id } = useParams()
@@ -85,25 +87,38 @@ export default function BlogDetailPage() {
     )
   }
 
+  const isPublicView = !location.pathname.startsWith('/u')
+  const targetBackLink = isPublicView ? '/blogs' : '/u/blogs'
+
   if (error || !post) {
-    return (
+    const errContent = (
       <div className="max-w-2xl mx-auto py-16 text-center bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
         <AlertCircle size={44} className="text-red-500 mx-auto mb-3" />
         <h2 className="text-lg font-bold text-gray-900 mb-1">Article introuvable</h2>
         <p className="text-xs text-gray-500 mb-5">{error || "Cet article n'existe plus ou a été retiré."}</p>
-        <Link to="/u/blogs" className="btn-primary text-sm inline-flex items-center gap-1.5">
+        <Link to={targetBackLink} className="btn-primary text-sm inline-flex items-center gap-1.5">
           <ArrowLeft size={16} /> Retour aux articles
         </Link>
       </div>
     )
+    if (isPublicView) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+          <PublicHeader />
+          <main className="flex-1 py-8 px-4">{errContent}</main>
+          <Footer />
+        </div>
+      )
+    }
+    return errContent
   }
 
-  return (
+  const pageContent = (
     <div className="max-w-3xl mx-auto space-y-6 pb-16 animate-in fade-in duration-200">
       {/* Bouton retour */}
       <div className="flex items-center justify-between">
         <Link
-          to="/u/blogs"
+          to={targetBackLink}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors"
         >
           <ArrowLeft size={15} /> Tous les articles
@@ -154,61 +169,31 @@ export default function BlogDetailPage() {
         {/* Bannière AdSense en tête d'article */}
         <BlogAdSenseBanner format="auto" />
 
-        {/* ── Contenu de l'article ── */}
-        {requiresAuth ? (
-          /* MUR DE LECTURE (AUTH GATE) POUR LES VISITEURS EXTERNES */
-          <div className="space-y-6 pt-2">
-            <div className="text-gray-700 text-base leading-relaxed font-serif italic border-l-4 border-blue-500 pl-4 py-1 bg-blue-50/40 rounded-r-xl">
-              « {post.teaserContent || post.excerpt} »
-            </div>
+        {/* ── Contenu de l'article (100% accessible publiquement) ── */}
+        <div className="space-y-6 pt-2">
+          <div
+            className="prose prose-blue max-w-none text-gray-800 text-base leading-relaxed break-words"
+            dangerouslySetInnerHTML={{ __html: post.content || post.teaserContent || post.excerpt }}
+          />
 
-            {/* Carte bloquante avec flou */}
-            <div className="relative rounded-3xl bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-950 p-8 sm:p-10 text-white text-center shadow-2xl overflow-hidden">
-              <div className="absolute -top-12 -right-12 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
-              <div className="relative z-10 max-w-lg mx-auto space-y-4">
-                <div className="w-14 h-14 rounded-2xl bg-white/10 text-yellow-300 flex items-center justify-center mx-auto shadow-inner border border-white/20">
-                  <Lock size={26} />
-                </div>
-                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">
-                  Rejoignez KATD-SCHÜLE pour lire la suite de cet article
-                </h3>
-                <p className="text-blue-200 text-xs sm:text-sm leading-relaxed">
-                  L'accès à l'article complet, aux vidéos KATDTUBE, aux cours interactifs et aux échanges communautaires est 100% gratuit pour tous les utilisateurs.
-                </p>
+          {/* Bannière AdSense en fin d'article */}
+          <BlogAdSenseBanner format="auto" />
 
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-                  <Link
-                    to={`/login?mode=user&signup=1&redirect=${encodeURIComponent(location.pathname)}`}
-                    className="btn-primary w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-slate-950 font-bold px-6 py-3 text-sm shadow-xl justify-center"
-                  >
-                    <UserPlus size={16} /> Créer mon compte gratuit
-                  </Link>
-                  <Link
-                    to={`/login?mode=user&redirect=${encodeURIComponent(location.pathname)}`}
-                    className="w-full sm:w-auto px-6 py-3 rounded-xl border border-white/30 text-white hover:bg-white/10 font-semibold text-sm transition-all justify-center inline-flex items-center gap-2"
-                  >
-                    <LogIn size={16} /> J'ai déjà un compte
-                  </Link>
-                </div>
+          {/* Invitation douce pour les visiteurs non connectés */}
+          {!user && (
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div>
+                <p className="font-bold text-gray-900 text-sm">Cet article vous a plu ?</p>
+                <p className="text-xs text-gray-600">Rejoignez gratuitement la communauté KATD-SCHÜLE pour aimer, commenter et échanger.</p>
               </div>
+              <Link
+                to={`/login?mode=user&signup=1&redirect=${encodeURIComponent(location.pathname)}`}
+                className="btn-primary text-xs px-4 py-2 shrink-0"
+              >
+                Créer un compte gratuit
+              </Link>
             </div>
-
-            {/* Boutons de partage pour inviter d'autres amis */}
-            <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-50 p-4 rounded-2xl">
-              <span className="text-xs font-semibold text-gray-700">Partager cet article avec vos proches :</span>
-              <SocialShareButtons post={post} size="md" />
-            </div>
-          </div>
-        ) : (
-          /* CONTENU COMPLET POUR UTILISATEURS CONNECTÉS */
-          <div className="space-y-6 pt-2">
-            <div
-              className="prose prose-blue max-w-none text-gray-800 text-base leading-relaxed break-words"
-              dangerouslySetInnerHTML={{ __html: post.content }}
-            />
-
-            {/* Bannière AdSense en fin d'article */}
-            <BlogAdSenseBanner format="auto" />
+          )}
 
             {/* Barre d'actions : Like + Partage */}
             <div className="pt-6 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -288,8 +273,21 @@ export default function BlogDetailPage() {
               </div>
             </div>
           </div>
-        )}
       </div>
     </div>
   )
+
+  if (isPublicView) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <PublicHeader />
+        <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8">
+          {pageContent}
+        </main>
+        <Footer />
+      </div>
+    )
+  }
+
+  return pageContent
 }

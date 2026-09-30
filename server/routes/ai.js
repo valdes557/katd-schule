@@ -62,7 +62,22 @@ function canUseChat(user) {
 router.get('/config', ...adminOnly, async (req, res) => {
   try {
     const cfg = await AiConfig.getConfig()
-    res.json({ success: true, data: cfg })
+    const json = cfg.toObject()
+    const mask = (k) => (k && k.length > 8 ? `${k.slice(0, 4)}••••••••${k.slice(-4)}` : k ? '••••••••' : '')
+    res.json({
+      success: true,
+      data: {
+        ...json,
+        geminiApiKeyMasked: mask(cfg.geminiApiKey || process.env.GEMINI_API_KEY),
+        openaiApiKeyMasked: mask(cfg.openaiApiKey || process.env.OPENAI_API_KEY),
+        anthropicApiKeyMasked: mask(cfg.anthropicApiKey || process.env.ANTHROPIC_API_KEY),
+        groqApiKeyMasked: mask(cfg.groqApiKey || process.env.GROQ_API_KEY),
+        hasGeminiKey: !!(cfg.geminiApiKey || process.env.GEMINI_API_KEY),
+        hasOpenaiKey: !!(cfg.openaiApiKey || process.env.OPENAI_API_KEY),
+        hasAnthropicKey: !!(cfg.anthropicApiKey || process.env.ANTHROPIC_API_KEY),
+        hasGroqKey: !!(cfg.groqApiKey || process.env.GROQ_API_KEY),
+      },
+    })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -70,11 +85,96 @@ router.get('/config', ...adminOnly, async (req, res) => {
 router.put('/config', ...adminOnly, async (req, res) => {
   try {
     const cfg = await AiConfig.getConfig()
-    const fields = ['enabled', 'model', 'systemPrompt', 'temperature', 'maxTokens']
+    const fields = ['enabled', 'provider', 'model', 'systemPrompt', 'temperature', 'maxTokens']
     for (const f of fields) if (req.body[f] !== undefined) cfg[f] = req.body[f]
+
+    const keyFields = ['geminiApiKey', 'openaiApiKey', 'anthropicApiKey', 'groqApiKey']
+    for (const k of keyFields) {
+      if (req.body[k] !== undefined && typeof req.body[k] === 'string') {
+        const val = req.body[k].trim()
+        if (val && !val.includes('••••')) {
+          cfg[k] = val
+        }
+      }
+    }
+
     await cfg.save()
-    res.json({ success: true, data: cfg })
+
+    const mask = (k) => (k && k.length > 8 ? `${k.slice(0, 4)}••••••••${k.slice(-4)}` : k ? '••••••••' : '')
+    res.json({
+      success: true,
+      data: {
+        ...cfg.toObject(),
+        geminiApiKeyMasked: mask(cfg.geminiApiKey || process.env.GEMINI_API_KEY),
+        openaiApiKeyMasked: mask(cfg.openaiApiKey || process.env.OPENAI_API_KEY),
+        anthropicApiKeyMasked: mask(cfg.anthropicApiKey || process.env.ANTHROPIC_API_KEY),
+        groqApiKeyMasked: mask(cfg.groqApiKey || process.env.GROQ_API_KEY),
+        hasGeminiKey: !!(cfg.geminiApiKey || process.env.GEMINI_API_KEY),
+        hasOpenaiKey: !!(cfg.openaiApiKey || process.env.OPENAI_API_KEY),
+        hasAnthropicKey: !!(cfg.anthropicApiKey || process.env.ANTHROPIC_API_KEY),
+        hasGroqKey: !!(cfg.groqApiKey || process.env.GROQ_API_KEY),
+      },
+    })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/ai/test-key — Teste en direct une clé API et un modèle IA
+router.post('/test-key', ...adminOnly, async (req, res) => {
+  try {
+    const { provider = 'gemini', apiKey, model } = req.body
+    const cfg = await AiConfig.getConfig()
+
+    let resolvedKey = (apiKey || '').trim()
+    if (!resolvedKey || resolvedKey.includes('••••')) {
+      if (provider === 'gemini') resolvedKey = cfg.geminiApiKey || process.env.GEMINI_API_KEY
+      else if (provider === 'openai') resolvedKey = cfg.openaiApiKey || process.env.OPENAI_API_KEY
+      else if (provider === 'anthropic') resolvedKey = cfg.anthropicApiKey || process.env.ANTHROPIC_API_KEY
+      else if (provider === 'groq') resolvedKey = cfg.groqApiKey || process.env.GROQ_API_KEY
+    }
+
+    if (!resolvedKey) {
+      return res.status(400).json({
+        message: `Veuillez renseigner une clé API valide pour le fournisseur sélectionné (${provider.toUpperCase()}).`,
+      })
+    }
+
+    const testConfig = {
+      provider,
+      model:
+        model ||
+        (provider === 'gemini'
+          ? 'gemini-1.5-flash'
+          : provider === 'openai'
+          ? 'gpt-4o-mini'
+          : provider === 'groq'
+          ? 'llama-3.3-70b-versatile'
+          : 'claude-3-5-sonnet-20241022'),
+      geminiApiKey: provider === 'gemini' ? resolvedKey : '',
+      openaiApiKey: provider === 'openai' ? resolvedKey : '',
+      anthropicApiKey: provider === 'anthropic' ? resolvedKey : '',
+      groqApiKey: provider === 'groq' ? resolvedKey : '',
+      temperature: 0.2,
+      maxTokens: 50,
+      systemPrompt: "Tu es un testeur de connexion. Réponds brièvement.",
+    }
+
+    const result = await generateChatResponse({
+      messages: [{ role: 'user', content: 'Dis en français : "Connexion réussie avec l\'IA !"' }],
+      config: testConfig,
+    })
+
+    res.json({
+      success: true,
+      message: 'Connexion établie avec succès !',
+      answer: result.content,
+      model: result.model,
+    })
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      message: err.message || 'Échec du test de connexion avec le modèle IA.',
+    })
+  }
 })
 
 // ═════════════════════════════════════════════════════════════════════════════

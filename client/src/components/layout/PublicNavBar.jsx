@@ -1,13 +1,16 @@
 import { NavLink } from 'react-router-dom'
 import {
   Globe2, Users, Phone, HelpCircle, BookMarked, School, GraduationCap, Star, Heart,
+  Newspaper, BookOpen,
 } from 'lucide-react'
 
 const NAV_TABS = [
   { label: 'Social', path: '/social', icon: Globe2 },
+  { label: 'Blog', path: '/blogs', icon: Newspaper },
   { label: 'À propos', path: '/apropos', icon: Users },
   { label: 'Contacts', path: '/contacts', icon: Phone },
   { label: 'Aide', path: '/aide', icon: HelpCircle },
+  { label: 'CGU', path: '/cgu', icon: BookOpen },
   { label: 'Ressources', path: '/ressources', icon: BookMarked },
   { label: 'Nos écoles', path: '/ecoles', icon: School },
   { label: 'Tarifs', path: '/tarifs', icon: GraduationCap },

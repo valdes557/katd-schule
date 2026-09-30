@@ -1,17 +1,86 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>KATD-SCHÜLE — Apprendre, Partager, Grandir</title>
-    <meta name="description" content="La plateforme collaborative des écoles. Gérez votre établissement et partagez vos réussites." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    
+    <!-- SEO Primaire -->
+    <title>KATD-SCHÜLE — Plateforme Éducative & Gestion Scolaire Intelligente</title>
+    <meta name="description" content="KATD-SCHÜLE est la plateforme tout-en-un de gestion scolaire, communication parents-enseignants, bulletins, portefeuilles et blogs éducatifs pour les établissements scolaires." />
+    <meta name="keywords" content="gestion scolaire, école, éducation, bulletins de notes, plateforme éducative, Cameroun, Afrique, cours en ligne, blog éducatif, KATD-SCHÜLE" />
+    <meta name="author" content="KATD-SCHÜLE" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://katdschool.com/" />
+
+    <!-- Open Graph (Facebook, WhatsApp, LinkedIn) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://katdschool.com/" />
+    <meta property="og:title" content="KATD-SCHÜLE — Apprendre, Partager, Grandir" />
+    <meta property="og:description" content="Plateforme collaborative pour les écoles, directeurs, enseignants, élèves et parents. Gérez votre établissement en toute simplicité." />
+    <meta property="og:image" content="https://katdschool.com/icon-192.png" />
+    <meta property="og:site_name" content="KATD-SCHÜLE" />
+    <meta property="og:locale" content="fr_FR" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://katdschool.com/" />
+    <meta name="twitter:title" content="KATD-SCHÜLE — Gestion Scolaire & Éducation" />
+    <meta name="twitter:description" content="La plateforme collaborative des écoles : gestion, présence, notes, bulletins et actualités scolaires." />
+    <meta name="twitter:image" content="https://katdschool.com/icon-192.png" />
+
+    <!-- PWA & Mobile Icons -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="KATD-SCHÜLE" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="icon" type="image/png" href="/icon-192.png" />
+
+    <!-- Polices & Préconnexions -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Données structurées Schema.org (JSON-LD) pour le référencement Google -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "EducationalOrganization",
+      "name": "KATD-SCHÜLE",
+      "url": "https://katdschool.com",
+      "logo": "https://katdschool.com/icon-192.png",
+      "description": "Plateforme éducative de gestion scolaire, portail parents, enseignants, directeurs et blogs éducatifs.",
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "email": "royalkatdcameroun@gmail.com",
+        "contactType": "customer service",
+        "areaServed": ["CM", "CI", "GA", "SN", "BF", "TG", "BJ"],
+        "availableLanguage": ["French", "English"]
+      }
+    }
+    </script>
+
+    <!-- Google AdSense Tag (Chargement dynamique ou balise standard) -->
+    <script>
+      (function() {
+        // Tente de récupérer l'identifiant client configuré en base s'il existe
+        fetch('/api/platform/adsense')
+          .then(function(r) { return r.json(); })
+          .then(function(res) {
+            var client = (res && res.adsense && res.adsense.client) || '';
+            if (client && client.indexOf('ca-pub-') === 0) {
+              var s = document.createElement('script');
+              s.async = true;
+              s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(client);
+              s.crossOrigin = 'anonymous';
+              document.head.appendChild(s);
+            }
+          })
+          .catch(function() {});
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

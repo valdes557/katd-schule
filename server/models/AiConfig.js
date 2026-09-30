@@ -18,10 +18,19 @@ const aiConfigSchema = new mongoose.Schema(
     // Clé unique garantissant un seul document de configuration
     key: { type: String, default: 'global', unique: true },
     enabled: { type: Boolean, default: true },
-    model: { type: String, default: 'gpt-4o-mini', trim: true },
+    provider: {
+      type: String,
+      enum: ['gemini', 'openai', 'anthropic', 'groq'],
+      default: 'gemini',
+    },
+    geminiApiKey: { type: String, default: '', trim: true },
+    openaiApiKey: { type: String, default: '', trim: true },
+    anthropicApiKey: { type: String, default: '', trim: true },
+    groqApiKey: { type: String, default: '', trim: true },
+    model: { type: String, default: 'gemini-1.5-flash', trim: true },
     systemPrompt: { type: String, default: DEFAULT_SYSTEM_PROMPT },
     temperature: { type: Number, default: 0.5, min: 0, max: 2 },
-    maxTokens: { type: Number, default: 800, min: 50, max: 4000 },
+    maxTokens: { type: Number, default: 1000, min: 50, max: 8000 },
   },
   { timestamps: true }
 )

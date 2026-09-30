@@ -265,7 +265,7 @@ export const navSections = [
       { label: 'Paiements Ikeepay', icon: CreditCard, path: '/dashboard/paiements-admin' },
       { label: 'Frais de transaction', icon: Coins, path: '/dashboard/frais-transaction-admin' },
       { label: 'Bannières', icon: ImageIcon, path: '/dashboard/bannieres' },
-      { label: 'Assistant IA', icon: Bot, path: '/dashboard/ia-admin' },
+      { label: 'Gestion IA (Modèles & API)', icon: Sparkles, path: '/dashboard/ia-admin' },
       { label: 'Suivi des connexions', icon: Activity, path: '/dashboard/suivi-connexions' },
       { label: 'Journal des actions', icon: History, path: '/dashboard/journal-actions' },
     ],
