@@ -26,7 +26,7 @@ async function generateChatResponse({ messages, config }) {
   const maxTokens = config?.maxTokens ?? 1000
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 1. FOURNISSEUR GOOGLE GEMINI (RECOMMANDÉ — API Gratuite Google AI Studio)
+  // 1. FOURNISSEUR GOOGLE GEMINI (RECOMMANDÉ)
   // ───────────────────────────────────────────────────────────────────────────
   if (provider === 'gemini') {
     const apiKey = (config?.geminiApiKey || process.env.GEMINI_API_KEY || '').trim()

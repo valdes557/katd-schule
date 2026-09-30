@@ -279,16 +279,16 @@ const PROVIDERS = [
   {
     id: 'gemini',
     name: 'Google Gemini',
-    badge: 'Recommandé (Gratuit)',
+    badge: 'Recommandé',
     badgeColor: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    description: 'Quota gratuit très généreux et réponse ultra-rapide via Google AI Studio.',
+    description: 'Excellente vitesse de réponse, haute précision et intégration directe via Google AI Studio.',
     models: ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
     defaultModel: 'gemini-1.5-flash',
     keyField: 'geminiApiKey',
     maskedField: 'geminiApiKeyMasked',
     hasKeyField: 'hasGeminiKey',
     url: 'https://aistudio.google.com/app/apikey',
-    urlLabel: 'Obtenir la clé Google AI Studio (Gratuit)',
+    urlLabel: 'Obtenir la clé Google AI Studio',
   },
   {
     id: 'openai',
@@ -316,7 +316,7 @@ const PROVIDERS = [
     maskedField: 'groqApiKeyMasked',
     hasKeyField: 'hasGroqKey',
     url: 'https://console.groq.com/keys',
-    urlLabel: 'Groq Cloud Console (Gratuit)',
+    urlLabel: 'Groq Cloud Console',
   },
   {
     id: 'anthropic',
@@ -705,7 +705,7 @@ function ConfigTab() {
         <div className="space-y-2 text-xs">
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              1. Google Gemini (100% Gratuit — Option fortement recommandée)
+              1. Google Gemini (Option recommandée)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-emerald-400">
               <p>1. Rendez-vous sur <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">Google AI Studio</a>.</p>
@@ -731,7 +731,7 @@ function ConfigTab() {
 
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              3. Groq (Llama 3.3 — Gratuit et ultra-rapide)
+              3. Groq (Llama 3.3 — Ultra-rapide)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-amber-400">
               <p>1. Rendez-vous sur <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">console.groq.com/keys</a>.</p>
