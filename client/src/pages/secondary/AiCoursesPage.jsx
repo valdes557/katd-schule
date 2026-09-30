@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Bot, Plus, Loader2, AlertCircle, X, Clock, CalendarCheck, FileText,
-  Play, CheckCircle2, Trash2, Ban, Radio, Sparkles,
+  Play, CheckCircle2, Trash2, Ban, Radio, Sparkles, Volume2, VolumeX, Mic, HelpCircle, BookOpen,
 } from 'lucide-react'
 import { aiCoursesApi, classesApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
 import { cache } from '../../lib/cache'
 import { useAuth } from '../../context/AuthContext'
+import { speakText, stopSpeaking, isSpeechSynthesisSupported } from '../../lib/speechService'
 
 // Cours de l'IA enseignante autonome (F2 Secondaire).
 // - Professeur : programme un cours (texte ou PDF, heure + durée) pour SES classes,
@@ -44,8 +45,11 @@ export default function AiCoursesPage() {
   const emptyForm = {
     classId: '', subject: '', title: '', sourceType: 'text', sourceText: '',
     pdf: null, scheduledAt: defaultScheduledAt(), durationMinutes: 45,
+    language: 'fr-FR', voice: 'female', qaDurationMinutes: 10,
+    nextCourseTitle: '', nextCourseDate: '', nextCourseInstructions: '',
   }
   const [form, setForm] = useState(emptyForm)
+  const [testingVoice, setTestingVoice] = useState(false)
 
   const classesQ = useCachedFetch(canCreate ? '/classes?' : null, async () => (await classesApi.list()).data || [], [])
   const classes = classesQ.data || []
@@ -55,7 +59,37 @@ export default function AiCoursesPage() {
 
   const refresh = () => { cache.invalidate('/ai-courses'); coursesQ.refetch() }
 
-  const openCreate = () => { setForm({ ...emptyForm, scheduledAt: defaultScheduledAt() }); setError(''); setShowModal(true) }
+  const openCreate = () => {
+    stopSpeaking()
+    setTestingVoice(false)
+    setForm({ ...emptyForm, scheduledAt: defaultScheduledAt() })
+    setError('')
+    setShowModal(true)
+  }
+
+  const handleCloseModal = () => {
+    stopSpeaking()
+    setTestingVoice(false)
+    setShowModal(false)
+  }
+
+  const handleTestVoice = () => {
+    if (testingVoice) {
+      stopSpeaking()
+      setTestingVoice(false)
+      return
+    }
+    const sample = form.language === 'en-US'
+      ? "Hello students! This is a preview of my voice for our upcoming live lesson."
+      : "Bonjour chers élèves ! Voici un extrait de ma voix pour notre prochain cours en classe."
+    setTestingVoice(true)
+    speakText(sample, {
+      lang: form.language,
+      gender: form.voice,
+      onEnd: () => setTestingVoice(false),
+      onError: () => setTestingVoice(false),
+    })
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -69,10 +103,13 @@ export default function AiCoursesPage() {
       return
     }
     setSaving(true)
+    stopSpeaking()
+    setTestingVoice(false)
     try {
       await aiCoursesApi.create({
         ...form,
         scheduledAt: new Date(form.scheduledAt).toISOString(),
+        nextCourseDate: form.nextCourseDate ? new Date(form.nextCourseDate).toISOString() : undefined,
       })
       setShowModal(false)
       refresh()
@@ -135,7 +172,7 @@ export default function AiCoursesPage() {
                       {c.teacherName && <span>· {c.teacherName}</span>}
                     </div>
                     <h3 className="text-sm font-bold text-gray-900">{c.title}</h3>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mt-1">
+                    <div className="flex flex-wrap items-center gap-2.5 text-xs text-gray-500 mt-1">
                       <span className="flex items-center gap-1">
                         <CalendarCheck size={12} />
                         {new Date(c.scheduledAt).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -143,9 +180,21 @@ export default function AiCoursesPage() {
                         {new Date(c.scheduledAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span className="flex items-center gap-1"><Clock size={12} /> {c.durationMinutes} min</span>
+                      <span className="flex items-center gap-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                        <Volume2 size={11} /> {c.voice === 'male' ? 'Voix homme' : 'Voix femme'} ({c.language === 'en-US' ? 'EN' : 'FR'})
+                      </span>
+                      <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                        <Mic size={11} /> {c.qaDurationMinutes ?? 10} min Q&R
+                      </span>
                       {c.sourceType === 'pdf' && <span className="flex items-center gap-1"><FileText size={12} /> PDF</span>}
                       {c.questionCount > 0 && <span>{c.questionCount} question{c.questionCount > 1 ? 's' : ''}</span>}
                     </div>
+                    {c.nextCourseTitle && (
+                      <div className="mt-2 text-xs text-blue-800 bg-blue-50/70 border border-blue-200/60 rounded-md px-2.5 py-1 flex items-center gap-1.5">
+                        <BookOpen size={12} className="text-blue-600 shrink-0" />
+                        <span>Prochain cours : <strong>{c.nextCourseTitle}</strong></span>
+                      </div>
+                    )}
                     {c.status === 'erreur' && isOwner && (
                       <p className="text-xs text-red-600 mt-1">Ce cours n'a pas pu être diffusé.</p>
                     )}
@@ -182,9 +231,9 @@ export default function AiCoursesPage() {
           <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Bot size={18} className="text-purple-600" /> Programmer un cours IA</h3>
-              <button onClick={() => setShowModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+              <button onClick={handleCloseModal} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={handleSubmit} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600">Classe</label>
@@ -198,24 +247,83 @@ export default function AiCoursesPage() {
                   <input required value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="Mathématiques" className="input text-sm mt-1" />
                 </div>
               </div>
+
               <div>
                 <label className="text-xs font-medium text-gray-600">Titre du cours</label>
                 <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ex. Théorème de Pythagore" className="input text-sm mt-1" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Date & heure de début</label>
+
+              {/* Voix et Langue de l'IA avec prévisualisation sonore */}
+              <div className="bg-purple-50/70 border border-purple-200/90 rounded-xl p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                    <Volume2 size={15} className="text-purple-600" /> Langue & Voix de l'IA enseignante
+                  </span>
+                  {isSpeechSynthesisSupported() && (
+                    <button
+                      type="button"
+                      onClick={handleTestVoice}
+                      className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 font-medium transition-all ${
+                        testingVoice
+                          ? 'bg-purple-600 text-white border-purple-600 animate-pulse'
+                          : 'bg-white text-purple-700 border-purple-300 hover:bg-purple-100/50 shadow-sm'
+                      }`}
+                    >
+                      {testingVoice ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      {testingVoice ? 'Arrêter le test' : 'Tester la voix'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Langue de diffusion</label>
+                    <select
+                      value={form.language}
+                      onChange={(e) => setForm({ ...form, language: e.target.value })}
+                      className="input text-sm mt-1 bg-white"
+                    >
+                      <option value="fr-FR">🇫🇷 Français</option>
+                      <option value="en-US">🇬🇧 Anglais</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Voix de l'IA</label>
+                    <select
+                      value={form.voice}
+                      onChange={(e) => setForm({ ...form, voice: e.target.value })}
+                      className="input text-sm mt-1 bg-white"
+                    >
+                      <option value="female">👩 Voix féminine naturelle</option>
+                      <option value="male">👨 Voix masculine naturelle</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-[11px] text-purple-700/80">
+                  L'IA diffusera oralement toute la leçon et répondra vocalement aux élèves avec cette voix synchronisée.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-1">
+                  <label className="text-xs font-medium text-gray-600">Date & heure début</label>
                   <input required type="datetime-local" value={form.scheduledAt} onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })} className="input text-sm mt-1" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Durée (minutes)</label>
-                  <input required type="number" min={5} max={240} value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })} className="input text-sm mt-1" />
+                  <label className="text-xs font-medium text-gray-600">Durée du cours (min)</label>
+                  <input required type="number" min={5} max={240} value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })} className="input text-sm mt-1" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                    <Mic size={13} className="text-indigo-600" /> Temps questions (min)
+                  </label>
+                  <input required type="number" min={0} max={60} value={form.qaDurationMinutes} onChange={(e) => setForm({ ...form, qaDurationMinutes: Number(e.target.value) })} className="input text-sm mt-1" />
                 </div>
               </div>
 
               {/* Source du contenu : texte saisi ou PDF */}
               <div>
-                <label className="text-xs font-medium text-gray-600">Contenu du cours</label>
+                <label className="text-xs font-medium text-gray-600">Contenu pédagogique</label>
                 <div className="flex gap-2 mt-1">
                   {[['text', 'Saisir le texte'], ['pdf', 'Importer un PDF']].map(([v, l]) => (
                     <button key={v} type="button" onClick={() => setForm({ ...form, sourceType: v })}
@@ -225,8 +333,8 @@ export default function AiCoursesPage() {
                   ))}
                 </div>
                 {form.sourceType === 'text' ? (
-                  <textarea rows={6} value={form.sourceText} onChange={(e) => setForm({ ...form, sourceText: e.target.value })}
-                    placeholder="Collez ou rédigez ici le contenu du cours (200 caractères minimum). L'IA le développera en une leçon structurée..."
+                  <textarea rows={5} value={form.sourceText} onChange={(e) => setForm({ ...form, sourceText: e.target.value })}
+                    placeholder="Collez ou rédigez ici le contenu du cours (200 caractères minimum). L'IA le développera en une leçon structurée et orale..."
                     className="input text-sm mt-2" />
                 ) : (
                   <div className="mt-2">
@@ -237,15 +345,55 @@ export default function AiCoursesPage() {
                 )}
               </div>
 
+              {/* Formulaire du prochain cours & consignes */}
+              <div className="bg-blue-50/60 border border-blue-200/80 rounded-xl p-3 space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+                  <BookOpen size={15} className="text-blue-600" /> Annonce du prochain cours & devoirs (optionnel)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Titre du prochain cours</label>
+                    <input
+                      value={form.nextCourseTitle}
+                      onChange={(e) => setForm({ ...form, nextCourseTitle: e.target.value })}
+                      placeholder="Ex. Applications du théorème & exercices"
+                      className="input text-sm mt-1 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Date prévue du prochain cours</label>
+                    <input
+                      type="datetime-local"
+                      value={form.nextCourseDate}
+                      onChange={(e) => setForm({ ...form, nextCourseDate: e.target.value })}
+                      className="input text-sm mt-1 bg-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Consignes & devoirs pour les élèves</label>
+                  <textarea
+                    rows={2}
+                    value={form.nextCourseInstructions}
+                    onChange={(e) => setForm({ ...form, nextCourseInstructions: e.target.value })}
+                    placeholder="Ex. Faire les exercices 2 et 4 p. 65 pour la prochaine séance..."
+                    className="input text-sm mt-1 bg-white"
+                  />
+                </div>
+                <p className="text-[11px] text-blue-700/80">
+                  À la fin du cours, l'IA annoncera vocalement cette prochaine étape et affichera les devoirs.
+                </p>
+              </div>
+
               <p className="text-[11px] text-gray-500 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
                 L'IA prépare la leçon 5 minutes avant l'heure — programmez au moins 10 minutes à l'avance.
-                Le cours démarre et se termine automatiquement à l'heure ; les élèves posent leurs questions à la fin.
+                Le cours démarre automatiquement et les élèves peuvent poser des questions à la voix ou par écrit.
               </p>
 
               {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
+                <button type="button" onClick={handleCloseModal} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
                 <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Programmer
                 </button>

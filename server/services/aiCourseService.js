@@ -30,21 +30,23 @@ function lessonSystemPrompt(course, className) {
   const dur = course.durationMinutes
   const parts = Math.min(6, Math.max(3, Math.ceil(dur / 12)))
   const targetWords = Math.min(dur * 130, 6000)
+  const lang = course.language === 'en-US' ? 'anglais' : 'français'
   return [
     `Tu es un professeur de ${course.subject} qui donne un cours en direct à la classe ${className}${course.level ? ` (niveau ${course.level})` : ''}.`,
-    `Le cours dure ${dur} minutes et sera affiché progressivement aux élèves, comme si tu l'écrivais au tableau au fur et à mesure.`,
+    `Le cours dure ${dur} minutes et sera affiché progressivement aux élèves tout en étant lu à voix haute par synthèse vocale.`,
     '',
-    'Rédige le DÉROULÉ COMPLET du cours en français, prêt à être lu, structuré ainsi :',
+    `Rédige le DÉROULÉ COMPLET du cours en ${lang}, captivant, vivant et pédagogique, structuré ainsi :`,
     "1. Accroche et objectifs de la séance",
-    `2. Développement en ${parts} parties numérotées (définitions, explications, exemples concrets)`,
+    `2. Développement en ${parts} parties numérotées (définitions claires, explications pas à pas, exemples concrets)`,
     "3. Exercices d'application avec correction expliquée",
-    '4. Résumé et points à retenir',
+    '4. Résumé et points clés à retenir',
     '',
     'Contraintes :',
     `- Environ ${targetWords} mots (le rythme doit remplir ${dur} minutes).`,
-    `- Phrases courtes et claires, adaptées au niveau des élèves.`,
-    '- Pas de Markdown lourd : titres en texte simple, listes avec des tirets.',
-    "- Tu parles à des élèves, jamais à « l'utilisateur ». Ne mentionne jamais que tu es une IA.",
+    `- Style oral naturel, fluide et chaleureux : le texte est diffusé et prononcé vocalement aux élèves.`,
+    `- Phrases claires et bien rythmées, adaptées au niveau des élèves.`,
+    '- Pas de Markdown lourd ni de caractères spéciaux : titres en texte simple, listes avec tirets.',
+    "- Tu t'adresses directement aux élèves, comme dans une vraie salle de classe. Ne mentionne jamais que tu es une IA.",
   ].join('\n')
 }
 
@@ -139,8 +141,10 @@ function revealedText(course, now = new Date()) {
   const progress = durMs > 0 ? Math.min(1, elapsed / durMs) : 1
   // Un cours terminé révèle TOUT (jamais de texte tronqué à la fin)
   const shown = course.status === 'termine' ? total : Math.min(total, Math.floor(progress * total))
+  const shownUnits = units.slice(0, shown)
   return {
-    text: joinUnits(units.slice(0, shown)),
+    text: joinUnits(shownUnits),
+    units: shownUnits,
     totalUnits: total,
     shownUnits: shown,
     progress,
@@ -160,15 +164,17 @@ function truncateContext(script) {
 }
 
 /**
- * Répond à la question d'un élève avec le cours comme contexte.
+ * Répond à la question d'un élève avec le cours comme contexte (adapté lecture vocale).
  * @returns {Promise<{answer:string, usage:Object, model:string}>}
  */
 async function answerQuestion({ course, className, question }) {
   const cfg = await AiConfig.getConfig()
+  const lang = course.language === 'en-US' ? 'anglais' : 'français'
   const systemPrompt = [
-    `Tu es le professeur qui vient de donner ce cours de ${course.subject} à la classe ${className}.`,
-    "Un élève te pose une question sur le cours. Réponds en français, brièvement (5 à 12 phrases), avec un exemple si utile.",
+    `Tu es le professeur qui vient d'enseigner ce cours de ${course.subject} à la classe ${className}.`,
+    `Un élève te pose une question (posée vocalement ou par écrit). Réponds oralement et chaleureusement en ${lang}, de manière concise (3 à 7 phrases claires), avec un exemple concret si pertinent.`,
     "Reste dans le cadre du cours et du programme scolaire ; si la question sort du sujet, ramène poliment l'élève au cours.",
+    "Ta réponse sera énoncée à voix haute à l'élève : utilise un ton oral naturel, fluide et bienveillant sans puces Markdown complexes.",
     'Ne mentionne jamais que tu es une IA.',
     '',
     'Voici le cours qui vient d\'être donné :',

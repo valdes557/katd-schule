@@ -906,6 +906,12 @@ export const aiCoursesApi = {
     if (data.pdf) fd.append('pdf', data.pdf)
     fd.append('scheduledAt', data.scheduledAt)
     fd.append('durationMinutes', data.durationMinutes)
+    if (data.language) fd.append('language', data.language)
+    if (data.voice) fd.append('voice', data.voice)
+    if (data.qaDurationMinutes !== undefined && data.qaDurationMinutes !== '') fd.append('qaDurationMinutes', data.qaDurationMinutes)
+    if (data.nextCourseTitle) fd.append('nextCourseTitle', data.nextCourseTitle)
+    if (data.nextCourseDate) fd.append('nextCourseDate', data.nextCourseDate)
+    if (data.nextCourseInstructions) fd.append('nextCourseInstructions', data.nextCourseInstructions)
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/ai-courses`, {
       method: 'POST',

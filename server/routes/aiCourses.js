@@ -80,7 +80,10 @@ router.post('/', protect, authorize('enseignant', 'directeur'), upload.single('p
     const sid = schoolId(req)
     if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
 
-    const { classId, subject, subjectRef, title, sourceType, sourceText, scheduledAt, durationMinutes } = req.body
+    const {
+      classId, subject, subjectRef, title, sourceType, sourceText, scheduledAt, durationMinutes,
+      language, voice, qaDurationMinutes, nextCourseTitle, nextCourseDate, nextCourseInstructions,
+    } = req.body
     if (!classId || !subject || !title || !scheduledAt || !durationMinutes) {
       return res.status(400).json({ message: 'Classe, matière, titre, date/heure et durée requis' })
     }
@@ -150,6 +153,12 @@ router.post('/', protect, authorize('enseignant', 'directeur'), upload.single('p
       pdfName,
       scheduledAt: when,
       durationMinutes: duration,
+      language: language || 'fr-FR',
+      voice: voice || 'female',
+      qaDurationMinutes: qaDurationMinutes !== undefined ? Math.max(0, parseInt(qaDurationMinutes, 10)) : 10,
+      nextCourseTitle: (nextCourseTitle || '').trim(),
+      nextCourseDate: nextCourseDate ? new Date(nextCourseDate) : null,
+      nextCourseInstructions: (nextCourseInstructions || '').trim(),
       status: 'planifie',
     })
     res.status(201).json({ success: true, data: course })
@@ -169,10 +178,20 @@ router.put('/:id', protect, authorize('enseignant', 'directeur'), async (req, re
       return res.status(400).json({ message: "Ce cours n'est plus modifiable (préparation ou diffusion déjà lancée)." })
     }
 
-    const { title, subject, subjectRef, sourceText, scheduledAt, durationMinutes, classId } = req.body
+    const {
+      title, subject, subjectRef, sourceText, scheduledAt, durationMinutes, classId,
+      language, voice, qaDurationMinutes, nextCourseTitle, nextCourseDate, nextCourseInstructions,
+    } = req.body
     if (title !== undefined) course.title = String(title).trim()
     if (subject !== undefined) course.subject = String(subject).trim()
     if (subjectRef !== undefined) course.subjectRef = subjectRef || null
+    if (language !== undefined) course.language = String(language).trim() || 'fr-FR'
+    if (voice !== undefined) course.voice = String(voice).trim() || 'female'
+    if (qaDurationMinutes !== undefined) course.qaDurationMinutes = Math.max(0, parseInt(qaDurationMinutes, 10) || 10)
+    if (nextCourseTitle !== undefined) course.nextCourseTitle = String(nextCourseTitle).trim()
+    if (nextCourseDate !== undefined) course.nextCourseDate = nextCourseDate ? new Date(nextCourseDate) : null
+    if (nextCourseInstructions !== undefined) course.nextCourseInstructions = String(nextCourseInstructions).trim()
+
     if (classId !== undefined && String(classId) !== String(course.class)) {
       if (req.user.role === 'enseignant') {
         const teacher = await Teacher.findOne({ user: req.user._id }).select('classes')
@@ -340,7 +359,14 @@ router.get('/:id/live', protect, async (req, res) => {
         endedAt: course.endedAt,
         serverTime: now, // le client cale son chrono dessus (horloges locales décalées)
         secondsToStart: Math.max(0, Math.round((new Date(course.scheduledAt).getTime() - now.getTime()) / 1000)),
+        language: course.language || 'fr-FR',
+        voice: course.voice || 'female',
+        qaDurationMinutes: course.qaDurationMinutes ?? 10,
+        nextCourseTitle: course.nextCourseTitle || '',
+        nextCourseDate: course.nextCourseDate || null,
+        nextCourseInstructions: course.nextCourseInstructions || '',
         text: reveal.text,
+        units: reveal.units || [],
         progress: reveal.progress,
         remainingSeconds: reveal.remainingSeconds,
         totalUnits: reveal.totalUnits,

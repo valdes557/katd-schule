@@ -36,9 +36,19 @@ const aiCourseSchema = new mongoose.Schema(
     pdfUrl: { type: String, default: '' },
     pdfName: { type: String, default: '' },
 
+    // Voix et Langue de diffusion vocale
+    language: { type: String, default: 'fr-FR', trim: true },
+    voice: { type: String, default: 'female', trim: true }, // 'female', 'male', 'auto'
+
     // Programmation
     scheduledAt: { type: Date, required: true, index: true },
     durationMinutes: { type: Number, required: true, min: 5, max: 240 },
+    qaDurationMinutes: { type: Number, default: 10, min: 0, max: 60 }, // Temps réservé aux questions
+
+    // Informations sur le prochain cours (devoirs, date, thème)
+    nextCourseTitle: { type: String, default: '', trim: true },
+    nextCourseDate: { type: Date, default: null },
+    nextCourseInstructions: { type: String, default: '', trim: true },
 
     status: {
       type: String,
