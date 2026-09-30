@@ -295,8 +295,8 @@ const PROVIDERS = [
     name: 'OpenAI (ChatGPT)',
     badge: 'Standard & Raisonnement',
     badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
-    description: 'Modèles de référence GPT-4o polyvalents et raisonnement logique approfondi o3-mini & o1.',
-    models: ['gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o1', 'o1-mini', 'gpt-4-turbo'],
+    description: 'Modèles de pointe GPT-5, GPT-4o polyvalents et raisonnement logique approfondi o3-mini & o1.',
+    models: ['gpt-5', 'gpt-5.6', 'gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o1', 'o1-mini'],
     defaultModel: 'gpt-4o-mini',
     keyField: 'openaiApiKey',
     maskedField: 'openaiApiKeyMasked',
@@ -323,9 +323,17 @@ const PROVIDERS = [
     name: 'Anthropic (Claude)',
     badge: 'Pédagogique Avancé',
     badgeColor: 'bg-purple-100 text-purple-700 border-purple-200',
-    description: 'Claude 3.7 Sonnet hybride et Claude 3.5 Sonnet : finesse rédactionnelle et analyse pédagogique.',
-    models: ['claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
-    defaultModel: 'claude-3-7-sonnet-20250219',
+    description: 'Claude Opus 5.5, Opus 4.8 et Sonnet 5.5 : puissance de calcul maximale, nuance et raisonnement.',
+    models: [
+      'claude-opus-5-5',
+      'claude-opus-4-8',
+      'claude-sonnet-5-5',
+      'claude-3-7-sonnet-20250219',
+      'claude-3-5-sonnet-20241022',
+      'claude-3-5-haiku-20241022',
+      'claude-3-opus-20240229',
+    ],
+    defaultModel: 'claude-opus-5-5',
     keyField: 'anthropicApiKey',
     maskedField: 'anthropicApiKeyMasked',
     hasKeyField: 'hasAnthropicKey',
@@ -724,14 +732,14 @@ function ConfigTab() {
 
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              2. OpenAI (ChatGPT — GPT-4o, o3-mini & o1)
+              2. OpenAI (ChatGPT — GPT-5, GPT-4o, o3-mini & o1)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-blue-400">
               <p>1. Rendez-vous sur <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">platform.openai.com/api-keys</a>.</p>
               <p>2. Créez un compte ou connectez-vous.</p>
               <p>3. Cliquez sur <strong>« Create new secret key »</strong>, donnez-lui un nom (ex: <code className="bg-gray-200 px-1 rounded">KATD-SCHÜLE</code>).</p>
               <p>4. Copiez immédiatement la clé secrète (<code className="bg-gray-200 px-1 rounded">sk-proj-...</code>) et collez-la dans le champ ci-dessus.</p>
-              <p>5. Sélectionnez <strong>gpt-4o-mini</strong>, <strong>gpt-4o</strong> ou un modèle de raisonnement comme <strong>o3-mini</strong>.</p>
+              <p>5. Sélectionnez <strong>gpt-5</strong>, <strong>gpt-4o</strong>, <strong>gpt-4o-mini</strong> ou un modèle de raisonnement comme <strong>o3-mini</strong>.</p>
             </div>
           </details>
 
@@ -750,12 +758,12 @@ function ConfigTab() {
 
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              4. Anthropic Claude (Claude 3.7 Sonnet & 3.5 Sonnet)
+              4. Anthropic Claude (Opus 5.5, Opus 4.8 & Claude 3.7 / 3.5 Sonnet)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-purple-400">
               <p>1. Rendez-vous sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">console.anthropic.com</a>.</p>
               <p>2. Créez une clé API (<code className="bg-gray-200 px-1 rounded">sk-ant-...</code>) et insérez-la ci-dessus.</p>
-              <p>3. Sélectionnez le modèle hybride <strong>claude-3-7-sonnet-20250219</strong> ou <strong>claude-3-5-sonnet-20241022</strong>.</p>
+              <p>3. Sélectionnez le modèle surpuissant <strong>claude-opus-5-5</strong>, <strong>claude-opus-4-8</strong> ou <strong>claude-3-7-sonnet-20250219</strong>.</p>
             </div>
           </details>
         </div>

@@ -130,7 +130,16 @@ async function generateChatResponse({ messages, config }) {
       )
     }
 
-    const model = (config?.model || 'claude-3-7-sonnet-20250219').trim()
+    let model = (config?.model || 'claude-opus-5-5').trim()
+    // Tolérance et normalisation des saisies (ex: opus5 -> claude-opus-5-5, opus4.8 -> claude-opus-4-8)
+    if (/^opus[- ]?5(\.5)?$/i.test(model) || model.toLowerCase() === 'opus5') {
+      model = 'claude-opus-5-5'
+    } else if (/^opus[- ]?4(\.8)?$/i.test(model) || model.toLowerCase() === 'opus4.8') {
+      model = 'claude-opus-4-8'
+    } else if (/^sonnet[- ]?5(\.5)?$/i.test(model)) {
+      model = 'claude-sonnet-5-5'
+    }
+
     const payload = {
       model,
       max_tokens: maxTokens,
@@ -198,10 +207,13 @@ async function generateChatResponse({ messages, config }) {
   }
 
   const defaultModel = isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini'
-  const model = (config?.model || defaultModel).trim()
+  let model = (config?.model || defaultModel).trim()
+  if (/^gpt[- ]?5$/i.test(model)) model = 'gpt-5'
+  else if (/^gpt[- ]?5\.6$/i.test(model)) model = 'gpt-5.6'
+  else if (/^gpt[- ]?6/i.test(model)) model = 'gpt-6-astra'
 
-  // Modèles de raisonnement (OpenAI séries o1 et o3)
-  const isReasoningModel = !isGroq && (model.startsWith('o1') || model.startsWith('o3'))
+  // Modèles de raisonnement (OpenAI séries o1, o3, o4)
+  const isReasoningModel = !isGroq && (model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4'))
 
   const payload = {
     model,
@@ -234,7 +246,40 @@ async function generateChatResponse({ messages, config }) {
     throw new OpenAiError(`Impossible de joindre le service ${isGroq ? 'Groq' : 'OpenAI'}.`, 502)
   }
 
-  const data = await res.json().catch(() => ({}))
+  let data = await res.json().catch(() => ({}))
+
+  // Secours automatique si OpenAI rejette max_tokens ou temperature sur des modèles récents (ex: gpt-5, o-series)
+  if (!res.ok && data?.error?.message && !isGroq) {
+    const errLower = data.error.message.toLowerCase()
+    let modified = false
+
+    if (errLower.includes('max_completion_tokens') || errLower.includes('max_tokens')) {
+      delete payload.max_tokens
+      payload.max_completion_tokens = maxTokens
+      modified = true
+    }
+    if (errLower.includes('temperature')) {
+      delete payload.temperature
+      modified = true
+    }
+
+    if (modified) {
+      try {
+        const retryRes = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(payload),
+        })
+        if (retryRes.ok) {
+          res = retryRes
+          data = await retryRes.json().catch(() => ({}))
+        }
+      } catch (_) {}
+    }
+  }
   if (!res.ok) {
     const apiMsg = data?.error?.message || `Erreur ${isGroq ? 'Groq' : 'OpenAI'} (${res.status})`
     const status = res.status === 429 ? 429 : 502

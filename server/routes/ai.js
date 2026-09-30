@@ -155,7 +155,7 @@ router.post('/test-key', ...adminOnly, async (req, res) => {
     } else if (provider === 'groq') {
       resolvedModel = resolvedModel || 'llama-3.3-70b-versatile'
     } else if (provider === 'anthropic') {
-      resolvedModel = resolvedModel || 'claude-3-7-sonnet-20250219'
+      resolvedModel = resolvedModel || 'claude-opus-5-5'
     }
 
     const testConfig = {
