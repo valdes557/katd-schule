@@ -281,9 +281,9 @@ const PROVIDERS = [
     name: 'Google Gemini',
     badge: 'Recommandé',
     badgeColor: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    description: 'Excellente vitesse de réponse, haute précision et intégration directe via Google AI Studio.',
-    models: ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
-    defaultModel: 'gemini-1.5-flash',
+    description: 'Dernière génération Gemini 3.8 : vitesse fulgurante, raisonnement multimodal et précision pédagogique.',
+    models: ['gemini-3.8-flash', 'gemini-3.8-pro', 'gemini-3.5-flash', 'gemini-3.1-pro', 'gemini-2.5-flash'],
+    defaultModel: 'gemini-3.8-flash',
     keyField: 'geminiApiKey',
     maskedField: 'geminiApiKeyMasked',
     hasKeyField: 'hasGeminiKey',
@@ -293,10 +293,10 @@ const PROVIDERS = [
   {
     id: 'openai',
     name: 'OpenAI (ChatGPT)',
-    badge: 'Standard',
+    badge: 'Standard & Raisonnement',
     badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
-    description: 'Les modèles de référence GPT-4o et GPT-4o-mini fiables et précis.',
-    models: ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'],
+    description: 'Modèles de référence GPT-4o polyvalents et raisonnement logique approfondi o3-mini & o1.',
+    models: ['gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o1', 'o1-mini', 'gpt-4-turbo'],
     defaultModel: 'gpt-4o-mini',
     keyField: 'openaiApiKey',
     maskedField: 'openaiApiKeyMasked',
@@ -306,11 +306,11 @@ const PROVIDERS = [
   },
   {
     id: 'groq',
-    name: 'Groq (Llama / Mixtral)',
+    name: 'Groq (Llama / DeepSeek)',
     badge: 'Ultra-Rapide',
     badgeColor: 'bg-amber-100 text-amber-700 border-amber-200',
-    description: 'Vitesse de génération fulgurante (>500 tokens/sec) avec Llama 3.3.',
-    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+    description: 'Inférence LPU fulgurante (>500 tokens/sec) avec Llama 3.3 70B et DeepSeek R1.',
+    models: ['llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
     defaultModel: 'llama-3.3-70b-versatile',
     keyField: 'groqApiKey',
     maskedField: 'groqApiKeyMasked',
@@ -321,11 +321,11 @@ const PROVIDERS = [
   {
     id: 'anthropic',
     name: 'Anthropic (Claude)',
-    badge: 'Pédagogique',
+    badge: 'Pédagogique Avancé',
     badgeColor: 'bg-purple-100 text-purple-700 border-purple-200',
-    description: 'Remarquable finesse de rédaction en français et raisonnement pédagogique.',
-    models: ['claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'],
-    defaultModel: 'claude-3-5-sonnet-20241022',
+    description: 'Claude 3.7 Sonnet hybride et Claude 3.5 Sonnet : finesse rédactionnelle et analyse pédagogique.',
+    models: ['claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+    defaultModel: 'claude-3-7-sonnet-20250219',
     keyField: 'anthropicApiKey',
     maskedField: 'anthropicApiKeyMasked',
     hasKeyField: 'hasAnthropicKey',
@@ -350,8 +350,13 @@ function ConfigTab() {
 
   const cfg = q.data
   if (cfg && !form) {
+    let initialModel = cfg.model
+    if (cfg.provider === 'gemini' && (!initialModel || initialModel.includes('gemini-2.0') || initialModel.includes('gemini-1.5'))) {
+      initialModel = 'gemini-3.8-flash'
+    }
     setForm({
       ...cfg,
+      model: initialModel,
       provider: cfg.provider || 'gemini',
       geminiApiKey: '',
       openaiApiKey: '',
@@ -705,7 +710,7 @@ function ConfigTab() {
         <div className="space-y-2 text-xs">
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              1. Google Gemini (Option recommandée)
+              1. Google Gemini (Gemini 3.8 Flash & Pro — Option recommandée)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-emerald-400">
               <p>1. Rendez-vous sur <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">Google AI Studio</a>.</p>
@@ -713,41 +718,44 @@ function ConfigTab() {
               <p>3. Cliquez sur le bouton bleu <strong>« Create API key »</strong>.</p>
               <p>4. Choisissez un projet ou laissez le projet par défaut, puis cliquez sur <strong>« Create API key in new project »</strong>.</p>
               <p>5. Copiez la clé générée (commence par <code className="bg-gray-200 px-1 rounded">AIzaSy...</code>) et collez-la ci-dessus dans le champ <strong>Clé API Google Gemini</strong>.</p>
-              <p>6. Cliquez sur <strong>« Tester la connexion IA »</strong> puis <strong>« Enregistrer »</strong>.</p>
+              <p>6. Sélectionnez le modèle recommandé <strong>gemini-3.8-flash</strong> (ou <strong>gemini-3.8-pro</strong>), cliquez sur <strong>« Tester la connexion IA »</strong> puis <strong>« Enregistrer »</strong>.</p>
             </div>
           </details>
 
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              2. OpenAI (ChatGPT — gpt-4o-mini & gpt-4o)
+              2. OpenAI (ChatGPT — GPT-4o, o3-mini & o1)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-blue-400">
               <p>1. Rendez-vous sur <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">platform.openai.com/api-keys</a>.</p>
               <p>2. Créez un compte ou connectez-vous.</p>
               <p>3. Cliquez sur <strong>« Create new secret key »</strong>, donnez-lui un nom (ex: <code className="bg-gray-200 px-1 rounded">KATD-SCHÜLE</code>).</p>
               <p>4. Copiez immédiatement la clé secrète (<code className="bg-gray-200 px-1 rounded">sk-proj-...</code>) et collez-la dans le champ ci-dessus.</p>
+              <p>5. Sélectionnez <strong>gpt-4o-mini</strong>, <strong>gpt-4o</strong> ou un modèle de raisonnement comme <strong>o3-mini</strong>.</p>
             </div>
           </details>
 
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              3. Groq (Llama 3.3 — Ultra-rapide)
+              3. Groq (Llama 3.3 70B & DeepSeek R1 — Ultra-rapide)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-amber-400">
               <p>1. Rendez-vous sur <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">console.groq.com/keys</a>.</p>
               <p>2. Connectez-vous avec votre compte Google ou GitHub.</p>
               <p>3. Cliquez sur <strong>« Create API Key »</strong>.</p>
               <p>4. Copiez la clé (<code className="bg-gray-200 px-1 rounded">gsk_...</code>) et collez-la dans le champ Groq.</p>
+              <p>5. Choisissez <strong>llama-3.3-70b-versatile</strong> ou <strong>deepseek-r1-distill-llama-70b</strong>.</p>
             </div>
           </details>
 
           <details className="p-3 bg-gray-50 rounded-lg cursor-pointer">
             <summary className="font-semibold text-gray-800">
-              4. Anthropic Claude (claude-3-5-sonnet)
+              4. Anthropic Claude (Claude 3.7 Sonnet & 3.5 Sonnet)
             </summary>
             <div className="mt-2 text-gray-600 space-y-1.5 pl-4 border-l-2 border-purple-400">
               <p>1. Rendez-vous sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">console.anthropic.com</a>.</p>
               <p>2. Créez une clé API (<code className="bg-gray-200 px-1 rounded">sk-ant-...</code>) et insérez-la ci-dessus.</p>
+              <p>3. Sélectionnez le modèle hybride <strong>claude-3-7-sonnet-20250219</strong> ou <strong>claude-3-5-sonnet-20241022</strong>.</p>
             </div>
           </details>
         </div>

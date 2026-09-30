@@ -62,6 +62,13 @@ function canUseChat(user) {
 router.get('/config', ...adminOnly, async (req, res) => {
   try {
     const cfg = await AiConfig.getConfig()
+
+    // Migration automatique si un ancien modèle Gemini déprécié était resté stocké
+    if (cfg.provider === 'gemini' && (!cfg.model || cfg.model.includes('gemini-1.5') || cfg.model.includes('gemini-2.0'))) {
+      cfg.model = 'gemini-3.8-flash'
+      await cfg.save()
+    }
+
     const json = cfg.toObject()
     const mask = (k) => (k && k.length > 8 ? `${k.slice(0, 4)}••••••••${k.slice(-4)}` : k ? '••••••••' : '')
     res.json({
@@ -138,17 +145,22 @@ router.post('/test-key', ...adminOnly, async (req, res) => {
       })
     }
 
+    let resolvedModel = (model || '').trim()
+    if (provider === 'gemini') {
+      if (!resolvedModel || resolvedModel.includes('gemini-2.0') || resolvedModel.includes('gemini-1.5')) {
+        resolvedModel = 'gemini-3.8-flash'
+      }
+    } else if (provider === 'openai') {
+      resolvedModel = resolvedModel || 'gpt-4o-mini'
+    } else if (provider === 'groq') {
+      resolvedModel = resolvedModel || 'llama-3.3-70b-versatile'
+    } else if (provider === 'anthropic') {
+      resolvedModel = resolvedModel || 'claude-3-7-sonnet-20250219'
+    }
+
     const testConfig = {
       provider,
-      model:
-        model ||
-        (provider === 'gemini'
-          ? 'gemini-1.5-flash'
-          : provider === 'openai'
-          ? 'gpt-4o-mini'
-          : provider === 'groq'
-          ? 'llama-3.3-70b-versatile'
-          : 'claude-3-5-sonnet-20241022'),
+      model: resolvedModel,
       geminiApiKey: provider === 'gemini' ? resolvedKey : '',
       openaiApiKey: provider === 'openai' ? resolvedKey : '',
       anthropicApiKey: provider === 'anthropic' ? resolvedKey : '',

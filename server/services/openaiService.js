@@ -37,9 +37,14 @@ async function generateChatResponse({ messages, config }) {
       )
     }
 
-    const model = (config?.model || process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim()
+    let rawModel = (config?.model || process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim()
+    // Si un ancien modèle n'est plus supporté par Google (ex: gemini-2.0-flash ou gemini-1.5-flash), basculer vers gemini-3.8-flash
+    if (rawModel.includes('gemini-2.0') || rawModel.includes('gemini-1.5') || !rawModel) {
+      rawModel = 'gemini-3.8-flash'
+    }
+    const cleanModel = rawModel.replace(/^models\//, '')
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      model
+      cleanModel
     )}:generateContent?key=${apiKey}`
 
     const formattedContents = messages.map((m) => ({
@@ -72,7 +77,25 @@ async function generateChatResponse({ messages, config }) {
       throw new OpenAiError("Impossible de joindre l'API Google Gemini. Vérifiez votre connexion.", 502)
     }
 
-    const data = await res.json().catch(() => ({}))
+    let data = await res.json().catch(() => ({}))
+
+    // Secours automatique si le modèle demandé est désactivé par Google
+    if (!res.ok && data?.error?.message && /no longer available/i.test(data.error.message) && cleanModel !== 'gemini-3.8-flash') {
+      try {
+        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`
+        const fbRes = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (fbRes.ok) {
+          res = fbRes
+          data = await fbRes.json().catch(() => ({}))
+          rawModel = 'gemini-3.8-flash'
+        }
+      } catch (_) {}
+    }
+
     if (!res.ok) {
       const errMsg = data?.error?.message || `Erreur Google Gemini (${res.status})`
       throw new OpenAiError(errMsg, res.status === 429 ? 429 : 502)
@@ -91,7 +114,7 @@ async function generateChatResponse({ messages, config }) {
         completionTokens: meta.candidatesTokenCount || 0,
         totalTokens: meta.totalTokenCount || 0,
       },
-      model,
+      model: rawModel,
     }
   }
 
@@ -107,7 +130,7 @@ async function generateChatResponse({ messages, config }) {
       )
     }
 
-    const model = (config?.model || 'claude-3-5-sonnet-20241022').trim()
+    const model = (config?.model || 'claude-3-7-sonnet-20250219').trim()
     const payload = {
       model,
       max_tokens: maxTokens,
@@ -177,14 +200,24 @@ async function generateChatResponse({ messages, config }) {
   const defaultModel = isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini'
   const model = (config?.model || defaultModel).trim()
 
+  // Modèles de raisonnement (OpenAI séries o1 et o3)
+  const isReasoningModel = !isGroq && (model.startsWith('o1') || model.startsWith('o3'))
+
   const payload = {
     model,
     messages: [
-      ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+      ...(systemPrompt
+        ? [{ role: isReasoningModel ? 'developer' : 'system', content: systemPrompt }]
+        : []),
       ...messages.map((m) => ({ role: m.role, content: m.content })),
     ],
-    temperature,
-    max_tokens: maxTokens,
+  }
+
+  if (isReasoningModel) {
+    payload.max_completion_tokens = maxTokens
+  } else {
+    payload.temperature = temperature
+    payload.max_tokens = maxTokens
   }
 
   let res

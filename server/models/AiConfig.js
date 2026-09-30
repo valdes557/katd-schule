@@ -27,7 +27,7 @@ const aiConfigSchema = new mongoose.Schema(
     openaiApiKey: { type: String, default: '', trim: true },
     anthropicApiKey: { type: String, default: '', trim: true },
     groqApiKey: { type: String, default: '', trim: true },
-    model: { type: String, default: 'gemini-1.5-flash', trim: true },
+    model: { type: String, default: 'gemini-3.8-flash', trim: true },
     systemPrompt: { type: String, default: DEFAULT_SYSTEM_PROMPT },
     temperature: { type: Number, default: 0.5, min: 0, max: 2 },
     maxTokens: { type: Number, default: 1000, min: 50, max: 8000 },
