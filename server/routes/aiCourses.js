@@ -500,12 +500,12 @@ router.post('/:id/cancel', protect, authorize('enseignant', 'directeur'), async 
 })
 
 // DELETE /api/ai-courses/:id — suppression (cours planifié, terminé, annulé ou en erreur)
-router.delete('/:id', protect, authorize('enseignant', 'directeur'), async (req, res) => {
+router.delete('/:id', protect, authorize('enseignant', 'directeur', 'super_admin', 'vice_principal'), async (req, res) => {
   try {
     const course = await AiCourse.findById(req.params.id)
     if (!course) return res.status(404).json({ message: 'Cours introuvable' })
-    if (String(course.school) !== String(schoolId(req))) return res.status(403).json({ message: 'Accès refusé' })
-    if (req.user.role === 'enseignant' && String(course.teacher) !== String(req.user._id)) {
+    if (req.user.role !== 'super_admin' && String(course.school) !== String(schoolId(req))) return res.status(403).json({ message: 'Accès refusé' })
+    if (req.user.role === 'enseignant' && course.teacher && String(course.teacher) !== String(req.user._id)) {
       return res.status(403).json({ message: 'Vous ne pouvez supprimer que vos propres cours' })
     }
     if (!['planifie', 'termine', 'annule', 'erreur'].includes(course.status)) {

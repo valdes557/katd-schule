@@ -67,7 +67,7 @@ export default function AiCoursesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const role = user?.role
-  const canCreate = ['enseignant', 'directeur'].includes(role)
+  const canCreate = ['enseignant', 'directeur', 'super_admin', 'vice_principal'].includes(role)
 
   const [showModal, setShowModal] = useState(false)
   const [editingCourseId, setEditingCourseId] = useState(null)
@@ -552,7 +552,12 @@ export default function AiCoursesPage() {
             const Icon = meta.icon
             const canOpen = ['en_cours', 'termine'].includes(c.status) ||
               (canCreate && ['pret', 'planifie', 'generation', 'erreur'].includes(c.status))
-            const isOwner = canCreate && (role === 'directeur' || String(c.teacher) === String(user?._id))
+            const currentUserId = String(user?.id || user?._id || '')
+            const courseTeacherId = String(c.teacher?._id || c.teacher || '')
+            const isTeacherMatch = Boolean(currentUserId && courseTeacherId && currentUserId === courseTeacherId) || (c.teacherName && user?.name && c.teacherName === user.name)
+            const isOwner = ['directeur', 'super_admin', 'vice_principal'].includes(role) ||
+              (role === 'enseignant' && (isTeacherMatch || !courseTeacherId)) ||
+              (canCreate && !courseTeacherId)
             return (
               <div key={c._id} className="card p-4 hover:border-purple-200 transition-colors">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
@@ -619,11 +624,13 @@ export default function AiCoursesPage() {
                     )}
                     {isOwner && ['planifie', 'termine', 'annule', 'erreur'].includes(c.status) && (
                       <button
+                        type="button"
                         onClick={() => handleDelete(c._id)}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500 transition-colors"
+                        className="btn-ghost border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 text-xs flex items-center gap-1.5 transition-colors px-2.5 py-1.5 rounded-lg font-medium shadow-sm"
                         title="Supprimer ce cours"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={13} className="text-red-600 shrink-0" />
+                        <span>Supprimer</span>
                       </button>
                     )}
                   </div>
