@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Bot, Plus, Loader2, AlertCircle, X, Clock, CalendarCheck, FileText,
   Play, CheckCircle2, Trash2, Ban, Radio, Sparkles, Volume2, VolumeX, Mic, HelpCircle, BookOpen,
-  Edit3, Calendar, ChevronLeft, ChevronRight, Search,
+  Edit3, Calendar, ChevronLeft, ChevronRight, Search, Image as ImageIcon, Zap, Trash,
 } from 'lucide-react'
 import { aiCoursesApi, classesApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
@@ -44,12 +44,13 @@ function createInitialBatchSlots(dateStr, count, classesList) {
   const defaultTimes = ['08:00', '10:00', '13:30', '15:30', '17:00', '18:30']
   const slots = []
   for (let i = 0; i < count; i++) {
-    const time = defaultTimes[i] || '08:00'
+    const time = defaultTimes[i % defaultTimes.length] || '08:00'
     slots.push({
       time,
       classId: classesList[0]?._id || '',
       subject: '',
       title: '',
+      sourceType: 'ai_generate',
       durationMinutes: 50,
       qaDurationMinutes: 10,
       language: 'fr-FR',
@@ -72,10 +73,11 @@ export default function AiCoursesPage() {
   const [editingCourseId, setEditingCourseId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [generatingDraft, setGeneratingDraft] = useState(false)
 
   const emptyForm = {
-    classId: '', subject: '', title: '', sourceType: 'text', sourceText: '',
-    pdf: null, scheduledAt: defaultScheduledAt(), durationMinutes: 45,
+    classId: '', subject: '', title: '', sourceType: 'ai_generate', sourceText: '',
+    pdf: null, images: [], existingImages: [], scheduledAt: defaultScheduledAt(), durationMinutes: 45,
     language: 'fr-FR', voice: 'female', qaDurationMinutes: 10,
     nextCourseTitle: '', nextCourseDate: '', nextCourseInstructions: '',
     nextCourseSourceType: 'none', nextCourseSourceText: '', nextPdf: null,
@@ -83,10 +85,9 @@ export default function AiCoursesPage() {
   const [form, setForm] = useState(emptyForm)
   const [testingVoice, setTestingVoice] = useState(false)
 
-  // Mode Programmation de la Journée (Multi-cours par jour)
+  // Mode Programmation de la Journée (Multi-cours par jour sans restriction)
   const [showBatchModal, setShowBatchModal] = useState(false)
   const [batchDate, setBatchDate] = useState(defaultTodayDate())
-  const [batchCourseCount, setBatchCourseCount] = useState(3)
   const [batchCourses, setBatchCourses] = useState([])
   const [activeBatchIndex, setActiveBatchIndex] = useState(0)
   const [batchSaving, setBatchSaving] = useState(false)
@@ -174,9 +175,11 @@ export default function AiCoursesPage() {
         classId: c.class?._id || c.class || '',
         subject: c.subject || '',
         title: c.title || '',
-        sourceType: c.sourceType || 'text',
+        sourceType: c.sourceType || 'ai_generate',
         sourceText: c.sourceText || '',
         pdf: null,
+        images: [],
+        existingImages: c.images || [],
         scheduledAt: formatDt(c.scheduledAt),
         durationMinutes: c.durationMinutes || 45,
         qaDurationMinutes: c.qaDurationMinutes ?? 10,
@@ -202,31 +205,111 @@ export default function AiCoursesPage() {
     setShowModal(false)
   }
 
+  const handleImageSelect = (e) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    const totalCount = (form.existingImages?.length || 0) + (form.images?.length || 0) + files.length
+    if (totalCount > 5) {
+      alert("Vous pouvez associer au maximum 5 images/illustrations par cours.")
+      return
+    }
+    setForm((prev) => ({
+      ...prev,
+      images: [...(prev.images || []), ...files],
+    }))
+  }
+
+  const handleRemoveNewImage = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      images: (prev.images || []).filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleRemoveExistingImage = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      existingImages: (prev.existingImages || []).filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleAutoDraft = async () => {
+    if (!form.title.trim() || !form.subject.trim()) {
+      setError("Indiquez au moins la matière et le titre du cours pour lancer la rédaction IA.")
+      return
+    }
+    const selectedClass = classes.find((c) => String(c._id) === String(form.classId))
+    setError('')
+    setGeneratingDraft(true)
+    try {
+      const res = await aiCoursesApi.generateContent({
+        title: form.title.trim(),
+        subject: form.subject.trim(),
+        level: selectedClass?.level || '',
+        className: selectedClass?.name || '',
+        durationMinutes: form.durationMinutes || 45,
+        language: form.language || 'fr-FR',
+        images: form.existingImages || [],
+      })
+      if (res.data?.content) {
+        setForm((prev) => ({
+          ...prev,
+          sourceText: res.data.content,
+        }))
+      }
+    } catch (err) {
+      setError("Erreur lors de la rédaction automatique : " + err.message)
+    }
+    setGeneratingDraft(false)
+  }
+
   const openBatchModal = () => {
     stopSpeaking()
     setTestingVoice(false)
     setBatchError('')
-    const count = Math.max(1, Math.min(6, batchCourseCount))
-    setBatchCourses(createInitialBatchSlots(batchDate, count, classes))
+    if (!batchCourses.length) {
+      setBatchCourses(createInitialBatchSlots(batchDate, 3, classes))
+    }
     setActiveBatchIndex(0)
     setShowBatchModal(true)
   }
 
-  const handleBatchCountChange = (newCount) => {
-    const c = Math.max(1, Math.min(6, parseInt(newCount, 10) || 1))
-    setBatchCourseCount(c)
-    setBatchCourses(createInitialBatchSlots(batchDate, c, classes))
-    if (activeBatchIndex >= c) setActiveBatchIndex(0)
+  const addBatchSlot = () => {
+    setBatchCourses((prev) => {
+      const idx = prev.length
+      const defaultTimes = ['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00']
+      const newSlot = {
+        time: defaultTimes[idx % defaultTimes.length] || '08:00',
+        classId: classes[0]?._id || '',
+        subject: '',
+        title: '',
+        sourceType: 'ai_generate',
+        durationMinutes: 50,
+        qaDurationMinutes: 10,
+        language: 'fr-FR',
+        voice: idx % 2 === 0 ? 'female' : 'male',
+        sourceText: '',
+        nextCourseTitle: '',
+        nextCourseInstructions: '',
+      }
+      return [...prev, newSlot]
+    })
+    setActiveBatchIndex(batchCourses.length)
+  }
+
+  const removeBatchSlot = (indexToRemove) => {
+    if (batchCourses.length <= 1) {
+      alert("Vous devez programmer au moins 1 cours.")
+      return
+    }
+    setBatchCourses((prev) => prev.filter((_, idx) => idx !== indexToRemove))
+    if (activeBatchIndex >= indexToRemove && activeBatchIndex > 0) {
+      setActiveBatchIndex(activeBatchIndex - 1)
+    }
   }
 
   const handleBatchDateChange = (newDate) => {
     setBatchDate(newDate)
-    setBatchCourses((prev) =>
-      prev.map((slot) => ({
-        ...slot,
-        time: slot.time,
-      }))
-    )
   }
 
   const updateBatchSlot = (index, patch) => {
@@ -297,8 +380,8 @@ export default function AiCoursesPage() {
         setActiveBatchIndex(i)
         return
       }
-      if (c.sourceText.trim().length < 200) {
-        setBatchError(`Cours n°${i + 1} (« ${c.title || 'Sans titre'} ») : Le contenu du cours est trop court (200 caractères minimum).`)
+      if (c.sourceType === 'text' && c.sourceText.trim().length < 200) {
+        setBatchError(`Cours n°${i + 1} (« ${c.title || 'Sans titre'} ») : Le contenu du cours est trop court (200 caractères minimum). Ou sélectionnez l'option 'Rédigé par l'IA'.`)
         setActiveBatchIndex(i)
         return
       }
@@ -310,6 +393,7 @@ export default function AiCoursesPage() {
         classId: c.classId,
         subject: c.subject.trim(),
         title: c.title.trim(),
+        sourceType: c.sourceType || 'ai_generate',
         scheduledAt: new Date(`${batchDate}T${c.time}:00`).toISOString(),
         durationMinutes: Number(c.durationMinutes) || 50,
         qaDurationMinutes: Number(c.qaDurationMinutes) || 10,
@@ -716,26 +800,151 @@ export default function AiCoursesPage() {
                 </div>
               </div>
 
-              {/* Source du contenu : texte saisi ou PDF */}
+              {/* Source du contenu : IA autonome, texte saisi ou PDF */}
               <div>
-                <label className="text-xs font-medium text-gray-600">Contenu pédagogique</label>
-                <div className="flex gap-2 mt-1">
-                  {[['text', 'Saisir le texte'], ['pdf', 'Importer un PDF']].map(([v, l]) => (
-                    <button key={v} type="button" onClick={() => setForm({ ...form, sourceType: v })}
-                      className={`text-xs px-3 py-1.5 rounded-full border ${form.sourceType === v ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-gray-700">Contenu pédagogique & Déroulement</label>
+                  {form.sourceType === 'ai_generate' && (
+                    <button
+                      type="button"
+                      onClick={handleAutoDraft}
+                      disabled={generatingDraft}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 flex items-center gap-1 font-semibold transition-all disabled:opacity-50"
+                    >
+                      {generatingDraft ? <Loader2 size={12} className="animate-spin text-purple-600" /> : <Zap size={12} className="text-purple-600" />}
+                      {generatingDraft ? "Rédaction par l'IA..." : "⚡ Rédiger et prévisualiser"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex gap-1.5 flex-wrap">
+                  {[
+                    ['ai_generate', "✨ Rédigé par l'IA (automatique)"],
+                    ['text', 'Saisir le texte manuellement'],
+                    ['pdf', 'Importer un support PDF'],
+                  ].map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setForm({ ...form, sourceType: v })}
+                      className={`text-xs px-3 py-1.5 rounded-xl border transition-all ${
+                        form.sourceType === v
+                          ? 'bg-purple-600 text-white border-purple-600 font-semibold shadow-xs'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
                       {l}
                     </button>
                   ))}
                 </div>
-                {form.sourceType === 'text' ? (
-                  <textarea rows={5} value={form.sourceText} onChange={(e) => setForm({ ...form, sourceText: e.target.value })}
-                    placeholder="Collez ou rédigez ici le contenu du cours (200 caractères minimum). L'IA le développera en une leçon structurée et orale..."
-                    className="input text-sm mt-2" />
-                ) : (
+
+                {form.sourceType === 'ai_generate' && (
+                  <div className="mt-2.5 bg-purple-50/60 border border-purple-200/80 rounded-xl p-3 space-y-2">
+                    <p className="text-xs text-purple-900 leading-relaxed">
+                      💡 <strong>Génération intelligente :</strong> L'IA effectue des recherches rigoureuses et rédige le cours complet adapté au niveau de la classe sélectionnée, avec une introduction, des explications pas-à-pas, des exemples concrets et un résumé oral.
+                    </p>
+                    <textarea
+                      rows={4}
+                      value={form.sourceText}
+                      onChange={(e) => setForm({ ...form, sourceText: e.target.value })}
+                      placeholder="Notes, mots-clés ou consignes spécifiques pour l'IA (optionnel). Laissez vide pour une rédaction autonome complète..."
+                      className="input text-xs w-full bg-white"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-purple-700">
+                      <span>{form.sourceText ? `${form.sourceText.length} caractères de notes` : "L'IA rédigera automatiquement le cours 5 min avant l'heure"}</span>
+                      {form.title && form.subject && (
+                        <button
+                          type="button"
+                          onClick={handleAutoDraft}
+                          disabled={generatingDraft}
+                          className="font-semibold underline hover:text-purple-900"
+                        >
+                          Cliquez ici pour voir la rédaction maintenant
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {form.sourceType === 'text' && (
+                  <textarea
+                    rows={5}
+                    value={form.sourceText}
+                    onChange={(e) => setForm({ ...form, sourceText: e.target.value })}
+                    placeholder="Collez ou rédigez ici le contenu complet du cours (200 caractères minimum). L'IA développera et dispensera cette leçon oralement..."
+                    className="input text-sm mt-2"
+                  />
+                )}
+
+                {form.sourceType === 'pdf' && (
                   <div className="mt-2">
-                    <input type="file" accept="application/pdf" onChange={(e) => setForm({ ...form, pdf: e.target.files?.[0] || null })}
-                      className="text-sm w-full border border-dashed border-gray-300 rounded-lg p-3" />
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => setForm({ ...form, pdf: e.target.files?.[0] || null })}
+                      className="text-sm w-full border border-dashed border-gray-300 rounded-lg p-3"
+                    />
                     <p className="text-[11px] text-gray-400 mt-1">PDF texte uniquement (pas de document scanné).</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Schémas, Figures & Images démonstratives */}
+              <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <ImageIcon size={15} className="text-amber-700" /> Schémas, Figures & Images explicatives (max 5)
+                  </span>
+                  <label className="btn-ghost bg-white border border-amber-300 text-amber-900 text-xs py-1 px-2.5 rounded-lg cursor-pointer hover:bg-amber-100 flex items-center gap-1 font-medium shadow-xs">
+                    <Plus size={12} /> Ajouter une image
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-normal">
+                  Ajoutez des photos, figures, graphiques ou schémas. L'IA les analysera et les expliquera aux élèves point par point durant la diffusion comme un être humain.
+                </p>
+
+                {/* Vignettes d'images existantes et nouvelles */}
+                {((form.existingImages && form.existingImages.length > 0) || (form.images && form.images.length > 0)) ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                    {(form.existingImages || []).map((img, idx) => (
+                      <div key={`existing-${idx}`} className="relative group rounded-xl border border-amber-200 overflow-hidden bg-white shadow-xs">
+                        <img src={img.url} alt={img.name || 'Illustration'} className="h-20 w-full object-cover" />
+                        <div className="p-1.5 text-[10px] truncate text-gray-700 font-medium">{img.name || `Figure ${idx + 1}`}</div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveExistingImage(idx)}
+                          className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-80 hover:opacity-100 shadow-xs"
+                          title="Supprimer"
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))}
+                    {(form.images || []).map((file, idx) => (
+                      <div key={`new-${idx}`} className="relative group rounded-xl border border-amber-300 overflow-hidden bg-white shadow-xs">
+                        <img src={URL.createObjectURL(file)} alt={file.name} className="h-20 w-full object-cover" />
+                        <div className="p-1.5 text-[10px] truncate text-gray-700 font-medium">{file.name}</div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveNewImage(idx)}
+                          className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-80 hover:opacity-100 shadow-xs"
+                          title="Supprimer"
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border border-dashed border-amber-300/80 rounded-xl p-3 text-center text-xs text-amber-800/70">
+                    Aucune image attachée pour le moment.
                   </div>
                 )}
               </div>
@@ -867,35 +1076,47 @@ export default function AiCoursesPage() {
                   </div>
                   <div>
                     <label className="text-xs font-bold text-purple-900 block">
-                      Nombre de cours dans la journée ({batchCourseCount} cours)
+                      Gestion des cours ({batchCourses.length} cours programmés)
                     </label>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      {[1, 2, 3, 4, 5, 6].map((num) => (
+                    <div className="flex items-center gap-2 mt-1">
+                      <button
+                        type="button"
+                        onClick={addBatchSlot}
+                        className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-xs"
+                      >
+                        <Plus size={13} /> Ajouter un cours
+                      </button>
+                      {batchCourses.length > 1 && (
                         <button
-                          key={num}
                           type="button"
-                          onClick={() => handleBatchCountChange(num)}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                            batchCourseCount === num
-                              ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                              : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
-                          }`}
+                          onClick={() => removeBatchSlot(activeBatchIndex)}
+                          className="btn-ghost border border-red-200 text-red-600 hover:bg-red-50 text-xs py-1.5 px-3 flex items-center gap-1 shadow-xs"
+                          title="Supprimer ce cours"
                         >
-                          {num}
+                          <Trash size={13} /> Supprimer cours n°{activeBatchIndex + 1}
                         </button>
-                      ))}
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* Onglets des cours de la journée */}
                 <div>
-                  <label className="text-[11px] font-semibold text-purple-800 uppercase tracking-wider block mb-1.5">
-                    Sélectionner le cours à configurer :
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-semibold text-purple-800 uppercase tracking-wider block">
+                      Sélectionner le cours à configurer :
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addBatchSlot}
+                      className="text-xs text-purple-700 hover:text-purple-900 font-semibold flex items-center gap-1"
+                    >
+                      <Plus size={12} /> Nouveau créneau
+                    </button>
+                  </div>
                   <div className="flex gap-1.5 overflow-x-auto pb-1">
                     {batchCourses.map((c, idx) => {
-                      const isComplete = c.classId && c.subject.trim() && c.title.trim() && c.sourceText.trim().length >= 200
+                      const isComplete = c.classId && c.subject.trim() && c.title.trim() && (c.sourceType === 'ai_generate' || c.sourceText.trim().length >= 200)
                       const isActive = activeBatchIndex === idx
                       return (
                         <button
@@ -928,7 +1149,7 @@ export default function AiCoursesPage() {
                       Configuration du Cours n°{activeBatchIndex + 1}
                     </span>
                     <span className="text-[11px] text-gray-400">
-                      Progression : {batchCourses.filter((x) => x.title && x.subject && x.sourceText.length >= 200).length} / {batchCourses.length} cours prêts
+                      Progression : {batchCourses.filter((x) => x.title && x.subject && (x.sourceType === 'ai_generate' || x.sourceText.trim().length >= 200)).length} / {batchCourses.length} cours prêts
                     </span>
                   </div>
 
@@ -1025,20 +1246,59 @@ export default function AiCoursesPage() {
                     </div>
                   </div>
 
+                  {/* Mode de rédaction du cours */}
                   <div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-gray-700">Contenu pédagogique du cours</label>
-                      <span className={`text-[11px] ${batchCourses[activeBatchIndex].sourceText.trim().length >= 200 ? 'text-emerald-600 font-semibold' : 'text-gray-400'}`}>
-                        {batchCourses[activeBatchIndex].sourceText.trim().length} / 200 caractères min
-                      </span>
+                    <label className="text-xs font-medium text-gray-700">Mode pédagogique</label>
+                    <div className="flex gap-2 mt-1 mb-2">
+                      {[
+                        ['ai_generate', "✨ Rédigé par l'IA (automatique)"],
+                        ['text', 'Texte manuel'],
+                      ].map(([st, label]) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => updateBatchSlot(activeBatchIndex, { sourceType: st })}
+                          className={`text-xs px-3 py-1.5 rounded-xl border transition-all ${
+                            (batchCourses[activeBatchIndex].sourceType || 'ai_generate') === st
+                              ? 'bg-purple-600 text-white border-purple-600 font-semibold shadow-xs'
+                              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
                     </div>
-                    <textarea
-                      rows={4}
-                      value={batchCourses[activeBatchIndex].sourceText}
-                      onChange={(e) => updateBatchSlot(activeBatchIndex, { sourceText: e.target.value })}
-                      placeholder="Saisissez ou collez les notions du cours. L'IA rédigera et dispensera la leçon orale..."
-                      className="input text-sm mt-1"
-                    />
+
+                    {(batchCourses[activeBatchIndex].sourceType || 'ai_generate') === 'ai_generate' ? (
+                      <div className="bg-purple-50/50 border border-purple-200/70 rounded-xl p-2.5">
+                        <p className="text-[11px] text-purple-900 mb-1.5">
+                          💡 L'IA recherchera et rédigera le cours complet adapté au niveau de la classe. Vous pouvez laisser vide ou inscrire des instructions spécifiques :
+                        </p>
+                        <textarea
+                          rows={2}
+                          value={batchCourses[activeBatchIndex].sourceText}
+                          onChange={(e) => updateBatchSlot(activeBatchIndex, { sourceText: e.target.value })}
+                          placeholder="Mots-clés, points clés ou plan recommandé pour l'IA (optionnel)..."
+                          className="input text-xs bg-white"
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] text-gray-500">Texte complet rédigé :</span>
+                          <span className={`text-[11px] ${batchCourses[activeBatchIndex].sourceText.trim().length >= 200 ? 'text-emerald-600 font-semibold' : 'text-gray-400'}`}>
+                            {batchCourses[activeBatchIndex].sourceText.trim().length} / 200 caractères min
+                          </span>
+                        </div>
+                        <textarea
+                          rows={4}
+                          value={batchCourses[activeBatchIndex].sourceText}
+                          onChange={(e) => updateBatchSlot(activeBatchIndex, { sourceText: e.target.value })}
+                          placeholder="Collez ici les notions du cours (200 caractères minimum)..."
+                          className="input text-sm"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Consignes prochain cours optionnel */}

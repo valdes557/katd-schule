@@ -899,6 +899,14 @@ function buildCourseFormData(data) {
   if (data.sourceType) fd.append('sourceType', data.sourceType)
   if (data.sourceText !== undefined) fd.append('sourceText', data.sourceText)
   if (data.pdf) fd.append('pdf', data.pdf)
+  if (data.images && Array.isArray(data.images)) {
+    data.images.forEach((img) => {
+      if (img instanceof File) fd.append('images', img)
+    })
+  }
+  if (data.existingImages) {
+    fd.append('existingImages', JSON.stringify(data.existingImages))
+  }
   if (data.scheduledAt) fd.append('scheduledAt', data.scheduledAt)
   if (data.durationMinutes !== undefined) fd.append('durationMinutes', data.durationMinutes)
   if (data.language) fd.append('language', data.language)
@@ -917,6 +925,7 @@ export const aiCoursesApi = {
   list: (params = {}) => api.get(`/ai-courses?${new URLSearchParams(params).toString()}`),
   get: (id) => api.get(`/ai-courses/${id}`),
   live: (id) => api.get(`/ai-courses/${id}/live`),
+  generateContent: (data) => api.post('/ai-courses/generate-content', data),
   create: async (data) => {
     const fd = data instanceof FormData ? data : buildCourseFormData(data)
     const token = localStorage.getItem('token')
@@ -942,7 +951,7 @@ export const aiCoursesApi = {
       if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
       return json
     }
-    if (data.pdf || data.nextPdf) {
+    if (data.pdf || data.nextPdf || (data.images && data.images.length > 0) || data.existingImages) {
       const fd = buildCourseFormData(data)
       const token = localStorage.getItem('token')
       const res = await fetch(`${API_URL}/ai-courses/${id}`, {

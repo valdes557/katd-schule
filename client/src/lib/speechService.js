@@ -119,13 +119,43 @@ export function speakText(text, options = {}) {
     utterance.voice = selectedVoice
   }
 
-  if (onStart) utterance.onstart = onStart
-  if (onEnd) utterance.onend = onEnd
-  if (onError) utterance.onerror = onError
+  let speechKeepAliveTimer = null
+  const startKeepAlive = () => {
+    clearInterval(speechKeepAliveTimer)
+    speechKeepAliveTimer = setInterval(() => {
+      if (typeof window !== 'undefined' && window.speechSynthesis?.speaking) {
+        window.speechSynthesis.pause()
+        window.speechSynthesis.resume()
+      } else {
+        clearInterval(speechKeepAliveTimer)
+        speechKeepAliveTimer = null
+      }
+    }, 10000)
+  }
+  const stopKeepAlive = () => {
+    if (speechKeepAliveTimer) {
+      clearInterval(speechKeepAliveTimer)
+      speechKeepAliveTimer = null
+    }
+  }
+
+  utterance.onstart = (evt) => {
+    startKeepAlive()
+    if (onStart) onStart(evt)
+  }
+  utterance.onend = (evt) => {
+    stopKeepAlive()
+    if (onEnd) onEnd(evt)
+  }
+  utterance.onerror = (evt) => {
+    stopKeepAlive()
+    if (onError) onError(evt)
+  }
 
   try {
     window.speechSynthesis.speak(utterance)
   } catch (err) {
+    stopKeepAlive()
     console.warn('[speechService] speak error:', err.message)
     if (onError) onError(err)
   }
@@ -276,5 +306,93 @@ export function createSpeechRecognizer({
       }
     },
     isListening: () => running,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gestion de la veille écran (Screen Wake Lock) & Audio en arrière-plan (Lock Screen)
+// ─────────────────────────────────────────────────────────────────────────────
+
+let wakeLockSentinel = null
+let backgroundAudio = null
+
+// Demande le maintien de l'écran allumé pour les smartphones/tablettes
+export async function requestScreenWakeLock() {
+  if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+    try {
+      wakeLockSentinel = await navigator.wakeLock.request('screen')
+      wakeLockSentinel.addEventListener('release', () => {
+        wakeLockSentinel = null
+      })
+      return true
+    } catch (err) {
+      // Non bloquant si la batterie est faible ou si refusé par l'OS
+      console.warn('[speechService] wakeLock request:', err.message)
+    }
+  }
+  return false
+}
+
+export async function releaseScreenWakeLock() {
+  if (wakeLockSentinel) {
+    try {
+      await wakeLockSentinel.release()
+    } catch (_) {}
+    wakeLockSentinel = null
+  }
+}
+
+// Maintient le flux audio actif même lorsque le téléphone se verrouille ou que l'écran s'éteint
+export function enableBackgroundAudio({ title = 'Cours en direct IA', teacher = 'Professeur IA', subject = 'KATD-SCHÜLE' } = {}) {
+  if (typeof window === 'undefined') return
+
+  // 1. Activer le WakeLock
+  requestScreenWakeLock()
+
+  // 2. Initialiser le porteur audio silencieux (requis par iOS et Android pour maintenir SpeechSynthesis actif en veille)
+  if (!backgroundAudio) {
+    backgroundAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==')
+    backgroundAudio.loop = true
+    backgroundAudio.volume = 0.05
+  }
+
+  try {
+    backgroundAudio.play().catch(() => {})
+  } catch (_) {}
+
+  // 3. Déclarer la session média au système d'exploitation mobile (Android / iOS / macOS / Windows)
+  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator && window.MediaMetadata) {
+    try {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title,
+        artist: teacher ? `Enseigné par ${teacher}` : 'KATD-SCHÜLE IA',
+        album: `Cours de ${subject}`,
+      })
+
+      navigator.mediaSession.playbackState = 'playing'
+
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (backgroundAudio) backgroundAudio.play().catch(() => {})
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        stopSpeaking()
+        if (backgroundAudio) backgroundAudio.pause()
+      })
+    } catch (_) {}
+  }
+}
+
+// Désactive le porteur audio et relâche le verrouillage
+export function disableBackgroundAudio() {
+  releaseScreenWakeLock()
+  if (backgroundAudio) {
+    try {
+      backgroundAudio.pause()
+    } catch (_) {}
+  }
+  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.playbackState = 'paused'
+    } catch (_) {}
   }
 }

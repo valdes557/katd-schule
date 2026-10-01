@@ -30,11 +30,19 @@ const aiCourseSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     level: { type: String, default: '' }, // Class.level — adapte le ton du prompt
 
-    // Contenu source fourni par le professeur
-    sourceType: { type: String, enum: ['text', 'pdf'], required: true },
-    sourceText: { type: String, default: '' }, // texte saisi OU extrait du PDF
+    // Contenu source fourni par le professeur ou généré par l'IA
+    sourceType: { type: String, enum: ['text', 'pdf', 'ai_generate'], default: 'ai_generate' },
+    sourceText: { type: String, default: '' }, // texte saisi OU extrait du PDF OU généré par l'IA
     pdfUrl: { type: String, default: '' },
     pdfName: { type: String, default: '' },
+    images: [
+      {
+        url: { type: String, default: '' },
+        name: { type: String, default: '' },
+        caption: { type: String, default: '' },
+        analysis: { type: String, default: '' },
+      },
+    ],
 
     // Voix et Langue de diffusion vocale
     language: { type: String, default: 'fr-FR', trim: true },

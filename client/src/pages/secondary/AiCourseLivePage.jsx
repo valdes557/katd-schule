@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Bot, Loader2, AlertCircle, ArrowLeft, Clock, Radio, CheckCircle2,
   Send, MessageCircle, Sparkles, Volume2, VolumeX, Mic, MicOff,
-  Play, Square, BookOpen, Volume1, Edit3, FileText, X,
+  Play, Square, BookOpen, Volume1, Edit3, FileText, X, Image as ImageIcon, Maximize2,
 } from 'lucide-react'
 import { aiCoursesApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import {
   isSpeechSynthesisSupported, isSpeechRecognitionSupported,
   speakText, stopSpeaking, createSpeechRecognizer, requestMicrophonePermission,
+  enableBackgroundAudio, disableBackgroundAudio, requestScreenWakeLock, releaseScreenWakeLock,
 } from '../../lib/speechService'
 
 // Diffusion en direct d'un cours de l'IA enseignante (F2 Secondaire).
@@ -76,6 +77,7 @@ export default function AiCourseLivePage() {
 
   // Compte à rebours de la session Q&R (après la fin du cours)
   const [qaCountdown, setQaCountdown] = useState(null)
+  const [zoomedImage, setZoomedImage] = useState(null)
 
   const bottomRef = useRef(null)
   const prevLenRef = useRef(0)
@@ -139,10 +141,36 @@ export default function AiCourseLivePage() {
   useEffect(() => {
     return () => {
       stopSpeaking()
+      disableBackgroundAudio()
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       recognizerRef.current?.stop()
     }
   }, [])
+
+  // Maintient le flux audio et le WakeLock actifs même écran verrouillé
+  useEffect(() => {
+    if (voiceEnabled && (data?.status === 'en_cours' || isSpeaking || readingFullCourse)) {
+      enableBackgroundAudio({
+        title: data?.title || 'Cours IA en direct',
+        teacher: data?.teacherName || "L'IA enseignante",
+        subject: data?.subject || 'KATD-SCHÜLE',
+      })
+    } else if (!isSpeaking && !readingFullCourse && data?.status !== 'en_cours') {
+      disableBackgroundAudio()
+    }
+  }, [voiceEnabled, data?.status, data?.title, data?.teacherName, data?.subject, isSpeaking, readingFullCourse])
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && voiceEnabled && (data?.status === 'en_cours' || isSpeaking || readingFullCourse)) {
+        requestScreenWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [voiceEnabled, data?.status, isSpeaking, readingFullCourse])
 
   // Queue vocale : diffuse chaque paragraphe successivement
   const processSpeechQueue = useCallback(() => {
@@ -397,6 +425,7 @@ export default function AiCourseLivePage() {
   const toggleVoice = () => {
     if (voiceEnabled) {
       stopSpeaking()
+      disableBackgroundAudio()
       speechQueueRef.current = []
       isQueueRunningRef.current = false
       isSpeakingRef.current = false
@@ -406,6 +435,11 @@ export default function AiCourseLivePage() {
       setVoiceEnabled(false)
     } else {
       setVoiceEnabled(true)
+      enableBackgroundAudio({
+        title: data?.title || 'Cours IA en direct',
+        teacher: data?.teacherName || "L'IA enseignante",
+        subject: data?.subject || 'KATD-SCHÜLE',
+      })
       if (data?.status === 'en_cours' && data?.units?.length > 0) {
         const units = data.units
         spokenUnitsCountRef.current = units.length
@@ -614,6 +648,64 @@ export default function AiCourseLivePage() {
     })
   }
 
+  const renderChalkboardContent = (rawText) => {
+    if (!rawText) return null
+    const imageRegex = /!\[(.*?)\]\((.*?)\)/g
+    const elements = []
+    let lastIndex = 0
+    let match
+
+    while ((match = imageRegex.exec(rawText)) !== null) {
+      if (match.index > lastIndex) {
+        elements.push({
+          type: 'text',
+          content: rawText.substring(lastIndex, match.index),
+        })
+      }
+      elements.push({
+        type: 'image',
+        alt: match[1] || 'Illustration du cours',
+        src: match[2],
+      })
+      lastIndex = match.index + match[0].length
+    }
+    if (lastIndex < rawText.length) {
+      elements.push({
+        type: 'text',
+        content: rawText.substring(lastIndex),
+      })
+    }
+
+    return elements.map((item, idx) => {
+      if (item.type === 'text') {
+        return <span key={idx} className="whitespace-pre-wrap">{item.content}</span>
+      }
+      return (
+        <div key={idx} className="my-4 p-3 bg-purple-50/50 rounded-2xl border border-purple-200/80 shadow-xs">
+          <div
+            className="relative group cursor-pointer overflow-hidden rounded-xl bg-white border border-purple-100 flex items-center justify-center max-h-96"
+            onClick={() => setZoomedImage({ url: item.src, caption: item.alt })}
+          >
+            <img
+              src={item.src}
+              alt={item.alt}
+              className="max-h-80 w-auto object-contain rounded-xl transition-transform duration-300 group-hover:scale-[1.02]"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold gap-1.5 backdrop-blur-[1px]">
+              <Maximize2 size={16} /> Cliquer pour agrandir
+            </div>
+          </div>
+          {item.alt && (
+            <p className="text-center text-xs font-medium text-purple-900 mt-2 italic">
+              📷 {item.alt}
+            </p>
+          )}
+        </div>
+      )
+    })
+  }
+
   if (loading) return <div className="text-center py-20"><Loader2 size={26} className="animate-spin mx-auto text-purple-600" /></div>
   if (error) {
     return (
@@ -697,6 +789,10 @@ export default function AiCourseLivePage() {
             <span className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-2.5 py-1">
               {data.voice === 'male' ? '👨 Voix homme' : '👩 Voix femme'} ({data.language === 'en-US' ? 'Anglais' : 'Français'})
             </span>
+
+            <span className="text-[11px] text-purple-700 bg-purple-50/90 border border-purple-200 rounded-full px-2.5 py-1 flex items-center gap-1 font-medium">
+              📱 Écran de veille & audio actif
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -762,14 +858,57 @@ export default function AiCourseLivePage() {
         <div className="card p-10 text-center text-gray-500"><AlertCircle size={32} className="mx-auto mb-3 text-red-400" /><p className="text-sm">Ce cours n'a pas pu être diffusé.</p>{data.generationError && <p className="text-xs text-gray-400 mt-1">{data.generationError}</p>}</div>
       )}
 
+      {/* Galerie des figures et illustrations pédagogiques associées */}
+      {(isLive || isDone) && data.images && data.images.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50/80 via-orange-50/50 to-amber-50/80 border border-amber-200/90 rounded-2xl p-4 space-y-2.5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+              <ImageIcon size={16} className="text-amber-700" />
+              Figures, Schémas & Supports visuels du cours ({data.images.length})
+            </span>
+            <span className="text-[11px] text-amber-800 font-medium">
+              L'IA commente ces figures à l'oral
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {data.images.map((img, idx) => (
+              <div
+                key={idx}
+                onClick={() => setZoomedImage({ url: img.url, caption: img.caption || img.name || `Figure ${idx + 1}` })}
+                className="group relative bg-white border border-amber-200/90 rounded-xl overflow-hidden cursor-pointer shadow-xs hover:shadow-md transition-all"
+              >
+                <div className="h-28 w-full bg-amber-100/40 flex items-center justify-center overflow-hidden">
+                  <img
+                    src={img.url}
+                    alt={img.name || `Figure ${idx + 1}`}
+                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                </div>
+                <div className="p-2 bg-white">
+                  <p className="text-xs font-bold text-gray-800 truncate">
+                    Figure {idx + 1} : {img.name || 'Illustration'}
+                  </p>
+                  {img.caption && (
+                    <p className="text-[10px] text-gray-500 truncate">{img.caption}</p>
+                  )}
+                </div>
+                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold gap-1 backdrop-blur-[1px]">
+                  <Maximize2 size={14} /> Agrandir
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Le tableau : texte du cours qui s'écrit */}
       {(isLive || isDone) && (
         <div className="card p-5 sm:p-8 bg-white relative">
           {data.usedFallback && (
             <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5 mb-4">Cours diffusé à partir du contenu du professeur.</p>
           )}
-          <div className="prose-sm max-w-none text-[15px] leading-7 text-gray-800 whitespace-pre-wrap">
-            {data.text}
+          <div className="prose-sm max-w-none text-[15px] leading-7 text-gray-800">
+            {renderChalkboardContent(data.text)}
             {isLive && <span className="inline-block w-0.5 h-4 bg-purple-500 ml-0.5 align-middle animate-pulse" />}
           </div>
           {isLive && !data.text && (
@@ -1198,6 +1337,39 @@ export default function AiCourseLivePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modale d'agrandissement d'image plein écran */}
+      {zoomedImage && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in"
+          onClick={() => setZoomedImage(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setZoomedImage(null)}
+              className="absolute top-3 right-3 bg-black/60 text-white rounded-full p-1.5 hover:bg-black/80 transition-colors z-10"
+            >
+              <X size={18} />
+            </button>
+            <div className="overflow-auto max-h-[75vh] flex items-center justify-center bg-gray-950 rounded-xl p-2">
+              <img
+                src={zoomedImage.url}
+                alt={zoomedImage.caption || 'Figure agrandie'}
+                className="max-h-[70vh] w-auto object-contain rounded-lg"
+              />
+            </div>
+            {zoomedImage.caption && (
+              <div className="p-3 text-center text-sm font-semibold text-gray-800">
+                📷 {zoomedImage.caption}
+              </div>
+            )}
           </div>
         </div>
       )}

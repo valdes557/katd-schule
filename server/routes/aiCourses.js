@@ -13,7 +13,7 @@ const Class = require('../models/Class')
 const { protect, authorize } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
 const {
-  extractPdfText, revealedText, answerQuestion,
+  extractPdfText, revealedText, answerQuestion, generateCourseContent,
 } = require('../services/aiCourseService')
 const {
   getActiveSubscription, consumeQuota, QUOTA_EXHAUSTED_MSG,
@@ -77,9 +77,38 @@ async function canViewCourse(user, course) {
 const courseUpload = upload.fields([
   { name: 'pdf', maxCount: 1 },
   { name: 'nextPdf', maxCount: 1 },
+  { name: 'images', maxCount: 5 },
 ])
 
-// POST /api/ai-courses — programmer un cours (multipart : champs 'pdf' et 'nextPdf' optionnels)
+// POST /api/ai-courses/generate-content — rédiger le cours automatiquement avec l'IA
+router.post('/generate-content', protect, authorize('enseignant', 'directeur', 'super_admin'), rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
+  try {
+    const sid = schoolId(req)
+    if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+    const { title, subject, level, className, durationMinutes, language, images } = req.body
+    if (!title || !subject) {
+      return res.status(400).json({ message: 'Titre et matière requis pour la génération.' })
+    }
+    const sub = await getActiveSubscription(sid)
+    if (!sub || sub.remainingQuestions <= 0) {
+      return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Aucune souscription IA active pour votre établissement." })
+    }
+    const result = await generateCourseContent({
+      title,
+      subject,
+      level: level || '',
+      className: className || '',
+      durationMinutes: parseInt(durationMinutes, 10) || 45,
+      language: language || 'fr-FR',
+      images: Array.isArray(images) ? images : [],
+    })
+    res.json({ success: true, data: result })
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message })
+  }
+})
+
+// POST /api/ai-courses — programmer un cours (multipart : champs 'pdf', 'nextPdf' et 'images' optionnels)
 router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, async (req, res) => {
   try {
     const sid = schoolId(req)
@@ -123,12 +152,35 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
       return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Aucune souscription IA active pour votre établissement." })
     }
 
-    // Contenu source : texte saisi OU texte extrait du PDF
+    // Gestion des images téléversées ou fournies
+    const courseImages = []
+    if (req.files?.images && Array.isArray(req.files.images)) {
+      for (const img of req.files.images) {
+        courseImages.push({
+          url: img.path,
+          name: img.originalname || 'Illustration',
+          caption: '',
+        })
+      }
+    }
+    if (req.body.existingImages) {
+      try {
+        const parsed = typeof req.body.existingImages === 'string' ? JSON.parse(req.body.existingImages) : req.body.existingImages
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item && item.url) courseImages.push(item)
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Contenu source : texte saisi OU texte extrait du PDF OU auto-génération IA
+    const finalSourceType = ['pdf', 'ai_generate'].includes(sourceType) ? sourceType : 'text'
     let text = String(sourceText || '').trim()
     let pdfUrl = ''
     let pdfName = ''
     const pdfFile = req.files?.pdf?.[0] || req.file
-    if (sourceType === 'pdf') {
+    if (finalSourceType === 'pdf') {
       if (!pdfFile) return res.status(400).json({ message: 'Fichier PDF requis' })
       try {
         text = await extractPdfText(pdfFile.buffer)
@@ -140,8 +192,12 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
       }
       pdfUrl = pdfFile.path || ''
       pdfName = pdfFile.originalname || ''
+    } else if (finalSourceType === 'ai_generate') {
+      if (!text) {
+        text = `Cours pédagogique approfondi sur le thème : ${title}. Matière : ${subject}. Niveau : ${klass.level || 'Général'}.`
+      }
     } else if (text.length < 200) {
-      return res.status(400).json({ message: 'Le contenu du cours est trop court (200 caractères minimum).' })
+      return res.status(400).json({ message: 'Le contenu du cours est trop court (200 caractères minimum). Vous pouvez aussi choisir la génération automatique par l\'IA.' })
     }
 
     // Support du prochain cours (texte ou PDF)
@@ -163,10 +219,11 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
       teacherName: req.user.name || '',
       title: String(title).trim(),
       level: klass.level || '',
-      sourceType: sourceType === 'pdf' ? 'pdf' : 'text',
+      sourceType: finalSourceType,
       sourceText: text,
       pdfUrl,
       pdfName,
+      images: courseImages,
       scheduledAt: when,
       durationMinutes: duration,
       language: language || 'fr-FR',
@@ -195,8 +252,8 @@ router.post('/batch', protect, authorize('enseignant', 'directeur'), async (req,
     if (!Array.isArray(courses) || courses.length === 0) {
       return res.status(400).json({ message: 'Liste de cours invalide ou vide.' })
     }
-    if (courses.length > 10) {
-      return res.status(400).json({ message: 'Maximum 10 cours par programmation journalière.' })
+    if (courses.length > 100) {
+      return res.status(400).json({ message: 'Maximum 100 cours par programmation simultanée.' })
     }
 
     let teacherProfile = null
@@ -217,9 +274,9 @@ router.post('/batch', protect, authorize('enseignant', 'directeur'), async (req,
     for (let i = 0; i < courses.length; i++) {
       const c = courses[i]
       const {
-        classId, subject, subjectRef, title, sourceText, scheduledAt, durationMinutes,
+        classId, subject, subjectRef, title, sourceType, sourceText, scheduledAt, durationMinutes,
         language, voice, qaDurationMinutes, nextCourseTitle, nextCourseDate, nextCourseInstructions,
-        nextCourseSourceType, nextCourseSourceText,
+        nextCourseSourceType, nextCourseSourceText, images,
       } = c
 
       if (!classId || !subject || !title || !scheduledAt || !durationMinutes) {
@@ -236,9 +293,14 @@ router.post('/batch', protect, authorize('enseignant', 'directeur'), async (req,
       if (isNaN(when.getTime())) {
         return res.status(400).json({ message: `Cours n°${i + 1} : Date/heure invalide.` })
       }
-      const text = String(sourceText || '').trim()
-      if (text.length < 200) {
-        return res.status(400).json({ message: `Cours n°${i + 1} (« ${title} ») : Le contenu est trop court (200 caractères minimum).` })
+      const finalSourceType = ['text', 'ai_generate'].includes(sourceType) ? sourceType : 'text'
+      let text = String(sourceText || '').trim()
+      if (finalSourceType === 'ai_generate') {
+        if (!text) {
+          text = `Cours pédagogique approfondi sur le thème : ${title}. Matière : ${subject}.`
+        }
+      } else if (text.length < 200) {
+        return res.status(400).json({ message: `Cours n°${i + 1} (« ${title} ») : Le contenu est trop court (200 caractères minimum) ou choisissez la génération IA.` })
       }
 
       const klass = await Class.findOne({ _id: classId, school: sid }).select('name level')
@@ -254,8 +316,9 @@ router.post('/batch', protect, authorize('enseignant', 'directeur'), async (req,
         teacherName: req.user.name || '',
         title: String(title).trim(),
         level: klass.level || '',
-        sourceType: 'text',
+        sourceType: finalSourceType,
         sourceText: text,
+        images: Array.isArray(images) ? images : [],
         scheduledAt: when,
         durationMinutes: duration,
         language: language || 'fr-FR',
@@ -347,6 +410,36 @@ router.put('/:id', protect, authorize('enseignant', 'directeur'), courseUpload, 
       course.scheduledAt = when
     }
 
+    // Gestion des images ajoutées ou existantes
+    if (req.files?.images && Array.isArray(req.files.images)) {
+      if (!Array.isArray(course.images)) course.images = []
+      for (const img of req.files.images) {
+        course.images.push({
+          url: img.path,
+          name: img.originalname || 'Illustration',
+          caption: '',
+        })
+      }
+      contentChanged = true
+    }
+    if (req.body.existingImages !== undefined) {
+      try {
+        const parsed = typeof req.body.existingImages === 'string' ? JSON.parse(req.body.existingImages) : req.body.existingImages
+        if (Array.isArray(parsed)) {
+          course.images = parsed.filter((item) => item && item.url)
+          contentChanged = true
+        }
+      } catch (_) {}
+    }
+
+    if (sourceType !== undefined) {
+      const st = ['pdf', 'ai_generate', 'text'].includes(sourceType) ? sourceType : 'text'
+      if (course.sourceType !== st) {
+        course.sourceType = st
+        contentChanged = true
+      }
+    }
+
     // Gestion de la source principale du cours
     const pdfFile = req.files?.pdf?.[0]
     if (pdfFile) {
@@ -363,12 +456,13 @@ router.put('/:id', protect, authorize('enseignant', 'directeur'), courseUpload, 
       } catch (e) {
         return res.status(400).json({ message: 'Impossible de lire ce PDF : ' + e.message })
       }
-    } else if (sourceText !== undefined && (sourceType === 'text' || course.sourceType === 'text')) {
+    } else if (sourceText !== undefined) {
       const text = String(sourceText).trim()
-      if (text.length < 200) return res.status(400).json({ message: 'Le contenu du cours est trop court (200 caractères minimum).' })
+      if (course.sourceType !== 'ai_generate' && course.sourceType !== 'pdf' && text.length < 200) {
+        return res.status(400).json({ message: 'Le contenu du cours est trop court (200 caractères minimum).' })
+      }
       if (text !== course.sourceText) {
-        course.sourceText = text
-        course.sourceType = 'text'
+        course.sourceText = text || (course.sourceType === 'ai_generate' ? `Cours sur : ${course.title}` : '')
         contentChanged = true
       }
     }
@@ -543,6 +637,12 @@ router.get('/:id/live', protect, async (req, res) => {
         nextCourseSourceText: course.nextCourseSourceText || '',
         nextCoursePdfUrl: course.nextCoursePdfUrl || '',
         nextCoursePdfName: course.nextCoursePdfName || '',
+        images: (course.images || []).map((img) => ({
+          url: img.url,
+          name: img.name || 'Illustration',
+          caption: img.caption || '',
+          analysis: img.analysis || '',
+        })),
         text: reveal.text,
         units: reveal.units || [],
         progress: reveal.progress,

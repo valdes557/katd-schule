@@ -720,7 +720,8 @@ router.post('/chat', protect, rateLimit({ windowMs: 60000, max: 20 }), async (re
     const accuracyInstruction = `
 CONSIGNES ESSENTIELLES :
 - Réponds toujours dans un français parfait, irréprochable et sans la moindre faute d'orthographe ou de syntaxe.
-- Sois rigoureux, exact, clair et exhaustif.
+- Sois rigoureux, exact, clair et EXHAUSTIF : termine TOUJOURS complètement tes explications, tes listes et tes phrases jusqu'au point final. Ne t'arrête jamais en plein milieu d'une phrase.
+- Si la question demande une énumération (ex: régions, pays, étapes, départements), cite-les TOUTES de manière méthodique et ordonnée, sans omission, avec leurs détails essentiels (ex: chefs-lieux, caractéristiques).
 - Si la question porte sur un sujet d'enseignement ou pédagogique, structure ta réponse avec méthode (concepts clés, définitions précises, formules ou démarches, exemples concrets).
 `
 
@@ -729,6 +730,7 @@ CONSIGNES ESSENTIELLES :
     const chatConfig = {
       ...(cfg.toObject ? cfg.toObject() : cfg),
       systemPrompt: effectiveSystemPrompt,
+      maxTokens: Math.max(Number(cfg.maxTokens) || 4000, 4000), // Empêche toute coupure de réponse
     }
 
     let result

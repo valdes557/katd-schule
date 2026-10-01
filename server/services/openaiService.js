@@ -47,7 +47,8 @@ async function generateChatResponse({ messages, config }) {
   const provider = (resolvedConfig && resolvedConfig.provider) || 'gemini'
   const systemPrompt = (resolvedConfig && resolvedConfig.systemPrompt) || ''
   const temperature = resolvedConfig?.temperature ?? 0.5
-  const maxTokens = resolvedConfig?.maxTokens ?? 1000
+  // Longueur généreuse par défaut (4000 tokens) pour éviter toute coupure de réponse
+  const maxTokens = Math.max(Number(resolvedConfig?.maxTokens) || 4000, 3500)
 
   // ───────────────────────────────────────────────────────────────────────────
   // 1. FOURNISSEUR GOOGLE GEMINI (RECOMMANDÉ)
@@ -109,6 +110,15 @@ async function generateChatResponse({ messages, config }) {
 
     let data = await res.json().catch(() => ({}))
 
+    const extractGeminiText = (cand) => {
+      if (!cand?.content?.parts || !Array.isArray(cand.content.parts)) return ''
+      return cand.content.parts
+        .map((p) => (typeof p === 'string' ? p : p?.thought ? '' : p?.text || ''))
+        .filter(Boolean)
+        .join('')
+        .trim()
+    }
+
     // Secours automatique si le modèle demandé est surchargé (high demand 503), désactivé (404) ou quota restreint (429)
     if (!res.ok) {
       const errMsg = data?.error?.message || ''
@@ -132,7 +142,8 @@ async function generateChatResponse({ messages, config }) {
             })
             if (fbRes.ok) {
               const fbData = await fbRes.json().catch(() => ({}))
-              if (fbData?.candidates?.[0]?.content?.parts?.[0]?.text) {
+              const fbText = extractGeminiText(fbData?.candidates?.[0])
+              if (fbText) {
                 res = fbRes
                 data = fbData
                 rawModel = fbModel
@@ -149,7 +160,7 @@ async function generateChatResponse({ messages, config }) {
       throw new OpenAiError(errMsg, res.status === 429 ? 429 : 502)
     }
 
-    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+    const content = extractGeminiText(data?.candidates?.[0])
     if (!content) {
       throw new OpenAiError("La réponse renvoyée par Google Gemini est vide. Réessayez.", 502)
     }
