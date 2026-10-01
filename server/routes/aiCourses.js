@@ -74,8 +74,13 @@ async function canViewCourse(user, course) {
 // CRÉATION / MODIFICATION (professeur, directeur)
 // ═════════════════════════════════════════════════════════════════════════════
 
-// POST /api/ai-courses — programmer un cours (multipart : champ 'pdf' optionnel)
-router.post('/', protect, authorize('enseignant', 'directeur'), upload.single('pdf'), async (req, res) => {
+const courseUpload = upload.fields([
+  { name: 'pdf', maxCount: 1 },
+  { name: 'nextPdf', maxCount: 1 },
+])
+
+// POST /api/ai-courses — programmer un cours (multipart : champs 'pdf' et 'nextPdf' optionnels)
+router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, async (req, res) => {
   try {
     const sid = schoolId(req)
     if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
@@ -83,6 +88,7 @@ router.post('/', protect, authorize('enseignant', 'directeur'), upload.single('p
     const {
       classId, subject, subjectRef, title, sourceType, sourceText, scheduledAt, durationMinutes,
       language, voice, qaDurationMinutes, nextCourseTitle, nextCourseDate, nextCourseInstructions,
+      nextCourseSourceType, nextCourseSourceText,
     } = req.body
     if (!classId || !subject || !title || !scheduledAt || !durationMinutes) {
       return res.status(400).json({ message: 'Classe, matière, titre, date/heure et durée requis' })
@@ -121,20 +127,30 @@ router.post('/', protect, authorize('enseignant', 'directeur'), upload.single('p
     let text = String(sourceText || '').trim()
     let pdfUrl = ''
     let pdfName = ''
+    const pdfFile = req.files?.pdf?.[0] || req.file
     if (sourceType === 'pdf') {
-      if (!req.file) return res.status(400).json({ message: 'Fichier PDF requis' })
+      if (!pdfFile) return res.status(400).json({ message: 'Fichier PDF requis' })
       try {
-        text = await extractPdfText(req.file.buffer)
+        text = await extractPdfText(pdfFile.buffer)
       } catch (e) {
         return res.status(400).json({ message: 'Impossible de lire ce PDF : ' + e.message })
       }
       if (text.length < 200) {
         return res.status(400).json({ message: 'Le PDF ne contient pas de texte exploitable (document scanné ?). Saisissez le cours en texte.' })
       }
-      pdfUrl = req.file.path || ''
-      pdfName = req.file.originalname || ''
+      pdfUrl = pdfFile.path || ''
+      pdfName = pdfFile.originalname || ''
     } else if (text.length < 200) {
       return res.status(400).json({ message: 'Le contenu du cours est trop court (200 caractères minimum).' })
+    }
+
+    // Support du prochain cours (texte ou PDF)
+    let nextPdfUrl = ''
+    let nextPdfName = ''
+    const nextPdfFile = req.files?.nextPdf?.[0]
+    if (nextPdfFile) {
+      nextPdfUrl = nextPdfFile.path || ''
+      nextPdfName = nextPdfFile.originalname || ''
     }
 
     const course = await AiCourse.create({
@@ -159,14 +175,108 @@ router.post('/', protect, authorize('enseignant', 'directeur'), upload.single('p
       nextCourseTitle: (nextCourseTitle || '').trim(),
       nextCourseDate: nextCourseDate ? new Date(nextCourseDate) : null,
       nextCourseInstructions: (nextCourseInstructions || '').trim(),
+      nextCourseSourceType: ['none', 'text', 'pdf'].includes(nextCourseSourceType) ? nextCourseSourceType : (nextPdfUrl ? 'pdf' : (nextCourseSourceText ? 'text' : 'none')),
+      nextCourseSourceText: (nextCourseSourceText || '').trim(),
+      nextCoursePdfUrl: nextPdfUrl,
+      nextCoursePdfName: nextPdfName,
       status: 'planifie',
     })
     res.status(201).json({ success: true, data: course })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// PUT /api/ai-courses/:id — modification tant que le cours est 'planifie'
-router.put('/:id', protect, authorize('enseignant', 'directeur'), async (req, res) => {
+// POST /api/ai-courses/batch — programmer plusieurs cours d'une journée
+router.post('/batch', protect, authorize('enseignant', 'directeur'), async (req, res) => {
+  try {
+    const sid = schoolId(req)
+    if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+
+    const { courses } = req.body
+    if (!Array.isArray(courses) || courses.length === 0) {
+      return res.status(400).json({ message: 'Liste de cours invalide ou vide.' })
+    }
+    if (courses.length > 10) {
+      return res.status(400).json({ message: 'Maximum 10 cours par programmation journalière.' })
+    }
+
+    let teacherProfile = null
+    let teacherClassIds = []
+    if (req.user.role === 'enseignant') {
+      const teacher = await Teacher.findOne({ user: req.user._id })
+      if (!teacher) return res.status(403).json({ message: 'Profil enseignant non trouvé' })
+      teacherClassIds = (teacher.classes || []).map((c) => c.toString())
+      teacherProfile = teacher._id
+    }
+
+    const sub = await getActiveSubscription(sid)
+    if (!sub || sub.remainingQuestions <= 0) {
+      return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Aucune souscription IA active pour votre établissement." })
+    }
+
+    const createdList = []
+    for (let i = 0; i < courses.length; i++) {
+      const c = courses[i]
+      const {
+        classId, subject, subjectRef, title, sourceText, scheduledAt, durationMinutes,
+        language, voice, qaDurationMinutes, nextCourseTitle, nextCourseDate, nextCourseInstructions,
+        nextCourseSourceType, nextCourseSourceText,
+      } = c
+
+      if (!classId || !subject || !title || !scheduledAt || !durationMinutes) {
+        return res.status(400).json({ message: `Cours n°${i + 1} : Classe, matière, titre, date/heure et durée requis.` })
+      }
+      if (req.user.role === 'enseignant' && !teacherClassIds.includes(String(classId))) {
+        return res.status(403).json({ message: `Cours n°${i + 1} : Vous ne pouvez programmer un cours que pour vos classes assignées.` })
+      }
+      const duration = parseInt(durationMinutes, 10)
+      if (!Number.isInteger(duration) || duration < 5 || duration > 240) {
+        return res.status(400).json({ message: `Cours n°${i + 1} : Durée invalide (entre 5 et 240 minutes).` })
+      }
+      const when = new Date(scheduledAt)
+      if (isNaN(when.getTime())) {
+        return res.status(400).json({ message: `Cours n°${i + 1} : Date/heure invalide.` })
+      }
+      const text = String(sourceText || '').trim()
+      if (text.length < 200) {
+        return res.status(400).json({ message: `Cours n°${i + 1} (« ${title} ») : Le contenu est trop court (200 caractères minimum).` })
+      }
+
+      const klass = await Class.findOne({ _id: classId, school: sid }).select('name level')
+      if (!klass) return res.status(404).json({ message: `Cours n°${i + 1} : Classe introuvable dans votre école.` })
+
+      const newCourse = await AiCourse.create({
+        school: sid,
+        class: classId,
+        subject: String(subject).trim(),
+        subjectRef: subjectRef || null,
+        teacher: req.user._id,
+        teacherProfile,
+        teacherName: req.user.name || '',
+        title: String(title).trim(),
+        level: klass.level || '',
+        sourceType: 'text',
+        sourceText: text,
+        scheduledAt: when,
+        durationMinutes: duration,
+        language: language || 'fr-FR',
+        voice: voice || 'female',
+        qaDurationMinutes: qaDurationMinutes !== undefined ? Math.max(0, parseInt(qaDurationMinutes, 10)) : 10,
+        nextCourseTitle: (nextCourseTitle || '').trim(),
+        nextCourseDate: nextCourseDate ? new Date(nextCourseDate) : null,
+        nextCourseInstructions: (nextCourseInstructions || '').trim(),
+        nextCourseSourceType: nextCourseSourceType || 'none',
+        nextCourseSourceText: (nextCourseSourceText || '').trim(),
+        status: 'planifie',
+      })
+      createdList.push(newCourse)
+    }
+
+    res.status(201).json({ success: true, count: createdList.length, data: createdList })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// PUT /api/ai-courses/:id — modification (autorisée même en compte à rebours ou préparation)
+router.put('/:id', protect, authorize('enseignant', 'directeur'), courseUpload, async (req, res) => {
   try {
     const course = await AiCourse.findById(req.params.id)
     if (!course) return res.status(404).json({ message: 'Cours introuvable' })
@@ -174,23 +284,39 @@ router.put('/:id', protect, authorize('enseignant', 'directeur'), async (req, re
     if (req.user.role === 'enseignant' && String(course.teacher) !== String(req.user._id)) {
       return res.status(403).json({ message: 'Vous ne pouvez modifier que vos propres cours' })
     }
-    if (course.status !== 'planifie') {
-      return res.status(400).json({ message: "Ce cours n'est plus modifiable (préparation ou diffusion déjà lancée)." })
+    if (['termine', 'annule'].includes(course.status)) {
+      return res.status(400).json({ message: "Ce cours est déjà terminé ou annulé et ne peut plus être modifié." })
     }
 
     const {
-      title, subject, subjectRef, sourceText, scheduledAt, durationMinutes, classId,
+      title, subject, subjectRef, sourceText, sourceType, scheduledAt, durationMinutes, classId,
       language, voice, qaDurationMinutes, nextCourseTitle, nextCourseDate, nextCourseInstructions,
+      nextCourseSourceType, nextCourseSourceText,
     } = req.body
+
+    let contentChanged = false
+
     if (title !== undefined) course.title = String(title).trim()
     if (subject !== undefined) course.subject = String(subject).trim()
     if (subjectRef !== undefined) course.subjectRef = subjectRef || null
-    if (language !== undefined) course.language = String(language).trim() || 'fr-FR'
+    if (language !== undefined && course.language !== String(language).trim()) {
+      course.language = String(language).trim() || 'fr-FR'
+      contentChanged = true
+    }
     if (voice !== undefined) course.voice = String(voice).trim() || 'female'
     if (qaDurationMinutes !== undefined) course.qaDurationMinutes = Math.max(0, parseInt(qaDurationMinutes, 10) || 10)
     if (nextCourseTitle !== undefined) course.nextCourseTitle = String(nextCourseTitle).trim()
     if (nextCourseDate !== undefined) course.nextCourseDate = nextCourseDate ? new Date(nextCourseDate) : null
     if (nextCourseInstructions !== undefined) course.nextCourseInstructions = String(nextCourseInstructions).trim()
+    if (nextCourseSourceType !== undefined) course.nextCourseSourceType = nextCourseSourceType
+    if (nextCourseSourceText !== undefined) course.nextCourseSourceText = String(nextCourseSourceText).trim()
+
+    // Gestion du PDF du prochain cours si fourni
+    if (req.files?.nextPdf?.[0]) {
+      course.nextCoursePdfUrl = req.files.nextPdf[0].path || ''
+      course.nextCoursePdfName = req.files.nextPdf[0].originalname || ''
+      course.nextCourseSourceType = 'pdf'
+    }
 
     if (classId !== undefined && String(classId) !== String(course.class)) {
       if (req.user.role === 'enseignant') {
@@ -205,28 +331,57 @@ router.put('/:id', protect, authorize('enseignant', 'directeur'), async (req, re
       course.class = classId
       course.level = klass.level || ''
     }
+
     if (durationMinutes !== undefined) {
       const d = parseInt(durationMinutes, 10)
       if (!Number.isInteger(d) || d < 5 || d > 240) return res.status(400).json({ message: 'Durée invalide (entre 5 et 240 minutes)' })
       course.durationMinutes = d
     }
+
     if (scheduledAt !== undefined) {
       const when = new Date(scheduledAt)
       if (isNaN(when.getTime())) return res.status(400).json({ message: 'Date/heure invalide' })
-      if (when.getTime() < Date.now() + MIN_LEAD_MS) {
-        return res.status(400).json({ message: "Programmez le cours au moins 10 minutes à l'avance." })
+      if (when.getTime() < Date.now() - 5 * 60 * 1000 && course.status !== 'en_cours') {
+        return res.status(400).json({ message: "L'horaire ne peut pas être fixé dans le passé." })
       }
       course.scheduledAt = when
     }
-    if (sourceText !== undefined && course.sourceType === 'text') {
+
+    // Gestion de la source principale du cours
+    const pdfFile = req.files?.pdf?.[0]
+    if (pdfFile) {
+      try {
+        const extracted = await extractPdfText(pdfFile.buffer)
+        if (extracted.length < 200) {
+          return res.status(400).json({ message: 'Le PDF ne contient pas de texte exploitable.' })
+        }
+        course.sourceText = extracted
+        course.sourceType = 'pdf'
+        course.pdfUrl = pdfFile.path || ''
+        course.pdfName = pdfFile.originalname || ''
+        contentChanged = true
+      } catch (e) {
+        return res.status(400).json({ message: 'Impossible de lire ce PDF : ' + e.message })
+      }
+    } else if (sourceText !== undefined && (sourceType === 'text' || course.sourceType === 'text')) {
       const text = String(sourceText).trim()
       if (text.length < 200) return res.status(400).json({ message: 'Le contenu du cours est trop court (200 caractères minimum).' })
-      course.sourceText = text
+      if (text !== course.sourceText) {
+        course.sourceText = text
+        course.sourceType = 'text'
+        contentChanged = true
+      }
     }
-    // Toute modification invalide un éventuel script pré-généré
-    course.lessonScript = ''
-    course.generationAttempts = 0
-    course.generationError = ''
+
+    // Si le contenu ou la langue a changé et que le cours n'a pas encore commencé :
+    // Réinitialiser le script pour que l'IA le régénère à neuf avant diffusion !
+    if (contentChanged && ['planifie', 'generation', 'pret'].includes(course.status)) {
+      course.lessonScript = ''
+      course.generationAttempts = 0
+      course.generationError = ''
+      course.status = 'planifie'
+    }
+
     await course.save()
     res.json({ success: true, data: course })
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -365,13 +520,17 @@ router.get('/:id/live', protect, async (req, res) => {
         nextCourseTitle: course.nextCourseTitle || '',
         nextCourseDate: course.nextCourseDate || null,
         nextCourseInstructions: course.nextCourseInstructions || '',
+        nextCourseSourceType: course.nextCourseSourceType || 'none',
+        nextCourseSourceText: course.nextCourseSourceText || '',
+        nextCoursePdfUrl: course.nextCoursePdfUrl || '',
+        nextCoursePdfName: course.nextCoursePdfName || '',
         text: reveal.text,
         units: reveal.units || [],
         progress: reveal.progress,
         remainingSeconds: reveal.remainingSeconds,
         totalUnits: reveal.totalUnits,
         shownUnits: reveal.shownUnits,
-        canAskQuestions: course.status === 'termine',
+        canAskQuestions: course.status === 'termine' || (course.status === 'en_cours' && (course.qaDurationMinutes ?? 10) > 0),
         usedFallback: course.usedFallback,
         generationError: course.status === 'erreur' ? course.generationError : '',
         questions: (course.questions || []).map((q) => ({
@@ -389,11 +548,11 @@ router.get('/:id/live', protect, async (req, res) => {
 })
 
 // ═════════════════════════════════════════════════════════════════════════════
-// QUESTIONS DES ÉLÈVES (fin de cours) — l'IA répond après chaque question
+// QUESTIONS DES ÉLÈVES & TEST DU PROFESSEUR — l'IA répond après chaque question
 // ═════════════════════════════════════════════════════════════════════════════
 
 // POST /api/ai-courses/:id/questions { question }
-router.post('/:id/questions', protect, authorize('eleve'), rateLimit({ windowMs: 60000, max: 5 }), async (req, res) => {
+router.post('/:id/questions', protect, authorize('eleve', 'enseignant', 'directeur', 'super_admin'), rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
   try {
     const question = String(req.body.question || '').trim()
     if (!question) return res.status(400).json({ message: 'Votre question est vide.' })
@@ -401,16 +560,20 @@ router.post('/:id/questions', protect, authorize('eleve'), rateLimit({ windowMs:
 
     const course = await AiCourse.findById(req.params.id).populate('class', 'name')
     if (!course) return res.status(404).json({ message: 'Cours introuvable' })
-    if (course.status !== 'termine') {
-      return res.status(400).json({ message: "Les questions s'ouvrent à la fin du cours." })
+    if (!['en_cours', 'termine'].includes(course.status)) {
+      return res.status(400).json({ message: "Les questions ne sont pas encore ouvertes pour ce cours." })
     }
-    const cid = await studentClassId(req.user._id)
-    if (!cid || String(cid) !== String(course.class._id)) {
-      return res.status(403).json({ message: 'Ce cours ne concerne pas votre classe.' })
-    }
-    const mine = (course.questions || []).filter((q) => String(q.student) === String(req.user._id))
-    if (mine.length >= MAX_QUESTIONS_PER_STUDENT) {
-      return res.status(429).json({ message: `Limite atteinte : ${MAX_QUESTIONS_PER_STUDENT} questions par élève et par cours.` })
+
+    // Vérification de la classe et des limites d'élèves (uniquement pour le rôle 'eleve')
+    if (req.user.role === 'eleve') {
+      const cid = await studentClassId(req.user._id)
+      if (!cid || String(cid) !== String(course.class._id)) {
+        return res.status(403).json({ message: 'Ce cours ne concerne pas votre classe.' })
+      }
+      const mine = (course.questions || []).filter((q) => String(q.student) === String(req.user._id))
+      if (mine.length >= MAX_QUESTIONS_PER_STUDENT) {
+        return res.status(429).json({ message: `Limite atteinte : ${MAX_QUESTIONS_PER_STUDENT} questions par élève et par cours.` })
+      }
     }
 
     const cfg = await AiConfig.getConfig()
@@ -432,10 +595,10 @@ router.post('/:id/questions', protect, authorize('eleve'), rateLimit({ windowMs:
     const updated = await consumeQuota(sub)
     if (!updated) return res.status(403).json({ message: QUOTA_EXHAUSTED_MSG })
 
-    // $push atomique : plusieurs élèves posent des questions en parallèle
+    // $push atomique : plusieurs élèves ou le professeur posent des questions
     const entry = {
       student: req.user._id,
-      studentName: req.user.name || '',
+      studentName: req.user.name || (req.user.role === 'enseignant' ? 'Professeur' : 'Élève'),
       question,
       answer: result.answer,
       status: 'repondu',

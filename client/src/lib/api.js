@@ -890,28 +890,35 @@ export const lessonLogsApi = {
 // Cours de l'IA enseignante autonome (F2 Secondaire) : le professeur programme
 // un cours (texte ou PDF, heure + durée), l'IA le déroule en direct puis répond
 // aux questions des élèves en fin de cours.
+function buildCourseFormData(data) {
+  const fd = new FormData()
+  if (data.classId) fd.append('classId', data.classId)
+  if (data.subject) fd.append('subject', data.subject)
+  if (data.subjectRef) fd.append('subjectRef', data.subjectRef)
+  if (data.title) fd.append('title', data.title)
+  if (data.sourceType) fd.append('sourceType', data.sourceType)
+  if (data.sourceText !== undefined) fd.append('sourceText', data.sourceText)
+  if (data.pdf) fd.append('pdf', data.pdf)
+  if (data.scheduledAt) fd.append('scheduledAt', data.scheduledAt)
+  if (data.durationMinutes !== undefined) fd.append('durationMinutes', data.durationMinutes)
+  if (data.language) fd.append('language', data.language)
+  if (data.voice) fd.append('voice', data.voice)
+  if (data.qaDurationMinutes !== undefined && data.qaDurationMinutes !== '') fd.append('qaDurationMinutes', data.qaDurationMinutes)
+  if (data.nextCourseTitle !== undefined) fd.append('nextCourseTitle', data.nextCourseTitle)
+  if (data.nextCourseDate) fd.append('nextCourseDate', data.nextCourseDate)
+  if (data.nextCourseInstructions !== undefined) fd.append('nextCourseInstructions', data.nextCourseInstructions)
+  if (data.nextCourseSourceType) fd.append('nextCourseSourceType', data.nextCourseSourceType)
+  if (data.nextCourseSourceText !== undefined) fd.append('nextCourseSourceText', data.nextCourseSourceText)
+  if (data.nextPdf) fd.append('nextPdf', data.nextPdf)
+  return fd
+}
+
 export const aiCoursesApi = {
   list: (params = {}) => api.get(`/ai-courses?${new URLSearchParams(params).toString()}`),
   get: (id) => api.get(`/ai-courses/${id}`),
   live: (id) => api.get(`/ai-courses/${id}/live`),
   create: async (data) => {
-    // multipart : champ 'pdf' optionnel (sourceType === 'pdf')
-    const fd = new FormData()
-    fd.append('classId', data.classId)
-    fd.append('subject', data.subject)
-    if (data.subjectRef) fd.append('subjectRef', data.subjectRef)
-    fd.append('title', data.title)
-    fd.append('sourceType', data.sourceType)
-    if (data.sourceText) fd.append('sourceText', data.sourceText)
-    if (data.pdf) fd.append('pdf', data.pdf)
-    fd.append('scheduledAt', data.scheduledAt)
-    fd.append('durationMinutes', data.durationMinutes)
-    if (data.language) fd.append('language', data.language)
-    if (data.voice) fd.append('voice', data.voice)
-    if (data.qaDurationMinutes !== undefined && data.qaDurationMinutes !== '') fd.append('qaDurationMinutes', data.qaDurationMinutes)
-    if (data.nextCourseTitle) fd.append('nextCourseTitle', data.nextCourseTitle)
-    if (data.nextCourseDate) fd.append('nextCourseDate', data.nextCourseDate)
-    if (data.nextCourseInstructions) fd.append('nextCourseInstructions', data.nextCourseInstructions)
+    const fd = data instanceof FormData ? data : buildCourseFormData(data)
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/ai-courses`, {
       method: 'POST',
@@ -922,7 +929,33 @@ export const aiCoursesApi = {
     if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
     return json
   },
-  update: (id, data) => api.put(`/ai-courses/${id}`, data),
+  createBatch: (courses) => api.post('/ai-courses/batch', { courses }),
+  update: async (id, data) => {
+    if (data instanceof FormData) {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API_URL}/ai-courses/${id}`, {
+        method: 'PUT',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: data,
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+      return json
+    }
+    if (data.pdf || data.nextPdf) {
+      const fd = buildCourseFormData(data)
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API_URL}/ai-courses/${id}`, {
+        method: 'PUT',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+      return json
+    }
+    return api.put(`/ai-courses/${id}`, data)
+  },
   cancel: (id) => api.post(`/ai-courses/${id}/cancel`),
   remove: (id) => api.del(`/ai-courses/${id}`),
   askQuestion: (id, question) => api.post(`/ai-courses/${id}/questions`, { question }),

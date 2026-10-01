@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Bot, Plus, Loader2, AlertCircle, X, Clock, CalendarCheck, FileText,
   Play, CheckCircle2, Trash2, Ban, Radio, Sparkles, Volume2, VolumeX, Mic, HelpCircle, BookOpen,
+  Edit3, Calendar,
 } from 'lucide-react'
 import { aiCoursesApi, classesApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
@@ -12,7 +13,7 @@ import { speakText, stopSpeaking, isSpeechSynthesisSupported } from '../../lib/s
 
 // Cours de l'IA enseignante autonome (F2 Secondaire).
 // - Professeur : programme un cours (texte ou PDF, heure + durée) pour SES classes,
-//   modifie/annule tant qu'il est planifié.
+//   modifie/annule tant qu'il est planifié ou en décompte.
 // - Élève / Parent : voient les cours de la classe (à venir, en direct, terminés).
 // - VP / Directeur : supervision de tous les cours de l'école.
 const STATUS_META = {
@@ -33,6 +34,34 @@ function defaultScheduledAt() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function defaultTodayDate() {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function createInitialBatchSlots(dateStr, count, classesList) {
+  const defaultTimes = ['08:00', '10:00', '13:30', '15:30', '17:00', '18:30']
+  const slots = []
+  for (let i = 0; i < count; i++) {
+    const time = defaultTimes[i] || '08:00'
+    slots.push({
+      time,
+      classId: classesList[0]?._id || '',
+      subject: '',
+      title: '',
+      durationMinutes: 50,
+      qaDurationMinutes: 10,
+      language: 'fr-FR',
+      voice: i % 2 === 0 ? 'female' : 'male',
+      sourceText: '',
+      nextCourseTitle: '',
+      nextCourseInstructions: '',
+    })
+  }
+  return slots
+}
+
 export default function AiCoursesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -40,16 +69,28 @@ export default function AiCoursesPage() {
   const canCreate = ['enseignant', 'directeur'].includes(role)
 
   const [showModal, setShowModal] = useState(false)
+  const [editingCourseId, setEditingCourseId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
   const emptyForm = {
     classId: '', subject: '', title: '', sourceType: 'text', sourceText: '',
     pdf: null, scheduledAt: defaultScheduledAt(), durationMinutes: 45,
     language: 'fr-FR', voice: 'female', qaDurationMinutes: 10,
     nextCourseTitle: '', nextCourseDate: '', nextCourseInstructions: '',
+    nextCourseSourceType: 'none', nextCourseSourceText: '', nextPdf: null,
   }
   const [form, setForm] = useState(emptyForm)
   const [testingVoice, setTestingVoice] = useState(false)
+
+  // Mode Programmation de la Journée (Multi-cours par jour)
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [batchDate, setBatchDate] = useState(defaultTodayDate())
+  const [batchCourseCount, setBatchCourseCount] = useState(3)
+  const [batchCourses, setBatchCourses] = useState([])
+  const [activeBatchIndex, setActiveBatchIndex] = useState(0)
+  const [batchSaving, setBatchSaving] = useState(false)
+  const [batchError, setBatchError] = useState('')
 
   const classesQ = useCachedFetch(canCreate ? '/classes?' : null, async () => (await classesApi.list()).data || [], [])
   const classes = classesQ.data || []
@@ -62,15 +103,91 @@ export default function AiCoursesPage() {
   const openCreate = () => {
     stopSpeaking()
     setTestingVoice(false)
+    setEditingCourseId(null)
     setForm({ ...emptyForm, scheduledAt: defaultScheduledAt() })
     setError('')
     setShowModal(true)
   }
 
+  const openEdit = async (course) => {
+    stopSpeaking()
+    setTestingVoice(false)
+    setError('')
+    setEditingCourseId(course._id)
+    try {
+      const res = await aiCoursesApi.get(course._id)
+      const c = res.data
+      const pad = (n) => String(n).padStart(2, '0')
+      const formatDt = (dt) => {
+        if (!dt) return ''
+        const d = new Date(dt)
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+      }
+      setForm({
+        classId: c.class?._id || c.class || '',
+        subject: c.subject || '',
+        title: c.title || '',
+        sourceType: c.sourceType || 'text',
+        sourceText: c.sourceText || '',
+        pdf: null,
+        scheduledAt: formatDt(c.scheduledAt),
+        durationMinutes: c.durationMinutes || 45,
+        qaDurationMinutes: c.qaDurationMinutes ?? 10,
+        language: c.language || 'fr-FR',
+        voice: c.voice || 'female',
+        nextCourseTitle: c.nextCourseTitle || '',
+        nextCourseDate: formatDt(c.nextCourseDate),
+        nextCourseInstructions: c.nextCourseInstructions || '',
+        nextCourseSourceType: c.nextCourseSourceType || 'none',
+        nextCourseSourceText: c.nextCourseSourceText || '',
+        nextPdf: null,
+      })
+      setShowModal(true)
+    } catch (err) {
+      alert("Impossible de charger les données du cours : " + err.message)
+    }
+  }
+
   const handleCloseModal = () => {
     stopSpeaking()
     setTestingVoice(false)
+    setEditingCourseId(null)
     setShowModal(false)
+  }
+
+  const openBatchModal = () => {
+    stopSpeaking()
+    setTestingVoice(false)
+    setBatchError('')
+    const count = Math.max(1, Math.min(6, batchCourseCount))
+    setBatchCourses(createInitialBatchSlots(batchDate, count, classes))
+    setActiveBatchIndex(0)
+    setShowBatchModal(true)
+  }
+
+  const handleBatchCountChange = (newCount) => {
+    const c = Math.max(1, Math.min(6, parseInt(newCount, 10) || 1))
+    setBatchCourseCount(c)
+    setBatchCourses(createInitialBatchSlots(batchDate, c, classes))
+    if (activeBatchIndex >= c) setActiveBatchIndex(0)
+  }
+
+  const handleBatchDateChange = (newDate) => {
+    setBatchDate(newDate)
+    setBatchCourses((prev) =>
+      prev.map((slot) => ({
+        ...slot,
+        time: slot.time,
+      }))
+    )
+  }
+
+  const updateBatchSlot = (index, patch) => {
+    setBatchCourses((prev) => {
+      const copy = [...prev]
+      copy[index] = { ...copy[index], ...patch }
+      return copy
+    })
   }
 
   const handleTestVoice = () => {
@@ -98,7 +215,7 @@ export default function AiCoursesPage() {
       setError('Le contenu du cours est trop court (200 caractères minimum).')
       return
     }
-    if (form.sourceType === 'pdf' && !form.pdf) {
+    if (form.sourceType === 'pdf' && !form.pdf && !editingCourseId) {
       setError('Sélectionnez le fichier PDF du cours.')
       return
     }
@@ -106,15 +223,63 @@ export default function AiCoursesPage() {
     stopSpeaking()
     setTestingVoice(false)
     try {
-      await aiCoursesApi.create({
+      const payload = {
         ...form,
         scheduledAt: new Date(form.scheduledAt).toISOString(),
         nextCourseDate: form.nextCourseDate ? new Date(form.nextCourseDate).toISOString() : undefined,
-      })
+      }
+      if (editingCourseId) {
+        await aiCoursesApi.update(editingCourseId, payload)
+      } else {
+        await aiCoursesApi.create(payload)
+      }
       setShowModal(false)
+      setEditingCourseId(null)
       refresh()
     } catch (e2) { setError(e2.message) }
     setSaving(false)
+  }
+
+  const handleBatchSubmit = async (e) => {
+    e.preventDefault()
+    setBatchError('')
+    for (let i = 0; i < batchCourses.length; i++) {
+      const c = batchCourses[i]
+      if (!c.classId || !c.subject.trim() || !c.title.trim() || !c.time) {
+        setBatchError(`Cours n°${i + 1} : Tous les champs (classe, matière, titre, heure) doivent être renseignés.`)
+        setActiveBatchIndex(i)
+        return
+      }
+      if (c.sourceText.trim().length < 200) {
+        setBatchError(`Cours n°${i + 1} (« ${c.title || 'Sans titre'} ») : Le contenu du cours est trop court (200 caractères minimum).`)
+        setActiveBatchIndex(i)
+        return
+      }
+    }
+
+    setBatchSaving(true)
+    try {
+      const payload = batchCourses.map((c) => ({
+        classId: c.classId,
+        subject: c.subject.trim(),
+        title: c.title.trim(),
+        scheduledAt: new Date(`${batchDate}T${c.time}:00`).toISOString(),
+        durationMinutes: Number(c.durationMinutes) || 50,
+        qaDurationMinutes: Number(c.qaDurationMinutes) || 10,
+        language: c.language || 'fr-FR',
+        voice: c.voice || 'female',
+        sourceText: c.sourceText.trim(),
+        nextCourseTitle: (c.nextCourseTitle || '').trim(),
+        nextCourseInstructions: (c.nextCourseInstructions || '').trim(),
+      }))
+
+      await aiCoursesApi.createBatch(payload)
+      setShowBatchModal(false)
+      refresh()
+    } catch (err) {
+      setBatchError(err.message)
+    }
+    setBatchSaving(false)
   }
 
   const handleCancel = async (id) => {
@@ -140,7 +305,17 @@ export default function AiCoursesPage() {
           </p>
         </div>
         {canCreate && (
-          <button onClick={openCreate} className="btn-primary text-sm self-start"><Plus size={15} /> Programmer un cours</button>
+          <div className="flex items-center gap-2 flex-wrap self-start">
+            <button onClick={openCreate} className="btn-primary text-sm flex items-center gap-1.5 shadow-sm">
+              <Plus size={15} /> Programmer un cours
+            </button>
+            <button
+              onClick={openBatchModal}
+              className="btn-ghost border border-purple-300 text-purple-800 bg-purple-50 hover:bg-purple-100 text-sm flex items-center gap-1.5 font-medium shadow-xs"
+            >
+              <CalendarCheck size={15} className="text-purple-600" /> Programmer ma journée (multi-cours)
+            </button>
+          </div>
         )}
       </div>
 
@@ -209,6 +384,15 @@ export default function AiCoursesPage() {
                         {c.status === 'en_cours' ? 'Rejoindre le direct' : c.status === 'termine' ? 'Relire le cours' : 'Aperçu'}
                       </button>
                     )}
+                    {isOwner && ['planifie', 'generation', 'pret', 'en_cours'].includes(c.status) && (
+                      <button
+                        onClick={() => openEdit(c)}
+                        className="btn-ghost border border-purple-200 text-purple-700 hover:bg-purple-50 text-xs flex items-center gap-1"
+                        title="Modifier ce cours"
+                      >
+                        <Edit3 size={13} /> Éditer
+                      </button>
+                    )}
                     {isOwner && ['planifie', 'generation', 'pret'].includes(c.status) && (
                       <button onClick={() => handleCancel(c._id)} className="btn-ghost border border-amber-200 text-amber-700 text-xs flex items-center gap-1">
                         <Ban size={13} /> Annuler
@@ -230,7 +414,10 @@ export default function AiCoursesPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Bot size={18} className="text-purple-600" /> Programmer un cours IA</h3>
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Bot size={18} className="text-purple-600" />
+                {editingCourseId ? 'Modifier le cours IA' : 'Programmer un cours IA'}
+              </h3>
               <button onClick={handleCloseModal} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-3.5">
@@ -380,6 +567,41 @@ export default function AiCoursesPage() {
                     className="input text-sm mt-1 bg-white"
                   />
                 </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Support pédagogique pour le prochain cours</label>
+                  <div className="flex gap-2 mt-1">
+                    {[['none', 'Aucun'], ['text', 'Texte'], ['pdf', 'Fichier PDF']].map(([v, l]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setForm({ ...form, nextCourseSourceType: v })}
+                        className={`text-xs px-2.5 py-1 rounded-full border ${form.nextCourseSourceType === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                  {form.nextCourseSourceType === 'text' && (
+                    <textarea
+                      rows={3}
+                      value={form.nextCourseSourceText}
+                      onChange={(e) => setForm({ ...form, nextCourseSourceText: e.target.value })}
+                      placeholder="Collez ou saisissez ici le texte ou résumé préparatoire du prochain cours..."
+                      className="input text-sm mt-2 bg-white"
+                    />
+                  )}
+                  {form.nextCourseSourceType === 'pdf' && (
+                    <div className="mt-2">
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        onChange={(e) => setForm({ ...form, nextPdf: e.target.files?.[0] || null })}
+                        className="text-xs w-full border border-dashed border-gray-300 rounded-lg p-2.5 bg-white"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">Fichier PDF que les élèves pourront consulter pour préparer la séance.</p>
+                    </div>
+                  )}
+                </div>
                 <p className="text-[11px] text-blue-700/80">
                   À la fin du cours, l'IA annoncera vocalement cette prochaine étape et affichera les devoirs.
                 </p>
@@ -395,7 +617,255 @@ export default function AiCoursesPage() {
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={handleCloseModal} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
                 <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
-                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Programmer
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : editingCourseId ? <CheckCircle2 size={15} /> : <Sparkles size={15} />}
+                  {editingCourseId ? 'Enregistrer les modifications' : 'Programmer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modale de programmation journalière complète (Multi-cours) */}
+      {showBatchModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-2xl p-6 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <CalendarCheck size={20} className="text-purple-600" /> Programmer ma journée de cours IA
+                </h3>
+                <p className="text-xs text-gray-500">Planifiez tous vos cours de la journée en une seule étape.</p>
+              </div>
+              <button onClick={() => setShowBatchModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+            </div>
+
+            <form onSubmit={handleBatchSubmit} className="space-y-4">
+              {/* Paramètres globaux de la journée */}
+              <div className="bg-purple-50/70 border border-purple-200/90 rounded-2xl p-3.5 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                      <Calendar size={14} className="text-purple-600" /> Date de la journée de cours
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      min={defaultTodayDate()}
+                      value={batchDate}
+                      onChange={(e) => handleBatchDateChange(e.target.value)}
+                      className="input text-sm mt-1 bg-white font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-purple-900 block">
+                      Nombre de cours dans la journée ({batchCourseCount} cours)
+                    </label>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {[1, 2, 3, 4, 5, 6].map((num) => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => handleBatchCountChange(num)}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                            batchCourseCount === num
+                              ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
+                          }`}
+                        >
+                          {num}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Onglets des cours de la journée */}
+                <div>
+                  <label className="text-[11px] font-semibold text-purple-800 uppercase tracking-wider block mb-1.5">
+                    Sélectionner le cours à configurer :
+                  </label>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    {batchCourses.map((c, idx) => {
+                      const isComplete = c.classId && c.subject.trim() && c.title.trim() && c.sourceText.trim().length >= 200
+                      const isActive = activeBatchIndex === idx
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setActiveBatchIndex(idx)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 flex items-center gap-1.5 border transition-all ${
+                            isActive
+                              ? 'bg-purple-700 text-white border-purple-700 shadow-sm'
+                              : isComplete
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span>Cours {idx + 1} ({c.time})</span>
+                          {isComplete && <CheckCircle2 size={12} className={isActive ? 'text-emerald-300' : 'text-emerald-600'} />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Formulaire du cours actif dans la journée */}
+              {batchCourses[activeBatchIndex] && (
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                    <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                      <Sparkles size={14} className="text-purple-600" />
+                      Configuration du Cours n°{activeBatchIndex + 1}
+                    </span>
+                    <span className="text-[11px] text-gray-400">
+                      Progression : {batchCourses.filter((x) => x.title && x.subject && x.sourceText.length >= 200).length} / {batchCourses.length} cours prêts
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Heure de début</label>
+                      <input
+                        type="time"
+                        required
+                        value={batchCourses[activeBatchIndex].time}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { time: e.target.value })}
+                        className="input text-sm mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Classe assignée</label>
+                      <select
+                        required
+                        value={batchCourses[activeBatchIndex].classId}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { classId: e.target.value })}
+                        className="input text-sm mt-1"
+                      >
+                        <option value="">Sélectionner...</option>
+                        {classes.map((cl) => <option key={cl._id} value={cl._id}>{cl.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Matière</label>
+                      <input
+                        required
+                        value={batchCourses[activeBatchIndex].subject}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { subject: e.target.value })}
+                        placeholder="Ex. Histoire-Géo"
+                        className="input text-sm mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Titre du cours</label>
+                    <input
+                      required
+                      value={batchCourses[activeBatchIndex].title}
+                      onChange={(e) => updateBatchSlot(activeBatchIndex, { title: e.target.value })}
+                      placeholder="Ex. La Révolution industrielle"
+                      className="input text-sm mt-1"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Durée (min)</label>
+                      <input
+                        type="number"
+                        min={5}
+                        max={240}
+                        value={batchCourses[activeBatchIndex].durationMinutes}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { durationMinutes: Number(e.target.value) })}
+                        className="input text-sm mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Q&R (min)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={60}
+                        value={batchCourses[activeBatchIndex].qaDurationMinutes}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { qaDurationMinutes: Number(e.target.value) })}
+                        className="input text-sm mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Langue</label>
+                      <select
+                        value={batchCourses[activeBatchIndex].language}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { language: e.target.value })}
+                        className="input text-sm mt-1"
+                      >
+                        <option value="fr-FR">🇫🇷 Français</option>
+                        <option value="en-US">🇬🇧 Anglais</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Voix de l'IA</label>
+                      <select
+                        value={batchCourses[activeBatchIndex].voice}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { voice: e.target.value })}
+                        className="input text-sm mt-1"
+                      >
+                        <option value="female">👩 Femme</option>
+                        <option value="male">👨 Homme</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-gray-700">Contenu pédagogique du cours</label>
+                      <span className={`text-[11px] ${batchCourses[activeBatchIndex].sourceText.trim().length >= 200 ? 'text-emerald-600 font-semibold' : 'text-gray-400'}`}>
+                        {batchCourses[activeBatchIndex].sourceText.trim().length} / 200 caractères min
+                      </span>
+                    </div>
+                    <textarea
+                      rows={4}
+                      value={batchCourses[activeBatchIndex].sourceText}
+                      onChange={(e) => updateBatchSlot(activeBatchIndex, { sourceText: e.target.value })}
+                      placeholder="Saisissez ou collez les notions du cours. L'IA rédigera et dispensera la leçon orale..."
+                      className="input text-sm mt-1"
+                    />
+                  </div>
+
+                  {/* Consignes prochain cours optionnel */}
+                  <div className="bg-blue-50/50 border border-blue-200/60 rounded-xl p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-blue-900">Titre du prochain cours (optionnel)</label>
+                      <input
+                        value={batchCourses[activeBatchIndex].nextCourseTitle}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { nextCourseTitle: e.target.value })}
+                        placeholder="Thème suivant..."
+                        className="input text-xs mt-0.5 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-blue-900">Devoirs / Consignes (optionnel)</label>
+                      <input
+                        value={batchCourses[activeBatchIndex].nextCourseInstructions}
+                        onChange={(e) => updateBatchSlot(activeBatchIndex, { nextCourseInstructions: e.target.value })}
+                        placeholder="Exercices à préparer..."
+                        className="input text-xs mt-0.5 bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {batchError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{batchError}</p>}
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowBatchModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">
+                  Annuler
+                </button>
+                <button type="submit" disabled={batchSaving} className="btn-primary flex-1 justify-center">
+                  {batchSaving ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                  Programmer les {batchCourses.length} cours de la journée
                 </button>
               </div>
             </form>

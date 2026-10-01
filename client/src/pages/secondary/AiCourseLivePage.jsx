@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Bot, Loader2, AlertCircle, ArrowLeft, Clock, Radio, CheckCircle2,
   Send, MessageCircle, Sparkles, Volume2, VolumeX, Mic, MicOff,
-  Play, Square, BookOpen, Volume1,
+  Play, Square, BookOpen, Volume1, Edit3, FileText, X,
 } from 'lucide-react'
 import { aiCoursesApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import {
   isSpeechSynthesisSupported, isSpeechRecognitionSupported,
-  speakText, stopSpeaking, createSpeechRecognizer,
+  speakText, stopSpeaking, createSpeechRecognizer, requestMicrophonePermission,
 } from '../../lib/speechService'
 
 // Diffusion en direct d'un cours de l'IA enseignante (F2 Secondaire).
@@ -32,12 +32,19 @@ export default function AiCourseLivePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isStudent = user?.role === 'eleve'
+  const canAsk = ['eleve', 'enseignant', 'directeur', 'super_admin'].includes(user?.role)
 
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   // Compte à rebours local, recalé sur serverTime à chaque poll
   const [countdown, setCountdown] = useState(null)
+
+  // Édition d'un cours en direct / décompte
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editForm, setEditForm] = useState(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
 
   const [question, setQuestion] = useState('')
   const [asking, setAsking] = useState(false)
@@ -49,7 +56,7 @@ export default function AiCourseLivePage() {
   const [playingAnswerId, setPlayingAnswerId] = useState(null)
   const [readingFullCourse, setReadingFullCourse] = useState(false)
 
-  // Reconnaissance vocale mains libres (Élève pose sa question sans appuyer sur le micro)
+  // Reconnaissance vocale mains libres (Élève ou Professeur en test pose sa question vocalement)
   const [handsFreeActive, setHandsFreeActive] = useState(false)
   const [speechDetected, setSpeechDetected] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -191,9 +198,10 @@ export default function AiCourseLivePage() {
     }
   }, [data?.units, data?.status, voiceEnabled, processSpeechQueue])
 
-  // Démarre l'écoute mains libres (élève parle depuis sa table sans toucher au micro)
-  const startHandsFreeListening = useCallback(() => {
+  // Démarre l'écoute mains libres (l'élève ou enseignant parle depuis sa table sans toucher au micro)
+  const startHandsFreeListening = useCallback(async () => {
     if (!isSpeechRecognitionSupported()) return
+    await requestMicrophonePermission()
     handsFreeActiveRef.current = true
     setHandsFreeActive(true)
 
@@ -218,16 +226,16 @@ export default function AiCourseLivePage() {
         setQuestion(text)
         setSpeechDetected(true)
 
-        // Détection de fin de phrase : 1.6 seconde de silence après que l'élève a parlé
+        // Détection de fin de phrase : 1.3 seconde de silence après que la personne a parlé
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
         silenceTimerRef.current = setTimeout(() => {
           const candidate = (lastFullTextRef.current || '').trim()
-          if (candidate.length >= 8 && !askingRef.current && !isSpeakingRef.current) {
+          if (candidate.length >= 4 && !askingRef.current && !isSpeakingRef.current) {
             recognizerRef.current?.pause()
             setSpeechDetected(false)
             handleAsk(null, candidate)
           }
-        }, 1600)
+        }, 1300)
       },
       onError: (err) => {
         if (err.error !== 'no-speech' && err.error !== 'aborted') {
@@ -276,6 +284,62 @@ export default function AiCourseLivePage() {
     setSpeechDetected(false)
   }
 
+  const canEdit = ['enseignant', 'directeur', 'super_admin'].includes(user?.role) && ['planifie', 'generation', 'pret', 'en_cours'].includes(data?.status)
+
+  const openEditModal = async () => {
+    try {
+      setEditError('')
+      const res = await aiCoursesApi.get(id)
+      const c = res.data
+      const pad = (n) => String(n).padStart(2, '0')
+      const formatDt = (dt) => {
+        if (!dt) return ''
+        const d = new Date(dt)
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+      }
+      setEditForm({
+        title: c.title || '',
+        subject: c.subject || '',
+        scheduledAt: formatDt(c.scheduledAt),
+        durationMinutes: c.durationMinutes || 45,
+        qaDurationMinutes: c.qaDurationMinutes ?? 10,
+        language: c.language || 'fr-FR',
+        voice: c.voice || 'female',
+        sourceType: c.sourceType || 'text',
+        sourceText: c.sourceText || '',
+        pdf: null,
+        nextCourseTitle: c.nextCourseTitle || '',
+        nextCourseDate: formatDt(c.nextCourseDate),
+        nextCourseInstructions: c.nextCourseInstructions || '',
+        nextCourseSourceType: c.nextCourseSourceType || 'none',
+        nextCourseSourceText: c.nextCourseSourceText || '',
+        nextPdf: null,
+      })
+      setShowEditModal(true)
+    } catch (err) {
+      alert("Impossible d'ouvrir l'édition du cours : " + err.message)
+    }
+  }
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault()
+    setEditSaving(true)
+    setEditError('')
+    try {
+      const payload = {
+        ...editForm,
+        scheduledAt: new Date(editForm.scheduledAt).toISOString(),
+        nextCourseDate: editForm.nextCourseDate ? new Date(editForm.nextCourseDate).toISOString() : undefined,
+      }
+      await aiCoursesApi.update(id, payload)
+      setShowEditModal(false)
+      await fetchLive()
+    } catch (err) {
+      setEditError(err.message)
+    }
+    setEditSaving(false)
+  }
+
   // Annonce vocale de fin de cours & ouverture automatique du mode mains libres
   useEffect(() => {
     if (data?.status === 'termine' && !courseEndAnnouncedRef.current) {
@@ -298,24 +362,24 @@ export default function AiCourseLivePage() {
             onEnd: () => {
               isSpeakingRef.current = false
               setIsSpeaking(false)
-              if (isStudent && isSpeechRecognitionSupported()) {
+              if (canAsk && isSpeechRecognitionSupported()) {
                 startHandsFreeListening()
               }
             },
             onError: () => {
               isSpeakingRef.current = false
               setIsSpeaking(false)
-              if (isStudent && isSpeechRecognitionSupported()) {
+              if (canAsk && isSpeechRecognitionSupported()) {
                 startHandsFreeListening()
               }
             },
           })
         }, 1000)
-      } else if (isStudent && isSpeechRecognitionSupported()) {
+      } else if (canAsk && isSpeechRecognitionSupported()) {
         startHandsFreeListening()
       }
     }
-  }, [data?.status, data?.language, data?.voice, data?.qaDurationMinutes, voiceEnabled, isStudent, startHandsFreeListening])
+  }, [data?.status, data?.language, data?.voice, data?.qaDurationMinutes, voiceEnabled, canAsk, startHandsFreeListening])
 
   // Décompte de la session Q&R
   useEffect(() => {
@@ -590,6 +654,15 @@ export default function AiCourseLivePage() {
             {data.subject} · {data.className} · {data.teacherName && `Préparé par ${data.teacherName} · `}{data.durationMinutes} min
           </p>
         </div>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={openEditModal}
+            className="btn-ghost border border-purple-200 text-purple-700 hover:bg-purple-50 text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 shrink-0 shadow-xs"
+          >
+            <Edit3 size={13} /> Modifier ce cours
+          </button>
+        )}
         {isLive && data.remainingSeconds != null && (
           <div className="text-right shrink-0">
             <p className="text-[10px] uppercase text-gray-400 font-semibold">Temps restant</p>
@@ -667,6 +740,17 @@ export default function AiCourseLivePage() {
           <div className="mt-4 flex items-center justify-center gap-2 text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-full py-1 px-3 w-fit mx-auto">
             <Volume2 size={13} /> L'IA dispensera ce cours avec sa voix naturelle ({data.voice === 'male' ? 'masculine' : 'féminine'}, {data.language === 'en-US' ? 'anglais' : 'français'})
           </div>
+          {canEdit && (
+            <div className="mt-4 pt-4 border-t border-purple-100 flex justify-center">
+              <button
+                type="button"
+                onClick={openEditModal}
+                className="btn-primary text-xs py-2 px-4 shadow-sm flex items-center gap-1.5"
+              >
+                <Edit3 size={13} /> Modifier ce cours (corriger une erreur)
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -695,7 +779,7 @@ export default function AiCourseLivePage() {
       )}
 
       {/* Annonce du prochain cours & devoirs (si renseigné par l'enseignant) */}
-      {isDone && (data.nextCourseTitle || data.nextCourseInstructions || data.nextCourseDate) && (
+      {isDone && (data.nextCourseTitle || data.nextCourseInstructions || data.nextCourseDate || data.nextCourseSourceText || data.nextCoursePdfUrl) && (
         <div className="card p-5 bg-gradient-to-br from-blue-50/90 via-indigo-50/40 to-purple-50/40 border border-blue-200/90 rounded-2xl space-y-3 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -734,6 +818,28 @@ export default function AiCourseLivePage() {
               {data.nextCourseInstructions}
             </div>
           )}
+          {data.nextCourseSourceText && (
+            <div className="bg-white/95 rounded-xl p-3 border border-blue-100 text-xs text-gray-700 whitespace-pre-wrap leading-relaxed shadow-xs">
+              <span className="font-semibold text-blue-900 block mb-1">Contenu préparatoire du prochain cours :</span>
+              {data.nextCourseSourceText}
+            </div>
+          )}
+          {data.nextCoursePdfUrl && (
+            <div className="bg-white/95 rounded-xl p-3 border border-blue-100 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2 text-xs text-gray-800 truncate">
+                <FileText size={16} className="text-red-500 shrink-0" />
+                <span className="font-medium truncate">{data.nextCoursePdfName || 'Support PDF du prochain cours'}</span>
+              </div>
+              <a
+                href={data.nextCoursePdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-ghost text-xs border border-blue-200 text-blue-700 hover:bg-blue-50 py-1 px-2.5 rounded-lg shrink-0 flex items-center gap-1 font-medium"
+              >
+                Consulter / Télécharger
+              </a>
+            </div>
+          )}
         </div>
       )}
 
@@ -755,7 +861,7 @@ export default function AiCourseLivePage() {
           </div>
 
           {myQuestions.length === 0 && (
-            <p className="text-xs text-gray-400">Aucune question pour l'instant.{isStudent ? ' Posez votre question au micro depuis votre table ou écrivez-la !' : ''}</p>
+            <p className="text-xs text-gray-400">Aucune question pour l'instant.{canAsk ? ' Posez votre question au micro depuis votre table ou écrivez-la !' : ''}</p>
           )}
 
           {myQuestions.map((q) => (
@@ -792,7 +898,7 @@ export default function AiCourseLivePage() {
             </div>
           ))}
 
-          {isStudent && (
+          {canAsk && (
             <div className="sticky bottom-4 space-y-2.5">
               {/* Bandeau d'état du Mode Mains Libres */}
               {handsFreeActive ? (
@@ -826,22 +932,40 @@ export default function AiCourseLivePage() {
                             : "🟢 Mains Libres ACTIF : Parlez simplement depuis votre table !"}
                         </p>
                         {speechDetected && voiceTranscript && (
-                          <p className="text-[11px] text-amber-200 italic mt-0.5 truncate max-w-sm sm:max-w-md">
-                            « {voiceTranscript} »
-                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-[11px] text-amber-200 italic truncate max-w-xs sm:max-w-md">
+                              « {voiceTranscript} »
+                            </p>
+                          </div>
                         )}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       {speechDetected && (
-                        <button
-                          type="button"
-                          onClick={handleCancelDetectedSpeech}
-                          className="text-[11px] bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-md transition-colors"
-                        >
-                          Annuler
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const q = (voiceTranscript || lastFullTextRef.current || '').trim()
+                              if (q.length >= 4) {
+                                recognizerRef.current?.pause()
+                                setSpeechDetected(false)
+                                handleAsk(null, q)
+                              }
+                            }}
+                            className="text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded-md transition-colors shadow-xs flex items-center gap-1"
+                          >
+                            <Send size={11} /> Envoyer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelDetectedSpeech}
+                            className="text-[11px] bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-md transition-colors"
+                          >
+                            Annuler
+                          </button>
+                        </>
                       )}
                       <button
                         type="button"
@@ -909,13 +1033,172 @@ export default function AiCourseLivePage() {
             </div>
           )}
           {askError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{askError}</p>}
-          {isStudent && (
+          {canAsk && (
             <p className="text-[10px] text-gray-400 text-center">
               {handsFreeActive
                 ? "🎙️ Mode mains libres actif : parlez depuis votre table, l'IA détecte la fin de votre phrase et répond vocalement."
-                : "3 questions maximum par élève et par cours · Réponse vocale immédiate de l'IA."}
+                : isStudent
+                ? "3 questions maximum par élève et par cours · Réponse vocale immédiate de l'IA."
+                : "Posez votre question vocalement ou par écrit pour tester la réponse de l'IA."}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Modale d'édition directe (enseignant / directeur) */}
+      {showEditModal && editForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Edit3 size={18} className="text-purple-600" /> Modifier ce cours
+              </h3>
+              <button onClick={() => setShowEditModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Matière</label>
+                  <input required value={editForm.subject} onChange={(e) => setEditForm({ ...editForm, subject: e.target.value })} className="input text-sm mt-1" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Titre</label>
+                  <input required value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="input text-sm mt-1" />
+                </div>
+              </div>
+
+              {/* Voix et Langue */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Langue</label>
+                  <select
+                    value={editForm.language}
+                    onChange={(e) => setEditForm({ ...editForm, language: e.target.value })}
+                    className="input text-sm mt-1 bg-white"
+                  >
+                    <option value="fr-FR">🇫🇷 Français</option>
+                    <option value="en-US">🇬🇧 Anglais</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Voix</label>
+                  <select
+                    value={editForm.voice}
+                    onChange={(e) => setEditForm({ ...editForm, voice: e.target.value })}
+                    className="input text-sm mt-1 bg-white"
+                  >
+                    <option value="female">👩 Féminine naturelle</option>
+                    <option value="male">👨 Masculine naturelle</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Début</label>
+                  <input required type="datetime-local" value={editForm.scheduledAt} onChange={(e) => setEditForm({ ...editForm, scheduledAt: e.target.value })} className="input text-sm mt-1" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Durée (min)</label>
+                  <input required type="number" min={5} max={240} value={editForm.durationMinutes} onChange={(e) => setEditForm({ ...editForm, durationMinutes: Number(e.target.value) })} className="input text-sm mt-1" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Q&R (min)</label>
+                  <input required type="number" min={0} max={60} value={editForm.qaDurationMinutes} onChange={(e) => setEditForm({ ...editForm, qaDurationMinutes: Number(e.target.value) })} className="input text-sm mt-1" />
+                </div>
+              </div>
+
+              {/* Contenu du cours */}
+              <div>
+                <label className="text-xs font-medium text-gray-600">Contenu texte du cours (re-généré si modifié)</label>
+                <textarea
+                  rows={4}
+                  value={editForm.sourceText}
+                  onChange={(e) => setEditForm({ ...editForm, sourceText: e.target.value, sourceType: 'text' })}
+                  placeholder="Contenu du cours..."
+                  className="input text-sm mt-1"
+                />
+              </div>
+
+              {/* Prochain cours */}
+              <div className="bg-blue-50/60 border border-blue-200/80 rounded-xl p-3 space-y-2.5">
+                <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                  <BookOpen size={14} className="text-blue-600" /> Prochain cours & devoirs
+                </span>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Titre</label>
+                    <input
+                      value={editForm.nextCourseTitle}
+                      onChange={(e) => setEditForm({ ...editForm, nextCourseTitle: e.target.value })}
+                      className="input text-sm mt-1 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Date prévue</label>
+                    <input
+                      type="datetime-local"
+                      value={editForm.nextCourseDate}
+                      onChange={(e) => setEditForm({ ...editForm, nextCourseDate: e.target.value })}
+                      className="input text-sm mt-1 bg-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Consignes & devoirs</label>
+                  <textarea
+                    rows={2}
+                    value={editForm.nextCourseInstructions}
+                    onChange={(e) => setEditForm({ ...editForm, nextCourseInstructions: e.target.value })}
+                    className="input text-sm mt-1 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Support pour le prochain cours</label>
+                  <div className="flex gap-2 mt-1">
+                    {[['none', 'Aucun'], ['text', 'Texte'], ['pdf', 'PDF']].map(([v, l]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setEditForm({ ...editForm, nextCourseSourceType: v })}
+                        className={`text-xs px-2.5 py-1 rounded-full border ${editForm.nextCourseSourceType === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                  {editForm.nextCourseSourceType === 'text' && (
+                    <textarea
+                      rows={3}
+                      value={editForm.nextCourseSourceText}
+                      onChange={(e) => setEditForm({ ...editForm, nextCourseSourceText: e.target.value })}
+                      placeholder="Texte ou résumé préparatoire du prochain cours..."
+                      className="input text-sm mt-2 bg-white"
+                    />
+                  )}
+                  {editForm.nextCourseSourceType === 'pdf' && (
+                    <div className="mt-2">
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        onChange={(e) => setEditForm({ ...editForm, nextPdf: e.target.files?.[0] || null })}
+                        className="text-xs w-full border border-dashed border-gray-300 rounded-lg p-2 bg-white"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {editError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{editError}</p>}
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowEditModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
+                <button type="submit" disabled={editSaving} className="btn-primary flex-1 justify-center">
+                  {editSaving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Enregistrer les modifications
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

@@ -45,10 +45,14 @@ const aiCourseSchema = new mongoose.Schema(
     durationMinutes: { type: Number, required: true, min: 5, max: 240 },
     qaDurationMinutes: { type: Number, default: 10, min: 0, max: 60 }, // Temps réservé aux questions
 
-    // Informations sur le prochain cours (devoirs, date, thème)
+    // Informations sur le prochain cours (devoirs, date, thème, texte ou PDF)
     nextCourseTitle: { type: String, default: '', trim: true },
     nextCourseDate: { type: Date, default: null },
     nextCourseInstructions: { type: String, default: '', trim: true },
+    nextCourseSourceType: { type: String, enum: ['none', 'text', 'pdf'], default: 'none' },
+    nextCourseSourceText: { type: String, default: '' },
+    nextCoursePdfUrl: { type: String, default: '' },
+    nextCoursePdfName: { type: String, default: '' },
 
     status: {
       type: String,

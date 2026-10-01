@@ -10,6 +10,21 @@ export function isSpeechRecognitionSupported() {
   return typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
 }
 
+// Demande explicite de l'autorisation d'accès au micro du navigateur
+export async function requestMicrophonePermission() {
+  if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((track) => track.stop())
+      return true
+    } catch (err) {
+      console.warn('[speechService] permission micro refusée ou non disponible:', err?.message || err)
+      return false
+    }
+  }
+  return false
+}
+
 let cachedVoices = []
 function loadVoices() {
   if (!isSpeechSynthesisSupported()) return []
@@ -201,9 +216,18 @@ export function createSpeechRecognizer({
       if (onEnd) onEnd()
       // Si autoRestart est activé et qu'on ne l'a pas arrêté manuellement, on relance l'écoute
       if (autoRestart && !manuallyStopped) {
-        try {
-          recognizer.start()
-        } catch (_) {}
+        setTimeout(() => {
+          if (!manuallyStopped && !running) {
+            try {
+              recognizer.start()
+            } catch (_) {
+              try {
+                initRecognizer()
+                recognizer.start()
+              } catch (__) {}
+            }
+          }
+        }, 200)
       }
     }
   }
