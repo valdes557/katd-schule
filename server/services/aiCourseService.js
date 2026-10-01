@@ -63,7 +63,9 @@ function planChunks(durationMinutes) {
  */
 async function generateLessonScript(course, className) {
   const cfg = await AiConfig.getConfig()
+  const cfgObj = cfg && typeof cfg.toObject === 'function' ? cfg.toObject() : cfg
   const genConfig = {
+    ...cfgObj,
     model: cfg.model,
     systemPrompt: lessonSystemPrompt(course, className),
     temperature: 0.6,
@@ -169,6 +171,7 @@ function truncateContext(script) {
  */
 async function answerQuestion({ course, className, question }) {
   const cfg = await AiConfig.getConfig()
+  const cfgObj = cfg && typeof cfg.toObject === 'function' ? cfg.toObject() : cfg
   const lang = course.language === 'en-US' ? 'anglais' : 'français'
   const systemPrompt = [
     `Tu es le professeur qui vient d'enseigner ce cours de ${course.subject} à la classe ${className}.`,
@@ -185,7 +188,13 @@ async function answerQuestion({ course, className, question }) {
 
   const result = await generateChatResponse({
     messages: [{ role: 'user', content: String(question).trim() }],
-    config: { model: cfg.model, systemPrompt, temperature: 0.4, maxTokens: 700 },
+    config: {
+      ...cfgObj,
+      model: cfg.model,
+      systemPrompt,
+      temperature: 0.4,
+      maxTokens: 700,
+    },
   })
   return { answer: result.content, usage: result.usage, model: result.model }
 }

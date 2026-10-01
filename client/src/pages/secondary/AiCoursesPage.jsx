@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Bot, Plus, Loader2, AlertCircle, X, Clock, CalendarCheck, FileText,
   Play, CheckCircle2, Trash2, Ban, Radio, Sparkles, Volume2, VolumeX, Mic, HelpCircle, BookOpen,
-  Edit3, Calendar,
+  Edit3, Calendar, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import { aiCoursesApi, classesApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
@@ -98,7 +98,54 @@ export default function AiCoursesPage() {
   const coursesQ = useCachedFetch('/ai-courses?', async () => (await aiCoursesApi.list()).data || [], [])
   const courses = coursesQ.data || []
 
+  // Filtres & Pagination
+  const [statusFilter, setStatusFilter] = useState('all') // 'all', 'en_cours', 'planifie', 'termine'
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 10
+
   const refresh = () => { cache.invalidate('/ai-courses'); coursesQ.refetch() }
+
+  const filteredCourses = courses.filter((c) => {
+    if (statusFilter === 'en_cours' && c.status !== 'en_cours') return false
+    if (statusFilter === 'planifie' && !['planifie', 'generation', 'pret'].includes(c.status)) return false
+    if (statusFilter === 'termine' && c.status !== 'termine') return false
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      const titleMatch = (c.title || '').toLowerCase().includes(q)
+      const subjectMatch = (c.subject || '').toLowerCase().includes(q)
+      const classMatch = (c.class?.name || '').toLowerCase().includes(q)
+      const teacherMatch = (c.teacherName || '').toLowerCase().includes(q)
+      if (!titleMatch && !subjectMatch && !classMatch && !teacherMatch) return false
+    }
+    return true
+  })
+
+  const countAll = courses.length
+  const countLive = courses.filter((c) => c.status === 'en_cours').length
+  const countUpcoming = courses.filter((c) => ['planifie', 'generation', 'pret'].includes(c.status)).length
+  const countFinished = courses.filter((c) => c.status === 'termine').length
+
+  const totalPages = Math.max(1, Math.ceil(filteredCourses.length / pageSize))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const startIndex = (safeCurrentPage - 1) * pageSize
+  const paginatedCourses = filteredCourses.slice(startIndex, startIndex + pageSize)
+
+  const handleStatusFilterChange = (filter) => {
+    setStatusFilter(filter)
+    setCurrentPage(1)
+  }
+
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value)
+    setCurrentPage(1)
+  }
+
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return
+    setCurrentPage(newPage)
+  }
 
   const openCreate = () => {
     stopSpeaking()
@@ -287,7 +334,7 @@ export default function AiCoursesPage() {
     try { await aiCoursesApi.cancel(id); refresh() } catch (e) { alert(e.message) }
   }
   const handleDelete = async (id) => {
-    if (!confirm('Supprimer définitivement ce cours ?')) return
+    if (!confirm('Supprimer définitivement ce cours ? Les questions et historiques associés seront également effacés.')) return
     try { await aiCoursesApi.remove(id); refresh() } catch (e) { alert(e.message) }
   }
 
@@ -319,6 +366,83 @@ export default function AiCoursesPage() {
         )}
       </div>
 
+      {/* Barre de filtres et recherche */}
+      {courses.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-gray-200/80 shadow-xs">
+          {/* Onglets rapides de statut */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <button
+              type="button"
+              onClick={() => handleStatusFilterChange('all')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shrink-0 ${
+                statusFilter === 'all'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Tous ({countAll})
+            </button>
+            {countLive > 0 && (
+              <button
+                type="button"
+                onClick={() => handleStatusFilterChange('en_cours')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${
+                  statusFilter === 'en_cours'
+                    ? 'bg-red-600 text-white shadow-xs'
+                    : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                }`}
+              >
+                <Radio size={12} className="animate-pulse" /> En direct ({countLive})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handleStatusFilterChange('planifie')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shrink-0 ${
+                statusFilter === 'planifie'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              À venir ({countUpcoming})
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStatusFilterChange('termine')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shrink-0 ${
+                statusFilter === 'termine'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Terminés ({countFinished})
+            </button>
+          </div>
+
+          {/* Recherche */}
+          <div className="relative min-w-[220px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              placeholder="Rechercher (matière, titre, classe)..."
+              className="input text-xs pl-8 pr-7 py-1.5 w-full"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => { setSearchQuery(''); setCurrentPage(1) }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                title="Effacer la recherche"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {coursesQ.loading ? (
         <div className="text-center py-16"><Loader2 size={24} className="animate-spin mx-auto text-purple-600" /></div>
       ) : courses.length === 0 ? (
@@ -326,16 +450,27 @@ export default function AiCoursesPage() {
           <Bot size={36} className="mx-auto mb-3 opacity-30" />
           <p>Aucun cours IA {canCreate ? 'programmé' : 'pour votre classe'}</p>
         </div>
+      ) : paginatedCourses.length === 0 ? (
+        <div className="card p-8 text-center text-gray-500 space-y-2">
+          <p className="text-sm font-medium">Aucun cours ne correspond à vos filtres de recherche.</p>
+          <button
+            type="button"
+            onClick={() => { setStatusFilter('all'); setSearchQuery(''); setCurrentPage(1) }}
+            className="btn-ghost border border-gray-300 text-xs inline-flex items-center gap-1"
+          >
+            Réinitialiser les filtres
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
-          {courses.map((c) => {
+          {paginatedCourses.map((c) => {
             const meta = STATUS_META[c.status] || STATUS_META.planifie
             const Icon = meta.icon
             const canOpen = ['en_cours', 'termine'].includes(c.status) ||
               (canCreate && ['pret', 'planifie', 'generation', 'erreur'].includes(c.status))
             const isOwner = canCreate && (role === 'directeur' || String(c.teacher) === String(user?._id))
             return (
-              <div key={c._id} className="card p-4">
+              <div key={c._id} className="card p-4 hover:border-purple-200 transition-colors">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 mb-1">
@@ -374,7 +509,7 @@ export default function AiCoursesPage() {
                       <p className="text-xs text-red-600 mt-1">Ce cours n'a pas pu être diffusé.</p>
                     )}
                   </div>
-                  <div className="flex gap-2 shrink-0 flex-wrap">
+                  <div className="flex gap-2 shrink-0 flex-wrap items-center">
                     {canOpen && (
                       <button
                         onClick={() => navigate(`/dashboard/ia-cours/${c._id}/live`)}
@@ -398,14 +533,87 @@ export default function AiCoursesPage() {
                         <Ban size={13} /> Annuler
                       </button>
                     )}
-                    {isOwner && ['planifie', 'annule', 'erreur'].includes(c.status) && (
-                      <button onClick={() => handleDelete(c._id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
+                    {isOwner && ['planifie', 'termine', 'annule', 'erreur'].includes(c.status) && (
+                      <button
+                        onClick={() => handleDelete(c._id)}
+                        className="p-1.5 rounded hover:bg-red-50 text-red-500 transition-colors"
+                        title="Supprimer ce cours"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     )}
                   </div>
                 </div>
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Pagination en bas de page */}
+      {!coursesQ.loading && filteredCourses.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs text-gray-600 border-t border-gray-100">
+          <div>
+            Affichage de <span className="font-semibold text-gray-900">{startIndex + 1}</span> à{' '}
+            <span className="font-semibold text-gray-900">{Math.min(startIndex + pageSize, filteredCourses.length)}</span> sur{' '}
+            <span className="font-semibold text-gray-900">{filteredCourses.length}</span> cours
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handlePageChange(safeCurrentPage - 1)}
+                disabled={safeCurrentPage <= 1}
+                className="btn-ghost border border-gray-200 px-2 py-1 text-xs flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 rounded-lg"
+                title="Page précédente"
+              >
+                <ChevronLeft size={14} /> Précédent
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                  if (
+                    totalPages > 7 &&
+                    pageNum !== 1 &&
+                    pageNum !== totalPages &&
+                    Math.abs(pageNum - safeCurrentPage) > 1
+                  ) {
+                    if (pageNum === 2 || pageNum === totalPages - 1) {
+                      return <span key={pageNum} className="px-1 text-gray-400">...</span>
+                    }
+                    return null
+                  }
+
+                  const isActive = pageNum === safeCurrentPage
+                  return (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`min-w-[28px] h-7 px-2 flex items-center justify-center font-medium rounded-lg text-xs transition-colors ${
+                        isActive
+                          ? 'bg-purple-600 text-white shadow-xs font-bold'
+                          : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handlePageChange(safeCurrentPage + 1)}
+                disabled={safeCurrentPage >= totalPages}
+                className="btn-ghost border border-gray-200 px-2 py-1 text-xs flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 rounded-lg"
+                title="Page suivante"
+              >
+                Suivant <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       )}
 

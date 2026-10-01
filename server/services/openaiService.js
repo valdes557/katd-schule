@@ -1,6 +1,7 @@
 // services/openaiService.js — Moteur IA multi-fournisseurs (Gemini, OpenAI, Claude, Groq).
 // Utilise fetch natif (Node 18+) sans dépendance supplémentaire.
 // Priorité de clé : configurée en base (AiConfig) par l'administrateur, sinon variable d'environnement (.env).
+const AiConfig = require('../models/AiConfig')
 
 class OpenAiError extends Error {
   constructor(message, status = 500) {
@@ -20,16 +21,45 @@ class OpenAiError extends Error {
  * @returns {Promise<{content:string, usage:Object, model:string}>}
  */
 async function generateChatResponse({ messages, config }) {
-  const provider = (config && config.provider) || 'gemini'
-  const systemPrompt = (config && config.systemPrompt) || ''
-  const temperature = config?.temperature ?? 0.5
-  const maxTokens = config?.maxTokens ?? 1000
+  let resolvedConfig = config
+    ? typeof config.toObject === 'function'
+      ? config.toObject()
+      : { ...config }
+    : {}
+
+  // Si le provider ou les clés ne sont pas renseignés dans config, chercher dans AiConfig en base
+  let dbCfg = null
+  const needDbLookup =
+    !resolvedConfig.provider ||
+    (!resolvedConfig.geminiApiKey &&
+      !resolvedConfig.openaiApiKey &&
+      !resolvedConfig.anthropicApiKey &&
+      !resolvedConfig.groqApiKey)
+
+  if (needDbLookup) {
+    try {
+      dbCfg = await AiConfig.getConfig()
+      const dbObj = dbCfg && typeof dbCfg.toObject === 'function' ? dbCfg.toObject() : dbCfg
+      resolvedConfig = { ...(dbObj || {}), ...resolvedConfig }
+    } catch (_) {}
+  }
+
+  const provider = (resolvedConfig && resolvedConfig.provider) || 'gemini'
+  const systemPrompt = (resolvedConfig && resolvedConfig.systemPrompt) || ''
+  const temperature = resolvedConfig?.temperature ?? 0.5
+  const maxTokens = resolvedConfig?.maxTokens ?? 1000
 
   // ───────────────────────────────────────────────────────────────────────────
   // 1. FOURNISSEUR GOOGLE GEMINI (RECOMMANDÉ)
   // ───────────────────────────────────────────────────────────────────────────
   if (provider === 'gemini') {
-    const apiKey = (config?.geminiApiKey || process.env.GEMINI_API_KEY || '').trim()
+    let apiKey = (resolvedConfig?.geminiApiKey || process.env.GEMINI_API_KEY || '').trim()
+    if (!apiKey) {
+      try {
+        if (!dbCfg) dbCfg = await AiConfig.getConfig()
+        apiKey = (dbCfg?.geminiApiKey || '').trim()
+      } catch (_) {}
+    }
     if (!apiKey) {
       throw new OpenAiError(
         "L'assistant Google Gemini n'est pas configuré : clé API Google AI Studio manquante. Veuillez l'ajouter dans la Gestion IA.",
@@ -37,7 +67,7 @@ async function generateChatResponse({ messages, config }) {
       )
     }
 
-    let rawModel = (config?.model || process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim()
+    let rawModel = (resolvedConfig?.model || process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim()
     // Si un ancien modèle n'est plus supporté par Google (ex: gemini-2.0-flash ou gemini-1.5-flash), basculer vers gemini-3.5-flash
     if (rawModel.includes('gemini-2.0') || rawModel.includes('gemini-1.5') || !rawModel) {
       rawModel = 'gemini-3.5-flash'
@@ -140,7 +170,13 @@ async function generateChatResponse({ messages, config }) {
   // 2. FOURNISSEUR ANTHROPIC (CLAUDE)
   // ───────────────────────────────────────────────────────────────────────────
   if (provider === 'anthropic') {
-    const apiKey = (config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || '').trim()
+    let apiKey = (resolvedConfig?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || '').trim()
+    if (!apiKey) {
+      try {
+        if (!dbCfg) dbCfg = await AiConfig.getConfig()
+        apiKey = (dbCfg?.anthropicApiKey || '').trim()
+      } catch (_) {}
+    }
     if (!apiKey) {
       throw new OpenAiError(
         "L'assistant Claude n'est pas configuré : clé API Anthropic manquante. Veuillez l'ajouter dans la Gestion IA.",
@@ -148,7 +184,7 @@ async function generateChatResponse({ messages, config }) {
       )
     }
 
-    let model = (config?.model || 'claude-opus-5-5').trim()
+    let model = (resolvedConfig?.model || 'claude-opus-5-5').trim()
     // Tolérance et normalisation des saisies (ex: opus5 -> claude-opus-5-5, opus4.8 -> claude-opus-4-8)
     if (/^opus[- ]?5(\.5)?$/i.test(model) || model.toLowerCase() === 'opus5') {
       model = 'claude-opus-5-5'
@@ -212,9 +248,16 @@ async function generateChatResponse({ messages, config }) {
     ? 'https://api.groq.com/openai/v1/chat/completions'
     : 'https://api.openai.com/v1/chat/completions'
 
-  const apiKey = isGroq
-    ? (config?.groqApiKey || process.env.GROQ_API_KEY || '').trim()
-    : (config?.openaiApiKey || process.env.OPENAI_API_KEY || '').trim()
+  let apiKey = isGroq
+    ? (resolvedConfig?.groqApiKey || process.env.GROQ_API_KEY || '').trim()
+    : (resolvedConfig?.openaiApiKey || process.env.OPENAI_API_KEY || '').trim()
+
+  if (!apiKey) {
+    try {
+      if (!dbCfg) dbCfg = await AiConfig.getConfig()
+      apiKey = (isGroq ? dbCfg?.groqApiKey : dbCfg?.openaiApiKey || '').trim()
+    } catch (_) {}
+  }
 
   if (!apiKey) {
     const providerName = isGroq ? 'Groq' : 'OpenAI'
@@ -225,7 +268,7 @@ async function generateChatResponse({ messages, config }) {
   }
 
   const defaultModel = isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini'
-  let model = (config?.model || defaultModel).trim()
+  let model = (resolvedConfig?.model || defaultModel).trim()
   if (/^gpt[- ]?5$/i.test(model)) model = 'gpt-5'
   else if (/^gpt[- ]?5\.6$/i.test(model)) model = 'gpt-5.6'
   else if (/^gpt[- ]?6/i.test(model)) model = 'gpt-6-astra'

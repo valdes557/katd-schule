@@ -405,7 +405,7 @@ router.post('/:id/cancel', protect, authorize('enseignant', 'directeur'), async 
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// DELETE /api/ai-courses/:id — suppression (cours non diffusé uniquement)
+// DELETE /api/ai-courses/:id — suppression (cours planifié, terminé, annulé ou en erreur)
 router.delete('/:id', protect, authorize('enseignant', 'directeur'), async (req, res) => {
   try {
     const course = await AiCourse.findById(req.params.id)
@@ -414,8 +414,8 @@ router.delete('/:id', protect, authorize('enseignant', 'directeur'), async (req,
     if (req.user.role === 'enseignant' && String(course.teacher) !== String(req.user._id)) {
       return res.status(403).json({ message: 'Vous ne pouvez supprimer que vos propres cours' })
     }
-    if (!['planifie', 'annule', 'erreur'].includes(course.status)) {
-      return res.status(400).json({ message: 'Un cours diffusé ou en préparation ne peut pas être supprimé.' })
+    if (!['planifie', 'termine', 'annule', 'erreur'].includes(course.status)) {
+      return res.status(400).json({ message: 'Un cours en cours de préparation ou de diffusion ne peut pas être supprimé.' })
     }
     await course.deleteOne()
     res.json({ success: true })
@@ -426,11 +426,11 @@ router.delete('/:id', protect, authorize('enseignant', 'directeur'), async (req,
 // CONSULTATION
 // ═════════════════════════════════════════════════════════════════════════════
 
-// GET /api/ai-courses?status=&classId=&scope= — liste scopée par rôle
+// GET /api/ai-courses?status=&classId=&scope=&page=&limit= — liste scopée par rôle avec pagination
 router.get('/', protect, async (req, res) => {
   try {
     const sid = schoolId(req)
-    if (!sid) return res.json({ success: true, data: [] })
+    if (!sid) return res.json({ success: true, data: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } })
     const query = { school: sid }
     if (req.query.classId) query.class = req.query.classId
     if (req.query.status) query.status = { $in: String(req.query.status).split(',') }
@@ -438,36 +438,55 @@ router.get('/', protect, async (req, res) => {
     const role = req.user.role
     if (role === 'enseignant') {
       const teacher = await Teacher.findOne({ user: req.user._id }).select('classes')
-      if (!teacher) return res.json({ success: true, data: [] })
+      if (!teacher) return res.json({ success: true, data: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } })
       if (req.query.scope === 'classes') query.class = { $in: teacher.classes || [] }
       else query.teacher = req.user._id
     } else if (role === 'eleve') {
       const cid = await studentClassId(req.user._id)
-      if (!cid) return res.json({ success: true, data: [] })
+      if (!cid) return res.json({ success: true, data: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } })
       query.class = cid
       if (!query.status) query.status = { $in: ['pret', 'en_cours', 'termine'] }
     } else if (role === 'parent') {
       const children = await Student.find({ parentUser: req.user._id }).select('class')
       const ids = children.map((s) => s.class).filter(Boolean)
-      if (!ids.length) return res.json({ success: true, data: [] })
+      if (!ids.length) return res.json({ success: true, data: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } })
       query.class = { $in: ids }
       if (!query.status) query.status = { $in: ['en_cours', 'termine'] }
     } else if (!['directeur', 'vice_principal', 'super_admin'].includes(role)) {
       return res.status(403).json({ message: 'Accès refusé' })
     }
 
-    const courses = await AiCourse.find(query)
+    const total = await AiCourse.countDocuments(query)
+    const page = req.query.page ? Math.max(1, parseInt(req.query.page, 10) || 1) : null
+    const limit = req.query.limit ? Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 10)) : (page ? 10 : 200)
+
+    let queryBuilder = AiCourse.find(query)
       .select('-lessonScript -sourceText')
       .populate('class', 'name level')
       .sort({ scheduledAt: -1 })
-      .limit(200)
-      .lean()
+
+    if (page) {
+      queryBuilder = queryBuilder.skip((page - 1) * limit).limit(limit)
+    } else {
+      queryBuilder = queryBuilder.limit(limit)
+    }
+
+    const courses = await queryBuilder.lean()
     const data = courses.map((c) => ({
       ...c,
       questionCount: (c.questions || []).length,
       questions: undefined,
     }))
-    res.json({ success: true, data })
+    res.json({
+      success: true,
+      data,
+      pagination: {
+        total,
+        page: page || 1,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
