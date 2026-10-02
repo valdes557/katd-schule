@@ -126,10 +126,15 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
     if (!Number.isInteger(duration) || duration < 5 || duration > 240) {
       return res.status(400).json({ message: 'Durée invalide (entre 5 et 240 minutes)' })
     }
-    const when = new Date(scheduledAt)
-    if (isNaN(when.getTime())) return res.status(400).json({ message: 'Date/heure invalide' })
-    if (when.getTime() < Date.now() + MIN_LEAD_MS) {
-      return res.status(400).json({ message: "Programmez le cours au moins 10 minutes à l'avance (l'IA prépare la leçon 5 minutes avant l'heure)." })
+    const startNow = req.body.startNow === 'true' || req.body.startNow === true
+    let when = new Date(scheduledAt)
+    if (isNaN(when.getTime())) when = new Date()
+
+    const isImmediate = startNow || when.getTime() <= Date.now() + 60 * 1000
+    if (isImmediate) {
+      when = new Date()
+    } else if (when.getTime() < Date.now() - 5 * 60 * 1000) {
+      return res.status(400).json({ message: "L'horaire prévu est déjà dépassé. Démarrez le cours en direct ou choisissez une heure future." })
     }
 
     // Autorisation : le prof ne programme que pour SES classes assignées
@@ -209,6 +214,51 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
       nextPdfName = nextPdfFile.originalname || ''
     }
 
+    let initialStatus = 'planifie'
+    let lessonScript = ''
+    let generatedAt = null
+    let usedFallback = false
+    let generationError = ''
+
+    if (isImmediate) {
+      try {
+        const { script, usage, model } = await generateLessonScript({
+          title: String(title).trim(),
+          subject: String(subject).trim(),
+          durationMinutes: duration,
+          language: language || 'fr-FR',
+          sourceType: finalSourceType,
+          sourceText: text,
+          images: courseImages,
+          level: klass.level || '',
+        }, klass.name || '')
+        lessonScript = script
+        initialStatus = 'en_cours'
+        generatedAt = new Date()
+        AiUsageLog.create({
+          user: req.user._id,
+          school: sid,
+          subscription: sub._id,
+          model,
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          totalTokens: usage.totalTokens,
+        }).catch(() => {})
+      } catch (err) {
+        if (text.length >= 200) {
+          lessonScript = text
+          usedFallback = true
+          initialStatus = 'en_cours'
+          generationError = err.message
+        } else {
+          return res.status(502).json({
+            message: `Erreur lors de la préparation IA du cours : ${err.message}`,
+            generationError: err.message,
+          })
+        }
+      }
+    }
+
     const course = await AiCourse.create({
       school: sid,
       class: classId,
@@ -225,6 +275,7 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
       pdfName,
       images: courseImages,
       scheduledAt: when,
+      startedAt: isImmediate ? when : null,
       durationMinutes: duration,
       language: language || 'fr-FR',
       voice: voice || 'female',
@@ -236,7 +287,11 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
       nextCourseSourceText: (nextCourseSourceText || '').trim(),
       nextCoursePdfUrl: nextPdfUrl,
       nextCoursePdfName: nextPdfName,
-      status: 'planifie',
+      lessonScript,
+      generatedAt,
+      usedFallback,
+      generationError,
+      status: initialStatus,
     })
     res.status(201).json({ success: true, data: course })
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -479,6 +534,76 @@ router.put('/:id', protect, authorize('enseignant', 'directeur'), courseUpload, 
     await course.save()
     res.json({ success: true, data: course })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/ai-courses/:id/start-now — Démarrer immédiatement la diffusion en direct
+router.post('/:id/start-now', protect, authorize('enseignant', 'directeur', 'super_admin', 'vice_principal'), async (req, res) => {
+  try {
+    const course = await AiCourse.findById(req.params.id).populate('class', 'name level')
+    if (!course) return res.status(404).json({ message: 'Cours introuvable' })
+    if (req.user.role !== 'super_admin' && String(course.school) !== String(schoolId(req))) {
+      return res.status(403).json({ message: 'Accès refusé' })
+    }
+    if (req.user.role === 'enseignant' && course.teacher && String(course.teacher) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Vous ne pouvez démarrer que vos propres cours' })
+    }
+
+    const sid = schoolId(req)
+    const sub = await getActiveSubscription(sid)
+    if (!sub || sub.remainingQuestions <= 0) {
+      return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Souscription IA active requise pour votre établissement." })
+    }
+
+    // Si le cours n'a pas encore de script généré, on le prépare immédiatement
+    if (!course.lessonScript || course.lessonScript.length < 100) {
+      try {
+        const { script, usage, model } = await generateLessonScript(course, course.class?.name || '')
+        course.lessonScript = script
+        course.generatedAt = new Date()
+        course.generationError = ''
+        course.usedFallback = false
+        AiUsageLog.create({
+          user: req.user._id,
+          school: course.school,
+          subscription: sub._id,
+          model,
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          totalTokens: usage.totalTokens,
+        }).catch(() => {})
+      } catch (err) {
+        if ((course.sourceText || '').length >= 200) {
+          course.lessonScript = course.sourceText
+          course.usedFallback = true
+          course.generationError = err.message
+        } else {
+          course.status = 'erreur'
+          course.generationError = err.message
+          await course.save()
+          return res.status(502).json({
+            message: `Erreur lors de la préparation du cours par l'IA : ${err.message}`,
+            generationError: err.message,
+          })
+        }
+      }
+    }
+
+    const now = new Date()
+    course.status = 'en_cours'
+    course.scheduledAt = now
+    course.startedAt = now
+    course.endedAt = null
+    course.generationError = ''
+    await course.save()
+
+    res.json({
+      success: true,
+      message: 'La diffusion en direct du cours a démarré avec succès !',
+      data: course,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 // POST /api/ai-courses/:id/cancel — annulation avant diffusion

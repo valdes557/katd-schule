@@ -966,6 +966,7 @@ export const aiCoursesApi = {
     return api.put(`/ai-courses/${id}`, data)
   },
   cancel: (id) => api.post(`/ai-courses/${id}/cancel`),
+  startNow: (id) => api.post(`/ai-courses/${id}/start-now`),
   remove: (id) => api.del(`/ai-courses/${id}`),
   askQuestion: (id, question) => api.post(`/ai-courses/${id}/questions`, { question }),
   sendToDirector: (id) => api.post(`/ai-courses/${id}/send-to-director`),
@@ -1132,6 +1133,8 @@ export const aiApi = {
   deleteConversation: (id) => api.del(`/ai/conversations/${id}`),
   // Statistiques (admin global / directeur école)
   stats: () => api.get('/ai/stats'),
+  // Santé / configuration du service IA
+  health: () => api.get('/ai/health'),
 }
 
 export const paymentsApi = {

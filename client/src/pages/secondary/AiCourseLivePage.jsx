@@ -89,6 +89,25 @@ export default function AiCourseLivePage() {
   const [refiningCourse, setRefiningCourse] = useState(false)
   const [refineError, setRefineError] = useState('')
 
+  const [startingNow, setStartingNow] = useState(false)
+
+  const handleStartNow = async () => {
+    if (startingNow) return
+    setStartingNow(true)
+    stopSpeaking()
+    spokenUnitsCountRef.current = 0
+    speechQueueRef.current = []
+    isQueueRunningRef.current = false
+    try {
+      await aiCoursesApi.startNow(id)
+      await fetchLive()
+    } catch (err) {
+      alert("Erreur lors du démarrage du direct : " + err.message)
+    } finally {
+      setStartingNow(false)
+    }
+  }
+
   const handleDownloadPdf = () => {
     const element = document.getElementById('course-printable-doc')
     if (!element) return
@@ -832,6 +851,27 @@ export default function AiCourseLivePage() {
           </p>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {canStaffAction && (
+            <button
+              type="button"
+              onClick={handleStartNow}
+              disabled={startingNow}
+              className={`text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 shrink-0 shadow-xs font-bold transition-all ${
+                isLive
+                  ? 'bg-red-50 text-red-700 border border-red-200'
+                  : 'bg-red-600 hover:bg-red-700 text-white'
+              }`}
+              title={isLive ? "Le direct est en cours" : isDone ? "Relancer la diffusion en direct" : "Démarrer le direct maintenant"}
+            >
+              {startingNow ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Radio size={13} className={isLive ? 'animate-pulse' : ''} />
+              )}
+              {startingNow ? 'Démarrage...' : isLive ? 'En direct' : isDone ? 'Relancer le direct' : 'Démarrer le direct'}
+            </button>
+          )}
+
           {canEdit && (
             <button
               type="button"
@@ -992,15 +1032,26 @@ export default function AiCourseLivePage() {
           <div className="mt-4 flex items-center justify-center gap-2 text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-full py-1 px-3 w-fit mx-auto">
             <Volume2 size={13} /> L'IA dispensera ce cours avec sa voix naturelle ({data.voice === 'male' ? 'masculine' : 'féminine'}, {data.language === 'en-US' ? 'anglais' : 'français'})
           </div>
-          {canEdit && (
-            <div className="mt-4 pt-4 border-t border-purple-100 flex justify-center">
+          {canStaffAction && (
+            <div className="mt-5 pt-4 border-t border-purple-100 flex flex-wrap items-center justify-center gap-2.5">
               <button
                 type="button"
-                onClick={openEditModal}
-                className="btn-primary text-xs py-2 px-4 shadow-sm flex items-center gap-1.5"
+                onClick={handleStartNow}
+                disabled={startingNow}
+                className="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs py-2 px-4 shadow-sm flex items-center gap-1.5 font-bold"
               >
-                <Edit3 size={13} /> Modifier ce cours (corriger une erreur)
+                {startingNow ? <Loader2 size={14} className="animate-spin" /> : <Radio size={14} className="animate-pulse" />}
+                {startingNow ? 'Lancement du direct en cours...' : 'Démarrer la diffusion en direct maintenant'}
               </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={openEditModal}
+                  className="btn-ghost border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs py-2 px-3 shadow-xs flex items-center gap-1.5"
+                >
+                  <Edit3 size={13} /> Modifier ce cours
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1011,7 +1062,28 @@ export default function AiCourseLivePage() {
         <div className="card p-10 text-center text-gray-500"><AlertCircle size={32} className="mx-auto mb-3 text-amber-400" /><p className="text-sm">Ce cours a été annulé.</p></div>
       )}
       {data.status === 'erreur' && (
-        <div className="card p-10 text-center text-gray-500"><AlertCircle size={32} className="mx-auto mb-3 text-red-400" /><p className="text-sm">Ce cours n'a pas pu être diffusé.</p>{data.generationError && <p className="text-xs text-gray-400 mt-1">{data.generationError}</p>}</div>
+        <div className="card p-10 text-center text-gray-500 space-y-3">
+          <AlertCircle size={32} className="mx-auto mb-2 text-red-500" />
+          <h3 className="text-base font-bold text-gray-900">Ce cours n'a pas pu être diffusé</h3>
+          {data.generationError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-xs max-w-lg mx-auto text-left whitespace-pre-wrap">
+              <strong>Erreur signalée :</strong> {data.generationError}
+            </div>
+          )}
+          {canStaffAction && (
+            <div className="pt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={handleStartNow}
+                disabled={startingNow}
+                className="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs py-2 px-4 shadow-sm inline-flex items-center gap-1.5 font-bold"
+              >
+                {startingNow ? <Loader2 size={14} className="animate-spin" /> : <Radio size={14} />}
+                {startingNow ? 'Préparation et lancement...' : 'Relancer la préparation et le direct maintenant'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Galerie des figures et illustrations pédagogiques associées */}

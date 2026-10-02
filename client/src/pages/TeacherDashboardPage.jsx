@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users, BookOpen, CalendarCheck, FileText, Clock, Loader2, RefreshCw,
@@ -6,7 +6,7 @@ import {
   ClipboardList, CheckCircle2, GraduationCap, Bell, QrCode,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { teacherApi, teacherAttendanceApi } from '../lib/api'
+import { teacherApi, teacherAttendanceApi, aiApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import AppLauncher from '../components/layout/AppLauncher'
@@ -21,11 +21,21 @@ export default function TeacherDashboardPage() {
   const todayAttendance = attendanceQ.data
   const loading = dashboardQ.loading
 
+  const [aiHealth, setAiHealth] = useState(null)
+  useEffect(() => {
+    aiApi.health().then((res) => {
+      if (res) setAiHealth(res)
+    }).catch(() => {})
+  }, [])
+
   const handleRefresh = () => {
     cache.invalidate('/teacher/dashboard')
     cache.invalidate('/teacher-attendance/me')
     dashboardQ.refetch()
     attendanceQ.refetch()
+    aiApi.health().then((res) => {
+      if (res) setAiHealth(res)
+    }).catch(() => {})
   }
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
@@ -114,6 +124,36 @@ export default function TeacherDashboardPage() {
           </div>
           <Link to="/dashboard/mon-pointage" className="font-semibold text-emerald-700 hover:text-emerald-900 underline shrink-0">
             Voir détails
+          </Link>
+        </div>
+      )}
+
+      {/* Alerte Erreur API IA */}
+      {aiHealth && !aiHealth.ok && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-red-800 animate-fade-in">
+          <div className="flex items-start gap-3">
+            <span className="p-2 bg-red-100 text-red-700 rounded-xl shrink-0 mt-0.5">
+              <AlertCircle size={20} />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider bg-red-600 text-white px-2 py-0.5 rounded-full">
+                  Assistant IA
+                </span>
+                <span className="text-xs font-semibold text-red-700">
+                  Fournisseur : {aiHealth.provider?.toUpperCase() || 'GEMINI'}
+                </span>
+              </div>
+              <p className="text-xs text-red-800 mt-1 font-medium">
+                {aiHealth.message || "La clé API Google Gemini est manquante ou invalide. Les cours IA et l'assistant ne sont pas opérationnels."}
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/dashboard/ia-cours"
+            className="btn-ghost border border-red-300 text-red-700 hover:bg-red-100 text-xs py-1.5 px-3 rounded-xl shrink-0 font-semibold self-start sm:self-center"
+          >
+            Voir les cours IA
           </Link>
         </div>
       )}

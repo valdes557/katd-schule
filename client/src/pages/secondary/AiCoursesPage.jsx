@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Bot, Plus, Loader2, AlertCircle, X, Clock, CalendarCheck, FileText,
   Play, CheckCircle2, Trash2, Ban, Radio, Sparkles, Volume2, VolumeX, Mic, HelpCircle, BookOpen,
   Edit3, Calendar, ChevronLeft, ChevronRight, Search, Image as ImageIcon, Zap, Trash,
 } from 'lucide-react'
-import { aiCoursesApi, classesApi } from '../../lib/api'
+import { aiCoursesApi, classesApi, aiApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
 import { cache } from '../../lib/cache'
 import { useAuth } from '../../context/AuthContext'
@@ -74,11 +74,18 @@ export default function AiCoursesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [generatingDraft, setGeneratingDraft] = useState(false)
+  const [aiHealth, setAiHealth] = useState(null)
+
+  useEffect(() => {
+    aiApi.health().then((res) => {
+      if (res) setAiHealth(res)
+    }).catch(() => {})
+  }, [])
 
   const emptyForm = {
     classId: '', subject: '', title: '', sourceType: 'ai_generate', sourceText: '',
     pdf: null, images: [], existingImages: [], scheduledAt: defaultScheduledAt(), durationMinutes: 45,
-    language: 'fr-FR', voice: 'female', qaDurationMinutes: 10,
+    language: 'fr-FR', voice: 'female', qaDurationMinutes: 10, startNow: false,
     nextCourseTitle: '', nextCourseDate: '', nextCourseInstructions: '',
     nextCourseSourceType: 'none', nextCourseSourceText: '', nextPdf: null,
   }
@@ -360,12 +367,19 @@ export default function AiCoursesPage() {
       }
       if (editingCourseId) {
         await aiCoursesApi.update(editingCourseId, payload)
+        setShowModal(false)
+        setEditingCourseId(null)
+        refresh()
       } else {
-        await aiCoursesApi.create(payload)
+        const res = await aiCoursesApi.create(payload)
+        setShowModal(false)
+        setEditingCourseId(null)
+        refresh()
+        if (form.startNow && res?.data?._id) {
+          navigate(`/dashboard/ia-cours/${res.data._id}/live`)
+          return
+        }
       }
-      setShowModal(false)
-      setEditingCourseId(null)
-      refresh()
     } catch (e2) { setError(e2.message) }
     setSaving(false)
   }
@@ -449,6 +463,38 @@ export default function AiCoursesPage() {
           </div>
         )}
       </div>
+
+      {/* Alerte si la clé API Google Gemini ou IA est manquante ou en erreur */}
+      {aiHealth && !aiHealth.ok && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-red-800 animate-fade-in">
+          <div className="flex items-start gap-3">
+            <span className="p-2 bg-red-100 text-red-700 rounded-xl shrink-0 mt-0.5">
+              <AlertCircle size={22} />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider bg-red-600 text-white px-2 py-0.5 rounded-full">
+                  Attention API IA
+                </span>
+                <span className="text-xs font-semibold text-red-700">
+                  Fournisseur : {aiHealth.provider?.toUpperCase() || 'GEMINI'}
+                </span>
+              </div>
+              <p className="text-xs text-red-800 mt-1 font-medium">
+                {aiHealth.message || "La clé API Google Gemini ou OpenAI n'est pas configurée ou est invalide. Les cours et réponses de l'IA ne pourront pas être générés."}
+              </p>
+            </div>
+          </div>
+          {['super_admin', 'directeur'].includes(role) && (
+            <button
+              onClick={() => navigate('/dashboard/ia-assistant')}
+              className="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs py-2 px-3.5 rounded-xl shrink-0 self-start sm:self-center font-bold shadow-xs"
+            >
+              Configurer la clé API
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Barre de filtres et recherche */}
       {courses.length > 0 && (
@@ -599,11 +645,52 @@ export default function AiCoursesPage() {
                         <span>Prochain cours : <strong>{c.nextCourseTitle}</strong></span>
                       </div>
                     )}
-                    {c.status === 'erreur' && isOwner && (
-                      <p className="text-xs text-red-600 mt-1">Ce cours n'a pas pu être diffusé.</p>
+                    {c.status === 'erreur' && (
+                      <div className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5 flex items-start gap-2">
+                        <AlertCircle size={14} className="text-red-600 shrink-0 mt-0.5" />
+                        <div>
+                          <strong>Échec de diffusion :</strong> {c.generationError || "La préparation par l'IA a échoué (vérifiez votre clé API)."}
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div className="flex gap-2 shrink-0 flex-wrap items-center">
+                    {/* Bouton Démarrer / Relancer le direct */}
+                    {isOwner && ['planifie', 'pret', 'erreur'].includes(c.status) && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await aiCoursesApi.startNow(c._id)
+                            navigate(`/dashboard/ia-cours/${c._id}/live`)
+                          } catch (err) {
+                            alert("Erreur lors du démarrage du direct : " + err.message)
+                          }
+                        }}
+                        className="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs flex items-center gap-1.5 shadow-xs font-semibold py-1.5 px-3 rounded-lg"
+                        title="Démarrer immédiatement la diffusion en direct"
+                      >
+                        <Radio size={13} className="animate-pulse" /> Démarrer le direct
+                      </button>
+                    )}
+                    {isOwner && c.status === 'termine' && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm("Relancer ce cours en direct maintenant pour votre classe ?")) return
+                          try {
+                            await aiCoursesApi.startNow(c._id)
+                            navigate(`/dashboard/ia-cours/${c._id}/live`)
+                          } catch (err) {
+                            alert("Erreur : " + err.message)
+                          }
+                        }}
+                        className="btn-ghost border border-red-200 text-red-700 hover:bg-red-50 text-xs flex items-center gap-1.5 font-medium py-1.5 px-2.5 rounded-lg"
+                        title="Relancer la diffusion en direct"
+                      >
+                        <Radio size={13} /> Relancer direct
+                      </button>
+                    )}
                     {canOpen && (
                       <button
                         onClick={() => navigate(`/dashboard/ia-cours/${c._id}/live`)}
@@ -811,6 +898,21 @@ export default function AiCoursesPage() {
                   <input required type="number" min={0} max={60} value={form.qaDurationMinutes} onChange={(e) => setForm({ ...form, qaDurationMinutes: Number(e.target.value) })} className="input text-sm mt-1" />
                 </div>
               </div>
+
+              {!editingCourseId && (
+                <label className="flex items-center gap-2.5 cursor-pointer bg-red-50 hover:bg-red-100/70 border border-red-200 text-red-900 rounded-xl p-3 text-xs font-semibold transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.startNow)}
+                    onChange={(e) => setForm({ ...form, startNow: e.target.checked })}
+                    className="rounded text-red-600 focus:ring-red-500 w-4 h-4"
+                  />
+                  <span className="flex items-center gap-1.5 flex-1">
+                    <Radio size={14} className={form.startNow ? 'animate-pulse text-red-600' : 'text-gray-400'} />
+                    <span>Démarrer la diffusion en direct <strong>immédiatement</strong> dès l'enregistrement (sans attente)</span>
+                  </span>
+                </label>
+              )}
 
               {/* Source du contenu : IA autonome, texte saisi ou PDF */}
               <div>

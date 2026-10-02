@@ -212,6 +212,53 @@ router.post('/test-key', ...adminOnly, async (req, res) => {
   }
 })
 
+// GET /api/ai/health — Vérifie l'état de l'assistant IA et la présence de la clé API pour les utilisateurs
+router.get('/health', protect, async (req, res) => {
+  try {
+    const cfg = await AiConfig.getConfig()
+    if (!cfg.enabled) {
+      return res.json({
+        ok: false,
+        status: 'disabled',
+        message: "L'assistant IA est temporairement désactivé par l'administrateur.",
+        provider: cfg.provider,
+        model: cfg.model,
+      })
+    }
+
+    const provider = cfg.provider || 'gemini'
+    let hasKey = false
+    if (provider === 'gemini') {
+      hasKey = !!(cfg.geminiApiKey || process.env.GEMINI_API_KEY)
+    } else if (provider === 'openai') {
+      hasKey = !!(cfg.openaiApiKey || process.env.OPENAI_API_KEY)
+    } else if (provider === 'anthropic') {
+      hasKey = !!(cfg.anthropicApiKey || process.env.ANTHROPIC_API_KEY)
+    } else if (provider === 'groq') {
+      hasKey = !!(cfg.groqApiKey || process.env.GROQ_API_KEY)
+    }
+
+    if (!hasKey) {
+      return res.json({
+        ok: false,
+        status: 'missing_key',
+        provider,
+        model: cfg.model,
+        message: `Clé API ${provider.toUpperCase()} manquante. Veuillez configurer la clé API dans le panneau d'administration.`,
+      })
+    }
+
+    res.json({
+      ok: true,
+      status: 'configured',
+      provider,
+      model: cfg.model,
+    })
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message })
+  }
+})
+
 // ═════════════════════════════════════════════════════════════════════════════
 // OFFRES IA (administrateur : CRUD ; directeur : liste des offres actives)
 // ═════════════════════════════════════════════════════════════════════════════
