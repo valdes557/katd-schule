@@ -76,8 +76,74 @@ export function getBestVoice(lang = 'fr-FR', gender = 'female') {
   return natural || pool[0] || null
 }
 
+// Ensemble persistant conservant les instances SpeechSynthesisUtterance pour empêcher le Garbage Collector de couper la voix
+const activeUtterances = new Set()
+if (typeof window !== 'undefined') {
+  window.__activeSpeechUtterances = activeUtterances
+}
+
+let speechSessionId = 0
+let speechKeepAliveTimer = null
+
+function ensureKeepAlive() {
+  if (speechKeepAliveTimer) return
+  speechKeepAliveTimer = setInterval(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      if (window.speechSynthesis.speaking) {
+        try {
+          window.speechSynthesis.pause()
+          window.speechSynthesis.resume()
+        } catch (_) {}
+      } else if (activeUtterances.size === 0) {
+        clearInterval(speechKeepAliveTimer)
+        speechKeepAliveTimer = null
+      }
+    }
+  }, 4000)
+}
+
+function stopKeepAlive() {
+  if (speechKeepAliveTimer) {
+    clearInterval(speechKeepAliveTimer)
+    speechKeepAliveTimer = null
+  }
+}
+
+// Découpe un long texte en segments naturels de phrases (< 180 caractères)
+// Contourne le bug universel de Chrome/Android où la synthèse s'arrête brutalement après 14 secondes sur un long bloc
+function splitIntoSpeechChunks(text) {
+  if (!text) return []
+  const rawSegments = text
+    .replace(/([.?!;:])\s+/g, '$1|')
+    .replace(/\n+/g, '|')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const chunks = []
+  for (const seg of rawSegments) {
+    if (seg.length <= 180) {
+      chunks.push(seg)
+    } else {
+      const subParts = seg.split(/([,])\s+/).filter(Boolean)
+      let current = ''
+      for (const part of subParts) {
+        if ((current + ' ' + part).length <= 180) {
+          current = current ? `${current} ${part}` : part
+        } else {
+          if (current) chunks.push(current)
+          current = part
+        }
+      }
+      if (current) chunks.push(current)
+    }
+  }
+  return chunks.length > 0 ? chunks : [text]
+}
+
 /**
- * Prononce un texte à voix haute avec synchronisation.
+ * Prononce un texte à voix haute avec segmentation de phrases, protection contre
+ * le garbage-collector et relance automatique pour garantir que l'IA ne s'arrête jamais au milieu.
  */
 export function speakText(text, options = {}) {
   if (!isSpeechSynthesisSupported() || !text) return null
@@ -96,9 +162,7 @@ export function speakText(text, options = {}) {
   } = options
 
   if (cancelBefore && !enqueue) {
-    try {
-      window.speechSynthesis.cancel() // Arrête la lecture précédente si non-enfilée
-    } catch (_) {}
+    stopSpeaking()
   }
 
   const cleanText = String(text)
@@ -108,65 +172,104 @@ export function speakText(text, options = {}) {
 
   if (!cleanText) return null
 
-  const utterance = new SpeechSynthesisUtterance(cleanText)
-  utterance.lang = lang
-  utterance.rate = Math.max(0.7, Math.min(1.4, rate))
-  utterance.pitch = Math.max(0.5, Math.min(1.5, pitch))
-  utterance.volume = Math.max(0, Math.min(1, volume))
+  const chunks = splitIntoSpeechChunks(cleanText)
+  if (chunks.length === 0) return null
 
+  const thisSessionId = ++speechSessionId
   const selectedVoice = getBestVoice(lang, gender)
-  if (selectedVoice) {
-    utterance.voice = selectedVoice
-  }
+  let currentIndex = 0
+  let started = false
 
-  let speechKeepAliveTimer = null
-  const startKeepAlive = () => {
-    clearInterval(speechKeepAliveTimer)
-    speechKeepAliveTimer = setInterval(() => {
-      if (typeof window !== 'undefined' && window.speechSynthesis?.speaking) {
-        window.speechSynthesis.pause()
-        window.speechSynthesis.resume()
-      } else {
-        clearInterval(speechKeepAliveTimer)
-        speechKeepAliveTimer = null
+  ensureKeepAlive()
+
+  function speakNextChunk() {
+    if (thisSessionId !== speechSessionId) return
+
+    if (currentIndex >= chunks.length) {
+      if (onEnd) onEnd()
+      return
+    }
+
+    const chunkText = chunks[currentIndex]
+    currentIndex++
+
+    const utterance = new SpeechSynthesisUtterance(chunkText)
+    utterance.lang = lang
+    utterance.rate = Math.max(0.7, Math.min(1.3, rate))
+    utterance.pitch = Math.max(0.5, Math.min(1.5, pitch))
+    utterance.volume = Math.max(0, Math.min(1, volume))
+    if (selectedVoice) {
+      utterance.voice = selectedVoice
+    }
+
+    activeUtterances.add(utterance)
+
+    let watchdogTimer = null
+    const clearWatchdog = () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer)
+      watchdogTimer = null
+    }
+
+    utterance.onstart = (evt) => {
+      if (!started) {
+        started = true
+        if (onStart) onStart(evt)
       }
-    }, 10000)
-  }
-  const stopKeepAlive = () => {
-    if (speechKeepAliveTimer) {
-      clearInterval(speechKeepAliveTimer)
-      speechKeepAliveTimer = null
+      clearWatchdog()
+      watchdogTimer = setTimeout(() => {
+        activeUtterances.delete(utterance)
+        if (thisSessionId === speechSessionId) {
+          try { window.speechSynthesis.resume() } catch (_) {}
+          speakNextChunk()
+        }
+      }, 14000)
+    }
+
+    utterance.onend = () => {
+      clearWatchdog()
+      activeUtterances.delete(utterance)
+      if (thisSessionId === speechSessionId) {
+        speakNextChunk()
+      }
+    }
+
+    utterance.onerror = (evt) => {
+      clearWatchdog()
+      activeUtterances.delete(utterance)
+      if (evt?.error === 'canceled' || evt?.error === 'interrupted') return
+      console.warn('[speechService] chunk speak warning:', evt?.error || evt)
+      if (thisSessionId === speechSessionId) {
+        if (currentIndex < chunks.length) {
+          speakNextChunk()
+        } else if (onError) {
+          onError(evt)
+        }
+      }
+    }
+
+    try {
+      window.speechSynthesis.speak(utterance)
+    } catch (err) {
+      clearWatchdog()
+      activeUtterances.delete(utterance)
+      if (thisSessionId === speechSessionId) {
+        if (currentIndex < chunks.length) speakNextChunk()
+        else if (onError) onError(err)
+      }
     }
   }
 
-  utterance.onstart = (evt) => {
-    startKeepAlive()
-    if (onStart) onStart(evt)
-  }
-  utterance.onend = (evt) => {
-    stopKeepAlive()
-    if (onEnd) onEnd(evt)
-  }
-  utterance.onerror = (evt) => {
-    stopKeepAlive()
-    if (onError) onError(evt)
-  }
-
-  try {
-    window.speechSynthesis.speak(utterance)
-  } catch (err) {
-    stopKeepAlive()
-    console.warn('[speechService] speak error:', err.message)
-    if (onError) onError(err)
-  }
-
-  return utterance
+  speakNextChunk()
+  return true
 }
 
 /**
- * Arrête immédiatement toute lecture vocale.
+ * Arrête immédiatement toute lecture vocale et réinitialise les files d'attente.
  */
 export function stopSpeaking() {
+  speechSessionId++
+  activeUtterances.clear()
+  stopKeepAlive()
   if (isSpeechSynthesisSupported()) {
     try {
       window.speechSynthesis.cancel()

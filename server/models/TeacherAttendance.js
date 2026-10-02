@@ -11,8 +11,8 @@ const teacherAttendanceSchema = new mongoose.Schema(
     day: { type: String, required: true },
     checkInAt: { type: Date },
     checkOutAt: { type: Date },
-    // Statut d'arrivée
-    status: { type: String, enum: ['present', 'late'], default: 'present' },
+    // Statut d'arrivée (si l'enseignant ne scanne pas le QR, il est considéré comme absent)
+    status: { type: String, enum: ['present', 'late', 'absent'], default: 'present' },
     // Minutes de retard par rapport à l'heure limite (0 si à l'heure)
     lateMinutes: { type: Number, default: 0 },
     // Départ anticipé (avant l'heure de sortie minimale)

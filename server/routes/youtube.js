@@ -250,6 +250,55 @@ router.get('/download/:videoId', protect, async (req, res) => {
   }
 })
 
+// GET /api/youtube/download-file?url=...&name=... — Relai de téléchargement pour forcer l'enregistrement direct
+// Résout le problème des navigateurs mobiles qui bloquent les redirections tierces ou les balises <a> cross-origin.
+router.get('/download-file', async (req, res) => {
+  const fileUrl = String(req.query.url || '').trim()
+  const rawName = String(req.query.name || 'katdtube-media').trim()
+  if (!fileUrl) return res.status(400).send('URL de fichier manquante')
+
+  try {
+    const parsed = new URL(fileUrl)
+    const allowed = ['loader.to', 'affadaffa.com', 'savenow.to', 'oceansaver.net']
+    if (!allowed.some((d) => parsed.hostname === d || parsed.hostname.endsWith('.' + d))) {
+      return res.status(400).send('Domaine non autorisé')
+    }
+
+    const safeFilename = rawName.replace(/[^\w\s.-]+/g, '_').slice(0, 100) || 'media.mp4'
+
+    const remoteRes = await fetch(fileUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    })
+
+    if (!remoteRes.ok) {
+      return res.redirect(302, fileUrl)
+    }
+
+    const contentType = remoteRes.headers.get('content-type') || 'application/octet-stream'
+    const contentLength = remoteRes.headers.get('content-length')
+
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`)
+    res.setHeader('Content-Type', contentType)
+    if (contentLength) res.setHeader('Content-Length', contentLength)
+
+    const { Readable } = require('stream')
+    if (remoteRes.body && typeof Readable.fromWeb === 'function') {
+      Readable.fromWeb(remoteRes.body).pipe(res)
+    } else {
+      res.redirect(302, fileUrl)
+    }
+  } catch (err) {
+    console.error('[youtube] download relay error:', err.message)
+    try {
+      res.redirect(302, fileUrl)
+    } catch (_) {
+      if (!res.headersSent) res.status(500).send('Erreur de téléchargement')
+    }
+  }
+})
+
 // ───────────────────────── FAVORIS ─────────────────────────
 router.get('/favorites', protect, async (req, res) => {
   try {

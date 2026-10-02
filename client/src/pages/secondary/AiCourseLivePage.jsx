@@ -4,7 +4,9 @@ import {
   Bot, Loader2, AlertCircle, ArrowLeft, Clock, Radio, CheckCircle2,
   Send, MessageCircle, Sparkles, Volume2, VolumeX, Mic, MicOff,
   Play, Square, BookOpen, Volume1, Edit3, FileText, X, Image as ImageIcon, Maximize2,
+  Download, Check, Share2,
 } from 'lucide-react'
+import html2pdf from 'html2pdf.js'
 import { aiCoursesApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -78,6 +80,88 @@ export default function AiCourseLivePage() {
   // Compte à rebours de la session Q&R (après la fin du cours)
   const [qaCountdown, setQaCountdown] = useState(null)
   const [zoomedImage, setZoomedImage] = useState(null)
+
+  // Téléchargement PDF, Envoi au directeur & Enrichissement IA
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [sendingToDirector, setSendingToDirector] = useState(false)
+  const [showRefineModal, setShowRefineModal] = useState(false)
+  const [refineInstructions, setRefineInstructions] = useState('')
+  const [refiningCourse, setRefiningCourse] = useState(false)
+  const [refineError, setRefineError] = useState('')
+
+  const handleDownloadPdf = () => {
+    const element = document.getElementById('course-printable-doc')
+    if (!element) return
+
+    setDownloadingPdf(true)
+    const safeTitle = (data?.title || 'cours').toLowerCase().replace(/[^\w]+/g, '_').slice(0, 50)
+    const safeSubject = (data?.subject || 'matiere').toLowerCase().replace(/[^\w]+/g, '_').slice(0, 30)
+    const filename = `cours_${safeSubject}_${safeTitle}.pdf`
+
+    const options = {
+      margin: [10, 10, 10, 10],
+      filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    }
+
+    try {
+      html2pdf()
+        .set(options)
+        .from(element)
+        .outputPdf('blob')
+        .then((blob) => {
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = filename
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          setTimeout(() => URL.revokeObjectURL(url), 2000)
+          setDownloadingPdf(false)
+        })
+        .catch((err) => {
+          console.error('Erreur génération PDF:', err)
+          setDownloadingPdf(false)
+          window.print()
+        })
+    } catch (_) {
+      setDownloadingPdf(false)
+      window.print()
+    }
+  }
+
+  const handleSendToDirector = async () => {
+    if (!window.confirm("Transmettre officiellement ce cours au Directeur de l'établissement ?")) return
+    setSendingToDirector(true)
+    try {
+      const res = await aiCoursesApi.sendToDirector(id)
+      setData((prev) => ({ ...prev, sentToDirector: true, sentToDirectorAt: new Date() }))
+      alert(res.message || "Le cours a été transmis avec succès au directeur !")
+    } catch (err) {
+      alert(err.message || "Impossible de transmettre le cours au directeur.")
+    }
+    setSendingToDirector(false)
+  }
+
+  const handleRefineSubmit = async (e) => {
+    if (e) e.preventDefault()
+    if (!refineInstructions.trim()) return
+    setRefiningCourse(true)
+    setRefineError('')
+    try {
+      const res = await aiCoursesApi.refine(id, refineInstructions.trim())
+      setShowRefineModal(false)
+      setRefineInstructions('')
+      await fetchLive()
+      alert(res.message || "Le cours a été mis à jour par l'IA avec succès !")
+    } catch (err) {
+      setRefineError(err.message)
+    }
+    setRefiningCourse(false)
+  }
 
   const bottomRef = useRef(null)
   const prevLenRef = useRef(0)
@@ -313,6 +397,7 @@ export default function AiCourseLivePage() {
   }
 
   const canEdit = ['enseignant', 'directeur', 'super_admin'].includes(user?.role) && ['planifie', 'generation', 'pret', 'en_cours'].includes(data?.status)
+  const canStaffAction = ['enseignant', 'directeur', 'super_admin'].includes(user?.role)
 
   const openEditModal = async () => {
     try {
@@ -746,15 +831,65 @@ export default function AiCourseLivePage() {
             {data.subject} · {data.className} · {data.teacherName && `Préparé par ${data.teacherName} · `}{data.durationMinutes} min
           </p>
         </div>
-        {canEdit && (
-          <button
-            type="button"
-            onClick={openEditModal}
-            className="btn-ghost border border-purple-200 text-purple-700 hover:bg-purple-50 text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 shrink-0 shadow-xs"
-          >
-            <Edit3 size={13} /> Modifier ce cours
-          </button>
-        )}
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={openEditModal}
+              className="btn-ghost border border-purple-200 text-purple-700 hover:bg-purple-50 text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 shrink-0 shadow-xs"
+              title="Modifier les paramètres du cours"
+            >
+              <Edit3 size={13} /> Paramètres
+            </button>
+          )}
+
+          {canStaffAction && (
+            <button
+              type="button"
+              onClick={() => setShowRefineModal(true)}
+              className="btn-ghost border border-purple-300 text-purple-800 bg-purple-50 hover:bg-purple-100 text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 shrink-0 shadow-xs font-medium"
+              title="Demander à l'IA d'ajouter ou modifier des éléments du cours"
+            >
+              <Sparkles size={13} className="text-purple-600" /> IA Modifier / Enrichir
+            </button>
+          )}
+
+          {(isDone || Boolean(data.text)) && (
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf}
+              className="btn-ghost border border-gray-300 text-gray-700 hover:bg-gray-100 text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 shrink-0 shadow-xs font-medium"
+              title="Télécharger le cours au format PDF"
+            >
+              {downloadingPdf ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              {downloadingPdf ? 'Génération PDF...' : 'Télécharger PDF'}
+            </button>
+          )}
+
+          {canStaffAction && (
+            <button
+              type="button"
+              onClick={handleSendToDirector}
+              disabled={sendingToDirector || data.sentToDirector}
+              className={`text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 shrink-0 shadow-xs font-medium transition-all ${
+                data.sentToDirector
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+              title="Transmettre officiellement la fiche de cours au Directeur de l'établissement"
+            >
+              {sendingToDirector ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : data.sentToDirector ? (
+                <Check size={13} className="text-emerald-600" />
+              ) : (
+                <Send size={13} />
+              )}
+              {data.sentToDirector ? 'Transmis au Directeur ✓' : 'Transmettre au Directeur'}
+            </button>
+          )}
+        </div>
         {isLive && data.remainingSeconds != null && (
           <div className="text-right shrink-0">
             <p className="text-[10px] uppercase text-gray-400 font-semibold">Temps restant</p>
@@ -762,6 +897,27 @@ export default function AiCourseLivePage() {
           </div>
         )}
       </div>
+
+      {/* Bannière de confirmation de transmission au directeur */}
+      {data.sentToDirector && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl px-4 py-2.5 text-xs flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span>
+              <strong>Cours transmis à la Direction :</strong> Ce cours a été officiellement envoyé au Directeur de l'établissement
+              {data.sentToDirectorAt && ` le ${new Date(data.sentToDirectorAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`}.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            className="shrink-0 font-medium underline text-emerald-700 hover:text-emerald-900 flex items-center gap-1"
+          >
+            <Download size={12} /> Télécharger le PDF
+          </button>
+        </div>
+      )}
 
       {/* Barre de contrôle vocal & audio */}
       {(isLive || isDone) && (
@@ -1370,6 +1526,183 @@ export default function AiCourseLivePage() {
                 📷 {zoomedImage.caption}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modale d'enrichissement & modification du cours par l'IA */}
+      {showRefineModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-purple-50 text-purple-600">
+                  <Sparkles size={20} />
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-sm">Demander à l'IA d'enrichir ou modifier le cours</h3>
+                  <p className="text-xs text-gray-500">Ajout d'exercices, développement, synthèse, etc.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRefineModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleRefineSubmit} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-semibold text-gray-700 block mb-1">
+                  Suggestions rapides :
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    "Ajouter 3 exercices d'application avec corrigés détaillés",
+                    "Ajouter un résumé mémo 'Ce qu'il faut retenir' à la fin",
+                    "Développer davantage les explications avec des exemples de la vie courante",
+                    "Adapter et simplifier le vocabulaire pour les élèves en difficulté",
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setRefineInstructions(preset)}
+                      className="text-[11px] bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-full px-2.5 py-1 text-left transition-colors"
+                    >
+                      💡 {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-700 block mb-1">
+                  Vos consignes précises pour l'IA :
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={refineInstructions}
+                  onChange={(e) => setRefineInstructions(e.target.value)}
+                  placeholder="Ex : Ajoute 3 exercices corrigés à la fin du cours, explique plus en détail la deuxième section et ajoute des exemples concrets..."
+                  className="input text-sm w-full bg-gray-50/50 resize-none"
+                />
+              </div>
+
+              {refineError && (
+                <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-600">
+                  {refineError}
+                </div>
+              )}
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowRefineModal(false)}
+                  className="btn-ghost flex-1 justify-center border border-gray-200 text-xs"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={refiningCourse || !refineInstructions.trim()}
+                  className="btn-primary flex-1 justify-center text-xs gap-1.5 bg-purple-600 hover:bg-purple-700"
+                >
+                  {refiningCourse ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {refiningCourse ? "L'IA met à jour le cours..." : "Appliquer les modifications"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Conteneur hors écran pour l'exportation PDF officielle via html2pdf.js */}
+      {data && (
+        <div
+          id="course-printable-doc"
+          style={{
+            position: 'fixed',
+            left: '-9999px',
+            top: 0,
+            width: '800px',
+            backgroundColor: '#ffffff',
+            color: '#111827',
+            padding: '32px',
+            fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          }}
+        >
+          <div style={{ borderBottom: '2px solid #7c3aed', paddingBottom: '16px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#6d28d9', margin: 0 }}>
+                KATD-SCHÜLE · Support de Cours Officiel
+              </h2>
+              <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </span>
+            </div>
+            <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#111827', marginTop: '12px', marginBottom: '6px' }}>
+              {data.title}
+            </h1>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', fontSize: '12px', color: '#4b5563' }}>
+              <span><strong>Matière :</strong> {data.subject}</span>
+              <span><strong>Classe :</strong> {data.className}</span>
+              {data.teacherName && <span><strong>Enseignant :</strong> {data.teacherName}</span>}
+              <span><strong>Durée :</strong> {data.durationMinutes} min</span>
+              {data.sentToDirector && <span style={{ color: '#059669', fontWeight: 'bold' }}>✓ Validé & Transmis à la direction</span>}
+            </div>
+          </div>
+
+          <div style={{ fontSize: '14px', lineHeight: '1.7', color: '#1f2937' }}>
+            {data.text ? (
+              data.text.split('\n\n').map((paragraph, idx) => {
+                const imgMatch = paragraph.match(/!\[(.*?)\]\((.*?)\)/)
+                if (imgMatch) {
+                  return (
+                    <div key={idx} style={{ margin: '18px 0', textAlign: 'center' }}>
+                      <img
+                        src={imgMatch[2]}
+                        alt={imgMatch[1]}
+                        style={{ maxWidth: '85%', maxHeight: '350px', borderRadius: '8px', border: '1px solid #e5e7eb', margin: '0 auto', display: 'block' }}
+                      />
+                      {imgMatch[1] && (
+                        <p style={{ fontSize: '11px', color: '#6b7280', fontStyle: 'italic', marginTop: '6px' }}>
+                          Figure : {imgMatch[1]}
+                        </p>
+                      )}
+                    </div>
+                  )
+                }
+                return <p key={idx} style={{ marginBottom: '14px' }}>{paragraph}</p>
+              })
+            ) : (
+              <p style={{ fontStyle: 'italic', color: '#9ca3af' }}>Contenu du cours en attente de génération.</p>
+            )}
+          </div>
+
+          {myQuestions && myQuestions.length > 0 && (
+            <div style={{ marginTop: '36px', borderTop: '1px solid #e5e7eb', paddingTop: '20px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#374151', marginBottom: '12px' }}>
+                Questions des élèves & Réponses pédagogiques
+              </h3>
+              {myQuestions.map((q, idx) => (
+                <div key={idx} style={{ marginBottom: '14px', padding: '10px 14px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 'bold', color: '#1f2937', margin: 0 }}>
+                    Q : {q.text} {q.studentName && <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#6b7280' }}>({q.studentName})</span>}
+                  </p>
+                  <p style={{ fontSize: '13px', color: '#4b5563', marginTop: '4px', marginBottom: 0 }}>
+                    <strong>R :</strong> {q.answer || "En attente de réponse."}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ marginTop: '40px', borderTop: '1px solid #e5e7eb', paddingTop: '12px', fontSize: '10px', color: '#9ca3af', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Document pédagogique officiel généré via l'IA Enseignante KATD-SCHÜLE</span>
+            <span>Validation & Archives Établissement</span>
           </div>
         </div>
       )}

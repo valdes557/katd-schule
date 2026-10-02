@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Mail, Phone, Key, Eye, EyeOff, Ban, Power, KeyRound } from 'lucide-react'
+import { UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Mail, Phone, Key, Eye, EyeOff, Ban, Power, KeyRound, Download } from 'lucide-react'
 import { teachersApi, classesApi, authApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { getInitials } from '../lib/utils'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import { exportEnseignantsFichePdf } from '../lib/exportFichesPdf'
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4']
 const EMPTY = { firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '', password: '', classes: [], cycle: '' }
@@ -44,6 +45,25 @@ export default function EnseignantsPage() {
   const loading = teachersQ.loading
 
   const refreshTeachers = () => { cache.invalidate('/teachers'); teachersQ.refetch() }
+
+  const [exportingPdf, setExportingPdf] = useState(false)
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true)
+    try {
+      const res = await teachersApi.list('limit=1000')
+      const allTeachers = res.data && res.data.length ? res.data : teachers
+      await exportEnseignantsFichePdf({
+        school,
+        cycle: subscribedCycle || '',
+        teachers: allTeachers,
+      })
+    } catch (err) {
+      alert("Erreur lors de la génération de la fiche des enseignants : " + err.message)
+    } finally {
+      setExportingPdf(false)
+    }
+  }
 
   const toggleClass = (id) => setForm((f) => ({ ...f, classes: f.classes.includes(id) ? f.classes.filter((c) => c !== id) : [...f.classes, id] }))
 
@@ -101,11 +121,25 @@ export default function EnseignantsPage() {
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><UserCheck size={22} className="text-teal-600" /> Enseignants</h1>
           <p className="text-sm text-gray-500">{total} enseignant(s)</p>
         </div>
-        {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || '' }); setShowModal(true) }} className="btn-primary text-sm self-start">
-            <Plus size={15} /> Ajouter
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {isDirecteur && (
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={exportingPdf || loading}
+              className="btn-ghost border border-purple-200 text-purple-700 hover:bg-purple-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+              title="Télécharger la fiche officielle des enseignants en PDF"
+            >
+              {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              <span>{exportingPdf ? 'Génération...' : 'Télécharger la fiche des enseignants (PDF)'}</span>
+            </button>
+          )}
+          {isDirecteur && (
+            <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || '' }); setShowModal(true) }} className="btn-primary text-sm self-start">
+              <Plus size={15} /> Ajouter
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="relative max-w-sm">

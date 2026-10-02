@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { studentsApi, classesApi, parentsApi, authApi } from '../lib/api'
-import { Users, Search, UserPlus, KeyRound, X, Loader2, CheckCircle2, Edit2, Trash2, GraduationCap, Plus, Ban, Power } from 'lucide-react'
+import { Users, Search, UserPlus, KeyRound, X, Loader2, CheckCircle2, Edit2, Trash2, GraduationCap, Plus, Ban, Power, Download } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import { exportParentsFichePdf } from '../lib/exportFichesPdf'
 
 export default function ParentsPage() {
   const { user, school } = useAuth()
@@ -22,6 +23,23 @@ export default function ParentsPage() {
   const refreshAll = () => {
     cache.invalidate('/students'); cache.invalidate('/parents')
     rowsQ.refetch(); parentsQ.refetch()
+  }
+
+  const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin'
+  const [exportingPdf, setExportingPdf] = useState(false)
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true)
+    try {
+      await exportParentsFichePdf({
+        school,
+        parents,
+      })
+    } catch (err) {
+      alert("Erreur lors de la génération de la fiche des parents : " + err.message)
+    } finally {
+      setExportingPdf(false)
+    }
   }
 
   // ════════════════ ONGLET « PAR ÉLÈVE » ════════════════
@@ -159,16 +177,30 @@ export default function ParentsPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <Users size={20} className="text-blue-600" /> Parents / Responsables
           </h1>
           <p className="text-sm text-gray-500">Gérez les comptes parents et associez-les aux élèves.</p>
         </div>
-        {tab === 'parents' && (
-          <button onClick={openCreateParent} className="btn-primary text-sm"><Plus size={15} /> Nouveau parent</button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {isDirecteur && (
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={exportingPdf || parentsQ.loading}
+              className="btn-ghost border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+              title="Télécharger la fiche officielle des parents en PDF"
+            >
+              {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              <span>{exportingPdf ? 'Génération...' : 'Télécharger la fiche des parents (PDF)'}</span>
+            </button>
+          )}
+          {tab === 'parents' && isDirecteur && (
+            <button onClick={openCreateParent} className="btn-primary text-sm"><Plus size={15} /> Nouveau parent</button>
+          )}
+        </div>
       </div>
 
       {/* Onglets */}

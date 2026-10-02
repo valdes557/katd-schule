@@ -81,6 +81,10 @@ const aiCourseSchema = new mongoose.Schema(
 
     // Questions des élèves en fin de cours (réponse IA après chaque question)
     questions: [questionSchema],
+
+    // Transmission du rapport de cours au directeur d'établissement
+    sentToDirector: { type: Boolean, default: false },
+    sentToDirectorAt: { type: Date, default: null },
   },
   { timestamps: true }
 )

@@ -968,6 +968,8 @@ export const aiCoursesApi = {
   cancel: (id) => api.post(`/ai-courses/${id}/cancel`),
   remove: (id) => api.del(`/ai-courses/${id}`),
   askQuestion: (id, question) => api.post(`/ai-courses/${id}/questions`, { question }),
+  sendToDirector: (id) => api.post(`/ai-courses/${id}/send-to-director`),
+  refine: (id, instructions) => api.post(`/ai-courses/${id}/refine`, { instructions }),
 }
 
 // Journal des actions sensibles (F3 Secondaire) — lecture seule, directeur / super_admin.

@@ -168,15 +168,21 @@ export default function UserLayout() {
             </button>
           )}
 
-          {/* Barre de recherche (remplace l'ancienne zone « Fil social ») */}
-          <div className="relative flex-1 min-w-0">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Rechercher une publication, une vidéo..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-            />
+          {/* Marque KATDTUBE en remplacement du champ de recherche */}
+          <div className="flex-1 min-w-0 flex items-center">
+            <button
+              type="button"
+              onClick={() => navigate('/u/videos')}
+              className="flex items-center gap-2 group cursor-pointer focus:outline-none"
+              title="KATDTUBE"
+            >
+              <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-red-600 via-rose-600 to-red-500 text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+                <Youtube size={20} className="fill-white" />
+              </span>
+              <span className="text-lg sm:text-xl font-black tracking-wider bg-gradient-to-r from-red-600 via-rose-600 to-red-700 bg-clip-text text-transparent">
+                KATDTUBE
+              </span>
+            </button>
           </div>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">

@@ -516,6 +516,105 @@ router.delete('/:id', protect, authorize('enseignant', 'directeur', 'super_admin
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+// POST /api/ai-courses/:id/send-to-director — Transmettre le cours au directeur de l'établissement
+router.post('/:id/send-to-director', protect, authorize('enseignant', 'directeur', 'super_admin', 'vice_principal'), async (req, res) => {
+  try {
+    const course = await AiCourse.findById(req.params.id).populate('class', 'name level')
+    if (!course) return res.status(404).json({ message: 'Cours introuvable' })
+    if (req.user.role === 'enseignant' && course.teacher && String(course.teacher) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Vous ne pouvez transmettre que vos propres cours' })
+    }
+
+    course.sentToDirector = true
+    course.sentToDirectorAt = new Date()
+    await course.save()
+
+    // Notification interne envoyée au directeur
+    try {
+      const Notification = require('../models/Notification')
+      const director = await User.findOne({ school: course.school, role: 'directeur' })
+      if (director) {
+        await Notification.create({
+          user: director._id,
+          school: course.school,
+          type: 'ai_course_report',
+          title: `Rapport de cours IA : ${course.title}`,
+          message: `L'enseignant ${course.teacherName || req.user.name} vous a transmis le cours « ${course.title} » (${course.subject}) de la classe ${course.class?.name || ''}.`,
+          data: { courseId: course._id },
+          link: `/dashboard/ia-cours/${course._id}/live`,
+        })
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: 'Le cours a été transmis avec succès au directeur de votre établissement.',
+      data: course,
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/ai-courses/:id/refine — Demande à l'IA d'ajouter ou modifier des éléments du cours (exercices, développement, précisions)
+router.post('/:id/refine', protect, authorize('enseignant', 'directeur', 'super_admin', 'vice_principal'), async (req, res) => {
+  try {
+    const { instructions } = req.body || {}
+    if (!instructions || !String(instructions).trim()) {
+      return res.status(400).json({ message: 'Veuillez préciser la consigne de modification (ex: "ajoute des exercices", "développe la conclusion"...)' })
+    }
+
+    const course = await AiCourse.findById(req.params.id).populate('class', 'name level')
+    if (!course) return res.status(404).json({ message: 'Cours introuvable' })
+    if (req.user.role === 'enseignant' && course.teacher && String(course.teacher) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Accès refusé. Vous ne pouvez modifier que vos cours.' })
+    }
+
+    const sid = schoolId(req)
+    const sub = await getActiveSubscription(sid)
+    if (!sub || sub.remainingQuestions <= 0) {
+      return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Souscription IA requise pour modifier le cours." })
+    }
+
+    const currentContent = course.lessonScript || course.sourceText || `Cours sur le thème : ${course.title}`
+    const prompt = `Tu es un professeur assistant pédagogique d'élite pour la plateforme éducative KATD-SCHÜLE.
+Niveau scolaire : ${course.level || course.class?.level || 'Secondaire'}
+Classe : ${course.class?.name || 'Classe'}
+Matière : ${course.subject}
+Titre de la leçon : ${course.title}
+
+Voici le contenu actuel de la leçon :
+-------------------------------------
+${currentContent.slice(0, 7000)}
+-------------------------------------
+
+CONSIGNE PRÉCISE DE L'ENSEIGNANT POUR AMÉLIORER / MODIFIER CE COURS :
+"${String(instructions).trim()}"
+
+DIRECTIVES OBLIGATOIRES :
+1. Intègre scrupuleusement la demande de l'enseignant au sein du cours.
+2. Si l'enseignant demande d'ajouter des exercices, formule 2 à 4 exercices adaptés au niveau avec leurs corrigés détaillés et méthodiques.
+3. Si l'enseignant demande d'approfondir un passage, enrichis les explications avec des exemples concrets, analogies pédagogiques et formules clés.
+4. Reste parfaitement fidèle au programme officiel et au niveau de la classe (${course.level || course.class?.level || 'Secondaire'}).
+5. Formate la réponse en Markdown clair et soigné (#, ##, listes, formules, mise en gras des concepts clés).
+6. Rédige le cours complet résultant prêt à être étudié et imprimé en PDF.`
+
+    const refinedText = await generateText(prompt)
+    if (!refinedText || refinedText.length < 100) {
+      return res.status(502).json({ message: "L'IA n'a pas pu traiter cette modification. Veuillez réessayer." })
+    }
+
+    course.sourceText = refinedText
+    course.lessonScript = refinedText
+    course.status = ['planifie', 'erreur'].includes(course.status) ? 'pret' : course.status
+    await course.save()
+
+    res.json({
+      success: true,
+      message: 'Le cours a été enrichi et modifié avec succès par l\'IA selon votre demande.',
+      data: course,
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
 // ═════════════════════════════════════════════════════════════════════════════
 // CONSULTATION
 // ═════════════════════════════════════════════════════════════════════════════

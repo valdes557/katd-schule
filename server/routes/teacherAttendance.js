@@ -261,7 +261,21 @@ router.get('/me', protect, async (req, res) => {
     if (!teacher) return res.json({ success: true, data: null })
     const day = todayKey()
     const r = await TeacherAttendance.findOne({ teacher: teacher._id, day })
-    res.json({ success: true, data: r || null })
+    if (!r) {
+      // Sans scan QR, l'enseignant est considéré comme absent durant la journée
+      return res.json({
+        success: true,
+        data: {
+          teacher: teacher._id,
+          day,
+          status: 'absent',
+          checkInAt: null,
+          checkOutAt: null,
+          isAbsent: true,
+        },
+      })
+    }
+    res.json({ success: true, data: r })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom'
 import {
   Users, BookOpen, CalendarCheck, FileText, Clock, Loader2, RefreshCw,
   ArrowRight, AlertTriangle, AlertCircle, XCircle, TrendingUp, BarChart2,
-  ClipboardList, CheckCircle2, GraduationCap, Bell,
+  ClipboardList, CheckCircle2, GraduationCap, Bell, QrCode,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { teacherApi } from '../lib/api'
+import { teacherApi, teacherAttendanceApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import AppLauncher from '../components/layout/AppLauncher'
@@ -15,11 +15,18 @@ export default function TeacherDashboardPage() {
   const { user, school } = useAuth()
 
   const dashboardQ = useCachedFetch('/teacher/dashboard?', async () => (await teacherApi.dashboard()).data || null, [])
+  const attendanceQ = useCachedFetch('/teacher-attendance/me', async () => (await teacherAttendanceApi.me()).data || null, [])
 
   const data = dashboardQ.data
+  const todayAttendance = attendanceQ.data
   const loading = dashboardQ.loading
 
-  const handleRefresh = () => { cache.invalidate('/teacher/dashboard'); dashboardQ.refetch() }
+  const handleRefresh = () => {
+    cache.invalidate('/teacher/dashboard')
+    cache.invalidate('/teacher-attendance/me')
+    dashboardQ.refetch()
+    attendanceQ.refetch()
+  }
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={28} className="animate-spin text-blue-600" /></div>
   if (!data) return <div className="text-center py-16 text-sm text-gray-500">Profil enseignant non trouvé. Contactez l'administration.</div>
@@ -66,6 +73,50 @@ export default function TeacherDashboardPage() {
 
       {/* Accès rapide à toutes les fonctionnalités */}
       <AppLauncher />
+
+      {/* Alerte stricte d'absence si l'enseignant n'a pas scanné le QR aujourd'hui */}
+      {!todayAttendance?.checkInAt && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
+          <div className="flex items-start gap-3">
+            <span className="p-2 bg-red-100 text-red-700 rounded-xl shrink-0 mt-0.5">
+              <XCircle size={22} />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider bg-red-600 text-white px-2 py-0.5 rounded-full">
+                  Statut du jour : ABSENT
+                </span>
+                <span className="text-xs font-semibold text-red-700">Non pointé</span>
+              </div>
+              <p className="text-xs text-red-800 mt-1 font-medium">
+                Vous n'avez pas encore scanné le QR code d'arrivée de l'établissement. Sans scan QR, vous êtes officiellement considéré comme <strong>absent</strong> pour la journée.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/dashboard/mon-pointage"
+            className="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs py-2 px-3.5 rounded-xl shrink-0 flex items-center gap-1.5 self-start sm:self-center shadow-xs"
+          >
+            <QrCode size={15} /> Scanner mon QR code d'arrivée
+          </Link>
+        </div>
+      )}
+
+      {todayAttendance?.checkInAt && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-2.5 text-xs text-emerald-800 flex items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span>
+              <strong>Présence validée aujourd'hui :</strong> Arrivée pointée à {new Date(todayAttendance.checkInAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+              {todayAttendance.status === 'late' && <span className="text-amber-700 font-semibold ml-1">(en retard de {todayAttendance.lateMinutes} min)</span>}
+              {todayAttendance.checkOutAt && ` · Départ pointé à ${new Date(todayAttendance.checkOutAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}.
+            </span>
+          </div>
+          <Link to="/dashboard/mon-pointage" className="font-semibold text-emerald-700 hover:text-emerald-900 underline shrink-0">
+            Voir détails
+          </Link>
+        </div>
+      )}
 
       {/* Smart Alerts */}
       {alerts.length > 0 && (

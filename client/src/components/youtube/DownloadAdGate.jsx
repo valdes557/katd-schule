@@ -102,18 +102,30 @@ export default function DownloadAdGate({ video, videoId: propVideoId, title: pro
 
   const ready = seconds === 0 || seconds == null
 
+  // Génère l'URL de relai same-origin avec Content-Disposition pour forcer le téléchargement direct
+  const getFileDownloadUrl = (directUrl, customName = '') => {
+    if (!directUrl) return ''
+    const safeName = (customName || title || videoId)
+      .replace(/[^\w\s.-]+/g, '_')
+      .trim()
+      .slice(0, 80)
+    const base = import.meta.env.VITE_API_URL || '/api'
+    return `${base}/youtube/download-file?url=${encodeURIComponent(directUrl)}&name=${encodeURIComponent(safeName)}`
+  }
+
   // Déclenche le téléchargement direct sur l'appareil de l'utilisateur
   const triggerNativeDownload = (url, customName = '') => {
+    if (!url) return
+    const safeName = (customName || title || videoId)
+      .replace(/[^\w\s.-]+/g, '_')
+      .trim()
+      .slice(0, 80)
+    const finalUrl = getFileDownloadUrl(url, safeName)
+
     try {
-      const safeName = (customName || title || videoId)
-        .replace(/[^\w\s.-]+/g, '')
-        .trim()
-        .slice(0, 80)
       const a = document.createElement('a')
-      a.href = url
+      a.href = finalUrl
       a.download = safeName
-      a.target = '_blank'
-      a.rel = 'noopener noreferrer'
       a.style.display = 'none'
       document.body.appendChild(a)
       a.click()
@@ -123,7 +135,11 @@ export default function DownloadAdGate({ video, videoId: propVideoId, title: pro
         } catch (_) {}
       }, 1000)
     } catch (_) {
-      window.open(url, '_blank')
+      try {
+        window.location.assign(finalUrl)
+      } catch (__) {
+        window.open(finalUrl, '_blank')
+      }
     }
   }
 
@@ -465,17 +481,30 @@ export default function DownloadAdGate({ video, videoId: propVideoId, title: pro
             <p className="text-[11px] text-gray-700 mt-2 font-medium">{activeJob.text}</p>
 
             {activeJob.downloadUrl && (
-              <div className="mt-2.5 pt-2 border-t border-red-200/60 flex items-center justify-between gap-2">
-                <span className="text-[11px] text-green-700 font-semibold flex items-center gap-1">
-                  <CheckCircle2 size={13} /> Fichier envoyé à votre appareil !
-                </span>
-                <button
-                  type="button"
-                  onClick={() => triggerNativeDownload(activeJob.downloadUrl)}
-                  className="inline-flex items-center gap-1 text-[11px] text-red-600 hover:text-red-700 font-bold underline"
+              <div className="mt-3 pt-3 border-t border-red-200/60 space-y-2.5">
+                <a
+                  href={getFileDownloadUrl(
+                    activeJob.downloadUrl,
+                    `${title}.${activeJob.format === 'm4a' ? 'm4a' : activeJob.format === 'mp3' ? 'mp3' : 'mp4'}`
+                  )}
+                  download={`${title}.${activeJob.format === 'm4a' ? 'm4a' : activeJob.format === 'mp3' ? 'mp3' : 'mp4'}`}
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 text-xs transition-all active:scale-[0.98]"
                 >
-                  <RefreshCw size={11} /> Relancer si besoin
-                </button>
+                  <ArrowDownToLine size={16} />
+                  <span>Enregistrer le fichier sur mon appareil ({activeJob.label})</span>
+                </a>
+                <div className="flex items-center justify-between text-[11px] text-gray-500 pt-0.5">
+                  <span className="text-green-700 font-semibold flex items-center gap-1">
+                    <CheckCircle2 size={13} /> Fichier prêt à l'enregistrement
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => triggerNativeDownload(activeJob.downloadUrl, `${title}.${activeJob.format}`)}
+                    className="inline-flex items-center gap-1 text-red-600 hover:text-red-700 font-bold underline"
+                  >
+                    <RefreshCw size={11} /> Relancer si besoin
+                  </button>
+                </div>
               </div>
             )}
           </div>

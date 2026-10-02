@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
 import { teacherAttendanceApi } from '../lib/api'
-import { Loader2, QrCode, Camera, CheckCircle2, Clock, LogIn, LogOut, AlertCircle } from 'lucide-react'
+import { Loader2, QrCode, Camera, CheckCircle2, Clock, LogIn, LogOut, AlertCircle, XCircle } from 'lucide-react'
 
 function fmt(d) {
   return d ? new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'
@@ -87,16 +87,37 @@ export default function TeacherAttendanceScanPage() {
       </div>
 
       {/* État du jour */}
-      <div className="card p-5">
-        <h3 className="text-sm font-bold text-gray-900 mb-3">Aujourd'hui</h3>
+      <div className="card p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-gray-900">Statut de présence du jour</h3>
+          {!loadingToday && (
+            !today?.checkInAt ? (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-100 border border-red-200 px-2.5 py-0.5 rounded-full">
+                <XCircle size={13} className="text-red-600" /> ABSENT (Non pointé)
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 border border-green-200 px-2.5 py-0.5 rounded-full">
+                <CheckCircle2 size={13} className="text-green-600" /> PRÉSENT
+              </span>
+            )
+          )}
+        </div>
+
+        {!loadingToday && !today?.checkInAt && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-800">
+            <strong>⚠️ Règle d'assiduité :</strong> Vous n'avez pas encore scanné le QR code d'arrivée. Tout enseignant qui ne scanne pas le code QR est considéré comme <strong>absent durant la journée</strong>.
+          </div>
+        )}
+
         {loadingToday ? (
           <div className="py-4 text-center"><Loader2 size={20} className="animate-spin mx-auto text-blue-600" /></div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-gray-100 p-3">
+            <div className={`rounded-xl border p-3 ${!today?.checkInAt ? 'border-red-200 bg-red-50/40' : 'border-gray-100'}`}>
               <div className="flex items-center gap-1.5 text-xs text-gray-500"><LogIn size={13} /> Arrivée</div>
               <div className="text-lg font-bold text-gray-900 mt-1">{fmt(today?.checkInAt)}</div>
               {today?.status === 'late' && <div className="text-xs text-red-600 font-semibold">en retard +{today.lateMinutes} min</div>}
+              {!today?.checkInAt && <div className="text-[11px] text-red-600 font-semibold">Non enregistré (Absent)</div>}
             </div>
             <div className="rounded-xl border border-gray-100 p-3">
               <div className="flex items-center gap-1.5 text-xs text-gray-500"><LogOut size={13} /> Départ</div>

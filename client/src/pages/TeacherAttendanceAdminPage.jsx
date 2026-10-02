@@ -75,6 +75,7 @@ export default function TeacherAttendanceAdminPage() {
   const qrValue = qr?.token || ''
   const present = rows.filter((r) => r.status !== 'absent')
   const late = rows.filter((r) => r.status === 'late')
+  const absent = rows.filter((r) => r.status === 'absent')
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -130,10 +131,11 @@ export default function TeacherAttendanceAdminPage() {
         <div className="lg:col-span-2 card p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2"><Users size={16} className="text-indigo-600" /> Présences du jour</h3>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              <span>{present.length}/{rows.length} présents</span>
-              {late.length > 0 && <span className="text-red-600 font-semibold">{late.length} en retard</span>}
-              <button onClick={refreshToday} className="p-1 rounded hover:bg-gray-100"><RefreshCw size={14} /></button>
+            <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
+              <span className="font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">{present.length}/{rows.length} présents</span>
+              {absent.length > 0 && <span className="font-semibold text-red-700 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200">{absent.length} absent(s)</span>}
+              {late.length > 0 && <span className="font-semibold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">{late.length} en retard</span>}
+              <button onClick={refreshToday} className="p-1 rounded hover:bg-gray-100" title="Actualiser"><RefreshCw size={14} /></button>
             </div>
           </div>
 
@@ -165,11 +167,17 @@ export default function TeacherAttendanceAdminPage() {
                       </td>
                       <td className="px-3 py-2.5">
                         {r.status === 'absent' ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-400"><XCircle size={13} /> Absent</span>
+                          <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full font-semibold">
+                            <XCircle size={13} className="text-red-600" /> Absent (Non pointé)
+                          </span>
                         ) : r.status === 'late' ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-red-600 font-semibold"><Clock size={13} /> En retard</span>
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                            <Clock size={13} className="text-amber-600" /> En retard
+                          </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-xs text-green-600 font-semibold"><CheckCircle2 size={13} /> Présent</span>
+                          <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full font-semibold">
+                            <CheckCircle2 size={13} className="text-green-600" /> Présent
+                          </span>
                         )}
                       </td>
                     </tr>

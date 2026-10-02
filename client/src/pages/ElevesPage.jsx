@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus, Ban, Power } from 'lucide-react'
+import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus, Ban, Power, Download } from 'lucide-react'
 import { studentsApi, classesApi, teachersApi, authApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
+import { exportElevesFichePdf } from '../lib/exportFichesPdf'
 
 const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', photo: '', photoFile: null, parent: { name: '', phone: '', email: '', relation: 'pere' } }
 
@@ -49,8 +50,26 @@ export default function ElevesPage() {
   const loading = studentsQ.loading
 
   const refreshStudents = () => { cache.invalidate('/students'); studentsQ.refetch() }
-
   useEffect(() => { if (subscribedCycle && cycleFilter !== subscribedCycle) setCycleFilter(subscribedCycle) }, [subscribedCycle])
+
+  const [exportingPdf, setExportingPdf] = useState(false)
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true)
+    try {
+      const res = await studentsApi.list('limit=2500')
+      const allStudents = res.data && res.data.length ? res.data : students
+      await exportElevesFichePdf({
+        school,
+        cycle: subscribedCycle || cycleFilter || '',
+        students: allStudents,
+      })
+    } catch (err) {
+      alert("Erreur lors de la génération de la fiche des élèves : " + err.message)
+    } finally {
+      setExportingPdf(false)
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -204,11 +223,25 @@ export default function ElevesPage() {
           </h1>
           <p className="text-sm text-gray-500">{total} élève(s) inscrit(s)</p>
         </div>
-        {isDirecteur && (
-          <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
-            <Plus size={15} /> Ajouter un élève
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {isDirecteur && (
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={exportingPdf || loading}
+              className="btn-ghost border border-blue-200 text-blue-700 hover:bg-blue-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+              title="Télécharger la fiche officielle de tous les élèves"
+            >
+              {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              <span>{exportingPdf ? 'Génération...' : 'Télécharger la fiche (PDF)'}</span>
+            </button>
+          )}
+          {isDirecteur && (
+            <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm">
+              <Plus size={15} /> Ajouter un élève
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">

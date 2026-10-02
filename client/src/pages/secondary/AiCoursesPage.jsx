@@ -569,6 +569,11 @@ export default function AiCoursesPage() {
                       <span className="font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5">{c.subject}</span>
                       {c.class?.name && <span className="badge badge-blue">{c.class.name}</span>}
                       {c.teacherName && <span>· {c.teacherName}</span>}
+                      {c.sentToDirector && (
+                        <span className="font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 flex items-center gap-1">
+                          ✓ Transmis au directeur
+                        </span>
+                      )}
                     </div>
                     <h3 className="text-sm font-bold text-gray-900">{c.title}</h3>
                     <div className="flex flex-wrap items-center gap-2.5 text-xs text-gray-500 mt-1">
