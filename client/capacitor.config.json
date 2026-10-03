@@ -1,0 +1,14 @@
+{
+  "appId": "com.katdschule.app",
+  "appName": "KATD SCHULE",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "AdMob": {
+      "initializeForTesting": true
+    }
+  }
+}
