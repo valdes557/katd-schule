@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KATD SCHULE</string>
+    <string name="title_activity_main">KATD SCHULE</string>
+    <string name="package_name">com.katdschule.app</string>
+    <string name="custom_url_scheme">com.katdschule.app</string>
+</resources>
