@@ -13,6 +13,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { youtubeApi } from '../../lib/api'
+import { admobService } from '../../lib/admobService'
 
 // Charge le script AdSense une seule fois (idempotent)
 function loadAdsense(client) {
@@ -77,6 +78,10 @@ export default function DownloadAdGate({ video, videoId: propVideoId, title: pro
       setCfg(c)
       setSeconds(Number(c.adCountdown) > 0 ? Number(c.adCountdown) : 0)
       if (c.adsenseClient) loadAdsense(c.adsenseClient)
+      admobService.init(c)
+      if (admobService.isNative && c.admobEnabled) {
+        admobService.showInterstitial()
+      }
     })()
     return () => {
       alive = false

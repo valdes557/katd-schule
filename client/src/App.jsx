@@ -239,6 +239,7 @@ const ParentDisciplinePage = lazyPage(() => import('./pages/ParentDisciplinePage
 const AiCoursesPage = lazyPage(() => import('./pages/secondary/AiCoursesPage'))
 const AiCourseLivePage = lazyPage(() => import('./pages/secondary/AiCourseLivePage'))
 const AuditLogPage = lazyPage(() => import('./pages/secondary/AuditLogPage'))
+const PublicKatdTubePage = lazyPage(() => import('./pages/PublicKatdTubePage'))
 
 function PageFallback() {
   return (
@@ -334,6 +335,8 @@ export default function App() {
       <Route path="/blogs" element={<BlogListPage />} />
       <Route path="/blogs/:id" element={<BlogDetailPage />} />
       <Route path="/b/:id" element={<BlogDetailPage />} />
+      <Route path="/katdtube" element={<PublicKatdTubePage />} />
+      <Route path="/videos" element={<PublicKatdTubePage />} />
 
       {/* Protected dashboard routes */}
       <Route

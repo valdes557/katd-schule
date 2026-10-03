@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import {
   Search, BookOpen, Menu, X, Globe2, Users, Phone, HelpCircle,
-  BookMarked, School, GraduationCap, Star, Heart, Newspaper,
+  BookMarked, School, GraduationCap, Star, Heart, Newspaper, Youtube
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { platformApi, newsApi } from '../../lib/api'
@@ -10,6 +10,7 @@ import { platformApi, newsApi } from '../../lib/api'
 const NEWS_SEEN_KEY = 'home_news_seen'
 
 const NAV_TABS = [
+  { label: 'KATDTUBE', path: '/katdtube', icon: Youtube, highlight: true },
   { label: 'Social', path: '/social', icon: Globe2 },
   { label: 'Blog', path: '/blogs', icon: Newspaper },
   { label: 'À propos', path: '/apropos', icon: Users },
@@ -84,6 +85,15 @@ export default function PublicHeader() {
 
           {/* Auth */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            <Link
+              to="/katdtube"
+              title="KATDTUBE Vidéos"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1.5 rounded-lg transition-colors shadow-2xs"
+            >
+              <Youtube size={16} className="text-red-600" />
+              <span>KATDTUBE</span>
+            </Link>
+
             <Link to="/news" title="Actualités & recrutement" className="relative inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-amber-600 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-colors">
               <Newspaper size={17} />
               <span className="hidden sm:inline">News</span>

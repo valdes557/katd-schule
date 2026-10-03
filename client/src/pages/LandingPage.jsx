@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   ArrowRight, BookOpen, GraduationCap, CheckCircle2,
   ChevronRight, Star, Loader2, Zap, Shield, BarChart2,
-  Globe, Users, School, ChevronLeft, Newspaper,
+  Globe, Users, School, ChevronLeft, Newspaper, Youtube, PlaySquare,
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
@@ -163,6 +163,12 @@ export default function LandingPage() {
                 Connecte-toi en tant qu'utilisateur <ArrowRight size={18} />
               </Link>
               <Link
+                to="/katdtube"
+                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold px-7 py-4 rounded-xl transition-all text-base shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transform"
+              >
+                <Youtube size={20} className="text-white" /> KATDTUBE Vidéos
+              </Link>
+              <Link
                 to="/ecoles"
                 className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/30 text-white font-semibold px-7 py-4 rounded-xl hover:bg-white/20 transition-all text-base"
               >
@@ -220,6 +226,56 @@ export default function LandingPage() {
             >
               Essayer gratuitement <ArrowRight size={15} />
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ SECTION KATDTUBE ═══ */}
+      <section className="py-14 bg-gradient-to-br from-red-50 via-rose-50 to-amber-50 border-y border-red-100">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+            <div className="space-y-4 max-w-xl text-center md:text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-bold uppercase tracking-wider">
+                <Youtube size={15} /> Plateforme Vidéos Publique
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-tight">
+                Découvrez <span className="text-red-600">KATDTUBE</span> : La vidéothèque éducative et de divertissement
+              </h2>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Accédez gratuitement à des milliers de vidéos, cours, tutoriels et contenus YouTube intégrés directement dans l'écosystème KATD.
+                Recherchez par matières, écoutez en streaming et téléchargez librement vos contenus préférés.
+              </p>
+              <div className="flex flex-wrap gap-3 justify-center md:justify-start pt-2">
+                <Link
+                  to="/katdtube"
+                  className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-xl text-sm shadow-md hover:shadow-lg transition-all"
+                >
+                  <Youtube size={18} /> Accéder à KATDTUBE <ArrowRight size={15} />
+                </Link>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-red-200/80 shadow-xl max-w-md w-full space-y-3">
+              <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
+                <span className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center font-bold">
+                  <PlaySquare size={20} />
+                </span>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900">Streaming & Téléchargement</h4>
+                  <p className="text-[11px] text-gray-500">Accessible au public sans connexion obligatoire</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 bg-gray-50 rounded-xl">
+                  <span className="font-bold text-red-600">🎬 Vidéos HD</span>
+                  <p className="text-[10px] text-gray-500 mt-0.5">360p, 480p, 720p, 1080p</p>
+                </div>
+                <div className="p-2.5 bg-gray-50 rounded-xl">
+                  <span className="font-bold text-red-600">🎵 Audio MP3</span>
+                  <p className="text-[10px] text-gray-500 mt-0.5">Extraction audio directe</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

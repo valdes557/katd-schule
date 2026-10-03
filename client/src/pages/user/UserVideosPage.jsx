@@ -7,6 +7,7 @@ import YoutubeCard from '../../components/youtube/YoutubeCard'
 import YoutubeSkeleton from '../../components/youtube/YoutubeSkeleton'
 import YoutubePlayerModal from '../../components/youtube/YoutubePlayerModal'
 import DownloadAdGate from '../../components/youtube/DownloadAdGate'
+import AdBanner from '../../components/ads/AdBanner'
 
 // Page « Vidéos » de l'espace utilisateur — 2 onglets :
 //  • YouTube : recherche + lecture EN INTÉGRÉ des vraies vidéos YouTube (API officielle, via backend).
@@ -233,6 +234,8 @@ function YoutubeTab() {
               {DURATIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
           </div>
+
+          <AdBanner className="my-3" />
 
           {loading ? <YoutubeSkeleton />
             : error && items.length === 0 ? (

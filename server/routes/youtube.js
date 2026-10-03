@@ -1,8 +1,6 @@
-// routes/youtube.js — API YouTube (espace utilisateur). Toutes les routes exigent l'authentification.
-// La clé API vit uniquement dans youtubeService (DB chiffrée → env) : jamais exposée au client.
 const express = require('express')
 const router = express.Router()
-const { protect } = require('../middleware/auth')
+const { protect, protectOptional } = require('../middleware/auth')
 const youtube = require('../services/youtubeService')
 const YouTubeFavorite = require('../models/YouTubeFavorite')
 const YouTubeHistory = require('../models/YouTubeHistory')
@@ -11,25 +9,27 @@ const SchoolPost = require('../models/SchoolPost')
 const VIDEO_ID_RE = /^[\w-]{11}$/
 const HISTORY_CAP = 100
 
-// ── Rate-limit ciblé sur la recherche (Map mémoire par utilisateur ; aucune dépendance) ──
-const RL_MAX = 20
+// ── Rate-limit ciblé sur la recherche (Map mémoire par utilisateur/IP) ──
+const RL_MAX = 30
 const RL_WINDOW_MS = 60 * 1000
 const rlHits = new Map()
-function searchRateLimited(userId) {
+function searchRateLimited(userOrIp) {
+  const key = String(userOrIp || 'anon')
   const now = Date.now()
-  const arr = (rlHits.get(String(userId)) || []).filter((t) => now - t < RL_WINDOW_MS)
-  if (arr.length >= RL_MAX) { rlHits.set(String(userId), arr); return true }
-  arr.push(now); rlHits.set(String(userId), arr); return false
+  const arr = (rlHits.get(key) || []).filter((t) => now - t < RL_WINDOW_MS)
+  if (arr.length >= RL_MAX) { rlHits.set(key, arr); return true }
+  arr.push(now); rlHits.set(key, arr); return false
 }
 
-// ── Rate-limit dédié au téléchargement (opération lourde : 5/min/utilisateur) ──
-const DL_MAX = 5
+// ── Rate-limit dédié au téléchargement (opération lourde : 8/min/utilisateur) ──
+const DL_MAX = 8
 const dlHits = new Map()
-function downloadRateLimited(userId) {
+function downloadRateLimited(userOrIp) {
+  const key = String(userOrIp || 'anon')
   const now = Date.now()
-  const arr = (dlHits.get(String(userId)) || []).filter((t) => now - t < RL_WINDOW_MS)
-  if (arr.length >= DL_MAX) { dlHits.set(String(userId), arr); return true }
-  arr.push(now); dlHits.set(String(userId), arr); return false
+  const arr = (dlHits.get(key) || []).filter((t) => now - t < RL_WINDOW_MS)
+  if (arr.length >= DL_MAX) { dlHits.set(key, arr); return true }
+  arr.push(now); dlHits.set(key, arr); return false
 }
 
 // Traduit une erreur du service en réponse utilisateur explicite
@@ -51,15 +51,16 @@ function handleYtError(res, err) {
   return res.status((err && err.status) || 500).json({ message: err?.message || 'Erreur du service vidéo.' })
 }
 
-// GET /api/youtube/categories — liste de catégories rapides (statique côté serveur)
-router.get('/categories', protect, (req, res) => {
+// GET /api/youtube/categories — liste de catégories rapides (accessible publiquement)
+router.get('/categories', protectOptional, (req, res) => {
   res.json({ success: true, categories: youtube.categories() })
 })
 
-// GET /api/youtube/search?q=&pageToken=&order=&duration= (si q est vide, renvoie le flux d'accueil YouTube)
-router.get('/search', protect, async (req, res) => {
+// GET /api/youtube/search?q=&pageToken=&order=&duration= (accessible publiquement)
+router.get('/search', protectOptional, async (req, res) => {
   try {
-    if (searchRateLimited(req.user._id)) return res.status(429).json({ message: 'Trop de recherches. Réessayez dans un instant.' })
+    const rateKey = req.user?._id || req.ip || 'anon'
+    if (searchRateLimited(rateKey)) return res.status(429).json({ message: 'Trop de recherches. Réessayez dans un instant.' })
     const q = String(req.query.q || '').trim()
     const cfg = await youtube.resolveConfig()
     if (q && q.length > (cfg.maxSearchLen || 120)) return res.status(400).json({ message: 'Terme de recherche trop long.' })
@@ -73,8 +74,8 @@ router.get('/search', protect, async (req, res) => {
   } catch (err) { handleYtError(res, err) }
 })
 
-// GET /api/youtube/videos/:videoId — détails d'une vidéo
-router.get('/videos/:videoId', protect, async (req, res) => {
+// GET /api/youtube/videos/:videoId — détails d'une vidéo (accessible publiquement)
+router.get('/videos/:videoId', protectOptional, async (req, res) => {
   try {
     if (!VIDEO_ID_RE.test(req.params.videoId)) return res.status(400).json({ message: 'Identifiant vidéo invalide.' })
     const video = await youtube.videoDetails(req.params.videoId)
@@ -82,8 +83,8 @@ router.get('/videos/:videoId', protect, async (req, res) => {
   } catch (err) { handleYtError(res, err) }
 })
 
-// GET /api/youtube/related/:videoId — vidéos similaires (best-effort)
-router.get('/related/:videoId', protect, async (req, res) => {
+// GET /api/youtube/related/:videoId — vidéos similaires (accessible publiquement)
+router.get('/related/:videoId', protectOptional, async (req, res) => {
   try {
     if (!VIDEO_ID_RE.test(req.params.videoId)) return res.status(400).json({ message: 'Identifiant vidéo invalide.' })
     const data = await youtube.related(req.params.videoId)
@@ -91,9 +92,8 @@ router.get('/related/:videoId', protect, async (req, res) => {
   } catch (err) { handleYtError(res, err) }
 })
 
-// GET /api/youtube/ad-config — réglages publicité/téléchargement (NON secrets : l'ID éditeur
-// AdSense figure de toute façon dans la page). Sert au « gate » publicitaire avant téléchargement.
-router.get('/ad-config', protect, async (req, res) => {
+// GET /api/youtube/ad-config — réglages publicité AdSense & AdMob (accessible publiquement)
+router.get('/ad-config', protectOptional, async (req, res) => {
   try {
     const cfg = await youtube.resolveConfig()
     res.json({
@@ -102,8 +102,26 @@ router.get('/ad-config', protect, async (req, res) => {
       adsenseClient: cfg.adsenseClient || '',
       adSlot: cfg.adSlot || '',
       adCountdown: Number(cfg.adCountdown) > 0 ? Number(cfg.adCountdown) : 5,
+      admobEnabled: cfg.admobEnabled !== false,
+      admobAppId: cfg.admobAppId || '',
+      admobBannerSlot: cfg.admobBannerSlot || '',
+      admobInterstitialSlot: cfg.admobInterstitialSlot || '',
+      admobRewardedSlot: cfg.admobRewardedSlot || '',
     })
-  } catch (err) { res.json({ success: true, downloadEnabled: true, adsenseClient: '', adSlot: '', adCountdown: 5 }) }
+  } catch (err) {
+    res.json({
+      success: true,
+      downloadEnabled: true,
+      adsenseClient: '',
+      adSlot: '',
+      adCountdown: 5,
+      admobEnabled: false,
+      admobAppId: '',
+      admobBannerSlot: '',
+      admobInterstitialSlot: '',
+      admobRewardedSlot: '',
+    })
+  }
 })
 
 // ───────────────────────── MOTEUR DE TÉLÉCHARGEMENT MULTI-FORMAT (SNAPTUBE ENGINE) ─────────────────────────
@@ -157,14 +175,15 @@ async function pollDownloadProgress(progressUrl) {
 }
 
 // POST /api/youtube/download/init — Démarre la préparation d'un fichier audio ou vidéo
-router.post('/download/init', protect, async (req, res) => {
+router.post('/download/init', protectOptional, async (req, res) => {
   const { videoId, format, quality } = req.body || {}
   if (!VIDEO_ID_RE.test(String(videoId || ''))) return res.status(400).json({ message: 'Identifiant vidéo invalide.' })
   try {
     const cfg = await youtube.resolveConfig()
     if (cfg.downloadEnabled === false) return res.status(403).json({ message: 'Le téléchargement des vidéos est désactivé.' })
   } catch (_) {}
-  if (downloadRateLimited(req.user._id)) return res.status(429).json({ message: 'Trop de requêtes de téléchargement. Réessayez dans un instant.' })
+  const rateKey = req.user?._id || req.ip || 'anon'
+  if (downloadRateLimited(rateKey)) return res.status(429).json({ message: 'Trop de requêtes de téléchargement. Réessayez dans un instant.' })
 
   try {
     const job = await initDownloadJob(videoId, format || quality)
@@ -176,7 +195,7 @@ router.post('/download/init', protect, async (req, res) => {
 })
 
 // GET /api/youtube/download/progress — Vérifie l'état de conversion pour la barre de progression SnapTube
-router.get('/download/progress', protect, async (req, res) => {
+router.get('/download/progress', protectOptional, async (req, res) => {
   const progressUrl = String(req.query.url || '').trim()
   if (!progressUrl) return res.status(400).json({ message: 'URL de suivi manquante.' })
 
@@ -201,14 +220,15 @@ router.get('/download/progress', protect, async (req, res) => {
 
 // GET /api/youtube/download/:videoId — Téléchargement direct avec redirection 302 vers le flux préparé
 // Compatible avec les liens <a href="..." download> directs sur mobile et PC
-router.get('/download/:videoId', protect, async (req, res) => {
+router.get('/download/:videoId', protectOptional, async (req, res) => {
   const videoId = req.params.videoId
   if (!VIDEO_ID_RE.test(videoId)) return res.status(400).json({ message: 'Identifiant vidéo invalide.' })
   try {
     const cfg = await youtube.resolveConfig()
     if (cfg.downloadEnabled === false) return res.status(403).json({ message: 'Le téléchargement des vidéos est désactivé.' })
   } catch (_) {}
-  if (downloadRateLimited(req.user._id)) return res.status(429).json({ message: 'Trop de téléchargements. Réessayez dans un instant.' })
+  const rateKey = req.user?._id || req.ip || 'anon'
+  if (downloadRateLimited(rateKey)) return res.status(429).json({ message: 'Trop de téléchargements. Réessayez dans un instant.' })
 
   const fmt = normalizeDownloadFormat(req.query.format, req.query.quality)
 

@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
 import {
   Globe2, Users, Phone, HelpCircle, BookMarked, School, GraduationCap, Star, Heart,
-  Newspaper, BookOpen,
+  Newspaper, BookOpen, Youtube
 } from 'lucide-react'
 
 const NAV_TABS = [
+  { label: 'KATDTUBE', path: '/katdtube', icon: Youtube, highlight: true },
   { label: 'Social', path: '/social', icon: Globe2 },
   { label: 'Blog', path: '/blogs', icon: Newspaper },
   { label: 'À propos', path: '/apropos', icon: Users },
