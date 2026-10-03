@@ -3,6 +3,17 @@ const mongoose = require('mongoose')
 const attendanceRecordSchema = new mongoose.Schema({
   student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
   status: { type: String, enum: ['present', 'absent', 'late', 'excused'], required: true },
+  courseAbsences: [
+    {
+      slotId: { type: String },
+      day: { type: String },
+      startTime: { type: String },
+      endTime: { type: String },
+      subject: { type: String },
+      isAbsent: { type: Boolean, default: true },
+      date: { type: String },
+    },
+  ],
 })
 
 const attendanceSchema = new mongoose.Schema(
@@ -11,6 +22,11 @@ const attendanceSchema = new mongoose.Schema(
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
     date: { type: Date, required: true },
+    weekNumber: { type: Number },
+    academicYear: { type: String },
+    transmittedToDirector: { type: Boolean, default: false },
+    transmittedAt: { type: Date },
+    transmittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     records: [attendanceRecordSchema],
     summary: {
       total: { type: Number, default: 0 },

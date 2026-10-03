@@ -224,4 +224,276 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
   }
 })
 
+// GET /api/attendance/weekly-sheet — Fiche d'appel hebdomadaire intégrée à l'agenda de la classe
+router.get('/weekly-sheet', protect, async (req, res) => {
+  try {
+    const Timetable = require('../models/Timetable')
+    const { classId, weekDate } = req.query
+    if (!classId) return res.status(400).json({ message: 'classId requis' })
+
+    const schoolId = req.user.school?._id || req.user.school
+    const cls = await Class.findById(classId).lean()
+    if (!cls) return res.status(404).json({ message: 'Classe non trouvée' })
+
+    const students = await Student.find({ class: classId, school: schoolId, status: 'active' })
+      .select('firstName lastName matricule photo gender parent')
+      .sort({ lastName: 1 })
+      .lean()
+
+    const timetable = await Timetable.findOne({ class: classId, school: schoolId }).lean()
+    const slots = timetable?.slots || []
+
+    // Calcul des dates du lundi au samedi de la semaine cible
+    const ref = weekDate ? new Date(weekDate) : new Date()
+    const dayOfWeek = ref.getDay() // 0 = Dimanche, 1 = Lundi, ...
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    const monday = new Date(ref)
+    monday.setDate(ref.getDate() + diffToMonday)
+    monday.setHours(0, 0, 0, 0)
+
+    const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
+    const weekDays = DAYS.map((dayName, idx) => {
+      const d = new Date(monday)
+      d.setDate(monday.getDate() + idx)
+      return {
+        name: dayName,
+        dateStr: d.toISOString().slice(0, 10),
+        slots: slots.filter((s) => s.day === dayName),
+      }
+    })
+
+    const saturday = new Date(monday)
+    saturday.setDate(monday.getDate() + 5)
+    saturday.setHours(23, 59, 59, 999)
+
+    // Charger les pointages d'assiduité de cette semaine
+    const attendances = await Attendance.find({
+      class: classId,
+      date: { $gte: monday, $lte: saturday },
+    }).lean()
+
+    // Structurer les absences par élève et par créneau
+    const studentAbsences = {}
+    students.forEach((st) => {
+      studentAbsences[st._id] = {}
+    })
+
+    attendances.forEach((att) => {
+      const attDateStr = new Date(att.date).toISOString().slice(0, 10)
+      att.records?.forEach((rec) => {
+        const sId = String(rec.student)
+        if (!studentAbsences[sId]) studentAbsences[sId] = {}
+        if (!studentAbsences[sId][attDateStr]) studentAbsences[sId][attDateStr] = { status: rec.status, slotAbsences: {} }
+
+        rec.courseAbsences?.forEach((ca) => {
+          if (ca.slotId) {
+            studentAbsences[sId][attDateStr].slotAbsences[ca.slotId] = ca.isAbsent !== false
+          }
+        })
+      })
+    })
+
+    const isTransmitted = attendances.some((a) => a.transmittedToDirector === true)
+
+    res.json({
+      success: true,
+      class: cls,
+      weekStart: monday.toISOString().slice(0, 10),
+      weekEnd: saturday.toISOString().slice(0, 10),
+      isTransmitted,
+      students,
+      weekDays,
+      timetableSlots: slots,
+      studentAbsences,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/attendance/weekly-course-absence — Marquer ou décocher l'absence d'un élève à un cours précis
+router.post('/weekly-course-absence', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
+  try {
+    const { classId, studentId, date, slotId, day, startTime, endTime, subject, isAbsent } = req.body
+    if (!classId || !studentId || !date || !slotId) {
+      return res.status(400).json({ message: 'classId, studentId, date et slotId requis' })
+    }
+
+    const schoolId = req.user.school?._id || req.user.school
+    const targetDate = new Date(date)
+    targetDate.setHours(12, 0, 0, 0)
+
+    let attendance = await Attendance.findOne({ class: classId, date: targetDate })
+    if (!attendance) {
+      attendance = new Attendance({
+        class: classId,
+        school: schoolId,
+        date: targetDate,
+        teacher: req.user.role === 'enseignant' ? (await Teacher.findOne({ user: req.user._id }))?._id : undefined,
+        records: [],
+        summary: { total: 0, present: 0, absent: 0, late: 0, excused: 0 },
+      })
+    }
+
+    let rec = attendance.records.find((r) => String(r.student) === String(studentId))
+    if (!rec) {
+      rec = {
+        student: studentId,
+        status: isAbsent ? 'absent' : 'present',
+        courseAbsences: [],
+      }
+      attendance.records.push(rec)
+      rec = attendance.records[attendance.records.length - 1]
+    }
+
+    if (!Array.isArray(rec.courseAbsences)) rec.courseAbsences = []
+
+    const cIdx = rec.courseAbsences.findIndex((ca) => ca.slotId === slotId)
+    if (cIdx >= 0) {
+      rec.courseAbsences[cIdx].isAbsent = !!isAbsent
+    } else {
+      rec.courseAbsences.push({
+        slotId,
+        day: day || '',
+        startTime: startTime || '',
+        endTime: endTime || '',
+        subject: subject || '',
+        isAbsent: !!isAbsent,
+        date,
+      })
+    }
+
+    // Si au moins un cours est manqué, le statut global est marqué absent
+    const hasAnyMissed = rec.courseAbsences.some((ca) => ca.isAbsent)
+    rec.status = hasAnyMissed ? 'absent' : 'present'
+
+    // Recalcul du summary
+    const counts = { total: attendance.records.length, present: 0, absent: 0, late: 0, excused: 0 }
+    attendance.records.forEach((r) => {
+      counts[r.status] = (counts[r.status] || 0) + 1
+    })
+    attendance.summary = counts
+
+    await attendance.save()
+
+    res.json({
+      success: true,
+      message: isAbsent ? 'Absence enregistrée pour ce cours' : 'Présence rétablie pour ce cours',
+      record: rec,
+      summary: attendance.summary,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/attendance/transmit-weekly-sheet — Transmettre la fiche hebdomadaire à la direction
+router.post('/transmit-weekly-sheet', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
+  try {
+    const { classId, weekStartDate } = req.body
+    if (!classId) return res.status(400).json({ message: 'classId requis' })
+
+    const monday = new Date(weekStartDate || new Date())
+    monday.setHours(0, 0, 0, 0)
+    const saturday = new Date(monday)
+    saturday.setDate(monday.getDate() + 6)
+    saturday.setHours(23, 59, 59, 999)
+
+    const updated = await Attendance.updateMany(
+      { class: classId, date: { $gte: monday, $lte: saturday } },
+      {
+        $set: {
+          transmittedToDirector: true,
+          transmittedAt: new Date(),
+          transmittedBy: req.user._id,
+        },
+      }
+    )
+
+    res.json({
+      success: true,
+      message: 'Fiche d\'appel hebdomadaire transmise avec succès à la direction',
+      data: { count: updated.modifiedCount },
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/attendance/student-stats/:studentId — Bilan d'assiduité (hebdo, mensuel, annuel, cours manqués)
+router.get('/student-stats/:studentId', protect, async (req, res) => {
+  try {
+    const Timetable = require('../models/Timetable')
+    const student = await Student.findById(req.params.studentId).populate('class').lean()
+    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+
+    const schoolId = student.school
+    const currentYear = new Date().getFullYear()
+
+    // Emploi du temps pour estimer le nombre total de cours par semaine
+    const tt = await Timetable.findOne({ class: student.class?._id, school: schoolId }).lean()
+    const weeklySlotsCount = tt?.slots?.length || 25
+
+    const allAttendances = await Attendance.find({
+      class: student.class?._id,
+      'records.student': student._id,
+    }).lean()
+
+    let totalSessions = allAttendances.length
+    let totalPresentDays = 0
+    let totalAbsentDays = 0
+    let missedCourseSlotsCount = 0
+
+    const monthlyStats = {}
+
+    allAttendances.forEach((att) => {
+      const d = new Date(att.date)
+      const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      if (!monthlyStats[mKey]) monthlyStats[mKey] = { total: 0, absent: 0, missedCourses: 0 }
+
+      const rec = att.records?.find((r) => String(r.student) === String(student._id))
+      if (rec) {
+        monthlyStats[mKey].total += 1
+        if (rec.status === 'present') totalPresentDays += 1
+        if (rec.status === 'absent') {
+          totalAbsentDays += 1
+          monthlyStats[mKey].absent += 1
+        }
+        const missedSlots = rec.courseAbsences?.filter((ca) => ca.isAbsent).length || 0
+        missedCourseSlotsCount += missedSlots
+        monthlyStats[mKey].missedCourses += missedSlots
+      }
+    })
+
+    // Estimation cours suivis
+    const estimatedTotalCourses = Math.max(totalSessions * 5, missedCourseSlotsCount + 10)
+    const followedCourses = Math.max(0, estimatedTotalCourses - missedCourseSlotsCount)
+    const assiduiteRate = estimatedTotalCourses > 0
+      ? Math.round((followedCourses / estimatedTotalCourses) * 100)
+      : (student.attendanceRate || 100)
+
+    res.json({
+      success: true,
+      student: {
+        _id: student._id,
+        name: `${student.lastName} ${student.firstName}`,
+        matricule: student.matricule,
+        className: student.class?.name || '—',
+      },
+      summary: {
+        totalSessions,
+        totalPresentDays,
+        totalAbsentDays,
+        estimatedTotalCourses,
+        followedCourses,
+        missedCourseSlotsCount,
+        assiduiteRate,
+      },
+      monthlyStats,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

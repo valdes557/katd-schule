@@ -5,7 +5,7 @@ const feeSchema = new mongoose.Schema(
     student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
     school: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true },
     label: { type: String, required: true, trim: true },
-    type: { type: String, enum: ['scolarite', 'pension', 'inscription', 'cantine', 'transport', 'uniforme', 'autre'], default: 'scolarite' },
+    type: { type: String, enum: ['scolarite', 'pension', 'inscription', 'reinscription', 'cantine', 'transport', 'uniforme', 'autre'], default: 'scolarite' },
     amount: { type: Number, required: true },
     paid: { type: Number, default: 0 },
     dueDate: { type: Date },

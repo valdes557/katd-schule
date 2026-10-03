@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react'
-import { UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, Mail, Phone, Key, Eye, EyeOff, Ban, Power, KeyRound, Download } from 'lucide-react'
+import {
+  UserCheck, Search, Plus, Trash2, Edit2, Loader2, AlertCircle,
+  X, Mail, Phone, Key, Eye, EyeOff, Ban, Power, KeyRound, Download, Contact
+} from 'lucide-react'
 import { teachersApi, classesApi, authApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { getInitials } from '../lib/utils'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
-import { exportEnseignantsFichePdf } from '../lib/exportFichesPdf'
+import { exportEnseignantsFichePdf, exportBadgesPdf } from '../lib/exportFichesPdf'
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4']
-const EMPTY = { firstName: '', lastName: '', email: '', phone: '', gender: 'M', subjects: '', speciality: '', password: '', classes: [], cycle: '' }
+const EMPTY = {
+  firstName: '', lastName: '', email: '', phone: '', gender: 'M',
+  subjects: '', speciality: '', password: '', classes: [], cycle: '',
+  contractType: 'permanent', monthlySalary: '', hourlyRate: '', weeklyHours: ''
+}
 
 export default function EnseignantsPage() {
   const { user, school } = useAuth()
@@ -65,12 +72,26 @@ export default function EnseignantsPage() {
     }
   }
 
+  const handleExportBadges = () => {
+    exportBadgesPdf({
+      school,
+      members: teachers,
+      roleTitle: 'Enseignant',
+    })
+  }
+
   const toggleClass = (id) => setForm((f) => ({ ...f, classes: f.classes.includes(id) ? f.classes.filter((c) => c !== id) : [...f.classes, id] }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      const data = { ...form, subjects: typeof form.subjects === 'string' ? form.subjects.split(',').map((s) => s.trim()).filter(Boolean) : form.subjects }
+      const data = {
+        ...form,
+        subjects: typeof form.subjects === 'string' ? form.subjects.split(',').map((s) => s.trim()).filter(Boolean) : form.subjects,
+        monthlySalary: form.monthlySalary !== '' ? Number(form.monthlySalary) : undefined,
+        hourlyRate: form.hourlyRate !== '' ? Number(form.hourlyRate) : undefined,
+        weeklyHours: form.weeklyHours !== '' ? Number(form.weeklyHours) : undefined,
+      }
       if (!editing && !form.password) { alert('Le mot de passe est requis pour créer le compte de connexion'); return }
       if (!form.cycle) { alert('Veuillez attribuer un cycle (Maternelle / Primaire / Secondaire) à l\'enseignant'); return }
       if (editing) {
@@ -110,7 +131,22 @@ export default function EnseignantsPage() {
 
   const openEdit = (t) => {
     setEditing(t)
-    setForm({ firstName: t.firstName, lastName: t.lastName, email: t.email || '', phone: t.phone || '', gender: t.gender || 'M', subjects: (t.subjects || []).join(', '), speciality: t.speciality || '', password: '', classes: (t.classes || []).map((c) => c._id || c), cycle: t.cycle || '' })
+    setForm({
+      firstName: t.firstName,
+      lastName: t.lastName,
+      email: t.email || '',
+      phone: t.phone || '',
+      gender: t.gender || 'M',
+      subjects: (t.subjects || []).join(', '),
+      speciality: t.speciality || '',
+      password: '',
+      classes: (t.classes || []).map((c) => c._id || c),
+      cycle: t.cycle || '',
+      contractType: t.contractType || 'permanent',
+      monthlySalary: t.monthlySalary ?? '',
+      hourlyRate: t.hourlyRate ?? '',
+      weeklyHours: t.weeklyHours ?? '',
+    })
     setShowModal(true)
   }
 
@@ -123,16 +159,28 @@ export default function EnseignantsPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {isDirecteur && (
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              disabled={exportingPdf || loading}
-              className="btn-ghost border border-purple-200 text-purple-700 hover:bg-purple-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
-              title="Télécharger la fiche officielle des enseignants en PDF"
-            >
-              {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-              <span>{exportingPdf ? 'Génération...' : 'Télécharger la fiche des enseignants (PDF)'}</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                disabled={exportingPdf || loading}
+                className="btn-ghost border border-purple-200 text-purple-700 hover:bg-purple-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+                title="Télécharger la fiche officielle des enseignants en PDF"
+              >
+                {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                <span>{exportingPdf ? 'Génération...' : 'Fiche des enseignants (PDF)'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportBadges}
+                disabled={loading || teachers.length === 0}
+                className="btn-ghost border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+                title="Créer et imprimer les badges professionnels des enseignants"
+              >
+                <Contact size={15} />
+                <span>Imprimer les badges</span>
+              </button>
+            </>
           )}
           {isDirecteur && (
             <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || '' }); setShowModal(true) }} className="btn-primary text-sm self-start">
@@ -181,13 +229,24 @@ export default function EnseignantsPage() {
                   </div>
                 )}
               </div>
+              <div className="flex flex-wrap items-center gap-1 mb-2">
+                <span className={`badge text-[10px] font-semibold ${t.contractType === 'vacataire' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {t.contractType === 'vacataire' ? 'Vacataire' : 'Permanent'}
+                </span>
+                {t.cycle && <span className="badge bg-amber-50 text-amber-700 text-[10px]">Cycle : {t.cycle}</span>}
+                <button
+                  type="button"
+                  onClick={() => exportBadgesPdf({ school, members: [t], roleTitle: 'Enseignant' })}
+                  title="Imprimer le badge de cet enseignant"
+                  className="text-[10px] text-indigo-600 hover:underline flex items-center gap-0.5 ml-auto"
+                >
+                  <Contact size={11} /> Badge
+                </button>
+              </div>
               {t.subjects?.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2">
                   {t.subjects.map((s) => <span key={s} className="badge badge-blue text-[10px]">{s}</span>)}
                 </div>
-              )}
-              {t.cycle && (
-                <div className="mb-2"><span className="badge bg-amber-50 text-amber-700 text-[10px]">Cycle : {t.cycle}</span></div>
               )}
               {t.classes?.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2">
@@ -272,6 +331,62 @@ export default function EnseignantsPage() {
                   </select>
                 </div>
                 <div><label className="text-xs font-medium text-gray-600">Spécialité</label><input value={form.speciality} onChange={(e) => setForm({ ...form, speciality: e.target.value })} className="input text-sm mt-1" placeholder="Ex: Mathématiques" /></div>
+              </div>
+
+              {/* Statut contractuel & Rémunération */}
+              <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">💼 Statut contractuel & Rémunération</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Statut de l'enseignant *</label>
+                    <select
+                      value={form.contractType || 'permanent'}
+                      onChange={(e) => setForm({ ...form, contractType: e.target.value })}
+                      className="input text-sm mt-1 bg-white"
+                    >
+                      <option value="permanent">Permanent (salaire mensuel)</option>
+                      <option value="vacataire">Vacataire (taux horaire)</option>
+                    </select>
+                  </div>
+                  {form.contractType === 'vacataire' ? (
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Taux horaire (F CFA/h)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={form.hourlyRate || ''}
+                        onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
+                        className="input text-sm mt-1 bg-white"
+                        placeholder="Ex: 3 000"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-xs font-medium text-gray-700">Salaire mensuel (F CFA)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={form.monthlySalary || ''}
+                        onChange={(e) => setForm({ ...form, monthlySalary: e.target.value })}
+                        className="input text-sm mt-1 bg-white"
+                        placeholder="Ex: 150 000"
+                      />
+                    </div>
+                  )}
+                </div>
+                {form.contractType === 'vacataire' && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Volume horaire hebdomadaire (heures/semaine)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={form.weeklyHours || ''}
+                      onChange={(e) => setForm({ ...form, weeklyHours: e.target.value })}
+                      className="input text-sm mt-1 bg-white"
+                      placeholder="Ex: 12"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>

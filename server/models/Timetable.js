@@ -11,6 +11,10 @@ const slotSchema = new mongoose.Schema({
   teacherRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
   room: { type: String },
   color: { type: String, default: '#3B82F6' },
+  type: { type: String, enum: ['cours', 'evaluation', 'activite', 'reunion', 'sortie', 'kermesse', 'autre'], default: 'cours' },
+  title: { type: String, default: '' },
+  evaluationType: { type: String, default: '' },
+  isScheduledEvaluation: { type: Boolean, default: false },
 }, { _id: true })
 
 const timetableSchema = new mongoose.Schema(

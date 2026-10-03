@@ -16,6 +16,10 @@ const teacherSchema = new mongoose.Schema(
     speciality: { type: String },
     dateOfBirth: { type: Date },
     hireDate: { type: Date, default: Date.now },
+    contractType: { type: String, enum: ['permanent', 'vacataire'], default: 'permanent' },
+    monthlySalary: { type: Number, default: 0 },
+    hourlyRate: { type: Number, default: 0 },
+    weeklyHours: { type: Number, default: 0 },
     status: { type: String, enum: ['active', 'inactive', 'on_leave'], default: 'active' },
     address: { city: { type: String }, neighborhood: { type: String } },
     attendance: {

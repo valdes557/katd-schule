@@ -186,6 +186,9 @@ export const classesApi = {
   create: (data) => api.post('/classes', data),
   update: (id, data) => api.put(`/classes/${id}`, data),
   remove: (id) => api.del(`/classes/${id}`),
+  saveEvaluationConfig: (id, data) => api.put(`/classes/${id}/evaluation-config`, data),
+  duplicateEvaluationConfig: (id, targetClassIds) => api.post(`/classes/${id}/duplicate-evaluation-config`, { targetClassIds }),
+  syncEvaluationsToAgenda: (id) => api.post(`/classes/${id}/sync-evaluations-to-agenda`),
 }
 
 export const gradesApi = {
@@ -205,6 +208,10 @@ export const attendanceApi = {
   save: (data) => api.post('/attendance', data),
   // Appel par QR (le professeur scanne les QR des élèves de sa classe)
   resolveQr: (qrId, classId) => api.post('/attendance/resolve-qr', { qrId, classId }),
+  weeklySheet: (classId, weekDate = '') => api.get(`/attendance/weekly-sheet?classId=${classId}${weekDate ? `&weekDate=${weekDate}` : ''}`),
+  weeklyCourseAbsence: (data) => api.post('/attendance/weekly-course-absence', data),
+  transmitWeeklySheet: (data) => api.post('/attendance/transmit-weekly-sheet', data),
+  studentStats: (studentId) => api.get(`/attendance/student-stats/${studentId}`),
 }
 
 export const messagesApi = {
@@ -505,6 +512,11 @@ export const timetablesApi = {
   assignTo: (id, classIds) => api.post(`/timetables/${id}/assign-to`, { classIds }),
   unassignFrom: (id, classIds) => api.post(`/timetables/${id}/unassign-from`, { classIds }),
   publish: (id, publish = true) => api.put(`/timetables/${id}/publish`, { publish }),
+  conflicts: () => api.get('/timetables/conflicts'),
+  allActivities: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/timetables/all-activities' + (qs ? '?' + qs : ''))
+  },
 }
 
 // Recrutement : annonces (directeur) + job board public « News » + candidatures
@@ -1013,9 +1025,28 @@ export const documentsApi = {
 export const feesApi = {
   list: (params = '') => api.get(`/fees?${params}`),
   paymentStatus: (classId) => api.get(`/fees/payment-status?classId=${classId}`),
-  paymentHistory: (classId = '') => api.get(`/fees/payment-history${classId ? `?classId=${classId}` : ''}`),
+  paymentHistory: (classId = '', type = '') => {
+    const params = new URLSearchParams()
+    if (classId) params.set('classId', classId)
+    if (type) params.set('type', type)
+    const qs = params.toString()
+    return api.get(`/fees/payment-history${qs ? `?${qs}` : ''}`)
+  },
   // Rapport d'encaissements par période (journalier/hebdo/mensuel/annuel) — G5
   periodReport: (params = {}) => api.get(`/fees/period-report?${new URLSearchParams(params).toString()}`),
+  // Compte de résultat mensuel & annuel (recettes scolarité, autres recettes, dépenses par catégorie, résultat net)
+  incomeStatement: (year = '', month = '') => {
+    const params = new URLSearchParams()
+    if (year) params.set('year', year)
+    if (month) params.set('month', month)
+    const qs = params.toString()
+    return api.get(`/fees/income-statement${qs ? `?${qs}` : ''}`)
+  },
+  // Liste des retards de paiement (avec sélection de mois et classe)
+  latePayments: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get(`/fees/late-payments${qs ? `?${qs}` : ''}`)
+  },
   create: (data) => api.post('/fees', data),
   bulkAssign: (data) => api.post('/fees/bulk-assign', data),
   update: (id, data) => api.put(`/fees/${id}`, data),

@@ -196,4 +196,227 @@ router.delete('/:id/slots/:slotId', protect, authorize('directeur'), async (req,
   }
 })
 
+// GET /api/timetables/conflicts — Détecter les conflits d'enseignants, de salles ou d'horaires
+router.get('/conflicts', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
+  try {
+    const schoolId = req.user.school?._id || req.user.school
+    const timetables = await Timetable.find({ school: schoolId }).populate('class', 'name level').lean()
+
+    const conflicts = []
+    const allSlots = []
+
+    // Helper conversion heure "HH:MM" en minutes
+    const toMinutes = (timeStr) => {
+      if (!timeStr) return 0
+      const [h, m] = timeStr.split(':').map(Number)
+      return (h || 0) * 60 + (m || 0)
+    }
+
+    // Aplatir tous les créneaux avec référence de classe
+    for (const tt of timetables) {
+      for (const slot of tt.slots || []) {
+        const startM = toMinutes(slot.startTime)
+        const endM = toMinutes(slot.endTime)
+
+        // Détection antériorité / horaire incohérent
+        if (endM <= startM) {
+          conflicts.push({
+            type: 'horaire_invalide',
+            severity: 'haute',
+            day: slot.day,
+            className: tt.class?.name || 'Inconnue',
+            classId: tt.class?._id,
+            subject: slot.subject,
+            teacher: slot.teacher,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            description: `L'heure de fin (${slot.endTime}) est antérieure ou égale à l'heure de début (${slot.startTime}) dans la classe ${tt.class?.name}.`,
+          })
+        }
+
+        allSlots.push({
+          slotId: slot._id,
+          classId: tt.class?._id,
+          className: tt.class?.name || 'Inconnue',
+          day: slot.day,
+          date: slot.date,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          startM,
+          endM,
+          subject: slot.subject,
+          teacher: slot.teacher?.trim().toLowerCase(),
+          teacherRaw: slot.teacher,
+          teacherRef: slot.teacherRef,
+          room: slot.room?.trim().toLowerCase(),
+          roomRaw: slot.room,
+          type: slot.type || 'cours',
+          title: slot.title,
+        })
+      }
+    }
+
+    // Comparaison croisée de créneaux pour conflits enseignant ou salle
+    for (let i = 0; i < allSlots.length; i++) {
+      for (let j = i + 1; j < allSlots.length; j++) {
+        const s1 = allSlots[i]
+        const s2 = allSlots[j]
+
+        // Ne comparer que si c'est le même jour (ou même date ponctuelle) et deux classes différentes
+        const sameDay = s1.day === s2.day && (!s1.date || !s2.date || s1.date === s2.date)
+        const diffClasses = String(s1.classId) !== String(s2.classId)
+
+        if (!sameDay || !diffClasses) continue
+
+        // Chevauchement horaire : start1 < end2 && end1 > start2
+        const overlaps = s1.startM < s2.endM && s1.endM > s2.startM
+
+        if (overlaps) {
+          // Conflit enseignant
+          const sameTeacher = (s1.teacherRef && s2.teacherRef && String(s1.teacherRef) === String(s2.teacherRef)) ||
+            (s1.teacher && s2.teacher && s1.teacher === s2.teacher)
+
+          if (sameTeacher) {
+            conflicts.push({
+              type: 'enseignant_double_classe',
+              severity: 'haute',
+              day: s1.day,
+              date: s1.date || s2.date,
+              teacher: s1.teacherRaw,
+              class1: s1.className,
+              class2: s2.className,
+              subject1: s1.subject,
+              subject2: s2.subject,
+              timeRange: `${Math.max(s1.startM, s2.startM) === s1.startM ? s1.startTime : s2.startTime} - ${Math.min(s1.endM, s2.endM) === s1.endM ? s1.endTime : s2.endTime}`,
+              description: `L'enseignant « ${s1.teacherRaw} » est programmé simultanément en ${s1.className} (${s1.startTime}-${s1.endTime}) et en ${s2.className} (${s2.startTime}-${s2.endTime}) le ${s1.day}.`,
+            })
+          }
+
+          // Conflit de salle
+          const sameRoom = s1.room && s2.room && s1.room === s2.room
+          if (sameRoom) {
+            conflicts.push({
+              type: 'salle_double_attribution',
+              severity: 'moyenne',
+              day: s1.day,
+              date: s1.date || s2.date,
+              room: s1.roomRaw,
+              class1: s1.className,
+              class2: s2.className,
+              timeRange: `${s1.startTime} - ${s1.endTime}`,
+              description: `La salle « ${s1.roomRaw} » est assignée simultanément à ${s1.className} et ${s2.className} le ${s1.day}.`,
+            })
+          }
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      hasConflicts: conflicts.length > 0,
+      conflictCount: conflicts.length,
+      conflicts,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/timetables/all-activities — Lister toutes les activités (cours, évaluations, sorties, réunions) par mois ou par année
+router.get('/all-activities', protect, async (req, res) => {
+  try {
+    const Activity = require('../models/Activity')
+    const Event = require('../models/Event')
+    const schoolId = req.user.school?._id || req.user.school
+    const { month, year, classId } = req.query
+
+    const currentYear = new Date().getFullYear()
+    const targetYear = Number(year) || currentYear
+
+    // 1. Emploi du temps / cours et évaluations
+    const ttQuery = { school: schoolId }
+    if (classId) ttQuery.class = classId
+    const timetables = await Timetable.find(ttQuery).populate('class', 'name level').lean()
+
+    // 2. Activités scolaires (sorties, sport, kermesses)
+    const actQuery = { school: schoolId }
+    if (classId) actQuery.class = classId
+    const activities = await Activity.find(actQuery).populate('class', 'name').lean()
+
+    // 3. Événements généraux (réunions, examens)
+    const events = await Event.find({ school: schoolId }).lean()
+
+    const combined = []
+
+    // Insérer les activités scolaires
+    activities.forEach((act) => {
+      const actDate = act.date ? new Date(act.date) : null
+      if (actDate && actDate.getFullYear() === targetYear) {
+        if (!month || String(actDate.getMonth() + 1).padStart(2, '0') === month) {
+          combined.push({
+            id: act._id,
+            category: 'activite_scolaire',
+            title: act.title,
+            type: act.type, // sortie, sport, kermesse...
+            date: actDate.toISOString().slice(0, 10),
+            location: act.location,
+            className: act.class?.name || 'Toutes classes',
+            description: act.description,
+            requiresAuthorization: act.requiresAuthorization,
+          })
+        }
+      }
+    })
+
+    // Insérer les événements
+    events.forEach((ev) => {
+      const evDate = ev.startDate ? new Date(ev.startDate) : null
+      if (evDate && evDate.getFullYear() === targetYear) {
+        if (!month || String(evDate.getMonth() + 1).padStart(2, '0') === month) {
+          combined.push({
+            id: ev._id,
+            category: 'evenement',
+            title: ev.title,
+            type: ev.type, // reunion, ceremonie, examen...
+            date: evDate.toISOString().slice(0, 10),
+            location: ev.location,
+            className: 'Établissement entier',
+            description: ev.description,
+            audience: ev.audience,
+          })
+        }
+      }
+    })
+
+    // Insérer les créneaux récurrents & évaluations de l'agenda
+    timetables.forEach((tt) => {
+      (tt.slots || []).forEach((slot) => {
+        combined.push({
+          id: slot._id,
+          category: slot.type === 'evaluation' ? 'evaluation_programmee' : 'cours',
+          title: slot.title || `${slot.subject} (${slot.teacher || 'Enseignant non spécifié'})`,
+          type: slot.type || 'cours',
+          day: slot.day,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          room: slot.room,
+          className: tt.class?.name || 'Classe',
+          classId: tt.class?._id,
+          isRecurring: true,
+        })
+      })
+    })
+
+    res.json({
+      success: true,
+      year: targetYear,
+      month: month || 'all',
+      totalActivities: combined.length,
+      data: combined,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

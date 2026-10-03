@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom'
 import { staffApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
+import { useAuth } from '../context/AuthContext'
+import { exportPersonnelFichePdf, exportBadgesPdf } from '../lib/exportFichesPdf'
 import {
-  Loader2, UserCog, UserCheck, Plus, Pencil, Trash2, X, Phone, Mail, Users, Briefcase,
+  Loader2, UserCog, UserCheck, Plus, Pencil, Trash2, X, Phone, Mail, Users, Briefcase, Download, Contact
 } from 'lucide-react'
 
 // Catégories de personnel non-enseignant
@@ -39,6 +41,7 @@ function Avatar({ photo, name, tone = 'bg-indigo-600' }) {
 }
 
 export default function PersonnelPage() {
+  const { school } = useAuth()
   const [filter, setFilter] = useState('')
   const [modal, setModal] = useState(null) // null | { ...staff } (edit) | EMPTY (create)
   const [saving, setSaving] = useState(false)
@@ -61,6 +64,36 @@ export default function PersonnelPage() {
     salary: m.salary ?? '',
     gender: m.gender || '',
   })
+
+  const handleExportAdministrativeList = () => {
+    const combined = [
+      ...teachers.map((t) => ({
+        ...t,
+        category: 'enseignant',
+        jobTitle: `Enseignant (${t.speciality || (t.subjects || []).join(', ') || 'Général'})`,
+      })),
+      ...allStaff.map((s) => ({
+        ...s,
+        jobTitle: s.jobTitle || CATEGORY_LABEL[s.category] || s.category,
+      })),
+    ]
+    exportPersonnelFichePdf({
+      school,
+      staff: combined,
+    })
+  }
+
+  const handleExportBadges = () => {
+    const combined = [
+      ...teachers.map((t) => ({ ...t, jobTitle: 'Enseignant' })),
+      ...allStaff.map((s) => ({ ...s, jobTitle: s.jobTitle || CATEGORY_LABEL[s.category] || 'Personnel' })),
+    ]
+    exportBadgesPdf({
+      school,
+      members: combined,
+      roleTitle: 'Personnel',
+    })
+  }
 
   const save = async (e) => {
     e.preventDefault()
@@ -100,7 +133,25 @@ export default function PersonnelPage() {
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><UserCog size={22} className="text-indigo-600" /> Personnel de l'école</h1>
           <p className="text-sm text-gray-500">Le corps enseignant et le personnel non-enseignant, tous confondus.</p>
         </div>
-        <button onClick={openCreate} className="btn-primary text-sm justify-center"><Plus size={15} /> Ajouter du personnel</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleExportAdministrativeList}
+            className="btn-ghost border border-purple-200 text-purple-700 hover:bg-purple-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+            title="Télécharger la liste administrative complète sans affichage des salaires"
+          >
+            <Download size={15} />
+            <span>Fiche administrative (sans salaires)</span>
+          </button>
+          <button
+            onClick={handleExportBadges}
+            className="btn-ghost border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+            title="Créer et imprimer les badges du personnel"
+          >
+            <Contact size={15} />
+            <span>Imprimer les badges</span>
+          </button>
+          <button onClick={openCreate} className="btn-primary text-sm justify-center"><Plus size={15} /> Ajouter du personnel</button>
+        </div>
       </div>
 
       {/* KPI */}
@@ -170,8 +221,15 @@ export default function PersonnelPage() {
                         <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS[m.status]?.cls || STATUS.active.cls}`}>{STATUS[m.status]?.label || 'Actif'}</span>
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
-                        <button onClick={() => openEdit(m)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600"><Pencil size={14} /></button>
-                        <button onClick={() => remove(m)} className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+                        <button
+                          onClick={() => exportBadgesPdf({ school, members: [m], roleTitle: m.jobTitle || CATEGORY_LABEL[m.category] || 'Personnel' })}
+                          title="Imprimer le badge de ce membre"
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-indigo-50 hover:text-indigo-600"
+                        >
+                          <Contact size={14} />
+                        </button>
+                        <button onClick={() => openEdit(m)} title="Modifier" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600"><Pencil size={14} /></button>
+                        <button onClick={() => remove(m)} title="Supprimer" className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
                       </div>
                     </div>
                     {(m.phone || m.email) && (

@@ -29,6 +29,7 @@ const studentSchema = new mongoose.Schema(
       neighborhood: { type: String },
     },
     academicYear: { type: String },
+    studentType: { type: String, enum: ['nouveau', 'ancien'], default: 'nouveau' },
     status: { type: String, enum: ['active', 'inactive', 'transferred'], default: 'active' },
     enrollmentDate: { type: Date, default: Date.now },
   },

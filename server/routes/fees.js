@@ -20,10 +20,11 @@ const netOf = (f) => Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
 // GET /api/fees — List all fees for the school (director)
 router.get('/', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
-    const { classId, studentId, status, page = 1, limit = 50 } = req.query
+    const { classId, studentId, status, type, page = 1, limit = 50 } = req.query
     const query = { school: schoolId(req) }
     if (studentId) query.student = studentId
     if (status) query.status = status
+    if (type) query.type = type
 
     let studentFilter = null
     if (classId) {
@@ -98,8 +99,9 @@ router.get('/payment-status', protect, authorize('directeur', 'super_admin', 'ca
 // GET /api/fees/payment-history — Directeur: tous les paiements par élève/parent + reste
 router.get('/payment-history', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
   try {
-    const { classId } = req.query
+    const { classId, type } = req.query
     const query = { school: schoolId(req) }
+    if (type) query.type = type
     if (classId) {
       const students = await Student.find({ class: classId, school: schoolId(req) }).select('_id')
       query.student = { $in: students.map((s) => s._id) }
@@ -266,6 +268,227 @@ router.get('/period-report', protect, authorize('directeur', 'super_admin', 'cai
         paymentCount,
       },
     })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/fees/income-statement — Compte de résultat mensuel et annuel (recettes scolarité, autres recettes, dépenses par catégorie, résultat net)
+router.get('/income-statement', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const Expense = require('../models/Expense')
+    const currentYear = new Date().getFullYear()
+    const year = Number(req.query.year) || currentYear
+    const month = req.query.month ? Number(req.query.month) : null
+
+    const startOfYear = new Date(year, 0, 1, 0, 0, 0, 0)
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
+
+    // Charger tous les frais avec paiements pour l'année
+    const fees = await Fee.find({
+      school: schoolId(req),
+      'payments.date': { $gte: startOfYear, $lte: endOfYear },
+    }).select('type label payments').lean()
+
+    // Charger toutes les dépenses pour l'année
+    const expenses = await Expense.find({
+      school: schoolId(req),
+      date: { $gte: startOfYear, $lte: endOfYear },
+    }).lean()
+
+    const MONTH_NAMES = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+    ]
+
+    const monthlyBreakdown = Array.from({ length: 12 }, (_, i) => ({
+      month: i + 1,
+      monthName: MONTH_NAMES[i],
+      periodKey: `${year}-${String(i + 1).padStart(2, '0')}`,
+      tuitionRevenue: 0,
+      otherRevenue: 0,
+      otherRevenueByType: {},
+      totalRevenue: 0,
+      expensesByCategory: {
+        salaires: 0, loyer: 0, fournitures: 0, equipement: 0,
+        services: 0, transport: 0, maintenance: 0, alimentation: 0, autre: 0,
+      },
+      totalExpenses: 0,
+      netResult: 0,
+      status: 'equilibre',
+    }))
+
+    for (const f of fees) {
+      for (const p of f.payments || []) {
+        if (!p.date) continue
+        const d = new Date(p.date)
+        if (d.getFullYear() !== year) continue
+        const mIdx = d.getMonth()
+        const amount = p.amount || 0
+        const isTuition = f.type === 'scolarite' || f.type === 'pension'
+
+        if (isTuition) {
+          monthlyBreakdown[mIdx].tuitionRevenue += amount
+        } else {
+          monthlyBreakdown[mIdx].otherRevenue += amount
+          const tKey = f.type || 'autre'
+          monthlyBreakdown[mIdx].otherRevenueByType[tKey] = (monthlyBreakdown[mIdx].otherRevenueByType[tKey] || 0) + amount
+        }
+        monthlyBreakdown[mIdx].totalRevenue += amount
+      }
+    }
+
+    for (const e of expenses) {
+      const d = new Date(e.date)
+      if (d.getFullYear() !== year) continue
+      const mIdx = d.getMonth()
+      const cat = e.category || 'autre'
+      const amount = e.amount || 0
+
+      monthlyBreakdown[mIdx].expensesByCategory[cat] = (monthlyBreakdown[mIdx].expensesByCategory[cat] || 0) + amount
+      monthlyBreakdown[mIdx].totalExpenses += amount
+    }
+
+    monthlyBreakdown.forEach((m) => {
+      m.netResult = m.totalRevenue - m.totalExpenses
+      m.status = m.netResult > 0 ? 'benefice' : m.netResult < 0 ? 'deficit' : 'equilibre'
+    })
+
+    const annualSummary = {
+      year,
+      totalTuitionRevenue: monthlyBreakdown.reduce((s, m) => s + m.tuitionRevenue, 0),
+      totalOtherRevenue: monthlyBreakdown.reduce((s, m) => s + m.otherRevenue, 0),
+      totalRevenue: monthlyBreakdown.reduce((s, m) => s + m.totalRevenue, 0),
+      totalExpenses: monthlyBreakdown.reduce((s, m) => s + m.totalExpenses, 0),
+      netResult: monthlyBreakdown.reduce((s, m) => s + m.netResult, 0),
+      status: 'equilibre',
+      expensesByCategory: monthlyBreakdown.reduce((acc, m) => {
+        Object.entries(m.expensesByCategory).forEach(([k, v]) => {
+          acc[k] = (acc[k] || 0) + v
+        })
+        return acc
+      }, {}),
+    }
+    annualSummary.status = annualSummary.netResult > 0 ? 'benefice' : annualSummary.netResult < 0 ? 'deficit' : 'equilibre'
+
+    const selectedMonthData = month ? monthlyBreakdown[month - 1] : null
+
+    res.json({
+      success: true,
+      year,
+      selectedMonth: month,
+      selectedMonthData,
+      monthlyBreakdown,
+      annualSummary,
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/fees/late-payments — Liste des élèves ayant des retards de paiement (avec sélection de mois)
+router.get('/late-payments', protect, authorize('directeur', 'super_admin', 'caissiere'), async (req, res) => {
+  try {
+    const { month, classId } = req.query
+    const now = new Date()
+    let cutoffDate = now
+    if (month) {
+      const parts = month.split('-').map(Number)
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        cutoffDate = new Date(parts[0], parts[1], 0, 23, 59, 59, 999)
+      }
+    }
+
+    const studentQuery = { school: schoolId(req), status: 'active' }
+    if (classId) studentQuery.class = classId
+
+    const students = await Student.find(studentQuery)
+      .populate('class', 'name level')
+      .populate('parentUser', 'name email phone')
+      .lean()
+
+    const studentIds = students.map((s) => s._id)
+    const fees = await Fee.find({
+      school: schoolId(req),
+      student: { $in: studentIds },
+    }).lean()
+
+    const lateStudents = []
+
+    for (const s of students) {
+      const studentFees = fees.filter((f) => String(f.student) === String(s._id))
+      let totalDue = 0
+      let totalPaid = 0
+      let totalRemaining = 0
+      const unpaidOverdueFees = []
+
+      for (const f of studentFees) {
+        const net = Math.max(0, (f.amount || 0) - (f.discount?.amount || 0))
+        const paid = f.paid || 0
+        const rem = Math.max(0, net - paid)
+
+        let isLate = false
+        let lateAmount = 0
+        let lateDueDate = f.dueDate
+
+        if (f.paymentMode === 'tranches' && Array.isArray(f.installments) && f.installments.length > 0) {
+          const lateInsts = f.installments.filter((inst) => {
+            const instDue = new Date(inst.dueDate)
+            return instDue <= cutoffDate && (!inst.paid || (inst.paidAmount || 0) < inst.amount)
+          })
+          if (lateInsts.length > 0) {
+            isLate = true
+            lateAmount = lateInsts.reduce((sum, inst) => sum + Math.max(0, inst.amount - (inst.paidAmount || 0)), 0)
+            lateDueDate = lateInsts[0].dueDate
+          }
+        } else {
+          const feeDue = f.dueDate ? new Date(f.dueDate) : null
+          if ((feeDue && feeDue <= cutoffDate && rem > 0) || (f.status === 'overdue' && rem > 0) || (rem > 0 && !f.dueDate)) {
+            isLate = true
+            lateAmount = rem
+          }
+        }
+
+        if (isLate && lateAmount > 0) {
+          totalDue += net
+          totalPaid += paid
+          totalRemaining += lateAmount
+          unpaidOverdueFees.push({
+            feeId: f._id,
+            label: f.label,
+            type: f.type,
+            netAmount: net,
+            paid,
+            remaining: lateAmount,
+            dueDate: lateDueDate,
+            daysOverdue: lateDueDate ? Math.max(0, Math.floor((cutoffDate - new Date(lateDueDate)) / 86400000)) : 0,
+          })
+        }
+      }
+
+      if (unpaidOverdueFees.length > 0) {
+        lateStudents.push({
+          studentId: s._id,
+          studentName: `${s.lastName} ${s.firstName}`,
+          matricule: s.matricule,
+          className: s.class?.name || '—',
+          classId: s.class?._id,
+          parentName: s.parent?.name || s.parentUser?.name || '—',
+          parentPhone: s.parent?.phone || s.parentUser?.phone || '',
+          parentEmail: s.parent?.email || s.parentUser?.email || '',
+          totalDue,
+          totalPaid,
+          totalRemaining,
+          overdueFees: unpaidOverdueFees,
+        })
+      }
+    }
+
+    lateStudents.sort((a, b) => b.totalRemaining - a.totalRemaining)
+
+    const summary = {
+      totalLateStudents: lateStudents.length,
+      totalLateAmount: lateStudents.reduce((sum, s) => sum + s.totalRemaining, 0),
+      month: month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+    }
+
+    res.json({ success: true, data: lateStudents, summary })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

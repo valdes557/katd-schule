@@ -68,7 +68,7 @@ router.get('/:id', protect, async (req, res) => {
 router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
-    const { firstName, lastName, email, phone, gender, subjects, speciality, password, classes, cycle } = req.body
+    const { firstName, lastName, email, phone, gender, subjects, speciality, password, classes, cycle, contractType, monthlySalary, hourlyRate, weeklyHours } = req.body
 
     if (req.user.role === 'directeur') {
       const school = await School.findById(schoolId).select('subscription.cycle')
@@ -100,6 +100,10 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
       speciality,
       cycle,
       classes: classes || [],
+      contractType: contractType || 'permanent',
+      monthlySalary: Number(monthlySalary) || 0,
+      hourlyRate: Number(hourlyRate) || 0,
+      weeklyHours: Number(weeklyHours) || 0,
       school: schoolId,
       user: userId,
     })

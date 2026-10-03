@@ -22,15 +22,16 @@ function StatCard({ label, value, icon: Icon, color }) {
 function DirectorView() {
   const pdfRef = useRef(null)
   const [classId, setClassId] = useState('')
+  const [pensionType, setPensionType] = useState('')
   const [expanded, setExpanded] = useState({})
 
   const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
   const classes = classesQ.data || []
 
   const historyQ = useCachedFetch(
-    `/fees/payment-history?${classId}`,
-    async () => await feesApi.paymentHistory(classId),
-    [classId],
+    `/fees/payment-history?classId=${classId}&type=${pensionType}`,
+    async () => await feesApi.paymentHistory(classId, pensionType),
+    [classId, pensionType],
   )
   const rows = historyQ.data?.data || []
   const summary = historyQ.data?.summary || { totalDue: 0, totalPaid: 0, totalDiscount: 0, remaining: 0, studentCount: 0 }
@@ -44,10 +45,20 @@ function DirectorView() {
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><History size={20} className="text-blue-600" /> Historique des paiements</h1>
         <p className="text-sm text-gray-500">Ce que chaque parent a déjà payé et ce qu'il reste à payer</p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select value={classId} onChange={(e) => setClassId(e.target.value)} className="input text-sm w-auto min-w-[200px]">
           <option value="">— Toutes les classes —</option>
           {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+        </select>
+        <select value={pensionType} onChange={(e) => setPensionType(e.target.value)} className="input text-sm w-auto min-w-[180px]">
+          <option value="">— Tous les types de pension —</option>
+          <option value="scolarite">Scolarité</option>
+          <option value="inscription">Inscription</option>
+          <option value="reinscription">Réinscription</option>
+          <option value="cantine">Cantine</option>
+          <option value="transport">Transport</option>
+          <option value="uniforme">Uniforme</option>
+          <option value="autre">Autre</option>
         </select>
         <DownloadPdfButton containerRef={pdfRef} filename="historique-paiements.pdf" title="Historique des paiements" label="Paiements PDF" />
       </div>
@@ -60,12 +71,27 @@ function DirectorView() {
         <StatCard label="Élèves" value={summary.studentCount} icon={History} color={{ bg: 'bg-gray-100', text: 'text-gray-600' }} />
       </div>
 
-      <div className="card p-4 flex items-center gap-3">
-        <label className="text-xs text-gray-600 font-medium">Classe</label>
-        <select value={classId} onChange={(e) => setClassId(e.target.value)} className="input text-sm w-60">
-          <option value="">Toutes les classes</option>
-          {classes.map((c) => <option key={c._id} value={c._id}>{c.name}{c.level ? ` (${c.level})` : ''}</option>)}
-        </select>
+      <div className="card p-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600 font-medium">Classe :</label>
+          <select value={classId} onChange={(e) => setClassId(e.target.value)} className="input text-sm w-52">
+            <option value="">Toutes les classes</option>
+            {classes.map((c) => <option key={c._id} value={c._id}>{c.name}{c.level ? ` (${c.level})` : ''}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600 font-medium">Type pension :</label>
+          <select value={pensionType} onChange={(e) => setPensionType(e.target.value)} className="input text-sm w-48">
+            <option value="">Tous les types</option>
+            <option value="scolarite">Scolarité</option>
+            <option value="inscription">Inscription</option>
+            <option value="reinscription">Réinscription</option>
+            <option value="cantine">Cantine</option>
+            <option value="transport">Transport</option>
+            <option value="uniforme">Uniforme</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
       </div>
 
       <div className="card overflow-hidden">

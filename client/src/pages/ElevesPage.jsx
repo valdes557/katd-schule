@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus, Ban, Power, Download } from 'lucide-react'
+import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus, Ban, Power, Download, Contact } from 'lucide-react'
 import { studentsApi, classesApi, teachersApi, authApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
-import { exportElevesFichePdf } from '../lib/exportFichesPdf'
+import { exportElevesFichePdf, exportCarteScolairePdf } from '../lib/exportFichesPdf'
 
-const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', photo: '', photoFile: null, parent: { name: '', phone: '', email: '', relation: 'pere' } }
+const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', studentType: 'nouveau', photo: '', photoFile: null, parent: { name: '', phone: '', email: '', relation: 'pere' } }
 
 export default function ElevesPage() {
   const { user, school } = useAuth()
@@ -201,11 +201,26 @@ export default function ElevesPage() {
       firstName: s.firstName, lastName: s.lastName, gender: s.gender, cycle: s.cycle || 'Primaire',
       class: s.class?._id || s.class || '', dateOfBirth: s.dateOfBirth?.slice(0, 10) || '',
       placeOfBirth: s.placeOfBirth || '',
+      studentType: s.studentType || 'nouveau',
       teacher: s.teacher?._id || s.teacher || '',
       parent: s.parent || { name: '', phone: '', email: '', relation: 'pere' },
       photo: s.photo || '', photoFile: null,
     })
     setShowModal(true)
+  }
+
+  const [exportingCartes, setExportingCartes] = useState(false)
+  const handleExportCartes = async () => {
+    setExportingCartes(true)
+    try {
+      const res = await studentsApi.list('limit=1000')
+      const allStudents = res.data && res.data.length ? res.data : students
+      await exportCarteScolairePdf({ school, students: allStudents })
+    } catch (err) {
+      alert("Erreur lors de la génération des cartes scolaires : " + err.message)
+    } finally {
+      setExportingCartes(false)
+    }
   }
 
   const filteredClasses = classes.filter((c) => !form.cycle || c.cycle === form.cycle)
@@ -225,16 +240,28 @@ export default function ElevesPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {isDirecteur && (
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              disabled={exportingPdf || loading}
-              className="btn-ghost border border-blue-200 text-blue-700 hover:bg-blue-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
-              title="Télécharger la fiche officielle de tous les élèves"
-            >
-              {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-              <span>{exportingPdf ? 'Génération...' : 'Télécharger la fiche (PDF)'}</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleExportCartes}
+                disabled={exportingCartes || loading}
+                className="btn-ghost border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+                title="Imprimer les cartes scolaires officielles de tous les élèves"
+              >
+                {exportingCartes ? <Loader2 size={15} className="animate-spin" /> : <Contact size={15} />}
+                <span>{exportingCartes ? 'Impression...' : 'Cartes scolaires (PDF)'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                disabled={exportingPdf || loading}
+                className="btn-ghost border border-blue-200 text-blue-700 hover:bg-blue-50 text-sm flex items-center gap-1.5 shadow-xs font-medium"
+                title="Télécharger la fiche officielle de tous les élèves"
+              >
+                {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                <span>{exportingPdf ? 'Génération...' : 'Télécharger la fiche (PDF)'}</span>
+              </button>
+            </>
           )}
           {isDirecteur && (
             <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || EMPTY.cycle }); setShowModal(true) }} className="btn-primary text-sm">
@@ -321,7 +348,14 @@ export default function ElevesPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs font-mono text-gray-600">{s.matricule}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{s.lastName} {s.firstName}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span>{s.lastName} {s.firstName}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${s.studentType === 'ancien' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {s.studentType === 'ancien' ? 'Ancien' : 'Nouveau'}
+                      </span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-xs text-gray-600">{s.class?.name || '—'}</td>
                   <td className="px-4 py-3"><span className={`badge ${s.gender === 'M' ? 'badge-blue' : 'badge-pink'} text-xs`}>{s.gender === 'M' ? 'G' : 'F'}</span></td>
                   <td className="px-4 py-3 text-xs text-gray-500">
@@ -332,6 +366,7 @@ export default function ElevesPage() {
                   {isDirecteur && (
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
+                        <button title="Imprimer la carte scolaire" onClick={() => exportCarteScolairePdf({ school, students: [s] })} className="p-1.5 rounded hover:bg-indigo-50 text-indigo-600"><Contact size={14} /></button>
                         <button title="Créer compte parent" onClick={() => openParentModal(s)} className="p-1.5 rounded hover:bg-green-50 text-green-600"><UserPlus size={14} /></button>
                         {isSecondaire && !s.user && (
                           <button title="Créer compte élève" onClick={() => openStudentAccountModal(s)} className="p-1.5 rounded hover:bg-indigo-50 text-indigo-600"><KeyRound size={14} /></button>
@@ -608,14 +643,24 @@ export default function ElevesPage() {
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600">Enseignant</label>
-                <select value={form.teacher} onChange={(e) => setForm({ ...form, teacher: e.target.value })} className="input text-sm mt-1">
-                  <option value="">— Aucun —</option>
-                  {filteredTeachers.map((t) => (
-                    <option key={t._id} value={t._id}>{t.lastName} {t.firstName}</option>
-                  ))}
-                </select>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Statut de l'élève *</label>
+                  <select value={form.studentType || 'nouveau'} onChange={(e) => setForm({ ...form, studentType: e.target.value })} className="input text-sm mt-1">
+                    <option value="nouveau">Nouveau (1ère inscription)</option>
+                    <option value="ancien">Ancien (réinscription)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Enseignant</label>
+                  <select value={form.teacher} onChange={(e) => setForm({ ...form, teacher: e.target.value })} className="input text-sm mt-1">
+                    <option value="">— Aucun —</option>
+                    {filteredTeachers.map((t) => (
+                      <option key={t._id} value={t._id}>{t.lastName} {t.firstName}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

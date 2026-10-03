@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
-import { BookOpen, Plus, Search, Edit2, Trash2, X, Loader2, AlertCircle, Users, DoorOpen } from 'lucide-react'
+import {
+  BookOpen, Plus, Search, Edit2, Trash2, X, Loader2,
+  AlertCircle, Users, DoorOpen, Sliders, Copy, Calendar, CheckCircle2
+} from 'lucide-react'
 import { classesApi, teachersApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
@@ -22,6 +25,7 @@ export default function ClassesPage() {
   const [search, setSearch] = useState('')
   const [cycleFilter, setCycleFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [evalConfigClass, setEvalConfigClass] = useState(null)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
 
@@ -122,7 +126,10 @@ export default function ClassesPage() {
                   <p className="text-xs text-gray-500">{c.level}</p>
                 </div>
                 {isDirecteur && (
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setEvalConfigClass(c)} title="Configurer les évaluations" className="p-1 rounded hover:bg-purple-50 text-purple-600">
+                      <Sliders size={13} />
+                    </button>
                     <button onClick={() => openEdit(c)} className="p-1 rounded hover:bg-blue-50 text-blue-600"><Edit2 size={13} /></button>
                     <button onClick={() => handleDelete(c._id)} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 size={13} /></button>
                   </div>
@@ -138,6 +145,20 @@ export default function ClassesPage() {
                 {c.academicYear && <div>📅 {c.academicYear}</div>}
                 {c.enrollmentFee > 0 && <div>💰 Frais : {c.enrollmentFee.toLocaleString()} F CFA</div>}
               </div>
+              {c.evaluationConfig?.types?.length > 0 ? (
+                <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px] text-purple-700">
+                  <span className="flex items-center gap-1 font-medium"><Sliders size={11} /> {c.evaluationConfig.types.length} type(s) d'évaluation</span>
+                  {isDirecteur && (
+                    <button onClick={() => setEvalConfigClass(c)} className="text-purple-600 hover:underline font-semibold">Gérer</button>
+                  )}
+                </div>
+              ) : isDirecteur ? (
+                <div className="mt-3 pt-2.5 border-t border-gray-100">
+                  <button onClick={() => setEvalConfigClass(c)} className="text-[11px] text-gray-400 hover:text-purple-600 flex items-center gap-1">
+                    <Sliders size={11} /> Configurer les évaluations
+                  </button>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -204,6 +225,352 @@ export default function ClassesPage() {
           </div>
         </div>
       )}
+
+      {evalConfigClass && (
+        <EvaluationConfigModal
+          cls={evalConfigClass}
+          allClasses={classes}
+          onClose={() => setEvalConfigClass(null)}
+          onUpdated={() => { setEvalConfigClass(null); refreshClasses() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function EvaluationConfigModal({ cls, allClasses, onClose, onUpdated }) {
+  const [types, setTypes] = useState(cls.evaluationConfig?.types || [
+    { name: 'Devoir surveillé', code: 'DS', periodicity: 'hebdomadaire', weight: 1, subjects: [], calculationMethod: 'moyenne_ponderee', appreciationRule: 'Standard' },
+    { name: 'Composition', code: 'COMP', periodicity: 'trimestrielle', weight: 2, subjects: [], calculationMethod: 'moyenne_ponderee', appreciationRule: 'Standard' },
+  ])
+  const [annualMethod, setAnnualMethod] = useState(cls.evaluationConfig?.annualCalculationMethod || 'moyenne_trimestres')
+  const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [duplicateModal, setDuplicateModal] = useState(false)
+  const [selectedTargets, setSelectedTargets] = useState([])
+  const [duplicating, setDuplicating] = useState(false)
+
+  const otherClasses = allClasses.filter((c) => c._id !== cls._id)
+
+  const addType = () => {
+    setTypes([
+      ...types,
+      {
+        name: 'Devoir maison',
+        code: 'DM',
+        periodicity: 'hebdomadaire',
+        weight: 1,
+        subjects: [],
+        calculationMethod: 'moyenne_simple',
+        appreciationRule: 'Standard'
+      }
+    ])
+  }
+
+  const removeType = (index) => {
+    setTypes(types.filter((_, idx) => idx !== index))
+  }
+
+  const updateType = (index, field, value) => {
+    const updated = [...types]
+    updated[index] = { ...updated[index], [field]: value }
+    setTypes(updated)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const payload = {
+        types: types.map(t => ({
+          ...t,
+          weight: Number(t.weight) || 1,
+          subjects: Array.isArray(t.subjects) ? t.subjects : String(t.subjects || '').split(',').map(s => s.trim()).filter(Boolean)
+        })),
+        annualCalculationMethod: annualMethod
+      }
+      const res = await classesApi.saveEvaluationConfig(cls._id, payload)
+      if (res.success) {
+        alert('Configuration des évaluations enregistrée avec succès.')
+        onUpdated()
+      } else {
+        alert(res.message || 'Erreur lors de l\'enregistrement')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+    setSaving(false)
+  }
+
+  const handleSyncToAgenda = async () => {
+    setSyncing(true)
+    try {
+      const res = await classesApi.syncEvaluationsToAgenda(cls._id)
+      if (res.success) {
+        alert(res.message || `${res.data?.slotsAdded || 0} créneau(x) d'évaluation intégré(s) dans l'agenda de la classe !`)
+      } else {
+        alert(res.message || 'Erreur lors de la synchronisation')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+    setSyncing(false)
+  }
+
+  const handleDuplicate = async () => {
+    if (selectedTargets.length === 0) {
+      alert('Veuillez sélectionner au moins une classe cible.')
+      return
+    }
+    setDuplicating(true)
+    try {
+      const res = await classesApi.duplicateEvaluationConfig(cls._id, selectedTargets)
+      if (res.success) {
+        alert(res.message || 'Configuration dupliquée avec succès.')
+        setDuplicateModal(false)
+        setSelectedTargets([])
+        onUpdated()
+      } else {
+        alert(res.message || 'Erreur lors de la duplication')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+    setDuplicating(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+          <div>
+            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <Sliders size={18} className="text-purple-600" />
+              Configuration des évaluations — {cls.name}
+            </h3>
+            <p className="text-xs text-gray-500">Périodicité, coefficients, appréciations et intégration automatique à l'agenda</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+        </div>
+
+        <div className="space-y-4 py-4">
+          {/* Modalité de calcul annuel */}
+          <div className="bg-gray-50 p-3 rounded-xl border border-gray-200">
+            <label className="text-xs font-bold text-gray-700 block mb-1">
+              Modalité de calcul des résultats annuels :
+            </label>
+            <select
+              value={annualMethod}
+              onChange={(e) => setAnnualMethod(e.target.value)}
+              className="input text-xs w-full bg-white"
+            >
+              <option value="moyenne_trimestres">Moyenne arithmétique des 3 trimestres</option>
+              <option value="moyenne_semestres">Moyenne des 2 semestres</option>
+              <option value="moyenne_annuelle_ponderee">Moyenne annuelle pondérée selon coefficients</option>
+            </select>
+          </div>
+
+          {/* Types d'évaluations */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                Types d'évaluations configurés ({types.length})
+              </h4>
+              <button
+                type="button"
+                onClick={addType}
+                className="text-xs font-medium text-purple-600 hover:text-purple-700 flex items-center gap-1"
+              >
+                <Plus size={14} /> Ajouter un type
+              </button>
+            </div>
+
+            {types.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">Aucun type d'évaluation configuré pour cette classe.</p>
+            ) : (
+              types.map((t, idx) => (
+                <div key={idx} className="p-3.5 bg-white border border-gray-200 rounded-xl space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="grid grid-cols-2 gap-2 flex-1">
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500">Nom de l'évaluation</label>
+                        <input
+                          value={t.name}
+                          onChange={(e) => updateType(idx, 'name', e.target.value)}
+                          placeholder="Ex: Devoir surveillé"
+                          className="input text-xs w-full mt-0.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500">Code / Sigle</label>
+                        <input
+                          value={t.code}
+                          onChange={(e) => updateType(idx, 'code', e.target.value)}
+                          placeholder="Ex: DS, COMP, DM"
+                          className="input text-xs w-full mt-0.5"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeType(idx)}
+                      className="text-red-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 mt-3"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-500">Périodicité</label>
+                      <select
+                        value={t.periodicity}
+                        onChange={(e) => updateType(idx, 'periodicity', e.target.value)}
+                        className="input text-xs w-full mt-0.5"
+                      >
+                        <option value="hebdomadaire">Hebdomadaire</option>
+                        <option value="mensuelle">Mensuelle</option>
+                        <option value="trimestrielle">Trimestrielle</option>
+                        <option value="annuelle">Annuelle</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-500">Coefficient / Poids</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={t.weight}
+                        onChange={(e) => updateType(idx, 'weight', e.target.value)}
+                        className="input text-xs w-full mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-500">Calcul note</label>
+                      <select
+                        value={t.calculationMethod}
+                        onChange={(e) => updateType(idx, 'calculationMethod', e.target.value)}
+                        className="input text-xs w-full mt-0.5"
+                      >
+                        <option value="moyenne_ponderee">Moyenne pondérée</option>
+                        <option value="moyenne_simple">Moyenne simple</option>
+                        <option value="total_points">Total points</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-500">Matières concernées (séparées par virgule)</label>
+                      <input
+                        value={Array.isArray(t.subjects) ? t.subjects.join(', ') : (t.subjects || '')}
+                        onChange={(e) => updateType(idx, 'subjects', e.target.value)}
+                        placeholder="Ex: Mathématiques, Français, SVT (vide = toutes)"
+                        className="input text-xs w-full mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-500">Observations / Appréciations</label>
+                      <input
+                        value={t.appreciationRule || ''}
+                        onChange={(e) => updateType(idx, 'appreciationRule', e.target.value)}
+                        placeholder="Ex: <10 Insuffisant, 10-14 Passable, >14 Bien"
+                        className="input text-xs w-full mt-0.5"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Action buttons bar */}
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={handleSyncToAgenda}
+              disabled={syncing || types.length === 0}
+              className="btn-ghost text-xs border border-purple-200 text-purple-700 hover:bg-purple-50 flex items-center gap-1.5"
+            >
+              {syncing ? <Loader2 size={13} className="animate-spin" /> : <Calendar size={13} />}
+              Intégrer à l'agenda de la classe
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDuplicateModal(true)}
+              disabled={otherClasses.length === 0}
+              className="btn-ghost text-xs border border-blue-200 text-blue-700 hover:bg-blue-50 flex items-center gap-1.5"
+            >
+              <Copy size={13} />
+              Dupliquer vers d'autres classes
+            </button>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-3 border-t border-gray-100">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1 justify-center border border-gray-200 text-xs">
+            Fermer
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-primary flex-1 justify-center text-xs"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+            Enregistrer la configuration
+          </button>
+        </div>
+
+        {/* Modal de duplication */}
+        {duplicateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-5 max-w-md w-full shadow-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                  <Copy size={16} className="text-blue-600" /> Dupliquer la configuration
+                </h4>
+                <button onClick={() => setDuplicateModal(false)}><X size={16} /></button>
+              </div>
+              <p className="text-xs text-gray-500">
+                Sélectionnez les classes qui adopteront la même configuration d'évaluations que <span className="font-semibold text-gray-800">{cls.name}</span> :
+              </p>
+              <div className="max-h-48 overflow-y-auto space-y-1.5 border border-gray-100 p-2 rounded-xl">
+                {otherClasses.map((c) => {
+                  const checked = selectedTargets.includes(c._id)
+                  return (
+                    <label key={c._id} className="flex items-center gap-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedTargets([...selectedTargets, c._id])
+                          else setSelectedTargets(selectedTargets.filter(id => id !== c._id))
+                        }}
+                        className="rounded text-blue-600"
+                      />
+                      <span className="font-medium text-gray-800">{c.name}</span>
+                      <span className="text-gray-400">({c.level} - {c.cycle})</span>
+                    </label>
+                  )
+                })}
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setDuplicateModal(false)} className="btn-ghost flex-1 text-xs border border-gray-200">
+                  Annuler
+                </button>
+                <button
+                  onClick={handleDuplicate}
+                  disabled={duplicating || selectedTargets.length === 0}
+                  className="btn-primary flex-1 text-xs justify-center"
+                >
+                  {duplicating ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
+                  Appliquer aux {selectedTargets.length} classe(s)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -2,12 +2,13 @@ import { useEffect, useState, useRef } from 'react'
 import {
   CreditCard, Plus, Trash2, Loader2, CheckCircle2, Bell,
   AlertCircle, X, ChevronDown, ChevronUp, Users, Search,
-  Layers, Pencil, Send, ListChecks, BadgePercent,
+  Layers, Pencil, Send, ListChecks, BadgePercent, TrendingUp, Download, Phone,
 } from 'lucide-react'
 import { feesApi, classesApi, studentsApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import DownloadPdfButton from '../components/DownloadPdfButton'
+import { exportCompteDeResultatPdf, exportRetardsPaiementPdf } from '../lib/exportFichesPdf'
 
 const FMT = (n) => Number(n || 0).toLocaleString('fr-FR')
 const STATUS_COLORS = { pending: 'bg-gray-100 text-gray-600', partial: 'bg-amber-100 text-amber-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700' }
@@ -29,8 +30,9 @@ export default function DirectorFeesPage() {
     [subscribedCycle],
   )
   const classes = classesQ.data || []
-  const [tab, setTab] = useState('suivi') // 'suivi' | 'baremes'
+  const [tab, setTab] = useState('suivi') // 'suivi' | 'baremes' | 'compte_resultat' | 'retards'
   const [selectedClass, setSelectedClass] = useState('')
+  const [pensionTypeFilter, setPensionTypeFilter] = useState('')
   const [paymentStatus, setPaymentStatus] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -60,9 +62,23 @@ export default function DirectorFeesPage() {
 
   useEffect(() => { loadPaymentStatus(selectedClass) }, [selectedClass])
 
-  const filteredStudents = paymentStatus.filter((s) =>
-    !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.matricule?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredStudents = paymentStatus.filter((s) => {
+    const matchesSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.matricule?.toLowerCase().includes(search.toLowerCase())
+    const matchesType = !pensionTypeFilter || (s.fees || []).some(f => f.type === pensionTypeFilter)
+    return matchesSearch && matchesType
+  })
+
+  const openAddFee = (student) => {
+    setEditingFeeId(null)
+    const isAncien = student?.studentType === 'ancien'
+    setFeeForm({
+      ...EMPTY_FEE,
+      type: isAncien ? 'reinscription' : 'inscription',
+      label: isAncien ? 'Frais de réinscription' : "Frais d'inscription",
+    })
+    setInstallments([])
+    setShowFeeModal(student)
+  }
 
   const addInstallment = () => setInstallments([...installments, { ...EMPTY_INST }])
   const removeInstallment = (i) => setInstallments(installments.filter((_, idx) => idx !== i))
@@ -228,9 +244,14 @@ export default function DirectorFeesPage() {
         </div>
       </div>
 
-      {/* Onglets : Suivi & paiements / Barèmes de pension par classe */}
-      <div className="flex gap-2 border-b border-gray-100">
-        {[{ v: 'suivi', l: 'Suivi & paiements', icon: ListChecks }, { v: 'baremes', l: 'Pensions par classe (barème)', icon: Layers }].map((t) => (
+      {/* Onglets : Suivi & paiements / Barèmes de pension par classe / Compte de résultat / Retards de paiement */}
+      <div className="flex flex-wrap gap-2 border-b border-gray-100">
+        {[
+          { v: 'suivi', l: 'Suivi & paiements', icon: ListChecks },
+          { v: 'baremes', l: 'Pensions par classe (barème)', icon: Layers },
+          { v: 'compte_resultat', l: 'Compte de résultat mensuel', icon: TrendingUp },
+          { v: 'retards', l: 'Retards de paiement', icon: AlertCircle },
+        ].map((t) => (
           <button key={t.v} onClick={() => setTab(t.v)}
             className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t.v ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             <t.icon size={15} /> {t.l}
@@ -239,12 +260,24 @@ export default function DirectorFeesPage() {
       </div>
 
       {tab === 'baremes' && <ModalitiesManager classes={classes} />}
+      {tab === 'compte_resultat' && <CompteResultatView school={school} />}
+      {tab === 'retards' && <RetardsPaiementView school={school} classes={classes} />}
 
       {tab === 'suivi' && (<>
       <div className="flex flex-wrap gap-3">
         <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="input text-sm w-auto min-w-[200px]">
           <option value="">— Sélectionner une classe —</option>
           {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+        </select>
+        <select value={pensionTypeFilter} onChange={(e) => setPensionTypeFilter(e.target.value)} className="input text-sm w-auto min-w-[180px]">
+          <option value="">— Tous types de pension —</option>
+          <option value="scolarite">Scolarité</option>
+          <option value="inscription">Inscription</option>
+          <option value="reinscription">Réinscription</option>
+          <option value="cantine">Cantine</option>
+          <option value="transport">Transport</option>
+          <option value="uniforme">Uniforme</option>
+          <option value="autre">Autre</option>
         </select>
         {selectedClass && (
           <div className="relative flex-1 min-w-[200px]">
@@ -287,7 +320,12 @@ export default function DirectorFeesPage() {
               >
                 <div className={`w-2 h-8 rounded-full flex-shrink-0 ${s.fullyPaid ? 'bg-green-400' : s.totalPaid > 0 ? 'bg-amber-400' : s.totalDue > 0 ? 'bg-red-400' : 'bg-gray-200'}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-900">{s.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-gray-900">{s.name}</p>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.studentType === 'ancien' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {s.studentType === 'ancien' ? 'Ancien' : 'Nouveau'}
+                    </span>
+                  </div>
                   <p className="text-xs text-gray-500">{s.matricule}</p>
                 </div>
                 <div className="text-right hidden sm:block">
@@ -304,7 +342,7 @@ export default function DirectorFeesPage() {
               {expanded === s.studentId && (
                 <div className="border-t border-gray-100 p-4 space-y-3">
                   <div className="flex justify-end">
-                    <button onClick={() => { setShowFeeModal(s); setEditingFeeId(null); setFeeForm(EMPTY_FEE); setInstallments([]) }} className="btn-primary text-xs">
+                    <button onClick={() => openAddFee(s)} className="btn-primary text-xs">
                       <Plus size={12} /> Ajouter des frais
                     </button>
                   </div>
@@ -392,20 +430,34 @@ export default function DirectorFeesPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="text-xs font-medium text-gray-600">Type de pension *</label>
+                  <select value={feeForm.type} onChange={(e) => setFeeForm({ ...feeForm, type: e.target.value })} className="input text-sm mt-1 w-full">
+                    <option value="scolarite">Scolarité</option>
+                    <option value="inscription">Inscription (Nouveau)</option>
+                    <option value="reinscription">Réinscription (Ancien)</option>
+                    <option value="cantine">Cantine</option>
+                    <option value="transport">Transport</option>
+                    <option value="uniforme">Uniforme</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                </div>
+                <div>
                   <label className="text-xs font-medium text-gray-600">Montant total (F CFA) *</label>
                   <input required type="number" min="0" value={feeForm.amount} onChange={(e) => setFeeForm({ ...feeForm, amount: e.target.value })} className="input text-sm mt-1 w-full" />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600">Date d'échéance</label>
                   <input type="date" value={feeForm.dueDate} onChange={(e) => setFeeForm({ ...feeForm, dueDate: e.target.value })} className="input text-sm mt-1 w-full" />
                 </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600">Mode de paiement</label>
-                <select value={feeForm.paymentMode} onChange={(e) => setFeeForm({ ...feeForm, paymentMode: e.target.value })} className="input text-sm mt-1 w-full">
-                  <option value="complet">Paiement complet</option>
-                  <option value="tranches">Paiement par tranches</option>
-                </select>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Mode de paiement</label>
+                  <select value={feeForm.paymentMode} onChange={(e) => setFeeForm({ ...feeForm, paymentMode: e.target.value })} className="input text-sm mt-1 w-full">
+                    <option value="complet">Paiement complet</option>
+                    <option value="tranches">Paiement par tranches</option>
+                  </select>
+                </div>
               </div>
 
               {feeForm.paymentMode === 'tranches' && (
@@ -599,7 +651,7 @@ export default function DirectorFeesPage() {
                 <div>
                   <label className="text-xs font-medium text-gray-600">Type</label>
                   <select value={bulkForm.type} onChange={(e) => setBulkForm({ ...bulkForm, type: e.target.value })} className="input text-sm mt-1 w-full">
-                    {['scolarite', 'inscription', 'cantine', 'transport', 'uniforme', 'autre'].map((t) => <option key={t} value={t}>{t}</option>)}
+                    {['scolarite', 'inscription', 'reinscription', 'cantine', 'transport', 'uniforme', 'autre'].map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
               </div>
@@ -822,6 +874,347 @@ function ModalitiesManager({ classes }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ─── Compte de résultat mensuel & annuel (Point 2) ─── */
+function CompteResultatView({ school }) {
+  const currentMonth = new Date().getMonth() + 1
+  const currentYear = new Date().getFullYear()
+  const [month, setMonth] = useState(currentMonth)
+  const [year, setYear] = useState(currentYear)
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const MONTHS = [
+    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+  ]
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const res = await feesApi.incomeStatement(month, year)
+      if (res.success) setData(res.data)
+    } catch (err) {
+      console.error(err)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [month, year])
+
+  const monthly = data?.monthly || {
+    tuitionRevenue: 0,
+    otherRevenue: 0,
+    totalRevenue: 0,
+    expensesByCategory: { salaires: 0, fournitures: 0, fonctionnement: 0, transport: 0, cantine: 0, autre: 0 },
+    totalExpenses: 0,
+    netResult: 0,
+    isDeficit: false
+  }
+
+  const annual = data?.annual || {
+    totalRevenue: 0,
+    totalExpenses: 0,
+    netResult: 0,
+    monthlyBreakdown: []
+  }
+
+  const exportPdf = () => {
+    if (!data) return
+    exportCompteDeResultatPdf({
+      school,
+      year,
+      monthData: monthly,
+      annualSummary: annual
+    })
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Mois analysé</label>
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="input text-sm">
+              {MONTHS.map((m, idx) => (
+                <option key={idx + 1} value={idx + 1}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Année</label>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="input text-sm">
+              {[year - 1, year, year + 1].map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <button onClick={exportPdf} className="btn-primary text-sm flex items-center gap-2 self-start sm:self-auto">
+          <Download size={15} /> Télécharger le Rapport Financier (PDF)
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+      ) : (
+        <div className="space-y-5">
+          {/* Cartes synthèse du mois */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="card p-4 border-l-4 border-emerald-500">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Recettes Scolarité</p>
+              <p className="text-xl font-bold text-gray-900 mt-1">{FMT(monthly.tuitionRevenue)} F CFA</p>
+              <p className="text-[11px] text-gray-400 mt-1">Paiements de scolarité</p>
+            </div>
+            <div className="card p-4 border-l-4 border-blue-500">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Autres Recettes</p>
+              <p className="text-xl font-bold text-gray-900 mt-1">{FMT(monthly.otherRevenue)} F CFA</p>
+              <p className="text-[11px] text-gray-400 mt-1">Inscriptions, cantine, transport...</p>
+            </div>
+            <div className="card p-4 border-l-4 border-rose-500">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Dépenses</p>
+              <p className="text-xl font-bold text-rose-600 mt-1">{FMT(monthly.totalExpenses)} F CFA</p>
+              <p className="text-[11px] text-gray-400 mt-1">Charges & fonctionnement du mois</p>
+            </div>
+            <div className={`card p-4 border-l-4 ${monthly.netResult >= 0 ? 'border-green-600 bg-green-50/30' : 'border-red-600 bg-red-50/30'}`}>
+              <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Résultat Net Mensuel</p>
+              <p className={`text-xl font-extrabold mt-1 ${monthly.netResult >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                {monthly.netResult >= 0 ? `+${FMT(monthly.netResult)}` : FMT(monthly.netResult)} F CFA
+              </p>
+              <p className={`text-xs font-semibold mt-1 ${monthly.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {monthly.netResult >= 0 ? 'Bénéfice net' : 'Déficit net'}
+              </p>
+            </div>
+          </div>
+
+          {/* Dépenses par catégorie */}
+          <div className="card p-5">
+            <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+              <span>Ventilation des dépenses — {MONTHS[month - 1]} {year}</span>
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {Object.entries(monthly.expensesByCategory || {}).map(([cat, amt]) => (
+                <div key={cat} className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                  <p className="text-xs text-gray-500 capitalize">{cat}</p>
+                  <p className="text-sm font-bold text-gray-800 mt-1">{FMT(amt)} F</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tableau comparatif annuel des 12 mois */}
+          <div className="card overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">Comparatif des 12 mois de l'année {year}</h3>
+                <p className="text-xs text-gray-500">Évolution mensuelle des recettes, dépenses et résultat net</p>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-gray-500">Résultat annuel cumulé : </span>
+                <span className={`text-sm font-bold ${annual.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {annual.netResult >= 0 ? `+${FMT(annual.netResult)}` : FMT(annual.netResult)} F CFA
+                </span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-gray-600 border-b border-gray-100">
+                  <tr>
+                    <th className="py-2.5 px-4 text-left font-semibold">Mois</th>
+                    <th className="py-2.5 px-4 text-right font-semibold">Recettes Scolarité</th>
+                    <th className="py-2.5 px-4 text-right font-semibold">Autres Recettes</th>
+                    <th className="py-2.5 px-4 text-right font-semibold">Total Recettes</th>
+                    <th className="py-2.5 px-4 text-right font-semibold">Total Dépenses</th>
+                    <th className="py-2.5 px-4 text-right font-semibold">Résultat Net</th>
+                    <th className="py-2.5 px-4 text-center font-semibold">Situation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(annual.monthlyBreakdown || []).map((m) => (
+                    <tr key={m.month} className={`hover:bg-gray-50 ${m.month === month ? 'bg-blue-50/50 font-medium' : ''}`}>
+                      <td className="py-2 px-4 text-gray-800">{m.monthName}</td>
+                      <td className="py-2 px-4 text-right text-gray-600">{FMT(m.tuitionRevenue)} F</td>
+                      <td className="py-2 px-4 text-right text-gray-600">{FMT(m.otherRevenue)} F</td>
+                      <td className="py-2 px-4 text-right font-semibold text-gray-900">{FMT(m.totalRevenue)} F</td>
+                      <td className="py-2 px-4 text-right text-rose-600">{FMT(m.totalExpenses)} F</td>
+                      <td className={`py-2 px-4 text-right font-bold ${m.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {m.netResult >= 0 ? `+${FMT(m.netResult)}` : FMT(m.netResult)} F
+                      </td>
+                      <td className="py-2 px-4 text-center">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${m.netResult >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {m.netResult >= 0 ? 'Bénéfice' : 'Déficit'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── Gestion des retards de paiement (Point 4) ─── */
+function RetardsPaiementView({ school, classes }) {
+  const currentMonth = new Date().getMonth() + 1
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth)
+  const [selectedClass, setSelectedClass] = useState('')
+  const [data, setData] = useState({ lateStudents: [], summary: { totalRemaining: 0, studentCount: 0 } })
+  const [loading, setLoading] = useState(true)
+
+  const MONTHS = [
+    { value: '', label: 'Toutes les échéances' },
+    { value: '1', label: 'Janvier' },
+    { value: '2', label: 'Février' },
+    { value: '3', label: 'Mars' },
+    { value: '4', label: 'Avril' },
+    { value: '5', label: 'Mai' },
+    { value: '6', label: 'Juin' },
+    { value: '7', label: 'Juillet' },
+    { value: '8', label: 'Août' },
+    { value: '9', label: 'Septembre' },
+    { value: '10', label: 'Octobre' },
+    { value: '11', label: 'Novembre' },
+    { value: '12', label: 'Décembre' },
+  ]
+
+  const loadLate = async () => {
+    setLoading(true)
+    try {
+      const res = await feesApi.latePayments({
+        month: selectedMonth,
+        classId: selectedClass,
+      })
+      if (res.success) setData(res.data)
+    } catch (err) {
+      console.error(err)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadLate()
+  }, [selectedMonth, selectedClass])
+
+  const exportPdf = () => {
+    exportRetardsPaiementPdf({
+      school,
+      month: selectedMonth ? MONTHS.find(m => m.value === String(selectedMonth))?.label : 'Tous les mois',
+      lateStudents: data.lateStudents,
+      summary: data.summary,
+    })
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Mois d'échéance</label>
+            <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="input text-sm">
+              {MONTHS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Classe</label>
+            <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="input text-sm">
+              <option value="">Toutes les classes</option>
+              {classes.map((c) => (
+                <option key={c._id} value={c._id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <button
+          onClick={exportPdf}
+          disabled={data.lateStudents.length === 0}
+          className="btn-primary text-sm flex items-center gap-2 self-start sm:self-auto disabled:opacity-50"
+        >
+          <Download size={15} /> Imprimer la liste des retards (PDF)
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="card p-4 border-l-4 border-amber-500">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Nombre d'élèves en retard</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{data.summary?.studentCount || 0}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Ayant dépassé l'échéance de paiement</p>
+        </div>
+        <div className="card p-4 border-l-4 border-red-500">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total restant dû / impayé</p>
+          <p className="text-2xl font-bold text-red-600 mt-1">{FMT(data.summary?.totalRemaining)} F CFA</p>
+          <p className="text-xs text-gray-400 mt-0.5">Montant cumulé à recouvrer</p>
+        </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
+        ) : data.lateStudents.length === 0 ? (
+          <div className="text-center py-14 text-gray-400">
+            <CheckCircle2 size={36} className="mx-auto mb-2 text-green-500 opacity-60" />
+            <p className="text-sm font-semibold text-gray-700">Aucun retard de paiement enregistré pour cette sélection</p>
+            <p className="text-xs text-gray-400 mt-1">Tous les élèves sont à jour de leurs versements.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 text-gray-600 border-b border-gray-100">
+                <tr>
+                  <th className="py-2.5 px-3 text-left font-semibold">Matricule</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Élève</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Classe</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Frais & Échéance</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Montant</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Payé</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Reste dû</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Contact Parent</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {data.lateStudents.map((s, idx) => (
+                  <tr key={`${s.studentId}-${idx}`} className="hover:bg-gray-50">
+                    <td className="py-2.5 px-3 font-mono text-gray-500">{s.matricule || '—'}</td>
+                    <td className="py-2.5 px-3 font-bold text-gray-900">{s.studentName}</td>
+                    <td className="py-2.5 px-3 text-gray-600">{s.className}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="font-medium text-gray-800">{s.feeLabel}</div>
+                      <div className="text-[10px] text-red-500 font-medium">
+                        Échéance : {s.dueDate ? new Date(s.dueDate).toLocaleDateString('fr-FR') : 'Non définie'}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-right text-gray-600">{FMT(s.amount)} F</td>
+                    <td className="py-2.5 px-3 text-right text-green-600 font-medium">{FMT(s.paid)} F</td>
+                    <td className="py-2.5 px-3 text-right text-red-600 font-extrabold">{FMT(s.remaining)} F</td>
+                    <td className="py-2.5 px-3">
+                      <div className="text-gray-800">{s.parentName || '—'}</div>
+                      {s.parentPhone ? (
+                        <a href={`tel:${s.parentPhone}`} className="text-blue-600 hover:underline flex items-center gap-1 font-mono text-[11px] mt-0.5">
+                          <Phone size={11} /> {s.parentPhone}
+                        </a>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">Aucun téléphone</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

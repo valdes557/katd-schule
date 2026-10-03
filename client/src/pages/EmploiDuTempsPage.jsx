@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clock, Plus, Trash2, X, Loader2, AlertCircle, Copy, CheckCircle2, Send, EyeOff } from 'lucide-react'
+import {
+  Clock, Plus, Trash2, X, Loader2, AlertCircle, Copy,
+  CheckCircle2, Send, EyeOff, AlertTriangle, ShieldAlert,
+  Calendar, List, Check, RefreshCw
+} from 'lucide-react'
 import { timetablesApi, classesApi, subjectsApi, teachersApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -10,7 +14,7 @@ const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
 const SLOT_COLORS = ['#3B82F6','#10B981','#F59E0B','#8B5CF6','#EF4444','#06B6D4','#EC4899','#14B8A6','#F97316','#6366F1']
 const DAY_COLORS = { Lundi: 'bg-blue-50', Mardi: 'bg-green-50', Mercredi: 'bg-yellow-50', Jeudi: 'bg-purple-50', Vendredi: 'bg-red-50', Samedi: 'bg-cyan-50' }
 
-const EMPTY_SLOT = { day: 'Lundi', date: '', startTime: '08:00', endTime: '09:00', subject: '', teacher: '', room: '', color: '#3B82F6' }
+const EMPTY_SLOT = { day: 'Lundi', date: '', startTime: '08:00', endTime: '09:00', subject: '', teacher: '', room: '', color: '#3B82F6', type: 'cours', title: '' }
 
 export default function EmploiDuTempsPage() {
   const pdfRef = useRef(null)
@@ -21,6 +25,7 @@ export default function EmploiDuTempsPage() {
   const canEdit = user?.role === 'directeur'
   const canPublish = user?.role === 'directeur'
 
+  const [viewMode, setViewMode] = useState('grille') // 'grille' | 'activites'
   const [selectedClass, setSelectedClass] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [slotForm, setSlotForm] = useState(EMPTY_SLOT)
@@ -29,6 +34,11 @@ export default function EmploiDuTempsPage() {
   const [assigning, setAssigning] = useState(false)
   // Mode de la modale : 'assign' (attribuer/dupliquer) ou 'unassign' (retirer).
   const [assignMode, setAssignMode] = useState('assign')
+
+  // Détection des conflits
+  const [conflictsData, setConflictsData] = useState(null)
+  const [checkingConflicts, setCheckingConflicts] = useState(false)
+  const [showConflictsBanner, setShowConflictsBanner] = useState(false)
 
   const classesQ = useCachedFetch('/classes?', async () => (await classesApi.list()).data || [], [])
   const subjectsQ = useCachedFetch('/subjects?', async () => (await subjectsApi.list()).data || [], [])
@@ -123,6 +133,22 @@ export default function EmploiDuTempsPage() {
     setPublishing(false)
   }
 
+  const handleCheckConflicts = async () => {
+    setCheckingConflicts(true)
+    try {
+      const res = await timetablesApi.conflicts()
+      if (res.success) {
+        setConflictsData(res.data)
+        setShowConflictsBanner(true)
+      } else {
+        alert(res.message || 'Erreur lors de la vérification')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+    setCheckingConflicts(false)
+  }
+
   const slots = timetable?.slots || []
   const currentClass = classes.find((c) => c._id === selectedClass)
 
@@ -141,7 +167,7 @@ export default function EmploiDuTempsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Clock size={22} className="text-indigo-600" /> Emploi du temps
+            <Clock size={22} className="text-indigo-600" /> Emploi du temps & Agenda
           </h1>
           <p className="text-sm text-gray-500 flex items-center gap-2">
             {currentClass ? `${currentClass.name} — ${currentClass.cycle}` : 'Sélectionnez une classe'}
@@ -157,6 +183,17 @@ export default function EmploiDuTempsPage() {
             {classes.map((c) => <option key={c._id} value={c._id}>{c.name} ({c.cycle})</option>)}
           </select>
           <DownloadPdfButton containerRef={pdfRef} filename="emploi-du-temps.pdf" title="Emploi du temps" subtitle={currentClass ? `${currentClass.name} — ${currentClass.cycle}` : ''} label="Emploi du temps PDF" iconOnly />
+          {canEdit && (
+            <button
+              onClick={handleCheckConflicts}
+              disabled={checkingConflicts}
+              className="btn-ghost text-sm border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 flex items-center gap-1.5"
+              title="Détecter les conflits d'enseignants ou de salles"
+            >
+              {checkingConflicts ? <Loader2 size={15} className="animate-spin" /> : <ShieldAlert size={15} />}
+              Vérifier les conflits
+            </button>
+          )}
           {canEdit && timetable && (
             <button onClick={() => { setSlotForm(EMPTY_SLOT); setShowModal(true) }} className="btn-primary text-sm">
               <Plus size={15} /> Ajouter
@@ -185,7 +222,83 @@ export default function EmploiDuTempsPage() {
         </div>
       </div>
 
-      {classes.length === 0 ? (
+      {/* Onglets Grille vs Activités planifiées */}
+      <div className="flex gap-2 border-b border-gray-100">
+        <button
+          onClick={() => setViewMode('grille')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${viewMode === 'grille' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          <Clock size={15} /> Grille hebdomadaire
+        </button>
+        <button
+          onClick={() => setViewMode('activites')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${viewMode === 'activites' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          <Calendar size={15} /> Toutes les activités (Mois / Année)
+        </button>
+      </div>
+
+      {/* Bannière de détection des conflits */}
+      {showConflictsBanner && conflictsData && (
+        <div className={`p-4 rounded-2xl border transition-all ${conflictsData.hasConflicts ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className={`text-sm font-bold flex items-center gap-2 ${conflictsData.hasConflicts ? 'text-red-800' : 'text-green-800'}`}>
+              {conflictsData.hasConflicts ? <AlertTriangle size={18} className="text-red-600" /> : <CheckCircle2 size={18} className="text-green-600" />}
+              {conflictsData.hasConflicts ? `Attention : ${conflictsData.totalConflicts} conflit(s) ou incohérence(s) détecté(s)` : 'Aucun conflit de calendrier détecté !'}
+            </h4>
+            <button onClick={() => setShowConflictsBanner(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded"><X size={16} /></button>
+          </div>
+
+          {conflictsData.hasConflicts ? (
+            <div className="space-y-2 text-xs text-red-700">
+              {conflictsData.teacherConflicts?.length > 0 && (
+                <div>
+                  <p className="font-bold underline">Conflits d'enseignants (même enseignant programmé simultanément) :</p>
+                  <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                    {conflictsData.teacherConflicts.map((c, i) => (
+                      <li key={i}>
+                        <strong>{c.teacher}</strong> programmé(e) le <strong>{c.day}</strong> ({c.startTime} - {c.endTime}) en même temps dans les classes : {c.classNames?.join(', ')}.
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {conflictsData.roomConflicts?.length > 0 && (
+                <div className="mt-2">
+                  <p className="font-bold underline">Conflits de salles (même salle occupée simultanément) :</p>
+                  <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                    {conflictsData.roomConflicts.map((c, i) => (
+                      <li key={i}>
+                        Salle <strong>{c.room}</strong> occupée le <strong>{c.day}</strong> ({c.startTime} - {c.endTime}) simultanément par : {c.classNames?.join(', ')}.
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {conflictsData.chronologicalErrors?.length > 0 && (
+                <div className="mt-2">
+                  <p className="font-bold underline">Incohérences chronologiques d'horaires :</p>
+                  <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                    {conflictsData.chronologicalErrors.map((c, i) => (
+                      <li key={i}>
+                        Classe {c.className} le {c.day} : heure de début ({c.startTime}) supérieure ou égale à la fin ({c.endTime}).
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-green-700">
+              Tous les créneaux horaires, enseignants et salles sont bien synchronisés sans chevauchement.
+            </p>
+          )}
+        </div>
+      )}
+
+      {viewMode === 'activites' ? (
+        <AllActivitiesView classes={classes} currentClassId={selectedClass} />
+      ) : classes.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <AlertCircle size={36} className="mx-auto mb-3 opacity-30" />
           <p>Aucune classe créée. Créez d'abord des classes.</p>
@@ -213,27 +326,41 @@ export default function EmploiDuTempsPage() {
                       const daySlots = slots.filter((s) => s.day === day && s.startTime >= hour && s.startTime < nextHour)
                       return (
                         <td key={day} className="px-1 py-1 align-top">
-                          {daySlots.map((s) => (
-                            <div
-                              key={s._id}
-                              className="rounded-lg px-2 py-1.5 mb-0.5 text-white text-[10px] leading-tight group relative"
-                              style={{ backgroundColor: s.color || '#3B82F6' }}
-                            >
-                              <div className="font-bold">{s.subject || '—'}</div>
-                              <div className="opacity-80">{s.startTime}-{s.endTime}</div>
-                              {s.date && <div className="opacity-70">📅 {new Date(s.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</div>}
-                              {s.teacher && <div className="opacity-70">{s.teacher}</div>}
-                              {s.room && <div className="opacity-70">📍 {s.room}</div>}
-                              {canEdit && (
-                                <button
-                                  onClick={() => removeSlot(s._id)}
-                                  className="absolute top-0.5 right-0.5 bg-white/30 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <Trash2 size={9} />
-                                </button>
-                              )}
-                            </div>
-                          ))}
+                          {daySlots.map((s) => {
+                            const isEval = s.type === 'evaluation' || s.isScheduledEvaluation
+                            const isAct = s.type === 'activite'
+                            return (
+                              <div
+                                key={s._id}
+                                className={`rounded-lg px-2 py-1.5 mb-0.5 text-white text-[10px] leading-tight group relative ${isEval ? 'ring-2 ring-amber-300 shadow' : ''}`}
+                                style={{ backgroundColor: s.color || (isEval ? '#8B5CF6' : isAct ? '#10B981' : '#3B82F6') }}
+                              >
+                                {isEval && (
+                                  <div className="inline-block bg-white/25 text-[8px] font-extrabold uppercase px-1 rounded mb-0.5 tracking-wide">
+                                    📝 {s.evaluationType || s.title || 'ÉVALUATION'}
+                                  </div>
+                                )}
+                                {isAct && (
+                                  <div className="inline-block bg-white/25 text-[8px] font-extrabold uppercase px-1 rounded mb-0.5 tracking-wide">
+                                    🎯 {s.title || 'ACTIVITÉ'}
+                                  </div>
+                                )}
+                                <div className="font-bold">{s.subject || s.title || '—'}</div>
+                                <div className="opacity-80">{s.startTime}-{s.endTime}</div>
+                                {s.date && <div className="opacity-70">📅 {new Date(s.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</div>}
+                                {s.teacher && <div className="opacity-70">{s.teacher}</div>}
+                                {s.room && <div className="opacity-70">📍 {s.room}</div>}
+                                {canEdit && (
+                                  <button
+                                    onClick={() => removeSlot(s._id)}
+                                    className="absolute top-0.5 right-0.5 bg-white/30 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <Trash2 size={9} />
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })}
                         </td>
                       )
                     })}
@@ -321,6 +448,22 @@ export default function EmploiDuTempsPage() {
             <form onSubmit={addSlot} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="text-xs font-medium text-gray-600">Type de créneau *</label>
+                  <select value={slotForm.type || 'cours'} onChange={(e) => setSlotForm({ ...slotForm, type: e.target.value })} className="input text-sm mt-1">
+                    <option value="cours">Cours régulier</option>
+                    <option value="evaluation">Évaluation programmée</option>
+                    <option value="activite">Activité (sortie, kermesse...)</option>
+                    <option value="reunion">Réunion / Conseil</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Titre / Libellé</label>
+                  <input value={slotForm.title || ''} onChange={(e) => setSlotForm({ ...slotForm, title: e.target.value })} className="input text-sm mt-1" placeholder="Ex: Devoir surveillé N°1" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="text-xs font-medium text-gray-600">Jour *</label>
                   <select value={slotForm.day} onChange={(e) => setSlotForm({ ...slotForm, day: e.target.value })} className="input text-sm mt-1">
                     {DAYS.map((d) => <option key={d}>{d}</option>)}
@@ -381,6 +524,188 @@ export default function EmploiDuTempsPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ─── Liste et planification des activités par mois / année (Point 5) ─── */
+function AllActivitiesView({ classes, currentClassId }) {
+  const currentYear = new Date().getFullYear()
+  const [year, setYear] = useState(currentYear)
+  const [month, setMonth] = useState('')
+  const [selectedClass, setSelectedClass] = useState(currentClassId || '')
+  const [selectedType, setSelectedType] = useState('')
+  const [activities, setActivities] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+
+  const MONTHS = [
+    { value: '', label: 'Toute l\'année' },
+    { value: '1', label: 'Janvier' },
+    { value: '2', label: 'Février' },
+    { value: '3', label: 'Mars' },
+    { value: '4', label: 'Avril' },
+    { value: '5', label: 'Mai' },
+    { value: '6', label: 'Juin' },
+    { value: '7', label: 'Juillet' },
+    { value: '8', label: 'Août' },
+    { value: '9', label: 'Septembre' },
+    { value: '10', label: 'Octobre' },
+    { value: '11', label: 'Novembre' },
+    { value: '12', label: 'Décembre' },
+  ]
+
+  const loadActivities = async () => {
+    setLoading(true)
+    try {
+      const res = await timetablesApi.allActivities({
+        year,
+        month,
+        classId: selectedClass,
+        type: selectedType,
+      })
+      if (res.success) setActivities(res.data?.activities || [])
+    } catch (err) {
+      console.error(err)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadActivities()
+  }, [year, month, selectedClass, selectedType])
+
+  const handleSyncEvaluations = async () => {
+    if (!selectedClass) {
+      alert('Veuillez sélectionner une classe spécifique à synchroniser.')
+      return
+    }
+    setSyncing(true)
+    try {
+      const res = await classesApi.syncEvaluationsToAgenda(selectedClass)
+      if (res.success) {
+        alert(res.message || 'Évaluations synchronisées avec succès !')
+        loadActivities()
+      } else {
+        alert(res.message || 'Erreur lors de la synchronisation')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+    setSyncing(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <div>
+            <label className="text-[10px] font-semibold text-gray-500 block mb-1">Année</label>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="input text-xs w-28">
+              {[year - 1, year, year + 1].map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-gray-500 block mb-1">Mois</label>
+            <select value={month} onChange={(e) => setMonth(e.target.value)} className="input text-xs w-36">
+              {MONTHS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-gray-500 block mb-1">Classe</label>
+            <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="input text-xs w-44">
+              <option value="">Toutes les classes</option>
+              {classes.map((c) => (
+                <option key={c._id} value={c._id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-gray-500 block mb-1">Type d'activité</label>
+            <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="input text-xs w-36">
+              <option value="">Tous les types</option>
+              <option value="cours">Cours réguliers</option>
+              <option value="evaluation">Évaluations</option>
+              <option value="activite">Activités & Projets</option>
+              <option value="reunion">Réunions</option>
+            </select>
+          </div>
+        </div>
+
+        {selectedClass && (
+          <button
+            onClick={handleSyncEvaluations}
+            disabled={syncing}
+            className="btn-ghost text-xs border border-purple-200 text-purple-700 hover:bg-purple-50 flex items-center gap-1.5 self-start sm:self-auto"
+            title="Générer automatiquement l'agenda à partir des évaluations configurées pour cette classe"
+          >
+            {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            Générer l'agenda depuis les évaluations
+          </button>
+        )}
+      </div>
+
+      <div className="card overflow-hidden">
+        {loading ? (
+          <div className="text-center py-12"><Loader2 size={24} className="animate-spin text-indigo-600 mx-auto" /></div>
+        ) : activities.length === 0 ? (
+          <div className="text-center py-14 text-gray-400">
+            <Calendar size={36} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm font-semibold text-gray-700">Aucune activité programmée pour cette période</p>
+            <p className="text-xs text-gray-400 mt-1">Vous pouvez ajouter des cours, évaluations ou activités depuis la grille.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 text-gray-600 border-b border-gray-100">
+                <tr>
+                  <th className="py-2.5 px-3 text-left font-semibold">Jour / Date</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Horaire</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Activité / Matière</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Type</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Classe</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Intervenant / Salle</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {activities.map((a, idx) => (
+                  <tr key={`${a._id}-${idx}`} className="hover:bg-gray-50">
+                    <td className="py-2.5 px-3 font-medium text-gray-800">
+                      {a.date ? new Date(a.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' }) : a.day}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-gray-600">{a.startTime} - {a.endTime}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="font-bold text-gray-900">{a.title || a.subject || '—'}</div>
+                      {a.title && a.subject && <div className="text-[10px] text-gray-400">{a.subject}</div>}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                        a.type === 'evaluation' ? 'bg-purple-100 text-purple-700' :
+                        a.type === 'activite' ? 'bg-emerald-100 text-emerald-700' :
+                        a.type === 'reunion' ? 'bg-amber-100 text-amber-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {a.type === 'evaluation' ? 'Évaluation' :
+                         a.type === 'activite' ? 'Activité' :
+                         a.type === 'reunion' ? 'Réunion' : 'Cours'}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-gray-700">{a.className || '—'}</td>
+                    <td className="py-2.5 px-3 text-gray-500">
+                      {a.teacher && <div>👨‍🏫 {a.teacher}</div>}
+                      {a.room && <div className="text-[10px]">📍 {a.room}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
