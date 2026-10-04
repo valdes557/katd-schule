@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import PublicHeader from '../components/layout/PublicHeader'
-import PublicNavBar from '../components/layout/PublicNavBar'
 import Footer from '../components/layout/Footer'
 import WhatsAppFab from '../components/WhatsAppFab'
 import UserVideosPage from './user/UserVideosPage'
@@ -11,9 +10,8 @@ export default function PublicKatdTubePage() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <PublicHeader />
-      <PublicNavBar />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-6 pt-16">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-6">
         {/* Bouton Retour */}
         <div className="mb-4">
           <Link

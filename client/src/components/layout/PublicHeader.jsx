@@ -102,10 +102,10 @@ export default function PublicHeader() {
             <Link
               to="/katdtube"
               title="KATDTUBE Vidéos"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 sm:px-2.5 py-1.5 rounded-xl transition-colors shadow-2xs"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1.5 rounded-xl transition-colors shadow-2xs shrink-0"
             >
-              <Youtube size={16} className="text-red-600" />
-              <span className="hidden xs:inline">KATDTUBE</span>
+              <Youtube size={16} className="text-red-600 shrink-0" />
+              <span className="font-extrabold tracking-tight">KATDTUBE</span>
             </Link>
 
             {/* News / Actualités : Masqué sur mobile dans la top-bar pour laisser la place au bouton Menu et éviter de saturer l'écran */}

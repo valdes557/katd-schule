@@ -49,19 +49,24 @@ export default function PublicNavBar() {
   return (
     <div className="fixed top-14 right-0 left-0 h-10 bg-white border-b border-gray-100 z-20 flex items-center overflow-x-auto scrollbar-thin">
       <div className="flex items-center min-w-max px-3 gap-0">
-        {NAV_TABS.map(({ label, path, icon: Icon, isNews }) => (
+        {NAV_TABS.map(({ label, path, icon: Icon, isNews, highlight }) => (
           <NavLink
             key={path}
             to={path}
             className={({ isActive }) =>
-              `flex items-center gap-1 px-3 py-2 text-[11px] font-medium whitespace-nowrap border-b-2 transition-colors relative ${
+              `flex items-center gap-1.5 px-3 py-2 text-[11px] whitespace-nowrap border-b-2 transition-colors relative ${
                 isActive
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/40'
-                  : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
+                  ? highlight
+                    ? 'border-red-600 text-red-600 bg-red-50/60 font-bold'
+                    : 'border-blue-600 text-blue-600 bg-blue-50/40 font-bold'
+                  : highlight
+                  ? 'border-transparent text-red-600 hover:text-red-700 hover:bg-red-50/40 font-bold'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 font-medium'
               }`
             }
           >
-            <Icon size={11} /> {label}
+            <Icon size={12} className={highlight ? 'text-red-600' : ''} />
+            <span>{label}</span>
             {isNews && newsCount > 0 && (
               <span className="min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] font-extrabold rounded-full flex items-center justify-center ml-0.5 shadow-2xs">
                 {newsCount > 9 ? '9+' : newsCount}

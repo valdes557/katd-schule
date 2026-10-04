@@ -116,7 +116,7 @@ export default function LandingPage() {
     setSelectedPlans((prev) => ({ ...prev, [cycle]: value }))
 
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white w-full">
       <PublicHeader />
 
       {/* Bannières promotionnelles (carrousel) */}
