@@ -1,10 +1,11 @@
+import { Link } from 'react-router-dom'
 import PublicHeader from '../components/layout/PublicHeader'
 import PublicNavBar from '../components/layout/PublicNavBar'
 import Footer from '../components/layout/Footer'
 import WhatsAppFab from '../components/WhatsAppFab'
 import UserVideosPage from './user/UserVideosPage'
 import AdBanner from '../components/ads/AdBanner'
-import { Youtube, Sparkles } from 'lucide-react'
+import { Youtube, Sparkles, ArrowLeft } from 'lucide-react'
 
 export default function PublicKatdTubePage() {
   return (
@@ -13,6 +14,17 @@ export default function PublicKatdTubePage() {
       <PublicNavBar />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-6 pt-16">
+        {/* Bouton Retour */}
+        <div className="mb-4">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-bold text-gray-700 hover:text-red-600 bg-white hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-xl transition-all shadow-2xs group"
+          >
+            <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1 text-gray-500 group-hover:text-red-600" />
+            <span>Retour à l'accueil</span>
+          </Link>
+        </div>
+
         {/* En-tête promotionnel KATDTUBE */}
         <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white rounded-2xl p-5 sm:p-6 mb-6 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>

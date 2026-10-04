@@ -2,11 +2,11 @@ import { MessageCircle } from 'lucide-react'
 
 // Bouton WhatsApp flottant. Le lien est fourni par la configuration admin
 // (un lien par type de dashboard + un pour la page d'accueil). Masqué si vide.
-// position : 'bottom-right' (dashboards) | 'bottom-left' (/u) | 'bottom-center' (accueil)
+// position : 'bottom-right' (angle bas-droit) | 'bottom-left' (angle bas-gauche)
 const POSITIONS = {
-  'bottom-right': 'bottom-5 right-5',
-  'bottom-left': 'bottom-5 left-5',
-  'bottom-center': 'bottom-5 left-1/2 -translate-x-1/2',
+  'bottom-right': 'bottom-5 right-4 sm:right-6',
+  'bottom-left': 'bottom-5 left-4 sm:left-6',
+  'bottom-center': 'bottom-5 right-4 sm:right-6', // Forcé à l'angle pour éviter d'obstruer le milieu de l'écran
 }
 
 export default function WhatsAppFab({ link, position = 'bottom-right' }) {

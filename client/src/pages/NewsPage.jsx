@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link, useLocation, useOutletContext } from 'react-router-dom'
 import {
   Newspaper, Briefcase, GraduationCap, PlayCircle, MapPin, Clock, X, Loader2, ArrowLeft, Send,
-  CheckCircle2, Upload, Building2, MessageCircle, Mail, FileText, DollarSign, BookOpen,
+  CheckCircle2, Upload, Building2, MessageCircle, Mail, FileText, DollarSign, BookOpen, CheckCheck
 } from 'lucide-react'
 import { recruitmentApi, newsApi } from '../lib/api'
+import {
+  getReadPublicationIds,
+  markPublicationAsRead,
+  markAllPublicationsAsRead,
+  subscribeToBadgeUpdates,
+} from '../lib/publicationBadge'
 
 const EMPTY_APP = { fullName: '', email: '', whatsapp: '', message: '', cv: null }
 
@@ -23,6 +29,7 @@ export default function NewsPage() {
   const inUserSpace = pathname.startsWith('/u')
   const ctx = useOutletContext() // { markNewsSeen } quand rendu dans /u
   const [feed, setFeed] = useState([])
+  const [readIds, setReadIds] = useState(() => getReadPublicationIds())
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [form, setForm] = useState(EMPTY_APP)
@@ -31,16 +38,39 @@ export default function NewsPage() {
 
   useEffect(() => {
     (async () => {
-      try { const r = await newsApi.publicFeed(); setFeed(r.data || []) } catch (_) {}
+      try {
+        const r = await newsApi.publicFeed()
+        setFeed(r.data || [])
+      } catch (_) {}
       setLoading(false)
     })()
-    // Marque les News comme vues (badges -> 0) sur toutes les surfaces
-    const now = String(Date.now())
-    try { localStorage.setItem('u_news_seen', now); localStorage.setItem('home_news_seen', now) } catch (_) {}
-    ctx?.markNewsSeen?.()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openItem = (p) => { setSelected(p); setForm(EMPTY_APP); setSent(false) }
+    const unsub = subscribeToBadgeUpdates(() => {
+      setReadIds(getReadPublicationIds())
+    })
+    return () => unsub()
+  }, [])
+
+  const unreadCount = useMemo(() => {
+    return feed.filter((p) => p?._id && !readIds.has(String(p._id))).length
+  }, [feed, readIds])
+
+  const openItem = (p) => {
+    setSelected(p)
+    setForm(EMPTY_APP)
+    setSent(false)
+    if (p?._id) {
+      markPublicationAsRead(p._id)
+      setReadIds((prev) => new Set([...prev, String(p._id)]))
+    }
+  }
+
+  const handleMarkAllRead = () => {
+    const allIds = feed.map((p) => p?._id).filter(Boolean)
+    markAllPublicationsAsRead(allIds)
+    setReadIds(new Set(allIds.map(String)))
+    ctx?.markNewsSeen?.()
+  }
 
   const submitApplication = async (e) => {
     e.preventDefault()
@@ -56,8 +86,17 @@ export default function NewsPage() {
   const renderCard = (p) => {
     const meta = KIND_META[p.kind] || KIND_META.demo
     const isMedia = p.kind === 'demo' || p.kind === 'pub'
+    const isRead = readIds.has(String(p._id))
     return (
-      <button key={`${p.kind}-${p._id}`} onClick={() => openItem(p)} className="card overflow-hidden text-left hover:shadow-md transition-shadow">
+      <button key={`${p.kind}-${p._id}`} onClick={() => openItem(p)} className="card overflow-hidden text-left hover:shadow-md transition-shadow relative group">
+        {!isRead && (
+          <span
+            title="Publication non lue"
+            className="absolute top-2.5 right-2.5 z-10 px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black shadow-md flex items-center gap-1 animate-pulse"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-white" /> 1
+          </span>
+        )}
         {(p.photo || (isMedia && p.type === 'image' && p.mediaUrl)) && (
           <img src={p.photo || p.mediaUrl} alt="" className="w-full h-36 object-cover" />
         )}
@@ -86,12 +125,30 @@ export default function NewsPage() {
 
   const list = (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Newspaper size={22} className="text-amber-600" />
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Actualités & News</h1>
-          <p className="text-sm text-gray-500">Recrutements, cours de répétition et démonstrations de l'application</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Newspaper size={22} className="text-amber-600" />
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              Actualités & News
+              {unreadCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-xs font-bold shadow-2xs">
+                  {unreadCount} non lue{unreadCount > 1 ? 's' : ''}
+                </span>
+              )}
+            </h1>
+            <p className="text-sm text-gray-500">Recrutements, cours de répétition et démonstrations de l'application</p>
+          </div>
         </div>
+
+        {unreadCount > 0 && (
+          <button
+            onClick={handleMarkAllRead}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-xl transition-colors self-start sm:self-auto shadow-2xs"
+          >
+            <CheckCheck size={14} /> Tout marquer comme lu
+          </button>
+        )}
       </div>
 
       {loading ? (

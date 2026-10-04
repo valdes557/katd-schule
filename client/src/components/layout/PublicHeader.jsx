@@ -6,11 +6,11 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { platformApi, newsApi } from '../../lib/api'
-
-const NEWS_SEEN_KEY = 'home_news_seen'
+import { getUnreadCountFromFeed, subscribeToBadgeUpdates } from '../../lib/publicationBadge'
 
 const NAV_TABS = [
   { label: 'KATDTUBE', path: '/katdtube', icon: Youtube, highlight: true },
+  { label: 'Actualités & News', path: '/news', icon: Newspaper, isNews: true },
   { label: 'Social', path: '/social', icon: Globe2 },
   { label: 'Blog', path: '/blogs', icon: Newspaper },
   { label: 'À propos', path: '/apropos', icon: Users },
@@ -39,13 +39,27 @@ export default function PublicHeader() {
         if (active) setBrand({ siteName: d.siteName || 'KATD-SCHÜLE', logo: d.logo || '' })
       })
       .catch(() => {})
-    // Compteur News (annonces de recrutement publiées depuis la dernière visite)
-    const seen = Number(localStorage.getItem(NEWS_SEEN_KEY) || 0)
-    const since = seen ? new Date(seen).toISOString() : ''
-    newsApi.publicCount(since)
-      .then((r) => { if (active) setNewsCount(r?.data?.count || 0) })
-      .catch(() => {})
-    return () => { active = false }
+
+    const refreshNewsCount = () => {
+      newsApi.publicFeed()
+        .then((r) => {
+          if (active) {
+            const feed = r?.data || []
+            setNewsCount(getUnreadCountFromFeed(feed))
+          }
+        })
+        .catch(() => {})
+    }
+
+    refreshNewsCount()
+    const unsub = subscribeToBadgeUpdates(() => {
+      refreshNewsCount()
+    })
+
+    return () => {
+      active = false
+      unsub()
+    }
   }, [])
 
   return (
@@ -88,28 +102,34 @@ export default function PublicHeader() {
             <Link
               to="/katdtube"
               title="KATDTUBE Vidéos"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1.5 rounded-lg transition-colors shadow-2xs"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 sm:px-2.5 py-1.5 rounded-xl transition-colors shadow-2xs"
             >
               <Youtube size={16} className="text-red-600" />
-              <span>KATDTUBE</span>
+              <span className="hidden xs:inline">KATDTUBE</span>
             </Link>
 
-            <Link to="/news" title="Actualités & recrutement" className="relative inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-amber-600 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-colors">
+            {/* News / Actualités : Masqué sur mobile dans la top-bar pour laisser la place au bouton Menu et éviter de saturer l'écran */}
+            <Link
+              to="/news"
+              title="Actualités & recrutement"
+              className="relative hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-amber-600 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-colors"
+            >
               <Newspaper size={17} />
-              <span className="hidden sm:inline">News</span>
+              <span>News</span>
               {newsCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
                   {newsCount > 9 ? '9+' : newsCount}
                 </span>
               )}
             </Link>
+
             {user ? (
               user.role === 'utilisateur' ? (
-                <Link to="/u" className="btn-primary text-sm py-1.5 px-4">
+                <Link to="/u" className="btn-primary text-xs sm:text-sm py-1.5 px-3 sm:px-4">
                   Mon espace
                 </Link>
               ) : (
-                <Link to="/dashboard" className="btn-primary text-sm py-1.5 px-4">
+                <Link to="/dashboard" className="btn-primary text-xs sm:text-sm py-1.5 px-3 sm:px-4">
                   Mon école
                 </Link>
               )
@@ -118,16 +138,26 @@ export default function PublicHeader() {
                 <Link to="/login" className="hidden sm:inline-flex text-sm font-medium text-gray-600 hover:text-blue-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
                   Connexion
                 </Link>
-                <Link to="/tarifs" className="btn-primary text-sm py-1.5 px-4">
+                <Link to="/tarifs" className="hidden sm:inline-flex btn-primary text-sm py-1.5 px-4">
                   Rejoindre
                 </Link>
               </>
             )}
+
+            {/* Bouton Menu Mobile : Bien visible, en évidence avec texte et icône */}
             <button
-              className="md:hidden p-1.5 rounded-lg hover:bg-gray-100"
+              type="button"
+              aria-label="Ouvrir le menu"
+              className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
-              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+              {mobileOpen ? <X size={17} /> : <Menu size={17} />}
+              <span className="font-semibold text-xs">{mobileOpen ? 'Fermer' : 'Menu'}</span>
+              {newsCount > 0 && (
+                <span className="min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center ring-1 ring-white">
+                  {newsCount > 9 ? '9+' : newsCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -137,12 +167,12 @@ export default function PublicHeader() {
       <div className="hidden md:block border-t border-gray-100 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center overflow-x-auto scrollbar-thin gap-0">
-            {NAV_TABS.map(({ label, path, icon: Icon }) => (
+            {NAV_TABS.map(({ label, path, icon: Icon, isNews }) => (
               <NavLink
                 key={path}
                 to={path}
                 className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  `flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors relative ${
                     isActive
                       ? 'border-blue-600 text-blue-600 bg-blue-50/50'
                       : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
@@ -150,6 +180,11 @@ export default function PublicHeader() {
                 }
               >
                 <Icon size={13} /> {label}
+                {isNews && newsCount > 0 && (
+                  <span className="min-w-[15px] h-[15px] px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center ml-0.5">
+                    {newsCount > 9 ? '9+' : newsCount}
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>
@@ -158,41 +193,68 @@ export default function PublicHeader() {
 
       {/* ── Mobile menu ── */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-gray-100 bg-white py-3 px-4 space-y-0.5">
+        <div className="md:hidden border-t border-gray-100 bg-white py-3 px-4 space-y-1 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
           <Link
             to="/"
-            className="flex items-center gap-2 py-2.5 px-3 text-sm font-semibold text-gray-900 rounded-lg hover:bg-gray-50"
+            className="flex items-center gap-2.5 py-2.5 px-3 text-sm font-bold text-gray-900 rounded-xl hover:bg-gray-50"
             onClick={() => setMobileOpen(false)}
           >
             🏠 Accueil
           </Link>
-          {NAV_TABS.map(({ label, path, icon: Icon }) => (
+
+          {/* Actualités & News inséré en tête du menu mobile avec son badge unifié */}
+          <Link
+            to="/news"
+            className="flex items-center justify-between py-2.5 px-3 text-sm font-semibold text-gray-800 hover:text-amber-600 hover:bg-amber-50/70 rounded-xl transition-colors"
+            onClick={() => setMobileOpen(false)}
+          >
+            <span className="flex items-center gap-2.5">
+              <Newspaper size={17} className="text-amber-600" />
+              <span>Actualités & News</span>
+            </span>
+            {newsCount > 0 && (
+              <span className="min-w-[20px] h-[20px] px-1.5 bg-red-600 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center shadow-xs">
+                {newsCount > 9 ? '9+' : newsCount}
+              </span>
+            )}
+          </Link>
+
+          {NAV_TABS.filter((t) => t.path !== '/news').map(({ label, path, icon: Icon, isNews }) => (
             <Link
               key={path}
               to={path}
-              className="flex items-center gap-2.5 py-2.5 px-3 text-sm text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              className="flex items-center justify-between py-2.5 px-3 text-sm text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
               onClick={() => setMobileOpen(false)}
             >
-              <Icon size={15} className="text-gray-400" /> {label}
+              <span className="flex items-center gap-2.5">
+                <Icon size={16} className="text-gray-400" />
+                <span>{label}</span>
+              </span>
+              {isNews && newsCount > 0 && (
+                <span className="min-w-[20px] h-[20px] px-1.5 bg-red-600 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center">
+                  {newsCount > 9 ? '9+' : newsCount}
+                </span>
+              )}
             </Link>
           ))}
-          <div className="pt-2 border-t border-gray-100 mt-2">
+
+          <div className="pt-2 border-t border-gray-100 mt-2 space-y-2">
             {user ? (
               user.role === 'utilisateur' ? (
-                <Link to="/u" className="btn-primary w-full text-center block text-sm" onClick={() => setMobileOpen(false)}>
+                <Link to="/u" className="btn-primary w-full text-center block text-sm py-2.5 rounded-xl font-bold" onClick={() => setMobileOpen(false)}>
                   Mon espace
                 </Link>
               ) : (
-                <Link to="/dashboard" className="btn-primary w-full text-center block text-sm" onClick={() => setMobileOpen(false)}>
+                <Link to="/dashboard" className="btn-primary w-full text-center block text-sm py-2.5 rounded-xl font-bold" onClick={() => setMobileOpen(false)}>
                   Mon école
                 </Link>
               )
             ) : (
               <div className="flex gap-2">
-                <Link to="/login" className="flex-1 text-center text-sm font-medium text-gray-600 border border-gray-200 py-2 rounded-lg" onClick={() => setMobileOpen(false)}>
+                <Link to="/login" className="flex-1 text-center text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 py-2.5 rounded-xl transition-colors" onClick={() => setMobileOpen(false)}>
                   Connexion
                 </Link>
-                <Link to="/tarifs" className="flex-1 btn-primary text-center text-sm" onClick={() => setMobileOpen(false)}>
+                <Link to="/tarifs" className="flex-1 btn-primary text-center text-sm py-2.5 rounded-xl justify-center font-bold" onClick={() => setMobileOpen(false)}>
                   Rejoindre
                 </Link>
               </div>

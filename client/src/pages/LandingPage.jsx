@@ -116,7 +116,7 @@ export default function LandingPage() {
     setSelectedPlans((prev) => ({ ...prev, [cycle]: value }))
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white overflow-x-hidden w-full max-w-full">
       <PublicHeader />
 
       {/* Bannières promotionnelles (carrousel) */}
@@ -242,7 +242,7 @@ export default function LandingPage() {
                 Découvrez <span className="text-red-600">KATDTUBE</span> : La vidéothèque éducative et de divertissement
               </h2>
               <p className="text-sm text-gray-600 leading-relaxed">
-                Accédez gratuitement à des milliers de vidéos, cours, tutoriels et contenus YouTube intégrés directement dans l'écosystème KATD.
+                Accédez gratuitement à des milliers de vidéos, cours, tutoriels et contenus téléchargeable directement dans l'écosystème KATDTUBE.
                 Recherchez par matières, écoutez en streaming et téléchargez librement vos contenus préférés.
               </p>
               <div className="flex flex-wrap gap-3 justify-center md:justify-start pt-2">
@@ -583,7 +583,7 @@ export default function LandingPage() {
       </section>
 
       <Footer />
-      <WhatsAppFab link={whatsappLink} position="bottom-center" />
+      <WhatsAppFab link={whatsappLink} position="bottom-right" />
     </div>
   )
 }
