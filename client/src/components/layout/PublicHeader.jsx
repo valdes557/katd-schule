@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import {
   Search, BookOpen, Menu, X, Globe2, Users, Phone, HelpCircle,
-  BookMarked, School, GraduationCap, Star, Heart, Newspaper, Youtube
+  BookMarked, School, GraduationCap, Star, Heart, Newspaper, Video
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { platformApi, newsApi } from '../../lib/api'
 import { getUnreadCountFromFeed, subscribeToBadgeUpdates } from '../../lib/publicationBadge'
 
 const NAV_TABS = [
-  { label: 'KATDTUBE', path: '/katdtube', icon: Youtube, highlight: true },
+  { label: 'KATDTUBE', path: '/katdtube', icon: Video, highlight: true },
   { label: 'Actualités & News', path: '/news', icon: Newspaper, isNews: true },
   { label: 'Social', path: '/social', icon: Globe2 },
   { label: 'Blog', path: '/blogs', icon: Newspaper },
@@ -68,17 +68,17 @@ export default function PublicHeader() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center h-14 gap-4">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center overflow-hidden">
+          <Link to="/" className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 bg-blue-600 rounded-xl flex items-center justify-center overflow-hidden shadow-xs ring-1 ring-blue-700/10">
               {brand.logo ? (
                 <img src={brand.logo} alt={brand.siteName} className="w-full h-full object-cover" />
               ) : (
-                <BookOpen size={16} className="text-white" />
+                <BookOpen size={22} className="text-white" />
               )}
             </div>
             <div className="hidden sm:block">
-              <div className="text-[14px] font-bold text-gray-900 leading-tight">{brand.siteName}</div>
-              <div className="text-[9px] text-gray-400 leading-tight">Apprendre · Partager · Grandir</div>
+              <div className="text-[15px] sm:text-base font-extrabold text-gray-900 leading-tight tracking-tight">{brand.siteName}</div>
+              <div className="text-[10px] text-gray-500 leading-tight">Apprendre · Partager · Grandir</div>
             </div>
           </Link>
 
@@ -104,7 +104,7 @@ export default function PublicHeader() {
               title="KATDTUBE Vidéos"
               className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1.5 rounded-xl transition-colors shadow-2xs shrink-0"
             >
-              <Youtube size={16} className="text-red-600 shrink-0" />
+              <Video size={17} className="text-red-600 shrink-0" />
               <span className="font-extrabold tracking-tight">KATDTUBE</span>
             </Link>
 

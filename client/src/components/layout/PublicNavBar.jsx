@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Globe2, Users, Phone, HelpCircle, BookMarked, School, GraduationCap, Star, Heart,
-  Newspaper, BookOpen, Youtube
+  Newspaper, BookOpen, Video
 } from 'lucide-react'
 import { newsApi } from '../../lib/api'
 import { getUnreadCountFromFeed, subscribeToBadgeUpdates } from '../../lib/publicationBadge'
 
 const NAV_TABS = [
-  { label: 'KATDTUBE', path: '/katdtube', icon: Youtube, highlight: true },
+  { label: 'KATDTUBE', path: '/katdtube', icon: Video, highlight: true },
   { label: 'Actualités & News', path: '/news', icon: Newspaper, isNews: true },
   { label: 'Social', path: '/social', icon: Globe2 },
   { label: 'Blog', path: '/blogs', icon: Newspaper },

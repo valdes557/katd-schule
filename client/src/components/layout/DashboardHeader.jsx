@@ -34,8 +34,8 @@ export default function DashboardHeader() {
     <header className="fixed top-0 right-0 left-0 h-14 bg-white border-b border-gray-100 flex items-center justify-between px-3 sm:px-5 z-30">
       {/* Left: logo cliquable -> retour à l'accueil */}
       <Link to="/dashboard" className="flex items-center gap-2.5 group" aria-label="Accueil">
-        <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-blue-700 transition-colors">
-          <BookOpen size={18} className="text-white" />
+        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-blue-700 transition-colors shadow-xs">
+          <BookOpen size={20} className="text-white" />
         </div>
         <div className="hidden sm:block">
           <div className="text-[15px] font-bold text-gray-900 leading-tight">KATD-SCHÜLE</div>

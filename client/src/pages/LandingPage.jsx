@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   ArrowRight, BookOpen, GraduationCap, CheckCircle2,
   ChevronRight, Star, Loader2, Zap, Shield, BarChart2,
-  Globe, Users, School, ChevronLeft, Newspaper, Youtube, PlaySquare,
+  Globe, Users, School, ChevronLeft, Newspaper, Video, PlaySquare,
 } from 'lucide-react'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
@@ -139,7 +139,7 @@ export default function LandingPage() {
           <h1 className="text-4xl sm:text-5xl lg:text-7xl font-extrabold mb-6 leading-tight tracking-tight">
             La plateforme scolaire<br />
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-orange-300 to-pink-300">
-              #1 en Afrique
+              leader en Afrique
             </span>
           </h1>
 
@@ -166,7 +166,7 @@ export default function LandingPage() {
                 to="/katdtube"
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold px-7 py-4 rounded-xl transition-all text-base shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transform"
               >
-                <Youtube size={20} className="text-white" /> KATDTUBE Vidéos
+                <Video size={20} className="text-white" /> KATDTUBE Vidéos
               </Link>
               <Link
                 to="/ecoles"
@@ -250,7 +250,7 @@ export default function LandingPage() {
                   to="/katdtube"
                   className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-xl text-sm shadow-md hover:shadow-lg transition-all"
                 >
-                  <Youtube size={18} /> Accéder à KATDTUBE <ArrowRight size={15} />
+                  <Video size={18} /> Accéder à KATDTUBE <ArrowRight size={15} />
                 </Link>
               </div>
             </div>
