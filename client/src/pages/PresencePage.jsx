@@ -3,7 +3,7 @@ import { Html5Qrcode } from 'html5-qrcode'
 import {
   CalendarCheck, Check, X, Clock, AlertCircle, Loader2,
   Save, QrCode, Camera, CheckCircle2, Send, ListChecks,
-  TrendingUp, Calendar, UserCheck
+  TrendingUp, Calendar, UserCheck, Users
 } from 'lucide-react'
 import { attendanceApi, classesApi, studentsApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'

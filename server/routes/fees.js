@@ -475,6 +475,11 @@ router.get('/late-payments', protect, authorize('directeur', 'super_admin', 'cai
           totalDue,
           totalPaid,
           totalRemaining,
+          amount: totalDue,
+          paid: totalPaid,
+          remaining: totalRemaining,
+          feeLabel: unpaidOverdueFees.map((f) => f.label).join(', ') || 'Frais de scolarité',
+          dueDate: unpaidOverdueFees[0]?.dueDate || null,
           overdueFees: unpaidOverdueFees,
         })
       }
@@ -484,11 +489,18 @@ router.get('/late-payments', protect, authorize('directeur', 'super_admin', 'cai
 
     const summary = {
       totalLateStudents: lateStudents.length,
+      studentCount: lateStudents.length,
       totalLateAmount: lateStudents.reduce((sum, s) => sum + s.totalRemaining, 0),
+      totalRemaining: lateStudents.reduce((sum, s) => sum + s.totalRemaining, 0),
       month: month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
     }
 
-    res.json({ success: true, data: lateStudents, summary })
+    res.json({
+      success: true,
+      data: { lateStudents, summary },
+      lateStudents,
+      summary,
+    })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

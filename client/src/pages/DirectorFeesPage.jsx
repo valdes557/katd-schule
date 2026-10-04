@@ -1094,7 +1094,36 @@ function RetardsPaiementView({ school, classes }) {
         month: selectedMonth,
         classId: selectedClass,
       })
-      if (res.success) setData(res.data)
+      if (res?.success) {
+        const raw = res.data
+        const lateList = Array.isArray(raw) ? raw : (raw?.lateStudents || res.lateStudents || [])
+        const sum = (raw && !Array.isArray(raw) && raw.summary) || res.summary || {
+          studentCount: lateList.length,
+          totalLateStudents: lateList.length,
+          totalRemaining: lateList.reduce((acc, x) => acc + (x.remaining ?? x.totalRemaining ?? 0), 0),
+          totalLateAmount: lateList.reduce((acc, x) => acc + (x.remaining ?? x.totalRemaining ?? 0), 0),
+        }
+        setData({
+          lateStudents: (lateList || []).map((item) => ({
+            ...item,
+            amount: item.amount ?? item.totalDue ?? 0,
+            paid: item.paid ?? item.totalPaid ?? 0,
+            remaining: item.remaining ?? item.totalRemaining ?? 0,
+            totalDue: item.totalDue ?? item.amount ?? 0,
+            totalPaid: item.totalPaid ?? item.paid ?? 0,
+            totalRemaining: item.totalRemaining ?? item.remaining ?? 0,
+            feeLabel: item.feeLabel || (item.overdueFees?.map((f) => f.label).join(', ')) || 'Frais de scolarité',
+            dueDate: item.dueDate || item.overdueFees?.[0]?.dueDate || null,
+          })),
+          summary: {
+            ...sum,
+            studentCount: sum.studentCount ?? sum.totalLateStudents ?? lateList.length,
+            totalRemaining: sum.totalRemaining ?? sum.totalLateAmount ?? 0,
+            totalLateStudents: sum.totalLateStudents ?? sum.studentCount ?? lateList.length,
+            totalLateAmount: sum.totalLateAmount ?? sum.totalRemaining ?? 0,
+          },
+        })
+      }
     } catch (err) {
       console.error(err)
     }
@@ -1109,8 +1138,8 @@ function RetardsPaiementView({ school, classes }) {
     exportRetardsPaiementPdf({
       school,
       month: selectedMonth ? MONTHS.find(m => m.value === String(selectedMonth))?.label : 'Tous les mois',
-      lateStudents: data.lateStudents,
-      summary: data.summary,
+      lateStudents: data?.lateStudents || [],
+      summary: data?.summary || {},
     })
   }
 
@@ -1139,7 +1168,7 @@ function RetardsPaiementView({ school, classes }) {
 
         <button
           onClick={exportPdf}
-          disabled={data.lateStudents.length === 0}
+          disabled={(data?.lateStudents || []).length === 0}
           className="btn-primary text-sm flex items-center gap-2 self-start sm:self-auto disabled:opacity-50"
         >
           <Download size={15} /> Imprimer la liste des retards (PDF)
@@ -1149,12 +1178,12 @@ function RetardsPaiementView({ school, classes }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="card p-4 border-l-4 border-amber-500">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Nombre d'élèves en retard</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{data.summary?.studentCount || 0}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{data?.summary?.studentCount || 0}</p>
           <p className="text-xs text-gray-400 mt-0.5">Ayant dépassé l'échéance de paiement</p>
         </div>
         <div className="card p-4 border-l-4 border-red-500">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total restant dû / impayé</p>
-          <p className="text-2xl font-bold text-red-600 mt-1">{FMT(data.summary?.totalRemaining)} F CFA</p>
+          <p className="text-2xl font-bold text-red-600 mt-1">{FMT(data?.summary?.totalRemaining)} F CFA</p>
           <p className="text-xs text-gray-400 mt-0.5">Montant cumulé à recouvrer</p>
         </div>
       </div>
@@ -1162,7 +1191,7 @@ function RetardsPaiementView({ school, classes }) {
       <div className="card overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-blue-600" /></div>
-        ) : data.lateStudents.length === 0 ? (
+        ) : (data?.lateStudents || []).length === 0 ? (
           <div className="text-center py-14 text-gray-400">
             <CheckCircle2 size={36} className="mx-auto mb-2 text-green-500 opacity-60" />
             <p className="text-sm font-semibold text-gray-700">Aucun retard de paiement enregistré pour cette sélection</p>
@@ -1184,7 +1213,7 @@ function RetardsPaiementView({ school, classes }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.lateStudents.map((s, idx) => (
+                {(data?.lateStudents || []).map((s, idx) => (
                   <tr key={`${s.studentId}-${idx}`} className="hover:bg-gray-50">
                     <td className="py-2.5 px-3 font-mono text-gray-500">{s.matricule || '—'}</td>
                     <td className="py-2.5 px-3 font-bold text-gray-900">{s.studentName}</td>

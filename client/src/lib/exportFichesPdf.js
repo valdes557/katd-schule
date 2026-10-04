@@ -11,6 +11,96 @@ function triggerBlobDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 3000)
 }
 
+// Attend le chargement (ou l'échec) de toutes les images d'un conteneur avant de lancer la capture
+function waitForImages(root, timeout = 4000) {
+  const imgs = Array.from(root.querySelectorAll('img'))
+  const pending = imgs.filter((im) => !im.complete || im.naturalWidth === 0)
+  if (!pending.length) return Promise.resolve()
+  return new Promise((resolve) => {
+    let done = 0
+    const finish = () => { if (++done >= pending.length) resolve() }
+    pending.forEach((im) => {
+      im.addEventListener('load', finish, { once: true })
+      im.addEventListener('error', finish, { once: true })
+    })
+    setTimeout(resolve, timeout)
+  })
+}
+
+// Helper universel pour générer et télécharger un PDF à partir d'un conteneur DOM temporaire
+async function generatePdfFromContainer(container, { filename, orientation = 'portrait', margin = [8, 8, 8, 8] } = {}) {
+  // Overlay au premier plan pour masquer le rendu temporaire et afficher l'indicateur de chargement
+  const overlay = document.createElement('div')
+  overlay.setAttribute('data-pdf-overlay', '1')
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(255,255,255,0.96);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#2563EB;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;'
+  overlay.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <svg style="animation:spin 1s linear infinite;width:24px;height:24px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+        <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+      </svg>
+      <span>Génération du document PDF en cours…</span>
+    </div>
+    <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+  `
+  document.body.appendChild(overlay)
+
+  // Position visible pour html2canvas mais dissimulé derrière l'overlay
+  container.style.position = 'fixed'
+  container.style.top = '0'
+  container.style.left = '0'
+  container.style.zIndex = '2147483640'
+  container.style.width = '800px'
+  container.style.maxWidth = '800px'
+  container.style.minWidth = '800px'
+  container.style.background = '#ffffff'
+  container.style.color = '#111827'
+  container.style.pointerEvents = 'none'
+  container.style.boxSizing = 'border-box'
+  container.style.opacity = '1'
+  container.style.visibility = 'visible'
+
+  document.body.appendChild(container)
+
+  const savedScrollX = window.scrollX || window.pageXOffset || 0
+  const savedScrollY = window.scrollY || window.pageYOffset || 0
+
+  try {
+    window.scrollTo(0, 0)
+    // Attendre le chargement des images éventuelles + tick de layout navigateur
+    await waitForImages(container, 4000)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    const opt = {
+      margin,
+      filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 800,
+        ignoreElements: (el) => el === overlay || el.hasAttribute?.('data-pdf-overlay'),
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation },
+    }
+
+    try {
+      const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
+      triggerBlobDownload(blob, filename)
+    } catch (_) {
+      await html2pdf().set(opt).from(container).save()
+    }
+  } finally {
+    window.scrollTo(savedScrollX, savedScrollY)
+    if (container.parentNode) container.parentNode.removeChild(container)
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay)
+  }
+}
+
 /**
  * Exporte la fiche officielle de tous les élèves de l'établissement au format PDF.
  */
@@ -28,17 +118,8 @@ export async function exportElevesFichePdf({ school, cycle, students = [] }) {
 
   const container = document.createElement('div')
   container.id = 'export-eleves-container'
-  container.style.cssText = `
-    position: fixed;
-    left: -9999px;
-    top: 0;
-    width: 800px;
-    background: #ffffff;
-    color: #111827;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 24px 30px;
-    box-sizing: border-box;
-  `
+  container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+  container.style.padding = '24px 30px'
 
   container.innerHTML = `
     <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px;">
@@ -108,24 +189,7 @@ export async function exportElevesFichePdf({ school, cycle, students = [] }) {
     </div>
   `
 
-  document.body.appendChild(container)
-
-  const opt = {
-    margin: [8, 8, 8, 8],
-    filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  }
-
-  try {
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
-    triggerBlobDownload(blob, filename)
-  } catch (_) {
-    await html2pdf().set(opt).from(container).save()
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container)
-  }
+  await generatePdfFromContainer(container, { filename })
 }
 
 /**
@@ -143,17 +207,8 @@ export async function exportParentsFichePdf({ school, parents = [] }) {
 
   const container = document.createElement('div')
   container.id = 'export-parents-container'
-  container.style.cssText = `
-    position: fixed;
-    left: -9999px;
-    top: 0;
-    width: 800px;
-    background: #ffffff;
-    color: #111827;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 24px 30px;
-    box-sizing: border-box;
-  `
+  container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+  container.style.padding = '24px 30px'
 
   container.innerHTML = `
     <div style="border-bottom: 2px solid #059669; padding-bottom: 12px; margin-bottom: 16px;">
@@ -223,24 +278,7 @@ export async function exportParentsFichePdf({ school, parents = [] }) {
     </div>
   `
 
-  document.body.appendChild(container)
-
-  const opt = {
-    margin: [8, 8, 8, 8],
-    filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  }
-
-  try {
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
-    triggerBlobDownload(blob, filename)
-  } catch (_) {
-    await html2pdf().set(opt).from(container).save()
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container)
-  }
+  await generatePdfFromContainer(container, { filename })
 }
 
 /**
@@ -258,17 +296,8 @@ export async function exportEnseignantsFichePdf({ school, cycle, teachers = [] }
 
   const container = document.createElement('div')
   container.id = 'export-enseignants-container'
-  container.style.cssText = `
-    position: fixed;
-    left: -9999px;
-    top: 0;
-    width: 800px;
-    background: #ffffff;
-    color: #111827;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 24px 30px;
-    box-sizing: border-box;
-  `
+  container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+  container.style.padding = '24px 30px'
 
   container.innerHTML = `
     <div style="border-bottom: 2px solid #7c3aed; padding-bottom: 12px; margin-bottom: 16px;">
@@ -344,24 +373,7 @@ export async function exportEnseignantsFichePdf({ school, cycle, teachers = [] }
     </div>
   `
 
-  document.body.appendChild(container)
-
-  const opt = {
-    margin: [8, 8, 8, 8],
-    filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  }
-
-  try {
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
-    triggerBlobDownload(blob, filename)
-  } catch (_) {
-    await html2pdf().set(opt).from(container).save()
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container)
-  }
+  await generatePdfFromContainer(container, { filename })
 }
 
 /**
@@ -379,11 +391,8 @@ export async function exportPersonnelFichePdf({ school, staff = [] }) {
 
   const container = document.createElement('div')
   container.id = 'export-personnel-container'
-  container.style.cssText = `
-    position: fixed; left: -9999px; top: 0; width: 800px; background: #ffffff;
-    color: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 24px 30px; box-sizing: border-box;
-  `
+  container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+  container.style.padding = '24px 30px'
 
   container.innerHTML = `
     <div style="border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 16px;">
@@ -452,22 +461,7 @@ export async function exportPersonnelFichePdf({ school, staff = [] }) {
     </div>
   `
 
-  document.body.appendChild(container)
-  const opt = {
-    margin: [8, 8, 8, 8], filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  }
-
-  try {
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
-    triggerBlobDownload(blob, filename)
-  } catch (_) {
-    await html2pdf().set(opt).from(container).save()
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container)
-  }
+  await generatePdfFromContainer(container, { filename })
 }
 
 /**
@@ -482,11 +476,8 @@ export async function exportBadgesPdf({ school, members = [], roleTitle = 'Perso
 
   const container = document.createElement('div')
   container.id = 'export-badges-container'
-  container.style.cssText = `
-    position: fixed; left: -9999px; top: 0; width: 800px; background: #ffffff;
-    color: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 20px; box-sizing: border-box;
-  `
+  container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+  container.style.padding = '20px'
 
   container.innerHTML = `
     <div style="text-align: center; margin-bottom: 16px; border-bottom: 2px solid #4f46e5; padding-bottom: 8px;">
@@ -515,7 +506,7 @@ export async function exportBadgesPdf({ school, members = [], roleTitle = 'Perso
 
             <div style="display: flex; gap: 12px; align-items: center; margin: 8px 0;">
               <div style="width: 70px; height: 80px; border-radius: 8px; background: #f1f5f9; border: 1.5px solid #cbd5e1; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                ${m.photo ? `<img src="${m.photo}" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 24px; font-weight: bold; color: #94a3b8;">${(m.lastName || '?')[0]}</span>`}
+                ${m.photo ? `<img src="${m.photo}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 24px; font-weight: bold; color: #94a3b8;">${(m.lastName || '?')[0]}</span>`}
               </div>
               <div style="flex: 1; min-width: 0;">
                 <p style="font-size: 12.5px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase;">${fullName}</p>
@@ -536,22 +527,7 @@ export async function exportBadgesPdf({ school, members = [], roleTitle = 'Perso
     </div>
   `
 
-  document.body.appendChild(container)
-  const opt = {
-    margin: [8, 8, 8, 8], filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  }
-
-  try {
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
-    triggerBlobDownload(blob, filename)
-  } catch (_) {
-    await html2pdf().set(opt).from(container).save()
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container)
-  }
+  await generatePdfFromContainer(container, { filename })
 }
 
 /**
@@ -571,11 +547,8 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
 
   const container = document.createElement('div')
   container.id = 'export-carte-scolaire-container'
-  container.style.cssText = `
-    position: fixed; left: -9999px; top: 0; width: 800px; background: #ffffff;
-    color: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 20px; box-sizing: border-box;
-  `
+  container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+  container.style.padding = '20px'
 
   container.innerHTML = `
     <div style="text-align: center; margin-bottom: 16px; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">
@@ -602,7 +575,7 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
 
             <div style="display: flex; gap: 10px; align-items: center; margin: 6px 0;">
               <div style="width: 65px; height: 75px; border-radius: 6px; background: #eff6ff; border: 1.5px solid #bfdbfe; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                ${s.photo ? `<img src="${s.photo}" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 22px; font-weight: bold; color: #3b82f6;">${(s.lastName || '?')[0]}</span>`}
+                ${s.photo ? `<img src="${s.photo}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 22px; font-weight: bold; color: #3b82f6;">${(s.lastName || '?')[0]}</span>`}
               </div>
               <div style="flex: 1; min-width: 0; font-size: 9px; line-height: 1.35;">
                 <p style="font-size: 11.5px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase;">${s.lastName} ${s.firstName}</p>
@@ -633,22 +606,7 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
     </div>
   `
 
-  document.body.appendChild(container)
-  const opt = {
-    margin: [8, 8, 8, 8], filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  }
-
-  try {
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
-    triggerBlobDownload(blob, filename)
-  } catch (_) {
-    await html2pdf().set(opt).from(container).save()
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container)
-  }
+  await generatePdfFromContainer(container, { filename })
 }
 
 /**
@@ -663,11 +621,11 @@ export async function exportRetardsPaiementPdf({ school, month, lateStudents = [
 
   const container = document.createElement('div')
   container.id = 'export-retards-container'
-  container.style.cssText = `
-    position: fixed; left: -9999px; top: 0; width: 800px; background: #ffffff;
-    color: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 24px 30px; box-sizing: border-box;
-  `
+  container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+  container.style.padding = '24px 30px'
+
+  const totalCount = summary.totalLateStudents ?? summary.studentCount ?? lateStudents.length
+  const totalAmount = summary.totalLateAmount ?? summary.totalRemaining ?? lateStudents.reduce((acc, s) => acc + (s.totalRemaining ?? s.remaining ?? 0), 0)
 
   container.innerHTML = `
     <div style="border-bottom: 2px solid #dc2626; padding-bottom: 12px; margin-bottom: 16px;">
@@ -691,7 +649,7 @@ export async function exportRetardsPaiementPdf({ school, month, lateStudents = [
         LISTE DES ÉLÈVES EN RETARD DE PAIEMENT
       </h2>
       <p style="font-size: 12px; color: #dc2626; margin: 4px 0 0 0; font-weight: 700;">
-        Total élèves en retard : ${summary.totalLateStudents || lateStudents.length} · Montant total restant dû : ${fmt(summary.totalLateAmount || 0)}
+        Total élèves en retard : ${totalCount} · Montant total restant dû : ${fmt(totalAmount)}
       </p>
     </div>
 
@@ -716,12 +674,12 @@ export async function exportRetardsPaiementPdf({ school, month, lateStudents = [
               ${s.studentName}<br/><span style="font-weight: 600; color: #2563eb; font-size: 9.5px;">Classe : ${s.className}</span>
             </td>
             <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #334155;">
-              <strong>${s.parentName}</strong>
+              <strong>${s.parentName || '—'}</strong>
               ${s.parentPhone ? `<br/><span style="color:#059669; font-weight: 600;">📞 ${s.parentPhone}</span>` : ''}
             </td>
-            <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: right;">${fmt(s.totalDue)}</td>
-            <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: right; color: #16a34a; font-weight: 600;">${fmt(s.totalPaid)}</td>
-            <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: right; color: #dc2626; font-weight: 800;">${fmt(s.totalRemaining)}</td>
+            <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: right;">${fmt(s.totalDue ?? s.amount ?? 0)}</td>
+            <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: right; color: #16a34a; font-weight: 600;">${fmt(s.totalPaid ?? s.paid ?? 0)}</td>
+            <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: right; color: #dc2626; font-weight: 800;">${fmt(s.totalRemaining ?? s.remaining ?? 0)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -739,22 +697,7 @@ export async function exportRetardsPaiementPdf({ school, month, lateStudents = [
     </div>
   `
 
-  document.body.appendChild(container)
-  const opt = {
-    margin: [8, 8, 8, 8], filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  }
-
-  try {
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
-    triggerBlobDownload(blob, filename)
-  } catch (_) {
-    await html2pdf().set(opt).from(container).save()
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container)
-  }
+  await generatePdfFromContainer(container, { filename })
 }
 
 /**
@@ -776,11 +719,8 @@ export async function exportCompteDeResultatPdf({ school, year, monthData, annua
 
   const container = document.createElement('div')
   container.id = 'export-compte-resultat-container'
-  container.style.cssText = `
-    position: fixed; left: -9999px; top: 0; width: 800px; background: #ffffff;
-    color: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 24px 30px; box-sizing: border-box;
-  `
+  container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+  container.style.padding = '24px 30px'
 
   const expCats = isMonth ? monthData.expensesByCategory : annualSummary.expensesByCategory
 
@@ -876,20 +816,5 @@ export async function exportCompteDeResultatPdf({ school, year, monthData, annua
     </div>
   `
 
-  document.body.appendChild(container)
-  const opt = {
-    margin: [8, 8, 8, 8], filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  }
-
-  try {
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob')
-    triggerBlobDownload(blob, filename)
-  } catch (_) {
-    await html2pdf().set(opt).from(container).save()
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container)
-  }
+  await generatePdfFromContainer(container, { filename })
 }
