@@ -236,7 +236,7 @@ export default function LandingPage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-8">
             <div className="space-y-4 max-w-xl text-center md:text-left">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-bold uppercase tracking-wider">
-                <Youtube size={15} /> Plateforme Vidéos Publique
+                <Video size={15} /> Plateforme Vidéos Publique
               </div>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-tight">
                 Découvrez <span className="text-red-600">KATDTUBE</span> : La vidéothèque éducative et de divertissement
