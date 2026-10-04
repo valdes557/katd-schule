@@ -228,10 +228,23 @@ if (SERVE_CLIENT) {
   const fs = require('fs')
   const clientDist = path.join(__dirname, '..', 'client', 'dist')
   if (fs.existsSync(path.join(clientDist, 'index.html'))) {
-    app.use(express.static(clientDist))
-    // Repli SPA : toute requête GET restante (hors /api et /uploads, déjà gérés plus haut) → index.html.
+    app.use(express.static(clientDist, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+          res.setHeader('Pragma', 'no-cache')
+          res.setHeader('Expires', '0')
+        } else if (filePath.includes(path.sep + 'assets' + path.sep) || filePath.includes('/assets/')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+        }
+      }
+    }))
+    // Repli SPA : toute requête GET restante (hors /api et /uploads, déjà gérés plus haut) → index.html frais.
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next()
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      res.setHeader('Pragma', 'no-cache')
+      res.setHeader('Expires', '0')
       res.sendFile(path.join(clientDist, 'index.html'))
     })
   } else {

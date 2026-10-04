@@ -76,12 +76,13 @@ function lazyPage(factory) {
 class RouteErrorBoundary extends Component {
   constructor(props) {
     super(props)
-    this.state = { hasError: false }
+    this.state = { hasError: false, error: null }
   }
-  static getDerivedStateFromError() {
-    return { hasError: true }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
   }
-  componentDidCatch(error) {
+  componentDidCatch(error, errorInfo) {
+    console.error('[RouteErrorBoundary caught]', error, errorInfo)
     if (isChunkLoadError(error) && canAutoReload()) {
       markAutoReload()
       reloadBustingCache()
@@ -91,13 +92,19 @@ class RouteErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 text-center px-6">
-          <p className="text-gray-700 font-medium">Impossible de charger cette page.</p>
+          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-1">
+            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </div>
+          <p className="text-gray-800 font-semibold text-base">Impossible de charger cette page.</p>
+          <p className="text-gray-500 text-xs max-w-sm">Une mise à jour récente de la plateforme a été effectuée. Cliquez sur le bouton pour actualiser les données.</p>
           <button
             onClick={() => {
               try { sessionStorage.removeItem(CHUNK_RELOAD_KEY) } catch (_) {}
-              window.location.reload()
+              reloadBustingCache()
             }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+            className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95"
           >
             Recharger la page
           </button>
