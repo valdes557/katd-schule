@@ -293,6 +293,32 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
       generationError,
       status: initialStatus,
     })
+
+    // Pré-génération asynchrone pour les cours programmés :
+    // Le script pédagogique est préparé à l'avance pour que le direct démarre instantanément en 0.05s sans faire attendre l'enseignant et les élèves
+    if (!isImmediate && (!lessonScript || lessonScript.length < 100)) {
+      setImmediate(async () => {
+        try {
+          const { script, usage, model } = await generateLessonScript(course, klass.name || '')
+          if (script && script.length >= 100) {
+            course.lessonScript = script
+            course.generatedAt = new Date()
+            course.status = 'pret'
+            await course.save()
+            AiUsageLog.create({
+              user: req.user._id,
+              school: sid,
+              subscription: sub._id,
+              model,
+              promptTokens: usage.promptTokens,
+              completionTokens: usage.completionTokens,
+              totalTokens: usage.totalTokens,
+            }).catch(() => {})
+          }
+        } catch (_) {}
+      })
+    }
+
     res.status(201).json({ success: true, data: course })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

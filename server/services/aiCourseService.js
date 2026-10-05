@@ -28,8 +28,8 @@ async function extractPdfText(buffer) {
 
 function lessonSystemPrompt(course, className) {
   const dur = course.durationMinutes
-  const parts = Math.min(6, Math.max(3, Math.ceil(dur / 12)))
-  const targetWords = Math.min(dur * 130, 6000)
+  const parts = Math.min(5, Math.max(3, Math.ceil(dur / 15)))
+  const targetWords = Math.min(dur * 80, 2800)
   const lang = course.language === 'en-US' ? 'anglais' : 'français'
   return [
     `Tu es un éminent professeur de ${course.subject} qui enseigne en direct à la classe ${className}${course.level ? ` (niveau ${course.level})` : ''}.`,
@@ -39,28 +39,26 @@ function lessonSystemPrompt(course, className) {
     `Tu dois structurer le DÉROULÉ COMPLET du cours en ${lang} selon cette progression méthodique :`,
     "1. Introduction immersive : accroche captivante, utilité concrète dans la vie réelle, objectifs pédagogiques clairs de la séance.",
     `2. Développement approfondi en ${parts} grandes parties logiques : définitions précises, explications étape par étape, concepts clés, théorèmes/règles et exemples concrets de la vie courante.`,
-    "3. Démonstrations et explications visuelles : si des images ou schémas sont mentionnés ou fournis, commente-les et décris-les oralement avec précision (« Regardez attentivement cette figure... », « Sur ce schéma, observez comment... »). L'élève doit comprendre exactement ce que montre chaque illustration démonstrative.",
+    "3. Démonstrations et explications visuelles : si des images ou schémas sont mentionnés ou fournis, commente-les et décris-les oralement avec précision (« Regardez attentivement cette figure... », « Sur ce schéma, observez comment... »).",
     "4. Exercices d'application progressifs avec résolution détaillée et correction méthodique pas à pas.",
     "5. Résumé de synthèse et points capitaux à retenir pour les évaluations.",
     '',
     'Consignes pédagogiques et d\'expression :',
-    `- Réfléchis et raisonne avec empathie et clarté comme un être humain et professeur passionné. Ne dis jamais que tu es une IA.`,
+    `- Réfléchis et raisonne avec clarté et bienveillance comme un véritable professeur passionné. Ne dis jamais que tu es une IA.`,
     `- Volume ciblé : environ ${targetWords} mots riches et didactiques pour remplir les ${dur} minutes.`,
-    `- Ton oral naturel, bienveillant, fluide et percutant : le texte sera affiché progressivement et lu à voix haute aux élèves par synthèse vocale.`,
+    `- Ton oral naturel, fluide et percutant : le texte sera affiché progressivement et lu à voix haute aux élèves par synthèse vocale.`,
     `- Termine TOUJOURS complètement tes phrases et tes sections jusqu'au point final sans jamais couper la parole.`,
     `- Si tu fais référence à une image ou figure, utilise la syntaxe ![Titre explicatif](url) ou réfère-toi aux figures fournies.`,
   ].join('\n')
 }
 
-// Planifie 1 à 3 appels OpenAI selon la durée (maxTokens plafonné à 4000).
-function planChunks(durationMinutes) {
-  if (durationMinutes <= 25) return 1
-  if (durationMinutes <= 60) return 2
-  return 3
+// Génération directe en 1 appel optimisé : évite les délais d'attente prolongés (divise le temps par 3 à 5)
+function planChunks(_durationMinutes) {
+  return 1
 }
 
 /**
- * Génère le déroulé complet du cours (1 à 3 appels selon la durée).
+ * Génère le déroulé complet du cours à haute vitesse d'exécution.
  * Supporte la rédaction autonome à partir du titre et les images démonstratives.
  * @returns {Promise<{script:string, usage:Object, model:string, calls:number}>}
  */
@@ -71,8 +69,8 @@ async function generateLessonScript(course, className) {
     ...cfgObj,
     model: cfg.model,
     systemPrompt: lessonSystemPrompt(course, className),
-    temperature: 0.6,
-    maxTokens: 4000,
+    temperature: 0.5,
+    maxTokens: 3500,
   }
   const calls = planChunks(course.durationMinutes)
   const source = String(course.sourceText || '').slice(0, MAX_SOURCE_CHARS)
@@ -88,37 +86,22 @@ async function generateLessonScript(course, className) {
 
   const isAuto = course.sourceType === 'ai_generate' || !source
 
-  for (let i = 0; i < calls; i++) {
-    let instruction
-    if (isAuto) {
-      if (calls === 1) {
-        instruction = `Recherche et rédige le cours complet sur la leçon « ${course.title} » en ${course.subject} pour la classe ${className} (niveau ${course.level || 'secondaire'}). Développe l'ensemble des notions, démonstrations, schémas explicatifs et exercices corrigés.${imagesNote}`
-      } else if (i === 0) {
-        instruction = `Rédige la partie 1 sur ${calls} du cours sur « ${course.title} » en ${course.subject} (niveau ${course.level || className}). Accroche, objectifs d'apprentissage et premières notions fondamentales. Ne conclus pas.${imagesNote}`
-      } else {
-        const tail = parts[i - 1].slice(-1500)
-        instruction = `Poursuis le cours sur « ${course.title} » (partie ${i + 1} sur ${calls}). Voici la fin de ce qui a déjà été expliqué :\n"""\n${tail}\n"""\nContinue sans répéter ce qui précède.${i === calls - 1 ? ' Termine par les exercices corrigés et le résumé essentiel.' : ' Ne conclus pas encore.'}${imagesNote}`
-      }
-    } else {
-      if (calls === 1) {
-        instruction = `Contenu de référence fourni par le professeur pour « ${course.title} » :\n"""\n${source}\n"""\n\nRédige le déroulé complet du cours en respectant et développant ces éléments avec clarté et exemples.${imagesNote}`
-      } else if (i === 0) {
-        instruction = `Contenu de référence fourni par le professeur pour « ${course.title} » :\n"""\n${source}\n"""\n\nRédige la partie ${i + 1} sur ${calls} du déroulé (début du cours : accroche, objectifs, premières notions). Ne conclus pas.${imagesNote}`
-      } else {
-        const tail = parts[i - 1].slice(-1500)
-        instruction = `Contenu de référence fourni par le professeur pour « ${course.title} » :\n"""\n${source}\n"""\n\nVoici la fin de ce qui a déjà été dit :\n"""\n${tail}\n"""\n\nPoursuis le cours (partie ${i + 1} sur ${calls}) sans répéter ce qui précède.${i === calls - 1 ? ' Termine par les exercices corrigés puis le résumé.' : ' Ne conclus pas encore.'}${imagesNote}`
-      }
-    }
-
-    const r = await generateChatResponse({
-      messages: [{ role: 'user', content: instruction }],
-      config: genConfig,
-    })
-    parts.push(r.content)
-    usage.promptTokens += r.usage.promptTokens
-    usage.completionTokens += r.usage.completionTokens
-    usage.totalTokens += r.usage.totalTokens
+  let instruction
+  if (isAuto) {
+    instruction = `Recherche et rédige le cours complet sur la leçon « ${course.title} » en ${course.subject} pour la classe ${className} (niveau ${course.level || 'secondaire'}). Développe méthodiquement l'accroche, les notions clés, les démonstrations explicatives, les exercices d'application corrigés et le résumé essentiel.${imagesNote}`
+  } else {
+    instruction = `Contenu de référence fourni par le professeur pour « ${course.title} » :\n"""\n${source}\n"""\n\nRédige le déroulé complet et vivant du cours en respectant et développant ces éléments avec clarté, pédagogie et exercices corrigés pas à pas.${imagesNote}`
   }
+
+  const r = await generateChatResponse({
+    messages: [{ role: 'user', content: instruction }],
+    config: genConfig,
+  })
+  parts.push(r.content)
+  usage.promptTokens += r.usage.promptTokens
+  usage.completionTokens += r.usage.completionTokens
+  usage.totalTokens += r.usage.totalTokens
+
   return { script: parts.join('\n\n'), usage, model: genConfig.model, calls }
 }
 

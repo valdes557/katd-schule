@@ -6,7 +6,7 @@ import {
   Play, Square, BookOpen, Volume1, Edit3, FileText, X, Image as ImageIcon, Maximize2,
   Download, Check, Share2,
 } from 'lucide-react'
-import html2pdf from 'html2pdf.js'
+import { exportAiCoursePdf } from '../../lib/exportFichesPdf'
 import { aiCoursesApi } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -108,47 +108,16 @@ export default function AiCourseLivePage() {
     }
   }
 
-  const handleDownloadPdf = () => {
-    const element = document.getElementById('course-printable-doc')
-    if (!element) return
-
+  const handleDownloadPdf = async () => {
+    if (!data) return
     setDownloadingPdf(true)
-    const safeTitle = (data?.title || 'cours').toLowerCase().replace(/[^\w]+/g, '_').slice(0, 50)
-    const safeSubject = (data?.subject || 'matiere').toLowerCase().replace(/[^\w]+/g, '_').slice(0, 30)
-    const filename = `cours_${safeSubject}_${safeTitle}.pdf`
-
-    const options = {
-      margin: [10, 10, 10, 10],
-      filename,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    }
-
     try {
-      html2pdf()
-        .set(options)
-        .from(element)
-        .outputPdf('blob')
-        .then((blob) => {
-          const url = URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = filename
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          setTimeout(() => URL.revokeObjectURL(url), 2000)
-          setDownloadingPdf(false)
-        })
-        .catch((err) => {
-          console.error('Erreur génération PDF:', err)
-          setDownloadingPdf(false)
-          window.print()
-        })
-    } catch (_) {
-      setDownloadingPdf(false)
+      await exportAiCoursePdf({ course: data, questions: myQuestions })
+    } catch (err) {
+      console.error('Erreur génération PDF cours IA:', err)
       window.print()
+    } finally {
+      setDownloadingPdf(false)
     }
   }
 
@@ -1687,94 +1656,6 @@ export default function AiCourseLivePage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Conteneur hors écran pour l'exportation PDF officielle via html2pdf.js */}
-      {data && (
-        <div
-          id="course-printable-doc"
-          style={{
-            position: 'fixed',
-            left: '-9999px',
-            top: 0,
-            width: '800px',
-            backgroundColor: '#ffffff',
-            color: '#111827',
-            padding: '32px',
-            fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          }}
-        >
-          <div style={{ borderBottom: '2px solid #7c3aed', paddingBottom: '16px', marginBottom: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#6d28d9', margin: 0 }}>
-                KATD-SCHÜLE · Support de Cours Officiel
-              </h2>
-              <span style={{ fontSize: '12px', color: '#6b7280' }}>
-                {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-              </span>
-            </div>
-            <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#111827', marginTop: '12px', marginBottom: '6px' }}>
-              {data.title}
-            </h1>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', fontSize: '12px', color: '#4b5563' }}>
-              <span><strong>Matière :</strong> {data.subject}</span>
-              <span><strong>Classe :</strong> {data.className}</span>
-              {data.teacherName && <span><strong>Enseignant :</strong> {data.teacherName}</span>}
-              <span><strong>Durée :</strong> {data.durationMinutes} min</span>
-              {data.sentToDirector && <span style={{ color: '#059669', fontWeight: 'bold' }}>✓ Validé & Transmis à la direction</span>}
-            </div>
-          </div>
-
-          <div style={{ fontSize: '14px', lineHeight: '1.7', color: '#1f2937' }}>
-            {data.text ? (
-              data.text.split('\n\n').map((paragraph, idx) => {
-                const imgMatch = paragraph.match(/!\[(.*?)\]\((.*?)\)/)
-                if (imgMatch) {
-                  return (
-                    <div key={idx} style={{ margin: '18px 0', textAlign: 'center' }}>
-                      <img
-                        src={imgMatch[2]}
-                        alt={imgMatch[1]}
-                        style={{ maxWidth: '85%', maxHeight: '350px', borderRadius: '8px', border: '1px solid #e5e7eb', margin: '0 auto', display: 'block' }}
-                      />
-                      {imgMatch[1] && (
-                        <p style={{ fontSize: '11px', color: '#6b7280', fontStyle: 'italic', marginTop: '6px' }}>
-                          Figure : {imgMatch[1]}
-                        </p>
-                      )}
-                    </div>
-                  )
-                }
-                return <p key={idx} style={{ marginBottom: '14px' }}>{paragraph}</p>
-              })
-            ) : (
-              <p style={{ fontStyle: 'italic', color: '#9ca3af' }}>Contenu du cours en attente de génération.</p>
-            )}
-          </div>
-
-          {myQuestions && myQuestions.length > 0 && (
-            <div style={{ marginTop: '36px', borderTop: '1px solid #e5e7eb', paddingTop: '20px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#374151', marginBottom: '12px' }}>
-                Questions des élèves & Réponses pédagogiques
-              </h3>
-              {myQuestions.map((q, idx) => (
-                <div key={idx} style={{ marginBottom: '14px', padding: '10px 14px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                  <p style={{ fontSize: '13px', fontWeight: 'bold', color: '#1f2937', margin: 0 }}>
-                    Q : {q.text} {q.studentName && <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#6b7280' }}>({q.studentName})</span>}
-                  </p>
-                  <p style={{ fontSize: '13px', color: '#4b5563', marginTop: '4px', marginBottom: 0 }}>
-                    <strong>R :</strong> {q.answer || "En attente de réponse."}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ marginTop: '40px', borderTop: '1px solid #e5e7eb', paddingTop: '12px', fontSize: '10px', color: '#9ca3af', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Document pédagogique officiel généré via l'IA Enseignante KATD-SCHÜLE</span>
-            <span>Validation & Archives Établissement</span>
           </div>
         </div>
       )}
