@@ -6,6 +6,7 @@ const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
 const { generateUserMatricule } = require('../utils/matricule')
 const wallet = require('../services/walletService')
+const { upload } = require('../config/cloudinary')
 
 // GET /api/teachers
 router.get('/', protect, async (req, res) => {
@@ -65,10 +66,18 @@ router.get('/:id', protect, async (req, res) => {
 })
 
 // POST /api/teachers — creates teacher + User account with login credentials
-router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin'), upload.single('photo'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
-    const { firstName, lastName, email, phone, gender, subjects, speciality, password, classes, cycle, contractType, monthlySalary, hourlyRate, weeklyHours } = req.body
+    let { firstName, lastName, email, phone, gender, subjects, speciality, password, classes, cycle, contractType, monthlySalary, hourlyRate, weeklyHours, photo } = req.body
+    if (req.file?.path) photo = req.file.path
+
+    if (typeof classes === 'string') {
+      try { classes = JSON.parse(classes) } catch (_) { classes = classes ? [classes] : [] }
+    }
+    if (typeof subjects === 'string' && subjects.startsWith('[')) {
+      try { subjects = JSON.parse(subjects) } catch (_) {}
+    }
 
     if (req.user.role === 'directeur') {
       const school = await School.findById(schoolId).select('subscription.cycle')
@@ -88,6 +97,8 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
         role: 'enseignant',
         school: schoolId,
         matricule,
+        photo: photo || undefined,
+        avatar: photo || undefined,
       })
       userId = user._id
       // Crée le portefeuille de l'enseignant dès l'enregistrement
@@ -95,7 +106,7 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
     }
 
     const teacher = await Teacher.create({
-      firstName, lastName, email, phone, gender,
+      firstName, lastName, email, phone, gender, photo,
       subjects: Array.isArray(subjects) ? subjects : (subjects || '').split(',').map((s) => s.trim()).filter(Boolean),
       speciality,
       cycle,
@@ -116,10 +127,16 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 })
 
 // PUT /api/teachers/:id
-router.put('/:id', protect, authorize('directeur', 'super_admin', 'vice_principal'), async (req, res) => {
+router.put('/:id', protect, authorize('directeur', 'super_admin', 'vice_principal'), upload.single('photo'), async (req, res) => {
   try {
     const { password, email, ...rest } = req.body
-    if (rest.subjects && typeof rest.subjects === 'string') {
+    if (req.file?.path) rest.photo = req.file.path
+    if (typeof rest.classes === 'string') {
+      try { rest.classes = JSON.parse(rest.classes) } catch (_) { rest.classes = rest.classes ? [rest.classes] : [] }
+    }
+    if (typeof rest.subjects === 'string' && rest.subjects.startsWith('[')) {
+      try { rest.subjects = JSON.parse(rest.subjects) } catch (_) {}
+    } else if (rest.subjects && typeof rest.subjects === 'string') {
       rest.subjects = rest.subjects.split(',').map((s) => s.trim()).filter(Boolean)
     }
 
@@ -145,6 +162,9 @@ router.put('/:id', protect, authorize('directeur', 'super_admin', 'vice_principa
       const taken = await User.findOne({ email: normalized, _id: { $ne: teacher.user } })
       if (taken) return res.status(400).json({ message: 'Cet email est déjà utilisé par un autre compte' })
       await User.findByIdAndUpdate(teacher.user, { email: normalized })
+    }
+    if (teacher.user && rest.photo) {
+      await User.findByIdAndUpdate(teacher.user, { photo: rest.photo, avatar: rest.photo })
     }
 
     Object.assign(teacher, rest)

@@ -84,6 +84,11 @@ export default function PortefeuillePage() {
             <div key={t._id} className="flex items-center justify-between p-3 text-sm">
               <div>
                 <p className="font-medium text-gray-800">{t.description || t.type}</p>
+                {(t.reason || t.meta?.reason) && (
+                  <p className="text-xs text-blue-700 bg-blue-50/70 inline-block px-1.5 py-0.5 rounded mt-0.5 font-medium">
+                    Motif : {t.reason || t.meta?.reason}
+                  </p>
+                )}
                 {t.counterpartyName && (
                   <p className="text-xs text-gray-500">
                     {t.direction === 'credit' ? 'De' : 'Vers'} : <b>{t.counterpartyName}</b>
@@ -108,7 +113,7 @@ export default function PortefeuillePage() {
 function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, onError }) {
   const { user } = useAuth()
   const isMerchant = user?.isMerchant === true
-  const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '', country: 'CM', otp: '' })
+  const [f, setF] = useState({ amount: '', momoNumber: '', momoOperator: 'mtn', accountName: '', pin: '', confirmPin: '', teacherUserId: '', code: '', newPin: '', accountNo: '', country: 'CM', otp: '', reason: '' })
   const [status, setStatus] = useState('')
   const [modalError, setModalError] = useState('')
   const [recipient, setRecipient] = useState(null) // { name, role } du destinataire résolu
@@ -184,6 +189,7 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
           country: f.country || 'CM',
           otp: String(f.otp || '').trim(),
           targetAccountNo: f.accountNo?.trim() ? f.accountNo.trim().toUpperCase() : undefined,
+          reason: f.reason?.trim() || undefined,
         })
 
         if (res.payment_link) {
@@ -247,19 +253,19 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         if (!f.momoNumber.trim()) throw new Error('Numéro Mobile Money requis')
         if (!f.accountName.trim()) throw new Error('Le nom du titulaire du numéro est obligatoire')
         if (!f.pin) throw new Error('Code PIN requis pour valider le retrait')
-        const r = await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, accountName: f.accountName, pin: f.pin, country: f.country || 'CM' })
+        const r = await walletApi.withdraw({ amount: Number(f.amount), momoNumber: f.momoNumber, momoOperator: f.momoOperator, accountName: f.accountName, pin: f.pin, country: f.country || 'CM', reason: f.reason?.trim() || undefined })
         onDone(r?.message || 'Demande de retrait enregistrée.')
       } else if (type === 'transfer') {
         if (!f.teacherUserId) throw new Error('Veuillez sélectionner un enseignant')
         if (!f.amount || Number(f.amount) <= 0) throw new Error('Veuillez saisir un montant')
         if (!f.pin) throw new Error('Code PIN requis')
-        await walletApi.transfer({ teacherUserId: f.teacherUserId, amount: Number(f.amount), pin: f.pin })
+        await walletApi.transfer({ teacherUserId: f.teacherUserId, amount: Number(f.amount), pin: f.pin, reason: f.reason?.trim() || undefined })
         onDone('Salaire transféré avec succès')
       } else if (type === 'transferUser') {
         if (!f.accountNo.trim()) throw new Error('Numéro de compte destinataire requis')
         if (!f.amount || Number(f.amount) <= 0) throw new Error('Veuillez saisir un montant')
         if (!f.pin) throw new Error('Code PIN requis')
-        const r = await walletApi.transferUser({ accountNo: f.accountNo, amount: Number(f.amount), pin: f.pin })
+        const r = await walletApi.transferUser({ accountNo: f.accountNo, amount: Number(f.amount), pin: f.pin, reason: f.reason?.trim() || undefined })
         onDone(r.commission > 0
           ? `Transfert de ${fmt(r.amount)} F effectué (commission +${fmt(r.commission)} F)`
           : `Transfert de ${fmt(r.amount)} F effectué (frais ${fmt(r.fee)} F)`)
@@ -312,10 +318,27 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         )}
 
         {(type === 'deposit' || type === 'withdraw' || type === 'transfer' || type === 'transferUser') && (
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Montant (FCFA)</label>
-            <input type="number" value={f.amount} onChange={up('amount')} className="input w-full" placeholder="Ex: 50000" />
-          </div>
+          <>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Montant (FCFA) *</label>
+              <input type="number" value={f.amount} onChange={up('amount')} className="input w-full" placeholder="Ex: 50000" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Motif de l'opération</label>
+              <input
+                type="text"
+                value={f.reason}
+                onChange={up('reason')}
+                className="input w-full text-sm"
+                placeholder={
+                  type === 'deposit' ? 'Ex: Dépôt personnel, versement scolarité…' :
+                  type === 'withdraw' ? 'Ex: Retrait personnel, achat fournitures…' :
+                  type === 'transferUser' ? 'Ex: Facture, aide familiale, achat…' :
+                  'Ex: Avance sur salaire, prime de rendement…'
+                }
+              />
+            </div>
+          </>
         )}
 
         {type === 'transferUser' && (<>

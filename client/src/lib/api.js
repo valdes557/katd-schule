@@ -147,11 +147,36 @@ export const parentsApi = {
   toggleActive: (id) => api.put(`/parents/${id}/toggle-active`),
 }
 
+const sendTeacherForm = async (path, method, data) => {
+  if (data?.photoFile) {
+    const token = localStorage.getItem('token')
+    const fd = new FormData()
+    Object.entries(data).forEach(([key, value]) => {
+      if (key === 'photoFile') {
+        if (value) fd.append('photo', value)
+      } else if (value && typeof value === 'object') {
+        fd.append(key, JSON.stringify(value))
+      } else if (value !== null && value !== undefined && value !== '') {
+        fd.append(key, value)
+      }
+    })
+    const res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const result = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(result.message || `Erreur HTTP ${res.status}`)
+    return result
+  }
+  return method === 'POST' ? api.post(path, data) : api.put(path, data)
+}
+
 export const teachersApi = {
   list: (params = '') => api.get(`/teachers?${params}`),
   get: (id) => api.get(`/teachers/${id}`),
-  create: (data) => api.post('/teachers', data),
-  update: (id, data) => api.put(`/teachers/${id}`, data),
+  create: (data) => sendTeacherForm('/teachers', 'POST', data),
+  update: (id, data) => sendTeacherForm(`/teachers/${id}`, 'PUT', data),
   remove: (id) => api.del(`/teachers/${id}`),
   toggleActive: (id) => api.put(`/teachers/${id}/toggle-active`),
 }

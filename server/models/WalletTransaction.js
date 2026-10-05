@@ -51,6 +51,7 @@ const txSchema = new mongoose.Schema(
     // id de transaction du prestataire de paiement (ancien champ legacy: sebpayTransactionId)
     providerTransactionId: { type: String, default: null, index: true },
     description: { type: String, default: '' },
+    reason: { type: String, default: '' },
     meta: { type: Object, default: {} },
   },
   { timestamps: true }

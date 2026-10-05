@@ -45,22 +45,29 @@ async function generatePdfFromContainer(container, { filename, orientation = 'po
   `
   document.body.appendChild(overlay)
 
-  // Position visible pour html2canvas mais dissimulé derrière l'overlay
-  container.style.position = 'fixed'
-  container.style.top = '0'
-  container.style.left = '0'
-  container.style.zIndex = '2147483640'
-  container.style.width = '800px'
-  container.style.maxWidth = '800px'
-  container.style.minWidth = '800px'
+  const targetWidth = orientation === 'landscape' ? 1100 : 800
+
+  // Wrapper hôte invisible pour attacher le conteneur au DOM sans affecter le flux de la page
+  const host = document.createElement('div')
+  host.setAttribute('data-pdf-host', '1')
+  host.style.cssText = `position:fixed;top:0;left:0;width:${targetWidth}px;opacity:0.001;pointer-events:none;z-index:-1;`
+
+  // Conteneur en flux normal (position: static) : TRÈS IMPORTANT pour html2pdf / html2canvas.
+  // Si le conteneur a position: fixed ou absolute, le clone créé par html2pdf s'échappe
+  // du conteneur parent (html2pdf__container), donnant une hauteur 0 et une page blanche !
+  container.style.position = 'static'
+  container.style.display = 'block'
+  container.style.width = `${targetWidth}px`
+  container.style.minWidth = `${targetWidth}px`
+  container.style.maxWidth = `${targetWidth}px`
+  container.style.height = 'auto'
   container.style.background = '#ffffff'
   container.style.color = '#111827'
-  container.style.pointerEvents = 'none'
   container.style.boxSizing = 'border-box'
-  container.style.opacity = '1'
-  container.style.visibility = 'visible'
+  container.style.margin = '0'
 
-  document.body.appendChild(container)
+  host.appendChild(container)
+  document.body.appendChild(host)
 
   const savedScrollX = window.scrollX || window.pageXOffset || 0
   const savedScrollY = window.scrollY || window.pageYOffset || 0
@@ -69,7 +76,7 @@ async function generatePdfFromContainer(container, { filename, orientation = 'po
     window.scrollTo(0, 0)
     // Attendre le chargement des images éventuelles + tick de layout navigateur
     await waitForImages(container, 4000)
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    await new Promise((resolve) => setTimeout(resolve, 250))
 
     const opt = {
       margin,
@@ -82,8 +89,7 @@ async function generatePdfFromContainer(container, { filename, orientation = 'po
         backgroundColor: '#ffffff',
         scrollX: 0,
         scrollY: 0,
-        windowWidth: 800,
-        ignoreElements: (el) => el === overlay || el.hasAttribute?.('data-pdf-overlay'),
+        windowWidth: targetWidth,
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation },
     }
@@ -96,7 +102,7 @@ async function generatePdfFromContainer(container, { filename, orientation = 'po
     }
   } finally {
     window.scrollTo(savedScrollX, savedScrollY)
-    if (container.parentNode) container.parentNode.removeChild(container)
+    if (host.parentNode) host.parentNode.removeChild(host)
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay)
   }
 }
@@ -491,6 +497,7 @@ export async function exportBadgesPdf({ school, members = [], roleTitle = 'Perso
       ${members.map((m) => {
         const fullName = `${(m.lastName || '').toUpperCase()} ${m.firstName || ''}`
         const role = m.contractType ? (m.contractType === 'permanent' ? 'Enseignant Permanent' : 'Enseignant Vacataire') : (m.jobTitle || m.category || roleTitle)
+        const photoUrl = m.photo || m.avatar || m.user?.photo || m.user?.avatar || ''
         const subInfo = m.subjects ? (Array.isArray(m.subjects) ? m.subjects.join(', ') : m.subjects) : (m.phone || '')
         const mat = m.user?.matricule || m.matricule || `ID-${String(m._id || '').slice(-6).toUpperCase()}`
 
@@ -506,7 +513,7 @@ export async function exportBadgesPdf({ school, members = [], roleTitle = 'Perso
 
             <div style="display: flex; gap: 12px; align-items: center; margin: 8px 0;">
               <div style="width: 70px; height: 80px; border-radius: 8px; background: #f1f5f9; border: 1.5px solid #cbd5e1; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                ${m.photo ? `<img src="${m.photo}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 24px; font-weight: bold; color: #94a3b8;">${(m.lastName || '?')[0]}</span>`}
+                ${photoUrl ? `<img src="${photoUrl}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 24px; font-weight: bold; color: #94a3b8;">${(m.lastName || '?')[0]}</span>`}
               </div>
               <div style="flex: 1; min-width: 0;">
                 <p style="font-size: 12.5px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase;">${fullName}</p>
@@ -563,6 +570,8 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
         const dob = s.dateOfBirth ? new Date(s.dateOfBirth).toLocaleDateString('fr-FR') : '—'
         const pob = s.placeOfBirth ? ` à ${s.placeOfBirth}` : ''
 
+        const photoUrl = s.photo || s.avatar || s.user?.photo || s.user?.avatar || ''
+
         return `
           <div style="width: 350px; height: 220px; border: 2px solid #2563eb; border-radius: 12px; padding: 10px; box-sizing: border-box; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; box-shadow: 0 2px 4px rgba(0,0,0,0.06);">
             <div style="background: linear-gradient(135deg, #1e40af, #3b82f6); color: #ffffff; padding: 6px 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: flex-start;">
@@ -575,7 +584,7 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
 
             <div style="display: flex; gap: 10px; align-items: center; margin: 6px 0;">
               <div style="width: 65px; height: 75px; border-radius: 6px; background: #eff6ff; border: 1.5px solid #bfdbfe; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                ${s.photo ? `<img src="${s.photo}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 22px; font-weight: bold; color: #3b82f6;">${(s.lastName || '?')[0]}</span>`}
+                ${photoUrl ? `<img src="${photoUrl}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 22px; font-weight: bold; color: #3b82f6;">${(s.lastName || '?')[0]}</span>`}
               </div>
               <div style="flex: 1; min-width: 0; font-size: 9px; line-height: 1.35;">
                 <p style="font-size: 11.5px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase;">${s.lastName} ${s.firstName}</p>

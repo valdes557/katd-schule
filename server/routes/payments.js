@@ -476,11 +476,17 @@ async function applyOutcome(intent, status, raw) {
       const targetUserId = intent.beneficiary || intent.initiatedBy
       if (targetUserId) {
         const isOwn = !intent.initiatedBy || String(intent.initiatedBy) === String(targetUserId)
+        const depositReason = intent.reason || intent.meta?.reason || ''
+        const desc = depositReason
+          ? (isOwn ? `Dépôt sur le portefeuille — ${depositReason}` : `Dépôt reçu d'un utilisateur — ${depositReason}`)
+          : (isOwn ? 'Dépôt sur le portefeuille' : 'Dépôt reçu d\'un utilisateur')
         await wallet.credit(targetUserId, {
           amount: intent.amount, type: 'deposit', school: intent.school,
           counterparty: isOwn ? null : intent.initiatedBy,
           paymentIntent: intent._id, providerTransactionId: intent.providerTransactionId,
-          description: isOwn ? 'Dépôt sur le portefeuille' : 'Dépôt reçu d\'un utilisateur',
+          description: desc,
+          reason: depositReason,
+          meta: { ...(intent.meta || {}), reason: depositReason || undefined },
         })
 
         // Commission Marchand sur dépôt (0,20%) :

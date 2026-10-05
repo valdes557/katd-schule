@@ -78,7 +78,7 @@ router.get('/lookup/:accountNo', protect, async (req, res) => {
 // POST /api/wallet/transfer-user — transfert vers un autre utilisateur (frais 0,25%, PIN requis)
 router.post('/transfer-user', protect, async (req, res) => {
   try {
-    const { accountNo, amount, pin } = req.body
+    const { accountNo, amount, pin, reason } = req.body
     const amt = Number(amount)
     if (!accountNo) return res.status(400).json({ message: 'Numéro de compte du destinataire requis' })
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
@@ -93,7 +93,7 @@ router.post('/transfer-user', protect, async (req, res) => {
     const dest = await User.findOne({ walletAccountNo: acc }).select('_id name email')
     if (!dest) return res.status(404).json({ message: 'Destinataire introuvable' })
     const r = await wallet.transferBetweenUsers(req.user._id, dest._id, {
-      amount: amt, description: 'Transfert à ' + (dest.name || acc) })
+      amount: amt, reason: reason ? String(reason).trim() : '' })
     // Notifie le destinataire (best-effort)
     try {
       if (dest.email) await sendEmail({ to: dest.email, subject: 'Transfert reçu — KATD-SCHÜLE',
@@ -107,7 +107,7 @@ router.post('/transfer-user', protect, async (req, res) => {
 // POST /api/wallet/deposit/initiate — dépôt via Mobile Money (collecte Ikeepay)
 router.post('/deposit/initiate', protect, async (req, res) => {
   try {
-    const { amount, phone, operator, country = 'CM', otp, targetAccountNo } = req.body
+    const { amount, phone, operator, country = 'CM', otp, targetAccountNo, reason } = req.body
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
     const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
@@ -130,6 +130,8 @@ router.post('/deposit/initiate', protect, async (req, res) => {
       reference, purpose: 'deposit', amount: amt, currency: targetCurrency,
       payerPhone: rawPhone, payerOperator: operator, initiatedBy: req.user._id,
       beneficiary,
+      reason: reason ? String(reason).trim() : '',
+      meta: { reason: reason ? String(reason).trim() : undefined },
       school: req.user.school?._id || null, mode,
     })
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
@@ -252,7 +254,7 @@ router.get('/teachers', protect, authorize('directeur'), async (req, res) => {
 // POST /api/wallet/transfer — transfert salaire (PIN requis)
 router.post('/transfer', protect, authorize('directeur'), async (req, res) => {
   try {
-    const { teacherUserId, amount, pin } = req.body
+    const { teacherUserId, amount, pin, reason } = req.body
     const amt = Number(amount)
     if (!teacherUserId) return res.status(400).json({ message: 'Enseignant requis' })
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
@@ -264,9 +266,12 @@ router.post('/transfer', protect, authorize('directeur'), async (req, res) => {
     // L'enseignant doit appartenir à l'école du directeur
     const teacher = await Teacher.findOne({ user: teacherUserId, school: req.user.school?._id })
     if (!teacher) return res.status(404).json({ message: "Enseignant introuvable dans votre école" })
+    const rsn = reason ? String(reason).trim() : ''
     const r = await wallet.transfer(req.user._id, teacherUserId, {
-      amount: amt, description: 'Salaire — ' + (teacher.lastName + ' ' + teacher.firstName).trim(),
-      meta: { schoolId: String(req.user.school?._id || '') } })
+      amount: amt,
+      description: rsn ? `Salaire — ${(teacher.lastName + ' ' + teacher.firstName).trim()} — ${rsn}` : 'Salaire — ' + (teacher.lastName + ' ' + teacher.firstName).trim(),
+      reason: rsn,
+      meta: { schoolId: String(req.user.school?._id || ''), reason: rsn || undefined } })
     // notifie l'enseignant
     try {
       const tUser = await User.findById(teacherUserId)
@@ -283,7 +288,7 @@ router.post('/transfer', protect, authorize('directeur'), async (req, res) => {
 // finalise ensuite (payé → settle, échec → remboursement). L'admin garde un filet manuel.
 router.post('/withdraw', protect, async (req, res) => {
   try {
-    const { amount, momoNumber, momoOperator, accountName, pin, country = 'CM' } = req.body
+    const { amount, momoNumber, momoOperator, accountName, pin, country = 'CM', reason } = req.body
     const amt = Number(amount)
     const minW = await getMinWithdrawal()
     if (amt < minW) return res.status(400).json({ message: 'Le retrait minimum est de ' + minW.toLocaleString('fr-FR') + ' FCFA' })
@@ -307,6 +312,7 @@ router.post('/withdraw', protect, async (req, res) => {
     const providerRef = genRef('wd') // référence de payout (préfixe wd_ = reconnu par le webhook)
     const normCountry = String(country || 'CM').trim().toUpperCase()
     const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+    const rsn = reason ? String(reason).trim() : ''
 
     // Bloque le montant total (débité du solde) puis enregistre la demande en « processing ».
     await wallet.lock(req.user._id, amt)
@@ -314,6 +320,7 @@ router.post('/withdraw', protect, async (req, res) => {
       user: req.user._id, wallet: w._id, role: req.user.role, school: req.user.school?._id || null,
       amount: amt, fee, netAmount, currency: targetCurrency, country: normCountry,
       momoNumber, momoOperator: momoOperator || '', accountName: holderName,
+      reason: rsn,
       status: 'processing', providerRef, dueAt: new Date(Date.now() + SLA_HOURS * 3600 * 1000),
     })
 
@@ -341,11 +348,16 @@ router.post('/withdraw', protect, async (req, res) => {
     }
 
     // Payout initié ou en attente manuelle : on écrit le grand livre + les frais (encaissés par l'admin).
+    const withdrawDesc = rsn
+      ? `Retrait vers ${(momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber} — ${rsn} (net ${netAmount.toLocaleString('fr-FR')} ${targetCurrency}, frais 1%)`
+      : 'Retrait vers ' + (momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber + ' (net ' + netAmount.toLocaleString('fr-FR') + ' ' + targetCurrency + ', frais 1%)'
+
     await WalletTransaction.create({ wallet: w._id, owner: req.user._id, direction: 'debit',
       amount: amt, currency: targetCurrency, type: 'withdrawal', balanceAfter: w.balance, withdrawal: wr._id,
       providerTransactionId: wr.providerPayoutId || null,
-      description: 'Retrait vers ' + (momoOperator ? momoOperator.toUpperCase() + ' ' : '') + momoNumber + ' (net ' + netAmount.toLocaleString('fr-FR') + ' ' + targetCurrency + ', frais 1%)',
-      meta: { fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName, country: normCountry, currency: targetCurrency, providerRef, autoPayout } })
+      description: withdrawDesc,
+      reason: rsn,
+      meta: { reason: rsn || undefined, fee, netAmount, momoNumber, momoOperator: momoOperator || '', accountName: holderName, country: normCountry, currency: targetCurrency, providerRef, autoPayout } })
     // Frais encaissés par l'admin → rubrique « gestion des frais » (best-effort)
     await wallet.collectFee({ fee, fromUserId: req.user._id,
       description: 'Frais de retrait (1%) — ' + (req.user.name || ''),

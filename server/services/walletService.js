@@ -76,17 +76,19 @@ async function getPlatformAdmin() {
 // Crédite un portefeuille (argent reçu) + écrit au grand livre
 async function credit(userId, { amount, type, description = '', counterparty = null,
                                 paymentIntent = null, providerTransactionId = null,
-                                role, school, meta = {} }) {
+                                role, school, meta = {}, reason = '' }) {
   const amt = Number(amount)
   if (!amt || amt <= 0) throw new Error('Montant de crédit invalide')
   const wallet = await getOrCreateWallet(userId, { role, school })
   wallet.balance += amt
   wallet.totalIn += amt
   await wallet.save()
+  const txReason = reason || meta?.reason || ''
   const tx = await WalletTransaction.create({
     wallet: wallet._id, owner: userId, direction: 'credit', amount: amt,
     currency: wallet.currency, type, balanceAfter: wallet.balance,
-    counterparty, paymentIntent, providerTransactionId, description, meta,
+    counterparty, paymentIntent, providerTransactionId, description,
+    reason: txReason, meta: { ...meta, reason: txReason || undefined },
   })
   // Frais de maintenance : la première somme reçue d'un particulier (transfert, salaire,
   // pension, inscription) règle l'arriéré, exactement comme un dépôt fait par soi-même.
@@ -102,7 +104,7 @@ async function credit(userId, { amount, type, description = '', counterparty = n
 
 // Débite le solde disponible (transfert, ajustement)
 async function debit(userId, { amount, type, description = '', counterparty = null,
-                               withdrawal = null, role, school, meta = {} }) {
+                               withdrawal = null, role, school, meta = {}, reason = '' }) {
   const amt = Number(amount)
   if (!amt || amt <= 0) throw new Error('Montant de débit invalide')
   const wallet = await getOrCreateWallet(userId, { role, school })
@@ -110,10 +112,12 @@ async function debit(userId, { amount, type, description = '', counterparty = nu
   wallet.balance -= amt
   wallet.totalOut += amt
   await wallet.save()
+  const txReason = reason || meta?.reason || ''
   const tx = await WalletTransaction.create({
     wallet: wallet._id, owner: userId, direction: 'debit', amount: amt,
     currency: wallet.currency, type, balanceAfter: wallet.balance,
-    counterparty, withdrawal, description, meta,
+    counterparty, withdrawal, description,
+    reason: txReason, meta: { ...meta, reason: txReason || undefined },
   })
   return { wallet, tx }
 }
@@ -150,13 +154,16 @@ async function unlock(userId, amount) {
 }
 
 // Transfert interne instantané (directeur -> enseignant)
-async function transfer(fromUserId, toUserId, { amount, description = '', meta = {} }) {
+async function transfer(fromUserId, toUserId, { amount, description = '', reason = '', meta = {} }) {
   const amt = Number(amount)
   if (!amt || amt <= 0) throw new Error('Montant de transfert invalide')
+  const rsn = reason || meta?.reason || ''
+  const debitDesc = description || (rsn ? `Transfert de salaire — ${rsn}` : 'Transfert de salaire')
+  const creditDesc = description || (rsn ? `Salaire reçu — ${rsn}` : 'Salaire reçu')
   const d = await debit(fromUserId, { amount: amt, type: 'salary_transfer',
-    counterparty: toUserId, description: description || 'Transfert de salaire', meta })
+    counterparty: toUserId, description: debitDesc, reason: rsn, meta: { ...meta, reason: rsn || undefined } })
   const c = await credit(toUserId, { amount: amt, type: 'salary_received',
-    counterparty: fromUserId, description: description || 'Salaire reçu', meta })
+    counterparty: fromUserId, description: creditDesc, reason: rsn, meta: { ...meta, reason: rsn || undefined } })
   return { from: d.wallet, to: c.wallet, debitTx: d.tx, creditTx: c.tx }
 }
 
@@ -256,7 +263,7 @@ async function creditMerchantsCommission(amt, { fromUserId, toUserId, fromLabel,
 // - Marchand (envoyeur) : EXONÉRÉ des 0,25%.
 // - Seuls les marchands participant à la transaction reçoivent la commission de 0,20%.
 // Dans tous les cas le destinataire reçoit le montant plein.
-async function transferBetweenUsers(fromUserId, toUserId, { amount, description = '' }) {
+async function transferBetweenUsers(fromUserId, toUserId, { amount, description = '', reason = '', meta = {} }) {
   const amt = Number(amount)
   if (!amt || amt <= 0) throw new Error('Montant de transfert invalide')
   if (String(fromUserId) === String(toUserId)) throw new Error('Impossible de transférer vers votre propre compte')
@@ -277,21 +284,25 @@ async function transferBetweenUsers(fromUserId, toUserId, { amount, description 
   const fromWallet = await getOrCreateWallet(fromUserId)
   if (fromWallet.balance < total) throw new Error(isMerchant ? 'Solde insuffisant' : 'Solde insuffisant (frais de 0,25% inclus)')
 
+  const rsn = reason || meta?.reason || ''
+  const debitDesc = rsn ? `Envoyé à ${toLabel} — ${rsn}` : `Envoyé à ${toLabel}`
+  const creditDesc = rsn ? `Reçu de ${fromLabel} — ${rsn}` : `Reçu de ${fromLabel}`
+
   // Débit envoyeur : montant transféré (libellé nominatif : vers qui)
   const d = await debit(fromUserId, { amount: amt, type: 'transfer_sent',
-    counterparty: toUserId, description: 'Envoyé à ' + toLabel })
+    counterparty: toUserId, description: debitDesc, reason: rsn, meta: { ...meta, reason: rsn || undefined } })
   // Débit envoyeur : frais 0,25% (utilisateur normal uniquement)
   if (fee > 0) {
     await debit(fromUserId, { amount: fee, type: 'transfer_fee', counterparty: toUserId,
-      description: 'Frais de transfert (0,25%)', meta: { rate: TRANSFER_FEE_RATE, baseAmount: amt } })
+      description: 'Frais de transfert (0,25%)', meta: { rate: TRANSFER_FEE_RATE, baseAmount: amt, reason: rsn || undefined } })
   }
   // Crédit destinataire : montant transféré (libellé nominatif : de qui)
   const c = await credit(toUserId, { amount: amt, type: 'transfer_received',
-    counterparty: fromUserId, description: 'Reçu de ' + fromLabel })
+    counterparty: fromUserId, description: creditDesc, reason: rsn, meta: { ...meta, reason: rsn || undefined } })
   // Crédit admin : frais encaissés (best-effort, ne bloque pas le transfert si admin absent)
   await collectFee({ fee, fromUserId,
     description: 'Frais de transfert encaissés (0,25%) — ' + fromLabel,
-    meta: { feeType: 'transfer', rate: TRANSFER_FEE_RATE, baseAmount: amt, from: String(fromUserId), to: String(toUserId) } })
+    meta: { feeType: 'transfer', rate: TRANSFER_FEE_RATE, baseAmount: amt, from: String(fromUserId), to: String(toUserId), reason: rsn || undefined } })
   // Commission marchand : 0,20% versé UNIQUEMENT aux marchands impliqués dans ce transfert.
   const commission = await creditMerchantsCommission(amt, { fromUserId, toUserId, fromLabel, toLabel, fromU, toU })
   const fromWalletAfter = await getOrCreateWallet(fromUserId)

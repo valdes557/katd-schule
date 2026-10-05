@@ -193,7 +193,31 @@ export default function PublicHeader() {
 
       {/* ── Mobile menu ── */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-gray-100 bg-white py-3 px-4 space-y-1 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="md:hidden border-t border-gray-100 bg-white py-3 px-4 space-y-1 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150 max-h-[85vh] overflow-y-auto">
+          {/* Boutons Connexion / Rejoindre affichés immédiatement en tête du menu pour un accès direct sans scroll */}
+          <div className="pb-3 border-b border-gray-100 mb-2">
+            {user ? (
+              user.role === 'utilisateur' ? (
+                <Link to="/u" className="btn-primary w-full text-center block text-sm py-2.5 rounded-xl font-bold shadow-xs" onClick={() => setMobileOpen(false)}>
+                  Mon espace
+                </Link>
+              ) : (
+                <Link to="/dashboard" className="btn-primary w-full text-center block text-sm py-2.5 rounded-xl font-bold shadow-xs" onClick={() => setMobileOpen(false)}>
+                  Mon école
+                </Link>
+              )
+            ) : (
+              <div className="flex gap-2">
+                <Link to="/login" className="flex-1 text-center text-sm font-semibold text-gray-800 bg-gray-100 hover:bg-gray-200 border border-gray-200 py-2.5 rounded-xl transition-colors" onClick={() => setMobileOpen(false)}>
+                  Connexion
+                </Link>
+                <Link to="/tarifs" className="flex-1 btn-primary text-center text-sm py-2.5 rounded-xl justify-center font-bold shadow-xs" onClick={() => setMobileOpen(false)}>
+                  Rejoindre
+                </Link>
+              </div>
+            )}
+          </div>
+
           <Link
             to="/"
             className="flex items-center gap-2.5 py-2.5 px-3 text-sm font-bold text-gray-900 rounded-xl hover:bg-gray-50"
@@ -237,29 +261,6 @@ export default function PublicHeader() {
               )}
             </Link>
           ))}
-
-          <div className="pt-2 border-t border-gray-100 mt-2 space-y-2">
-            {user ? (
-              user.role === 'utilisateur' ? (
-                <Link to="/u" className="btn-primary w-full text-center block text-sm py-2.5 rounded-xl font-bold" onClick={() => setMobileOpen(false)}>
-                  Mon espace
-                </Link>
-              ) : (
-                <Link to="/dashboard" className="btn-primary w-full text-center block text-sm py-2.5 rounded-xl font-bold" onClick={() => setMobileOpen(false)}>
-                  Mon école
-                </Link>
-              )
-            ) : (
-              <div className="flex gap-2">
-                <Link to="/login" className="flex-1 text-center text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 py-2.5 rounded-xl transition-colors" onClick={() => setMobileOpen(false)}>
-                  Connexion
-                </Link>
-                <Link to="/tarifs" className="flex-1 btn-primary text-center text-sm py-2.5 rounded-xl justify-center font-bold" onClick={() => setMobileOpen(false)}>
-                  Rejoindre
-                </Link>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </header>

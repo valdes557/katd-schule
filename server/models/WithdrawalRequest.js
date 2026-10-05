@@ -17,6 +17,7 @@ const withdrawalSchema = new mongoose.Schema(
     momoNumber: { type: String, required: true },
     momoOperator: { type: String, default: '' }, // mtn / moov ...
     accountName: { type: String, default: '' },
+    reason: { type: String, default: '' },
     status: {
       type: String,
       enum: ['pending', 'processing', 'paid', 'rejected'],

@@ -24,6 +24,7 @@ const paymentIntentSchema = new mongoose.Schema(
     // bénéficiaire du crédit portefeuille (ex: directeur pour enrollment)
     beneficiary: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     // Données métier libres (plan choisi, élève, etc.)
+    reason: { type: String, default: '' },
     meta: { type: Object, default: {} },
     // État Ikeepay — id de transaction du prestataire (ancien champ legacy: sebpayTransactionId)
     providerTransactionId: { type: String, default: null, index: true },

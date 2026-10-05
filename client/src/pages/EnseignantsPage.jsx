@@ -14,7 +14,8 @@ const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4'
 const EMPTY = {
   firstName: '', lastName: '', email: '', phone: '', gender: 'M',
   subjects: '', speciality: '', password: '', classes: [], cycle: '',
-  contractType: 'permanent', monthlySalary: '', hourlyRate: '', weeklyHours: ''
+  contractType: 'permanent', monthlySalary: '', hourlyRate: '', weeklyHours: '',
+  photo: '', photoFile: null,
 }
 
 export default function EnseignantsPage() {
@@ -146,6 +147,8 @@ export default function EnseignantsPage() {
       monthlySalary: t.monthlySalary ?? '',
       hourlyRate: t.hourlyRate ?? '',
       weeklyHours: t.weeklyHours ?? '',
+      photo: t.photo || t.avatar || t.user?.photo || '',
+      photoFile: null,
     })
     setShowModal(true)
   }
@@ -205,8 +208,18 @@ export default function EnseignantsPage() {
             <div key={t._id} className="card p-5">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }}>
-                    {getInitials(`${t.lastName} ${t.firstName}`)}
+                  <div className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 border border-gray-200">
+                    {(t.photo || t.avatar || t.user?.photo) ? (
+                      <img
+                        src={t.photo || t.avatar || t.user?.photo}
+                        alt={`${t.lastName} ${t.firstName}`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: COLORS[i % COLORS.length] }}>
+                        {getInitials(`${t.lastName} ${t.firstName}`)}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="text-sm font-bold text-gray-900">{t.lastName} {t.firstName}</div>
@@ -308,6 +321,28 @@ export default function EnseignantsPage() {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Photo de profil */}
+              <div>
+                <label className="text-xs font-medium text-gray-600">Photo de l'enseignant (badge et fiche)</label>
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center flex-shrink-0 border border-gray-200">
+                    {form.photoFile ? (
+                      <img src={URL.createObjectURL(form.photoFile)} alt="" className="w-full h-full object-cover" />
+                    ) : form.photo ? (
+                      <img src={form.photo} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <UserCheck size={22} className="text-gray-300" />
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setForm({ ...form, photoFile: e.target.files?.[0] || null })}
+                    className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-600 file:text-xs file:font-medium hover:file:bg-blue-100 file:cursor-pointer"
+                  />
                 </div>
               </div>
 
