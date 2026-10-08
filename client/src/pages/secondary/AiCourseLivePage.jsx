@@ -35,7 +35,7 @@ export default function AiCourseLivePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isStudent = user?.role === 'eleve'
-  const canAsk = ['eleve', 'enseignant', 'directeur', 'super_admin'].includes(user?.role)
+  const canAsk = ['eleve', 'enseignant', 'directeur', 'super_admin', 'utilisateur'].includes(user?.role)
 
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
@@ -384,8 +384,8 @@ export default function AiCourseLivePage() {
     setSpeechDetected(false)
   }
 
-  const canEdit = ['enseignant', 'directeur', 'super_admin'].includes(user?.role) && ['planifie', 'generation', 'pret', 'en_cours'].includes(data?.status)
-  const canStaffAction = ['enseignant', 'directeur', 'super_admin'].includes(user?.role)
+  const canEdit = ['enseignant', 'directeur', 'super_admin', 'utilisateur'].includes(user?.role) && ['planifie', 'generation', 'pret', 'en_cours'].includes(data?.status)
+  const canStaffAction = ['enseignant', 'directeur', 'super_admin', 'utilisateur'].includes(user?.role)
 
   const openEditModal = async () => {
     try {
@@ -800,7 +800,7 @@ export default function AiCourseLivePage() {
     <div className="max-w-3xl mx-auto space-y-4 animate-fade-in pb-24">
       {/* Bandeau */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/dashboard/ia-cours')} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><ArrowLeft size={18} /></button>
+        <button onClick={() => navigate(user?.role === 'utilisateur' ? '/u/ia-cours' : '/dashboard/ia-cours')} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><ArrowLeft size={18} /></button>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg font-bold text-gray-900 truncate">{data.title}</h1>

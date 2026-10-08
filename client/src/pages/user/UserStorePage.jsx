@@ -2,7 +2,7 @@ import { Link, useOutletContext } from 'react-router-dom'
 import {
   Home, Newspaper, Globe, Plus, Users, Briefcase,
   Wallet, Store, Landmark, Rocket, User, Bell,
-  ShoppingBag,
+  ShoppingBag, Bot, Sparkles,
 } from 'lucide-react'
 
 // Palette de couleurs foncées (fond saturé + icône blanche) tournant par bouton, identique à AppLauncher des autres dashboards.
@@ -24,6 +24,13 @@ export default function UserStorePage() {
   const unreadNews = ctx.unreadNews || 0
 
   const sections = [
+    {
+      label: 'INTELLIGENCE ARTIFICIELLE',
+      items: [
+        { label: 'Chat IA', icon: Bot, path: '/u/ia-chat', badgeText: 'IA' },
+        { label: 'Cours IA', icon: Sparkles, path: '/u/ia-cours', badgeText: 'IA' },
+      ],
+    },
     {
       label: 'NAVIGATION & MÉDIAS',
       items: [

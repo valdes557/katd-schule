@@ -67,7 +67,8 @@ export default function AiCoursesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const role = user?.role
-  const canCreate = ['enseignant', 'directeur', 'super_admin', 'vice_principal'].includes(role)
+  const canCreate = ['enseignant', 'directeur', 'super_admin', 'vice_principal', 'utilisateur'].includes(role)
+  const liveUrl = (courseId) => (role === 'utilisateur' ? `/u/ia-cours/${courseId}/live` : `/dashboard/ia-cours/${courseId}/live`)
 
   const [showModal, setShowModal] = useState(false)
   const [editingCourseId, setEditingCourseId] = useState(null)
@@ -376,7 +377,7 @@ export default function AiCoursesPage() {
         setEditingCourseId(null)
         refresh()
         if (form.startNow && res?.data?._id) {
-          navigate(`/dashboard/ia-cours/${res.data._id}/live`)
+          navigate(liveUrl(res.data._id))
           return
         }
       }
@@ -662,7 +663,7 @@ export default function AiCoursesPage() {
                         onClick={async () => {
                           try {
                             await aiCoursesApi.startNow(c._id)
-                            navigate(`/dashboard/ia-cours/${c._id}/live`)
+                            navigate(liveUrl(c._id))
                           } catch (err) {
                             alert("Erreur lors du démarrage du direct : " + err.message)
                           }
@@ -680,7 +681,7 @@ export default function AiCoursesPage() {
                           if (!confirm("Relancer ce cours en direct maintenant pour votre classe ?")) return
                           try {
                             await aiCoursesApi.startNow(c._id)
-                            navigate(`/dashboard/ia-cours/${c._id}/live`)
+                            navigate(liveUrl(c._id))
                           } catch (err) {
                             alert("Erreur : " + err.message)
                           }
@@ -693,7 +694,7 @@ export default function AiCoursesPage() {
                     )}
                     {canOpen && (
                       <button
-                        onClick={() => navigate(`/dashboard/ia-cours/${c._id}/live`)}
+                        onClick={() => navigate(liveUrl(c._id))}
                         className={`text-xs flex items-center gap-1 ${c.status === 'en_cours' ? 'btn-primary' : 'btn-ghost border border-gray-200'}`}
                       >
                         <Play size={13} />
@@ -814,11 +815,20 @@ export default function AiCoursesPage() {
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Classe</label>
-                  <select required value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })} className="input text-sm mt-1">
-                    <option value="">Sélectionner...</option>
-                    {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
-                  </select>
+                  <label className="text-xs font-medium text-gray-600">Classe / Public</label>
+                  {classes.length > 0 ? (
+                    <select required value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })} className="input text-sm mt-1">
+                      <option value="">Sélectionner...</option>
+                      {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+                    </select>
+                  ) : (
+                    <select value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })} className="input text-sm mt-1">
+                      <option value="general">Tous niveaux (Public)</option>
+                      <option value="primaire">Niveau Primaire</option>
+                      <option value="secondaire">Niveau Secondaire</option>
+                      <option value="superieur">Niveau Supérieur</option>
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600">Matière</label>

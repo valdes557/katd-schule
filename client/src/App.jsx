@@ -497,6 +497,9 @@ export default function App() {
         <Route path="marchand" element={<UserMerchantPage />} />
         <Route path="actionnaires" element={<UserShareholdersPage />} />
         <Route path="mes-boosts" element={<UserBoostsPage />} />
+        <Route path="ia-chat" element={<AiChatPage />} />
+        <Route path="ia-cours" element={<AiCoursesPage />} />
+        <Route path="ia-cours/:id/live" element={<AiCourseLivePage />} />
       </Route>
 
       {/* 404 fallback */}

@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   History, Loader2, AlertCircle, Filter, ChevronLeft, ChevronRight,
-  User, Clock, ShieldAlert,
+  User, Clock, ShieldAlert, Download,
 } from 'lucide-react'
 import { auditLogsApi } from '../../lib/api'
-import ExportCsvButton from '../../components/ExportCsvButton'
 
 // Journal des actions sensibles (F3 Secondaire).
 // Directeur : son école. Super_admin : toute la plateforme. Lecture seule.
@@ -86,15 +85,109 @@ export default function AuditLogPage() {
     return all
   }, [action, from, to])
 
-  const exportColumns = [
-    { label: 'Date', key: 'createdAt', format: (v) => new Date(v).toLocaleString('fr-FR') },
-    { label: 'Action', key: 'action', format: (v, r) => ACTION_LABELS[v] || r.label || v },
-    { label: 'Auteur', key: 'actorName', format: (v) => v || 'Inconnu' },
-    { label: 'Rôle', key: 'actorRole' },
-    { label: 'Méthode', key: 'method' },
-    { label: 'Chemin', key: 'path' },
-    { label: 'Entité', key: 'entityId' },
-  ]
+  const [exportingPdf, setExportingPdf] = useState(false)
+
+  const handleExportPdf = async () => {
+    if (exportingPdf || total === 0) return
+    setExportingPdf(true)
+    try {
+      const allLogs = await fetchAllForExport()
+      if (!allLogs || !allLogs.length) {
+        alert("Aucune action à exporter.")
+        setExportingPdf(false)
+        return
+      }
+
+      const html2pdf = (await import('html2pdf.js')).default
+
+      const container = document.createElement('div')
+      container.style.cssText = 'position:fixed;left:-9999px;top:0;width:720px;padding:20px;background:#ffffff;color:#111827;font-family:Arial,Helvetica,sans-serif;margin:0 auto;overflow:hidden;'
+
+      const filterDesc = [
+        action ? `Action : ${ACTION_LABELS[action] || action}` : 'Toutes les actions',
+        from ? `Du : ${new Date(from).toLocaleDateString('fr-FR')}` : null,
+        to ? `Au : ${new Date(to).toLocaleDateString('fr-FR')}` : null,
+      ].filter(Boolean).join(' · ')
+
+      const nowStr = new Date().toLocaleString('fr-FR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+
+      container.innerHTML = `
+        <div style="border-bottom: 2px solid #1E3A8A; padding-bottom: 12px; margin-bottom: 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <h1 style="font-size: 18px; font-weight: 800; color: #1E3A8A; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">KATD-SCHÜLE</h1>
+              <p style="font-size: 13px; font-weight: 700; color: #111827; margin: 4px 0 0 0;">JOURNAL DES ACTIONS D'ADMINISTRATION</p>
+            </div>
+            <div style="text-align: right; font-size: 10px; color: #6B7280;">
+              <div>Document généré le : ${nowStr}</div>
+              <div style="font-weight: 600; color: #2563EB; margin-top: 2px;">Total : ${allLogs.length} action(s)</div>
+            </div>
+          </div>
+          ${filterDesc ? `<div style="font-size: 10px; color: #4B5563; margin-top: 8px; background: #F3F4F6; padding: 4px 8px; border-radius: 4px;">Filtres appliqués : ${filterDesc}</div>` : ''}
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 9px; line-height: 1.3;">
+          <thead>
+            <tr style="background: #1E3A8A; color: #ffffff; text-align: left;">
+              <th style="padding: 6px 8px; border: 1px solid #1E3A8A; width: 105px;">Date & Heure</th>
+              <th style="padding: 6px 8px; border: 1px solid #1E3A8A; width: 140px;">Type d'action</th>
+              <th style="padding: 6px 8px; border: 1px solid #1E3A8A; width: 130px;">Auteur</th>
+              <th style="padding: 6px 8px; border: 1px solid #1E3A8A; width: 70px;">Rôle</th>
+              <th style="padding: 6px 8px; border: 1px solid #1E3A8A;">Méthode / Chemin</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${allLogs.map((log, idx) => {
+              const bg = idx % 2 === 0 ? '#ffffff' : '#F9FAFB'
+              const dateStr = new Date(log.createdAt).toLocaleString('fr-FR', {
+                day: '2-digit', month: '2-digit', year: '2-digit',
+                hour: '2-digit', minute: '2-digit',
+              })
+              const actionName = ACTION_LABELS[log.action] || log.label || log.action || '-'
+              const author = log.actorName || 'Inconnu'
+              const r = log.actorRole || '-'
+              const path = `${log.method || ''} ${log.path || ''}`.trim() || '-'
+              return `
+                <tr style="background: ${bg};">
+                  <td style="padding: 5px 8px; border: 1px solid #E5E7EB; white-space: nowrap;">${dateStr}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #E5E7EB; font-weight: 600; color: #1F2937;">${actionName}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #E5E7EB;">${author}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #E5E7EB; color: #4B5563;">${r}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #E5E7EB; font-family: monospace; font-size: 8px; color: #6B7280; word-break: break-all;">${path}</td>
+                </tr>
+              `
+            }).join('')}
+          </tbody>
+        </table>
+
+        <div style="margin-top: 14px; padding-top: 8px; border-top: 1px solid #E5E7EB; display: flex; justify-content: space-between; font-size: 9px; color: #9CA3AF;">
+          <span>Plateforme KATD-SCHÜLE — Traçabilité et sécurité d'administration</span>
+          <span>Page générée automatiquement</span>
+        </div>
+      `
+
+      document.body.appendChild(container)
+
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `journal-actions-${new Date().toISOString().slice(0, 10)}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: 0 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }
+
+      await html2pdf().set(opt).from(container).save()
+      document.body.removeChild(container)
+    } catch (err) {
+      console.error('Erreur export PDF journal des actions:', err)
+      alert("Erreur lors de l'exportation du PDF : " + err.message)
+    } finally {
+      setExportingPdf(false)
+    }
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -107,13 +200,20 @@ export default function AuditLogPage() {
             Traçabilité des actions sensibles : finances, comptes, notes, cours IA, suppressions.
           </p>
         </div>
-        <ExportCsvButton
-          filename="journal-actions.csv"
-          columns={exportColumns}
-          rows={fetchAllForExport}
-          disabled={loading || total === 0}
-          className="shrink-0"
-        />
+        <button
+          type="button"
+          onClick={handleExportPdf}
+          disabled={loading || total === 0 || exportingPdf}
+          className="btn-primary text-xs sm:text-sm py-2 px-3.5 inline-flex items-center gap-1.5 shrink-0 shadow-sm disabled:opacity-50"
+          title="Exporter le journal des actions en PDF"
+        >
+          {exportingPdf ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <Download size={15} />
+          )}
+          <span>{exportingPdf ? 'Génération PDF…' : 'Exporter en PDF'}</span>
+        </button>
       </div>
 
       {/* Filtres */}

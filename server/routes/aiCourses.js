@@ -48,9 +48,10 @@ async function studentClassId(userId) {
 
 // L'utilisateur peut-il voir ce cours ? (renvoie true/false)
 async function canViewCourse(user, course) {
-  if (user.role === 'super_admin') return true
+  if (['super_admin', 'utilisateur'].includes(user.role)) return true
+  if (course.teacher && String(course.teacher) === String(user._id)) return true
   const sid = String(user.school?._id || user.school || '')
-  if (String(course.school) !== sid) return false
+  if (course.school && String(course.school) !== sid) return false
   if (['directeur', 'vice_principal'].includes(user.role)) return true
   if (user.role === 'enseignant') {
     if (String(course.teacher) === String(user._id)) return true
@@ -81,17 +82,18 @@ const courseUpload = upload.fields([
 ])
 
 // POST /api/ai-courses/generate-content — rédiger le cours automatiquement avec l'IA
-router.post('/generate-content', protect, authorize('enseignant', 'directeur', 'super_admin'), rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
+router.post('/generate-content', protect, authorize('enseignant', 'directeur', 'super_admin', 'vice_principal', 'utilisateur'), rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
   try {
     const sid = schoolId(req)
-    if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
+    if (sid) {
+      const sub = await getActiveSubscription(sid)
+      if (!sub || sub.remainingQuestions <= 0) {
+        return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Aucune souscription IA active pour votre établissement." })
+      }
+    }
     const { title, subject, level, className, durationMinutes, language, images } = req.body
     if (!title || !subject) {
       return res.status(400).json({ message: 'Titre et matière requis pour la génération.' })
-    }
-    const sub = await getActiveSubscription(sid)
-    if (!sub || sub.remainingQuestions <= 0) {
-      return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Aucune souscription IA active pour votre établissement." })
     }
     const result = await generateCourseContent({
       title,
@@ -109,10 +111,9 @@ router.post('/generate-content', protect, authorize('enseignant', 'directeur', '
 })
 
 // POST /api/ai-courses — programmer un cours (multipart : champs 'pdf', 'nextPdf' et 'images' optionnels)
-router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, async (req, res) => {
+router.post('/', protect, authorize('enseignant', 'directeur', 'super_admin', 'vice_principal', 'utilisateur'), courseUpload, async (req, res) => {
   try {
     const sid = schoolId(req)
-    if (!sid) return res.status(400).json({ message: 'Aucune école associée à votre compte' })
 
     const {
       classId, subject, subjectRef, title, sourceType, sourceText, scheduledAt, durationMinutes,
@@ -148,12 +149,17 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
       }
       teacherProfile = teacher._id
     }
-    const klass = await Class.findOne({ _id: classId, school: sid }).select('name level')
-    if (!klass) return res.status(404).json({ message: 'Classe introuvable dans votre école' })
+    let klass = null
+    if (classId && require('mongoose').Types.ObjectId.isValid(classId)) {
+      klass = await Class.findOne({ _id: classId, ...(sid ? { school: sid } : {}) }).select('name level')
+    }
+    if (!klass && req.user.role !== 'utilisateur' && req.user.role !== 'super_admin') {
+      return res.status(404).json({ message: 'Classe introuvable dans votre école' })
+    }
 
-    // Souscription IA active requise dès la création (inutile de planifier sinon)
-    const sub = await getActiveSubscription(sid)
-    if (!sub || sub.remainingQuestions <= 0) {
+    // Souscription IA active requise dès la création si rattaché à une école
+    const sub = sid ? await getActiveSubscription(sid) : null
+    if (sid && (!sub || sub.remainingQuestions <= 0)) {
       return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Aucune souscription IA active pour votre établissement." })
     }
 
@@ -260,15 +266,15 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
     }
 
     const course = await AiCourse.create({
-      school: sid,
-      class: classId,
+      school: sid || null,
+      class: klass?._id || null,
       subject: String(subject).trim(),
       subjectRef: subjectRef || null,
       teacher: req.user._id,
       teacherProfile,
       teacherName: req.user.name || '',
       title: String(title).trim(),
-      level: klass.level || '',
+      level: klass?.level || (classId === 'primaire' ? 'Primaire' : classId === 'secondaire' ? 'Secondaire' : classId === 'superieur' ? 'Supérieur' : 'Général'),
       sourceType: finalSourceType,
       sourceText: text,
       pdfUrl,
@@ -299,7 +305,7 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
     if (!isImmediate && (!lessonScript || lessonScript.length < 100)) {
       setImmediate(async () => {
         try {
-          const { script, usage, model } = await generateLessonScript(course, klass.name || '')
+          const { script, usage, model } = await generateLessonScript(course, klass?.name || 'Général')
           if (script && script.length >= 100) {
             course.lessonScript = script
             course.generatedAt = new Date()
@@ -307,8 +313,8 @@ router.post('/', protect, authorize('enseignant', 'directeur'), courseUpload, as
             await course.save()
             AiUsageLog.create({
               user: req.user._id,
-              school: sid,
-              subscription: sub._id,
+              school: sid || null,
+              subscription: sub?._id || null,
               model,
               promptTokens: usage.promptTokens,
               completionTokens: usage.completionTokens,
@@ -774,12 +780,18 @@ DIRECTIVES OBLIGATOIRES :
 router.get('/', protect, async (req, res) => {
   try {
     const sid = schoolId(req)
-    if (!sid) return res.json({ success: true, data: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } })
-    const query = { school: sid }
+    const role = req.user.role
+    const query = {}
+    if (sid) {
+      query.school = sid
+    } else if (role === 'utilisateur' || role === 'super_admin') {
+      query.$or = [{ teacher: req.user._id }, { school: null }]
+    } else {
+      return res.json({ success: true, data: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } })
+    }
     if (req.query.classId) query.class = req.query.classId
     if (req.query.status) query.status = { $in: String(req.query.status).split(',') }
 
-    const role = req.user.role
     if (role === 'enseignant') {
       const teacher = await Teacher.findOne({ user: req.user._id }).select('classes')
       if (!teacher) return res.json({ success: true, data: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } })
@@ -796,6 +808,10 @@ router.get('/', protect, async (req, res) => {
       if (!ids.length) return res.json({ success: true, data: [], pagination: { total: 0, page: 1, limit: 200, totalPages: 1 } })
       query.class = { $in: ids }
       if (!query.status) query.status = { $in: ['en_cours', 'termine'] }
+    } else if (role === 'utilisateur') {
+      if (req.query.scope !== 'all') {
+        query.teacher = req.user._id
+      }
     } else if (!['directeur', 'vice_principal', 'super_admin'].includes(role)) {
       return res.status(403).json({ message: 'Accès refusé' })
     }

@@ -144,17 +144,16 @@ export default function PublicHeader() {
               </>
             )}
 
-            {/* Bouton Menu Mobile : Bien visible, en évidence avec texte et icône */}
+            {/* Bouton Menu Mobile : Uniquement l'icône, pastille d'incrémentation directement sur l'icône */}
             <button
               type="button"
-              aria-label="Ouvrir le menu"
-              className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95"
+              aria-label={mobileOpen ? "Fermer le menu" : "Ouvrir le menu"}
+              className="md:hidden relative w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-xs transition-all active:scale-95 shrink-0"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
-              {mobileOpen ? <X size={17} /> : <Menu size={17} />}
-              <span className="font-semibold text-xs">{mobileOpen ? 'Fermer' : 'Menu'}</span>
+              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
               {newsCount > 0 && (
-                <span className="min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center ring-1 ring-white">
+                <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-xs ring-2 ring-white">
                   {newsCount > 9 ? '9+' : newsCount}
                 </span>
               )}

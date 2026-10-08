@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store, Landmark, Youtube, Rocket, ShoppingBag, Bot, Sparkles } from 'lucide-react'
+import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store, Landmark, Youtube, Rocket, ShoppingBag } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { messagesApi, platformApi, newsApi } from '../../lib/api'
 import WhatsAppFab from '../../components/WhatsAppFab'
@@ -187,21 +187,11 @@ export default function UserLayout() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" style={{ touchAction: 'pan-x pan-y' }}>
-      {/* ── En-tête : bouton retour + barre de recherche ── */}
+      {/* ── En-tête : KATDTUBE fixe à gauche + actions à droite ── */}
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
-        <div className="max-w-2xl mx-auto px-4 h-16 flex items-center gap-2">
-          {!onHome && (
-            <button
-              onClick={() => navigate(-1)}
-              title="Retour"
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-800 flex-shrink-0"
-            >
-              <ArrowLeft size={22} />
-            </button>
-          )}
-
-          {/* Marque KATDTUBE en remplacement du champ de recherche */}
-          <div className="flex-1 min-w-0 flex items-center">
+        <div className="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
+          {/* Marque KATDTUBE permanente et fixe (ne bouge jamais) */}
+          <div className="flex items-center">
             <button
               type="button"
               onClick={() => navigate('/u/videos')}
@@ -226,18 +216,24 @@ export default function UserLayout() {
         </div>
       </header>
 
-      {/* ── Contenu ── */}
+      {/* ── Contenu du Dashboard : Flèche retour intégrée sur le dashboard ── */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5">
+        {!onHome && (
+          <button
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-1.5 mb-4 text-xs sm:text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl px-3.5 py-2 hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-xs"
+          >
+            <ArrowLeft size={16} /> Retour
+          </button>
+        )}
         <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen, searchTerm, unreadMessages, unreadNotifs, unreadNews }} />
       </main>
 
-      {/* ── Barre de navigation flottante : position abaissée (Store, IA, Notifications) ── */}
+      {/* ── Barre flottante latérale (Store et Notifications) ── */}
       {!isMessages && (
-        <div className="fixed right-2 sm:right-3 top-[60%] -translate-y-1/2 z-50 flex flex-col items-center gap-2.5 pointer-events-auto">
+        <div className="fixed right-2 sm:right-3 top-[65%] -translate-y-1/2 z-50 flex flex-col items-center gap-2.5 pointer-events-auto">
           <NavButton active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} label="Store" gradient="from-blue-600 to-indigo-600" />
-          <NavButton active={false} onClick={() => navigate('/dashboard/ia-chat')} icon={Bot} label="Chat IA" gradient="from-indigo-600 to-purple-600" />
-          <NavButton active={false} onClick={() => navigate('/dashboard/ia-cours')} icon={Sparkles} label="Cours IA" gradient="from-purple-600 to-pink-600" />
-          <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-amber-500 to-orange-500" badge={unreadNotifs} />
+          <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-purple-500 to-pink-500" badge={unreadNotifs} />
         </div>
       )}
 

@@ -70,10 +70,10 @@ async function getActiveSubscription(sid) {
   return AiSubscription.findOne({ school: sid, status: 'approved' }).sort({ approvedAt: -1 })
 }
 
-// L'utilisateur peut-il utiliser le chat ? Directeur = d'office, sinon aiAccess requis.
+// L'utilisateur peut-il utiliser le chat ? Directeur & admin = d'office, utilisateur & enseignant/parent/élève autorisés.
 function canUseChat(user) {
-  if (user.role === 'directeur') return true
-  if (['enseignant', 'parent'].includes(user.role)) return user.aiAccess === true
+  if (['directeur', 'super_admin', 'admin', 'vice_principal'].includes(user.role)) return true
+  if (['enseignant', 'parent', 'utilisateur', 'eleve'].includes(user.role)) return true
   return false
 }
 
@@ -727,11 +727,11 @@ router.post('/chat', protect, rateLimit({ windowMs: 60000, max: 20 }), async (re
     }
 
     const sid = schoolId(req)
-    const sub = await getActiveSubscription(sid)
-    if (!sub) {
+    let sub = sid ? await getActiveSubscription(sid) : null
+    if (!sub && req.user.role !== 'utilisateur' && req.user.role !== 'super_admin') {
       return res.status(403).json({ message: "Aucune souscription IA active pour votre établissement." })
     }
-    if (sub.remainingQuestions <= 0) {
+    if (sub && sub.remainingQuestions <= 0) {
       return res.status(403).json({ message: QUOTA_EXHAUSTED_MSG })
     }
 
@@ -743,7 +743,7 @@ router.post('/chat', protect, rateLimit({ windowMs: 60000, max: 20 }), async (re
     if (!conversation) {
       conversation = new AiConversation({
         user: req.user._id,
-        school: sid,
+        school: sid || null,
         title: String(message).trim().slice(0, 60),
         messages: [],
       })
@@ -788,18 +788,21 @@ CONSIGNES ESSENTIELLES :
       return res.status(status).json({ message: err.message })
     }
 
-    // Décrément ATOMIQUE du quota (garde anti-course : ne descend pas sous 0)
-    const updated = await AiSubscription.findOneAndUpdate(
-      { _id: sub._id, remainingQuestions: { $gt: 0 } },
-      { $inc: { usedQuestions: 1, remainingQuestions: -1 } },
-      { new: true }
-    )
-    if (!updated) {
-      return res.status(403).json({ message: QUOTA_EXHAUSTED_MSG })
-    }
-    // Si c'était la dernière question, marque la souscription comme expirée
-    if (updated.remainingQuestions === 0) {
-      await AiSubscription.updateOne({ _id: updated._id }, { $set: { status: 'expired' } })
+    // Décrément ATOMIQUE du quota si souscription école active (garde anti-course : ne descend pas sous 0)
+    let updated = sub
+    if (sub) {
+      updated = await AiSubscription.findOneAndUpdate(
+        { _id: sub._id, remainingQuestions: { $gt: 0 } },
+        { $inc: { usedQuestions: 1, remainingQuestions: -1 } },
+        { new: true }
+      )
+      if (!updated) {
+        return res.status(403).json({ message: QUOTA_EXHAUSTED_MSG })
+      }
+      // Si c'était la dernière question, marque la souscription comme expirée
+      if (updated.remainingQuestions === 0) {
+        await AiSubscription.updateOne({ _id: updated._id }, { $set: { status: 'expired' } })
+      }
     }
 
     // Persiste l'échange
@@ -810,8 +813,8 @@ CONSIGNES ESSENTIELLES :
     // Journalise l'utilisation (stats + anti-abus)
     AiUsageLog.create({
       user: req.user._id,
-      school: sid,
-      subscription: sub._id,
+      school: sid || null,
+      subscription: sub?._id || null,
       model: result.model,
       promptTokens: result.usage.promptTokens,
       completionTokens: result.usage.completionTokens,
@@ -823,9 +826,9 @@ CONSIGNES ESSENTIELLES :
       data: {
         conversationId: conversation._id,
         answer: result.content,
-        remainingQuestions: updated.remainingQuestions,
-        usedQuestions: updated.usedQuestions,
-        totalQuestions: updated.totalQuestions,
+        remainingQuestions: updated ? updated.remainingQuestions : 9999,
+        usedQuestions: updated ? updated.usedQuestions : 0,
+        totalQuestions: updated ? updated.totalQuestions : 9999,
         webSearch: {
           performed: webSearch.results.length > 0,
           sourcesCount: webSearch.results.length,
