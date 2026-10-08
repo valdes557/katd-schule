@@ -151,10 +151,19 @@ export default function SalariesPage() {
                   <td className="px-4 py-3 text-sm text-gray-900">{s.teacher ? `${s.teacher.lastName} ${s.teacher.firstName}` : '—'}{s.teacher?.speciality ? <span className="block text-[10px] text-gray-400">{s.teacher.speciality}</span> : null}</td>
                   <td className="px-4 py-3 text-xs text-gray-600 capitalize">{monthLabel(s.month)}</td>
                   <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{fmt(s.grossAmount ?? s.amount)}</td>
-                  <td className="px-4 py-3 text-sm whitespace-nowrap">
-                    {s.deductions > 0
-                      ? <span className="text-red-600" title={s.deductionReason || ''}>− {fmt(s.deductions)}{s.deductionReason ? <span className="block text-[10px] text-gray-400 font-normal">{s.deductionReason}</span> : null}</span>
-                      : <span className="text-gray-300">—</span>}
+                  <td className="px-4 py-3 text-sm max-w-[220px] sm:max-w-xs">
+                    {s.deductions > 0 ? (
+                      <div>
+                        <span className="text-red-600 font-semibold whitespace-nowrap">− {fmt(s.deductions)}</span>
+                        {s.deductionReason ? (
+                          <span className="block text-[11px] text-gray-500 font-normal break-words whitespace-normal leading-snug mt-0.5">
+                            {s.deductionReason}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{fmt(s.netAmount ?? s.amount)}</td>
                   <td className="px-4 py-3">

@@ -59,10 +59,48 @@ export default function DashboardLayout() {
   }, [])
   const waLink = waLinks?.[user?.role] || ''
 
+  // Désactiver le zoom sur le dashboard (gestes tactiles, raccourcis clavier, molette Ctrl)
+  useEffect(() => {
+    const handleWheel = (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault()
+      }
+    }
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+        e.preventDefault()
+      }
+    }
+    const handleGesture = (e) => {
+      e.preventDefault()
+    }
+    const handleTouchMove = (e) => {
+      if (e.touches && e.touches.length > 1) {
+        e.preventDefault()
+      }
+    }
+
+    window.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('gesturestart', handleGesture)
+    window.addEventListener('gesturechange', handleGesture)
+    window.addEventListener('gestureend', handleGesture)
+    document.addEventListener('touchmove', handleTouchMove, { passive: false })
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('gesturestart', handleGesture)
+      window.removeEventListener('gesturechange', handleGesture)
+      window.removeEventListener('gestureend', handleGesture)
+      document.removeEventListener('touchmove', handleTouchMove)
+    }
+  }, [])
+
   return (
     <UnreadProvider>
       <RubricSeenWatcher />
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 select-none-touch" style={{ touchAction: 'pan-x pan-y' }}>
         <DashboardHeader />
         <PublicNavBar />
 

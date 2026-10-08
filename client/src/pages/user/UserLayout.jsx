@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store, Landmark, Youtube, Rocket, ShoppingBag } from 'lucide-react'
+import { Home, User, Bell, Users, Plus, Newspaper, Search, ArrowLeft, Wallet, Store, Landmark, Youtube, Rocket, ShoppingBag, Bot, Sparkles } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { messagesApi, platformApi, newsApi } from '../../lib/api'
 import WhatsAppFab from '../../components/WhatsAppFab'
@@ -49,6 +49,38 @@ export default function UserLayout() {
     let active = true
     platformApi.get().then((res) => { if (active) setWaLink(res?.data?.whatsappLinks?.utilisateur || '') }).catch(() => {})
     return () => { active = false }
+  }, [])
+
+  // Désactiver le zoom sur l'espace utilisateur
+  useEffect(() => {
+    const handleWheel = (e) => {
+      if (e.ctrlKey) e.preventDefault()
+    }
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+        e.preventDefault()
+      }
+    }
+    const handleGesture = (e) => e.preventDefault()
+    const handleTouchMove = (e) => {
+      if (e.touches && e.touches.length > 1) e.preventDefault()
+    }
+
+    window.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('gesturestart', handleGesture)
+    window.addEventListener('gesturechange', handleGesture)
+    window.addEventListener('gestureend', handleGesture)
+    document.addEventListener('touchmove', handleTouchMove, { passive: false })
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('gesturestart', handleGesture)
+      window.removeEventListener('gesturechange', handleGesture)
+      window.removeEventListener('gestureend', handleGesture)
+      document.removeEventListener('touchmove', handleTouchMove)
+    }
   }, [])
 
   // Rafraîchit les deux compteurs (messages non lus + notifications non lues).
@@ -154,7 +186,7 @@ export default function UserLayout() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col" style={{ touchAction: 'pan-x pan-y' }}>
       {/* ── En-tête : bouton retour + barre de recherche ── */}
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 h-16 flex items-center gap-2">
@@ -199,11 +231,13 @@ export default function UserLayout() {
         <Outlet context={{ refreshBadges, markNotifsSeen, markNewsSeen, searchTerm, unreadMessages, unreadNotifs, unreadNews }} />
       </main>
 
-      {/* ── Barre de navigation flottante : position abaissée (Store et Notifications) ── */}
+      {/* ── Barre de navigation flottante : position abaissée (Store, IA, Notifications) ── */}
       {!isMessages && (
-        <div className="fixed right-2 sm:right-3 top-[65%] -translate-y-1/2 z-50 flex flex-col items-center gap-3 pointer-events-auto">
+        <div className="fixed right-2 sm:right-3 top-[60%] -translate-y-1/2 z-50 flex flex-col items-center gap-2.5 pointer-events-auto">
           <NavButton active={isStore} onClick={() => navigate('/u/store')} icon={ShoppingBag} label="Store" gradient="from-blue-600 to-indigo-600" />
-          <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-purple-500 to-pink-500" badge={unreadNotifs} />
+          <NavButton active={false} onClick={() => navigate('/dashboard/ia-chat')} icon={Bot} label="Chat IA" gradient="from-indigo-600 to-purple-600" />
+          <NavButton active={false} onClick={() => navigate('/dashboard/ia-cours')} icon={Sparkles} label="Cours IA" gradient="from-purple-600 to-pink-600" />
+          <NavButton active={isNotif} onClick={() => navigate('/u/notifications')} icon={Bell} label="Notifs" gradient="from-amber-500 to-orange-500" badge={unreadNotifs} />
         </div>
       )}
 

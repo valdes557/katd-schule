@@ -27,20 +27,23 @@ function waitForImages(root, timeout = 4000) {
   })
 }
 
-// Logo officiel vectoriel de la plateforme KATD-SCHÜLE
-const PLATFORM_LOGO_SVG = `
-<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M12 4.5L2 9.5L12 14.5L20 10.5V17H22V9.5L12 4.5Z" fill="#ffffff" fill-opacity="0.95"/>
-  <path d="M6 13V17C6 19.2 8.7 21 12 21C15.3 21 18 19.2 18 17V13L12 16L6 13Z" fill="#ffffff" fill-opacity="0.85"/>
+// Logo officiel de la plateforme identique à la barre de navigation (carré bleu arrondi avec livre ouvert BookOpen)
+const NAVBAR_PLATFORM_LOGO_SVG = `
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;flex-shrink:0;">
+  <rect width="24" height="24" rx="6" fill="#2563EB"/>
+  <path d="M4 6.5C4 5.39543 4.89543 4.5 6 4.5H11C11.5523 4.5 12 4.94772 12 5.5V18.5C12 18.5 10.5 17 8 17H4V6.5Z" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 6.5C20 5.39543 19.1046 4.5 18 4.5H13C12.4477 4.5 12 4.94772 12 5.5V18.5C12 18.5 13.5 17 16 17H20V6.5Z" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
 `
 
-const PLATFORM_LOGO_WATERMARK_SVG = `
+const NAVBAR_PLATFORM_WATERMARK_SVG = `
 <svg width="72" height="72" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M12 4.5L2 9.5L12 14.5L20 10.5V17H22V9.5L12 4.5Z" fill="#ffffff"/>
-  <path d="M6 13V17C6 19.2 8.7 21 12 21C15.3 21 18 19.2 18 17V13L12 16L6 13Z" fill="#ffffff"/>
+  <path d="M4 6.5C4 5.39543 4.89543 4.5 6 4.5H11C11.5523 4.5 12 4.94772 12 5.5V18.5C12 18.5 10.5 17 8 17H4V6.5Z" fill="#ffffff" fill-opacity="0.12"/>
+  <path d="M20 6.5C20 5.39543 19.1046 4.5 18 4.5H13C12.4477 4.5 12 4.94772 12 5.5V18.5C12 18.5 13.5 17 16 17H20V6.5Z" fill="#ffffff" fill-opacity="0.12"/>
 </svg>
 `
+const PLATFORM_LOGO_SVG = NAVBAR_PLATFORM_LOGO_SVG
+const PLATFORM_LOGO_WATERMARK_SVG = NAVBAR_PLATFORM_WATERMARK_SVG
 
 /**
  * Génère le drapeau national officiel en SVG vectoriel selon le pays sélectionné.
@@ -243,7 +246,7 @@ async function generatePdfFromContainer(container, { filename, orientation = 'po
   `
   document.body.appendChild(overlay)
 
-  const targetWidth = orientation === 'landscape' ? 1100 : 800
+  const targetWidth = orientation === 'landscape' ? 1000 : 720
 
   // Wrapper hôte invisible pour attacher le conteneur au DOM sans affecter le flux de la page
   const host = document.createElement('div')
@@ -262,7 +265,8 @@ async function generatePdfFromContainer(container, { filename, orientation = 'po
   container.style.background = '#ffffff'
   container.style.color = '#111827'
   container.style.boxSizing = 'border-box'
-  container.style.margin = '0'
+  container.style.margin = '0 auto'
+  container.style.overflow = 'hidden'
 
   host.appendChild(container)
   document.body.appendChild(host)
@@ -276,8 +280,10 @@ async function generatePdfFromContainer(container, { filename, orientation = 'po
     await waitForImages(container, 4000)
     await new Promise((resolve) => setTimeout(resolve, 250))
 
+    const pdfMargin = margin || (orientation === 'landscape' ? [6, 6, 6, 6] : [6, 6, 6, 6])
+
     const opt = {
-      margin,
+      margin: pdfMargin,
       filename,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
@@ -383,7 +389,7 @@ export async function exportElevesFichePdf({ school, cycle, students = [] }) {
 
     <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; page-break-inside: avoid;">
       <div style="font-size: 10px; color: #64748b;">
-        <p style="margin: 0;">KATD-SCHÜLE · Système de gestion scolaire certifié</p>
+        <p style="margin: 0;">KATD-SCHÜLE · Plateforme officielle de gestion scolaire</p>
         <p style="margin: 2px 0 0 0;">Document officiel à usage administratif</p>
       </div>
       <div style="text-align: center; width: 220px; border-top: 1px solid #cbd5e1; padding-top: 6px;">
@@ -568,7 +574,7 @@ export async function exportEnseignantsFichePdf({ school, cycle, teachers = [] }
     <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; page-break-inside: avoid;">
       <div style="font-size: 10px; color: #64748b;">
         <p style="margin: 0;">KATD-SCHÜLE · Gestion du Personnel Enseignant</p>
-        <p style="margin: 2px 0 0 0;">Document officiel certifié</p>
+        <p style="margin: 2px 0 0 0;">Document officiel</p>
       </div>
       <div style="text-align: center; width: 220px; border-top: 1px solid #cbd5e1; padding-top: 6px;">
         <p style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 0;">Le Directeur / Principal</p>
@@ -692,7 +698,7 @@ export async function exportBadgesPdf({ school, members = [], roleTitle = 'Perso
       <p style="font-size: 10px; color: #6b7280; margin: 2px 0 0 0;">Découpez suivant les pointillés · Format standard professionnel</p>
     </div>
 
-    <div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; box-sizing: border-box; width: 100%;">
       ${members.map((m) => {
         const fullName = `${(m.lastName || '').toUpperCase()} ${m.firstName || ''}`
         const role = m.contractType ? (m.contractType === 'permanent' ? 'Enseignant Permanent' : 'Enseignant Vacataire') : (m.jobTitle || m.category || roleTitle)
@@ -701,45 +707,45 @@ export async function exportBadgesPdf({ school, members = [], roleTitle = 'Perso
         const mat = m.user?.matricule || m.matricule || `ID-${String(m._id || '').slice(-6).toUpperCase()}`
 
         return `
-          <div style="width: 350px; height: 215px; border: 2px dashed #94a3b8; border-radius: 12px; padding: 12px; box-sizing: border-box; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+          <div style="width: 326px; height: 215px; border: 2px dashed #94a3b8; border-radius: 12px; padding: 10px; box-sizing: border-box; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
             <div style="background: linear-gradient(135deg, #1e3a8a, #3b82f6); color: #ffffff; padding: 6px 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; position: relative; overflow: hidden;">
-              <!-- Logo filigrane à l'angle en arrière-plan -->
-              <div style="position: absolute; right: 90px; top: -14px; opacity: 0.12; pointer-events: none;">
-                ${PLATFORM_LOGO_WATERMARK_SVG}
+              <!-- Logo filigrane en arrière-plan derrière le nom -->
+              <div style="position: absolute; right: 60px; top: -14px; opacity: 0.14; pointer-events: none;">
+                ${NAVBAR_PLATFORM_WATERMARK_SVG}
               </div>
 
-              <!-- Logo de la plateforme à l'angle devant/avec le nom de l'école -->
-              <div style="display: flex; align-items: center; gap: 7px; z-index: 1;">
-                <div style="width: 24px; height: 24px; border-radius: 5px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                  ${PLATFORM_LOGO_SVG}
-                </div>
+              <!-- Nom de l'établissement avec le logo officiel de la plateforme tout juste derrière le nom -->
+              <div style="display: flex; align-items: center; gap: 6px; z-index: 1; min-width: 0;">
                 <div>
-                  <p style="font-size: 11px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">${schoolName}</p>
-                  <p style="font-size: 8.5px; margin: 1px 0 0 0; opacity: 0.9;">${schoolCity || 'Établissement Scolaire'}</p>
+                  <p style="font-size: 11px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.4px; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>${schoolName}</span>
+                    ${NAVBAR_PLATFORM_LOGO_SVG}
+                  </p>
+                  <p style="font-size: 8px; margin: 1px 0 0 0; opacity: 0.9;">${schoolCity || 'Établissement Scolaire'}</p>
                 </div>
               </div>
 
-              <!-- Drapeau du pays de l'école à la place de KATD-SCHÜLE -->
-              <div style="z-index: 1;">
-                ${renderCountryBadge(schoolCountry)}
+              <!-- Drapeau national officiel du pays sans fond blanc ni texte -->
+              <div style="z-index: 1; display: flex; align-items: center; flex-shrink: 0;">
+                ${getCountryFlagSvg(schoolCountry)}
               </div>
             </div>
 
-            <div style="display: flex; gap: 12px; align-items: center; margin: 8px 0;">
-              <div style="width: 70px; height: 80px; border-radius: 8px; background: #f1f5f9; border: 1.5px solid #cbd5e1; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                ${photoUrl ? `<img src="${photoUrl}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 24px; font-weight: bold; color: #94a3b8;">${(m.lastName || '?')[0]}</span>`}
+            <div style="display: flex; gap: 10px; align-items: center; margin: 6px 0;">
+              <div style="width: 65px; height: 75px; border-radius: 8px; background: #f1f5f9; border: 1.5px solid #cbd5e1; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                ${photoUrl ? `<img src="${photoUrl}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover;" />` : `<span style="font-size: 22px; font-weight: bold; color: #94a3b8;">${(m.lastName || '?')[0]}</span>`}
               </div>
               <div style="flex: 1; min-width: 0;">
-                <p style="font-size: 12.5px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase;">${fullName}</p>
-                <p style="font-size: 10px; font-weight: 700; color: #2563eb; margin: 2px 0 0 0;">${role}</p>
-                ${subInfo ? `<p style="font-size: 9px; color: #475569; margin: 2px 0 0 0;">${subInfo}</p>` : ''}
-                <p style="font-size: 8.5px; font-family: monospace; color: #64748b; margin: 3px 0 0 0;">N° Matricule : <strong>${mat}</strong></p>
-                ${m.phone ? `<p style="font-size: 8.5px; color: #64748b; margin: 1px 0 0 0;">Tél : ${m.phone}</p>` : ''}
+                <p style="font-size: 12px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase;">${fullName}</p>
+                <p style="font-size: 9.5px; font-weight: 700; color: #2563eb; margin: 2px 0 0 0;">${role}</p>
+                ${subInfo ? `<p style="font-size: 8.5px; color: #475569; margin: 2px 0 0 0;">${subInfo}</p>` : ''}
+                <p style="font-size: 8px; font-family: monospace; color: #64748b; margin: 2px 0 0 0;">N° Matricule : <strong>${mat}</strong></p>
+                ${m.phone ? `<p style="font-size: 8px; color: #64748b; margin: 1px 0 0 0;">Tél : ${m.phone}</p>` : ''}
               </div>
             </div>
 
             <div style="border-top: 1px solid #e2e8f0; padding-top: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #64748b;">
-              <span>Badge certifié · ${schoolPhone ? `Contact: ${schoolPhone}` : schoolEmail}</span>
+              <span>Badge officiel · ${schoolPhone ? `Contact: ${schoolPhone}` : schoolEmail}</span>
               <span style="font-weight: bold; color: #1e3a8a;">LE DIRECTEUR</span>
             </div>
           </div>
@@ -769,7 +775,7 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
   const container = document.createElement('div')
   container.id = 'export-carte-scolaire-container'
   container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
-  container.style.padding = '20px'
+  container.style.padding = '16px'
 
   container.innerHTML = `
     <div style="text-align: center; margin-bottom: 16px; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">
@@ -779,7 +785,7 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
       <p style="font-size: 10px; color: #6b7280; margin: 2px 0 0 0;">Format officiel élèves · Informations complètes et coordonnées de l'établissement</p>
     </div>
 
-    <div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; box-sizing: border-box; width: 100%;">
       ${students.map((s) => {
         const dob = s.dateOfBirth ? new Date(s.dateOfBirth).toLocaleDateString('fr-FR') : '—'
         const pob = s.placeOfBirth ? ` à ${s.placeOfBirth}` : ''
@@ -787,28 +793,27 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
         const photoUrl = s.photo || s.avatar || s.user?.photo || s.user?.avatar || ''
 
         return `
-          <div style="width: 350px; height: 220px; border: 2px solid #2563eb; border-radius: 12px; padding: 10px; box-sizing: border-box; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; box-shadow: 0 2px 4px rgba(0,0,0,0.06);">
+          <div style="width: 326px; height: 220px; border: 2px solid #2563eb; border-radius: 12px; padding: 10px; box-sizing: border-box; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; box-shadow: 0 2px 4px rgba(0,0,0,0.06);">
             <div style="background: linear-gradient(135deg, #1e40af, #3b82f6); color: #ffffff; padding: 6px 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; position: relative; overflow: hidden;">
-              <!-- Logo filigrane à l'angle en arrière-plan -->
-              <div style="position: absolute; right: 90px; top: -14px; opacity: 0.12; pointer-events: none;">
-                ${PLATFORM_LOGO_WATERMARK_SVG}
+              <!-- Logo filigrane en arrière-plan derrière le nom -->
+              <div style="position: absolute; right: 60px; top: -14px; opacity: 0.14; pointer-events: none;">
+                ${NAVBAR_PLATFORM_WATERMARK_SVG}
               </div>
 
-              <!-- Logo de la plateforme à l'angle devant/avec le nom de l'école -->
-              <div style="display: flex; align-items: center; gap: 7px; z-index: 1;">
-                <div style="width: 24px; height: 24px; border-radius: 5px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                  ${PLATFORM_LOGO_SVG}
-                </div>
+              <!-- Nom de l'établissement avec le logo officiel de la plateforme tout juste derrière le nom -->
+              <div style="display: flex; align-items: center; gap: 6px; z-index: 1; min-width: 0;">
                 <div>
-                  <p style="font-size: 11px; font-weight: 800; margin: 0; text-transform: uppercase;">${schoolName}</p>
+                  <p style="font-size: 11px; font-weight: 800; margin: 0; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>${schoolName}</span>
+                    ${NAVBAR_PLATFORM_LOGO_SVG}
+                  </p>
                   <p style="font-size: 8px; margin: 1px 0 0 0; opacity: 0.95;">CARTE SCOLAIRE D'ÉLÈVE · ${s.academicYear || 'Année en cours'}</p>
                 </div>
               </div>
 
-              <!-- Drapeau du pays de chaque école à la place de KATD SCHÜLE -->
-              <div style="display: flex; align-items: center; gap: 4px; z-index: 1;">
-                ${renderCountryBadge(schoolCountry)}
-                <span style="font-size: 8px; font-weight: 700; background: #ffffff; color: #1e40af; padding: 2px 5px; border-radius: 3px;">${s.cycle || 'Général'}</span>
+              <!-- Drapeau national officiel du pays sans fond blanc, sans mot Cameroun, sans nom de classe/cycle -->
+              <div style="z-index: 1; display: flex; align-items: center; flex-shrink: 0;">
+                ${getCountryFlagSvg(schoolCountry)}
               </div>
             </div>
 
@@ -836,7 +841,7 @@ export async function exportCarteScolairePdf({ school, students = [] }) {
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: flex-end; font-size: 7.5px; color: #64748b; margin-top: 2px;">
-              <span>Document officiel certifié</span>
+              <span>Document officiel</span>
               <span style="font-weight: 700; color: #0f172a;">Le Directeur (Cachet & Signature)</span>
             </div>
           </div>
@@ -1045,7 +1050,7 @@ export async function exportCompteDeResultatPdf({ school, year, monthData, annua
 
     <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; page-break-inside: avoid;">
       <div style="font-size: 10px; color: #64748b;">
-        <p style="margin: 0;">KATD-SCHÜLE · Système Comptable Certifié</p>
+        <p style="margin: 0;">KATD-SCHÜLE · Système Comptable Officiel</p>
         <p style="margin: 2px 0 0 0;">Rapport financier conforme pour l'établissement</p>
       </div>
       <div style="text-align: center; width: 220px; border-top: 1px solid #cbd5e1; padding-top: 6px;">
@@ -1170,7 +1175,7 @@ export async function exportAiCoursePdf({ course, questions = [], school }) {
         <p style="margin: 2px 0 0 0;">Document pédagogique conforme au programme académique</p>
       </div>
       <div style="text-align: right;">
-        <p style="margin: 0; font-weight: 700; color: #4338ca;">Archives & Certification Établissement</p>
+        <p style="margin: 0; font-weight: 700; color: #4338ca;">Archives & Validation Établissement</p>
       </div>
     </div>
   `

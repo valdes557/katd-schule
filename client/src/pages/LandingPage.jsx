@@ -122,6 +122,22 @@ export default function LandingPage() {
       {/* Bannières promotionnelles (carrousel) */}
       <BannerCarousel />
 
+      {/* Mentions légales & opérateur officiel */}
+      <section className="bg-slate-900 text-slate-100 py-3.5 px-4 border-y border-slate-800 shadow-sm">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-center md:text-left">
+          <div className="space-y-0.5">
+            <p className="font-extrabold tracking-wide text-amber-400 text-sm uppercase">ROYALKATD ETS</p>
+            <p className="text-xs text-slate-300 font-mono font-medium">NRCCM: CM-DLA-01-2025-A10-01225</p>
+            <p className="text-xs text-slate-400">Propriétaire et opérateur de la plateforme</p>
+          </div>
+          <div className="hidden md:block h-9 w-px bg-slate-700/70" />
+          <div className="space-y-0.5 md:text-right">
+            <p className="font-extrabold tracking-wide text-blue-400 text-sm uppercase">KATD-SCHÜLE</p>
+            <p className="text-xs text-slate-300">Plateforme numérique et marque/service exploité par ROYALKATD ETS</p>
+          </div>
+        </div>
+      </section>
+
       {/* ═══ HERO ═══ */}
       <section className="relative overflow-hidden bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 text-white">
         <div className="absolute inset-0 pointer-events-none overflow-hidden">

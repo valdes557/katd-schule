@@ -66,11 +66,21 @@ router.get('/:id', protect, async (req, res) => {
 })
 
 // POST /api/teachers — creates teacher + User account with login credentials
-router.post('/', protect, authorize('directeur', 'super_admin'), upload.single('photo'), async (req, res) => {
+router.post('/', protect, authorize('directeur', 'super_admin', 'vice_principal'), upload.single('photo'), async (req, res) => {
   try {
     const schoolId = req.user.school?._id || req.user.school
+    if (!schoolId && req.user.role !== 'super_admin') {
+      return res.status(400).json({ message: "Établissement scolaire introuvable pour ce compte d'administrateur" })
+    }
+
     let { firstName, lastName, email, phone, gender, subjects, speciality, password, classes, cycle, contractType, monthlySalary, hourlyRate, weeklyHours, photo } = req.body
     if (req.file?.path) photo = req.file.path
+
+    firstName = (firstName || '').trim()
+    lastName = (lastName || '').trim()
+    if (!firstName || !lastName) {
+      return res.status(400).json({ message: "Le prénom et le nom de l'enseignant sont obligatoires" })
+    }
 
     if (typeof classes === 'string') {
       try { classes = JSON.parse(classes) } catch (_) { classes = classes ? [classes] : [] }
@@ -79,21 +89,26 @@ router.post('/', protect, authorize('directeur', 'super_admin'), upload.single('
       try { subjects = JSON.parse(subjects) } catch (_) {}
     }
 
-    if (req.user.role === 'directeur') {
-      const school = await School.findById(schoolId).select('subscription.cycle')
-      if (school?.subscription?.cycle && cycle && cycle !== school.subscription.cycle) {
-        return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ». ` })
+    // Récupération de l'école pour validation et cycle par défaut
+    if (schoolId) {
+      const school = await School.findById(schoolId).select('subscription.cycle cycles')
+      if (!cycle) {
+        cycle = school?.subscription?.cycle || (school?.cycles && school.cycles[0]) || 'Primaire'
+      } else if (req.user.role === 'directeur' && school?.subscription?.cycle && cycle !== school.subscription.cycle) {
+        return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ».` })
       }
     }
 
     let userId = null
     if (email && password) {
-      const existing = await User.findOne({ email })
+      const normalizedEmail = email.trim().toLowerCase()
+      const existing = await User.findOne({ email: normalizedEmail })
       if (existing) return res.status(400).json({ message: 'Cet email est déjà utilisé' })
       const matricule = await generateUserMatricule('enseignant', schoolId)
       const user = await User.create({
         name: `${lastName} ${firstName}`,
-        email, password,
+        email: normalizedEmail,
+        password,
         role: 'enseignant',
         school: schoolId,
         matricule,
@@ -106,10 +121,10 @@ router.post('/', protect, authorize('directeur', 'super_admin'), upload.single('
     }
 
     const teacher = await Teacher.create({
-      firstName, lastName, email, phone, gender, photo,
+      firstName, lastName, email: (email || '').trim().toLowerCase(), phone, gender, photo,
       subjects: Array.isArray(subjects) ? subjects : (subjects || '').split(',').map((s) => s.trim()).filter(Boolean),
       speciality,
-      cycle,
+      cycle: cycle || 'Primaire',
       classes: classes || [],
       contractType: contractType || 'permanent',
       monthlySalary: Number(monthlySalary) || 0,

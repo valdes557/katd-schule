@@ -216,10 +216,11 @@ export const navSections = [
   },
   {
     label: 'ASSISTANT IA',
-    roles: ['directeur', 'enseignant', 'parent'],
+    roles: ['directeur', 'enseignant', 'parent', 'eleve', 'vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier', 'super_admin', 'utilisateur'],
     items: [
       { label: 'Chat IA', icon: Bot, path: '/dashboard/ia-chat' },
-      { label: 'Gestion IA', icon: Sparkles, path: '/dashboard/ia', roles: ['directeur'] },
+      { label: 'Cours IA', icon: Sparkles, path: '/dashboard/ia-cours' },
+      { label: 'Gestion IA', icon: Sparkles, path: '/dashboard/ia', roles: ['directeur', 'super_admin'] },
     ],
   },
   {

@@ -24,6 +24,7 @@ export default function EnseignantsPage() {
   // (modification seulement — la création reste réservée au principal).
   const isDirecteur = user?.role === 'directeur' || user?.role === 'super_admin' || user?.role === 'vice_principal'
   const subscribedCycle = user?.role === 'directeur' && school?.subscription?.cycle ? school.subscription.cycle : null
+  const defaultCycle = subscribedCycle || (school?.cycles && school.cycles[0]) || (school?.subscription?.cycle) || 'Primaire'
 
   const [search, setSearch] = useState('')
   const [committedSearch, setCommittedSearch] = useState('')
@@ -31,6 +32,8 @@ export default function EnseignantsPage() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const [showPwd, setShowPwd] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState('')
 
   // Debounce the search before putting it in the cache key
   useEffect(() => {
@@ -85,16 +88,42 @@ export default function EnseignantsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setFormError('')
+
+    const fName = (form.firstName || '').trim()
+    const lName = (form.lastName || '').trim()
+    const emailTrim = (form.email || '').trim().toLowerCase()
+
+    if (!fName) { setFormError("Le prénom de l'enseignant est obligatoire"); return }
+    if (!lName) { setFormError("Le nom de l'enseignant est obligatoire"); return }
+    if (!emailTrim) { setFormError("L'adresse email est obligatoire pour créer le compte"); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      setFormError("Veuillez saisir une adresse email valide (ex: enseignant@gmail.com)");
+      return
+    }
+    if (!editing && (!form.password || form.password.length < 6)) {
+      setFormError("Le mot de passe est obligatoire et doit comporter au moins 6 caractères");
+      return
+    }
+    const finalCycle = form.cycle || defaultCycle
+    if (!finalCycle) {
+      setFormError("Veuillez sélectionner un cycle d'enseignement (Maternelle, Primaire ou Secondaire)");
+      return
+    }
+
+    setSubmitting(true)
     try {
       const data = {
         ...form,
+        firstName: fName,
+        lastName: lName,
+        email: emailTrim,
+        cycle: finalCycle,
         subjects: typeof form.subjects === 'string' ? form.subjects.split(',').map((s) => s.trim()).filter(Boolean) : form.subjects,
         monthlySalary: form.monthlySalary !== '' ? Number(form.monthlySalary) : undefined,
         hourlyRate: form.hourlyRate !== '' ? Number(form.hourlyRate) : undefined,
         weeklyHours: form.weeklyHours !== '' ? Number(form.weeklyHours) : undefined,
       }
-      if (!editing && !form.password) { alert('Le mot de passe est requis pour créer le compte de connexion'); return }
-      if (!form.cycle) { alert('Veuillez attribuer un cycle (Maternelle / Primaire / Secondaire) à l\'enseignant'); return }
       if (editing) {
         const { password, ...rest } = data
         await teachersApi.update(editing._id, password ? data : rest)
@@ -105,7 +134,11 @@ export default function EnseignantsPage() {
       setEditing(null)
       setForm(EMPTY)
       refreshTeachers()
-    } catch (e) { alert(e.message) }
+    } catch (e) {
+      setFormError(e.message || "Erreur lors de la création du compte enseignant")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleDelete = async (id) => {
@@ -186,7 +219,7 @@ export default function EnseignantsPage() {
             </>
           )}
           {isDirecteur && (
-            <button onClick={() => { setEditing(null); setForm({ ...EMPTY, cycle: subscribedCycle || '' }); setShowModal(true) }} className="btn-primary text-sm self-start">
+            <button onClick={() => { setEditing(null); setFormError(''); setForm({ ...EMPTY, cycle: defaultCycle }); setShowModal(true) }} className="btn-primary text-sm self-start">
               <Plus size={15} /> Ajouter
             </button>
           )}
@@ -291,7 +324,13 @@ export default function EnseignantsPage() {
               <h3 className="text-lg font-bold text-gray-900">{editing ? 'Modifier l\'enseignant' : 'Nouvel enseignant'}</h3>
               <button onClick={() => setShowModal(false)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form noValidate onSubmit={handleSubmit} className="space-y-3">
+              {formError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2 font-medium">
+                  <AlertCircle size={16} className="shrink-0 text-red-500" />
+                  <span>{formError}</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Prénom *</label><input required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="input text-sm mt-1" /></div>
                 <div><label className="text-xs font-medium text-gray-600">Nom *</label><input required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="input text-sm mt-1" /></div>
@@ -445,9 +484,19 @@ export default function EnseignantsPage() {
                 )}
               </div>
 
+              {formError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2 font-medium">
+                  <AlertCircle size={16} className="shrink-0 text-red-500" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
-                <button type="submit" className="btn-primary flex-1 justify-center">{editing ? 'Enregistrer' : 'Créer le compte'}</button>
+                <button type="button" disabled={submitting} onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>
+                <button type="submit" disabled={submitting} className="btn-primary flex-1 justify-center flex items-center gap-2 disabled:opacity-60">
+                  {submitting && <Loader2 size={15} className="animate-spin" />}
+                  <span>{submitting ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Créer le compte'}</span>
+                </button>
               </div>
             </form>
           </div>
