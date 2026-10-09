@@ -267,6 +267,7 @@ export const navSections = [
       { label: 'Frais de transaction', icon: Coins, path: '/dashboard/frais-transaction-admin' },
       { label: 'Bannières', icon: ImageIcon, path: '/dashboard/bannieres' },
       { label: 'Gestion IA (Modèles & API)', icon: Sparkles, path: '/dashboard/ia-admin' },
+      { label: 'Gestion IA utilisateurs', icon: Bot, path: '/dashboard/ia-utilisateurs' },
       { label: 'Suivi des connexions', icon: Activity, path: '/dashboard/suivi-connexions' },
       { label: 'Journal des actions', icon: History, path: '/dashboard/journal-actions' },
     ],

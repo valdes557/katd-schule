@@ -3,8 +3,9 @@ import { aiApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import {
   Bot, Send, Loader2, Plus, Trash2, MessageSquare, Sparkles, AlertTriangle, Menu, X,
-  Globe, ExternalLink,
+  Globe, ExternalLink, Zap,
 } from 'lucide-react'
+import AiQuotaModal from '../components/AiQuotaModal'
 
 // Bulle de message (utilisateur à droite en bleu, assistant à gauche en gris).
 function Bubble({ role, content, webSearch }) {
@@ -55,6 +56,7 @@ function Bubble({ role, content, webSearch }) {
 
 export default function AiChatPage() {
   const { user } = useAuth()
+  const isUtilisateur = user?.role === 'utilisateur'
   const [conversations, setConversations] = useState([])
   const [convId, setConvId] = useState(null)
   const [messages, setMessages] = useState([])
@@ -62,8 +64,10 @@ export default function AiChatPage() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [quota, setQuota] = useState(null) // { remaining, used, total }
-  const [access, setAccess] = useState('loading') // loading | ok | no-access | no-subscription | exhausted
+  const [userQuota, setUserQuota] = useState(null)
+  const [access, setAccess] = useState('loading') // loading | ok | no-access | no-subscription | exhausted | user-disabled | global-disabled
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showQuotaModal, setShowQuotaModal] = useState(false)
   const scrollRef = useRef(null)
 
   const scrollToBottom = () => {
@@ -72,30 +76,51 @@ export default function AiChatPage() {
     })
   }
 
-  // Statut de souscription + historique au chargement
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      try {
+  const loadQuotaAndHistory = async () => {
+    try {
+      if (isUtilisateur) {
+        const [quotaRes, histRes] = await Promise.all([
+          aiApi.getUserQuota().catch(() => ({ data: null })),
+          aiApi.history().catch(() => ({ data: [] })),
+        ])
+        const q = quotaRes.data
+        setConversations(histRes.data || [])
+        if (q) {
+          setUserQuota(q)
+          if (q.isUserDisabled) {
+            setAccess('user-disabled')
+          } else if (q.isGlobalDisabled) {
+            setAccess('global-disabled')
+          } else if (q.totalRemaining <= 0) {
+            setAccess('exhausted')
+          } else {
+            setAccess('ok')
+          }
+        } else {
+          setAccess('ok')
+        }
+      } else {
         const [statusRes, histRes] = await Promise.all([
           aiApi.subscriptionStatus().catch(() => ({ data: null })),
           aiApi.history().catch(() => ({ data: [] })),
         ])
-        if (!alive) return
         const sub = statusRes.data
         setConversations(histRes.data || [])
 
-        const canByRole = user?.role === 'directeur' || user?.aiAccess === true
+        const canByRole = user?.role === 'directeur' || user?.aiAccess === true || user?.role === 'super_admin'
         if (!canByRole) { setAccess('no-access'); return }
         if (!sub || sub.status !== 'approved') { setAccess('no-subscription'); return }
         setQuota({ remaining: sub.remainingQuestions, used: sub.usedQuestions, total: sub.totalQuestions })
         setAccess(sub.remainingQuestions > 0 ? 'ok' : 'exhausted')
-      } catch (_) {
-        if (alive) setAccess('no-subscription')
       }
-    })()
-    return () => { alive = false }
-  }, [user])
+    } catch (_) {
+      setAccess(isUtilisateur ? 'ok' : 'no-subscription')
+    }
+  }
+
+  useEffect(() => {
+    loadQuotaAndHistory()
+  }, [user, isUtilisateur])
 
   useEffect(scrollToBottom, [messages])
 
@@ -139,7 +164,18 @@ export default function AiChatPage() {
       const d = res.data
       setMessages((m) => [...m, { role: 'assistant', content: d.answer, webSearch: d.webSearch }])
       setQuota({ remaining: d.remainingQuestions, used: d.usedQuestions, total: d.totalQuestions })
-      if (d.remainingQuestions <= 0) setAccess('exhausted')
+      if (d.userQuota) {
+        setUserQuota((prev) => ({
+          ...prev,
+          totalRemaining: d.userQuota.totalRemaining,
+          trialRemaining: d.userQuota.trialRemaining,
+          purchasedRemaining: d.userQuota.purchasedRemaining,
+        }))
+        if (d.userQuota.totalRemaining <= 0) setAccess('exhausted')
+        else setAccess('ok')
+      } else if (d.remainingQuestions <= 0) {
+        setAccess('exhausted')
+      }
       if (!convId) {
         setConvId(d.conversationId)
         // Rafraîchit la liste des conversations
@@ -150,12 +186,43 @@ export default function AiChatPage() {
       // Retire le message utilisateur optimiste en cas d'échec
       setMessages((m) => m.slice(0, -1))
       setInput(text)
-      if (/quota/i.test(err.message)) setAccess('exhausted')
+      if (/quota/i.test(err.message) || err.code === 'QUOTA_EXHAUSTED') {
+        setAccess('exhausted')
+        if (isUtilisateur) setShowQuotaModal(true)
+      }
     }
     setSending(false)
   }
 
-  // États bloquants (pas d'accès / pas de souscription)
+  // États bloquants
+  if (access === 'user-disabled') {
+    return (
+      <div className="max-w-lg mx-auto mt-10 card p-8 text-center animate-fade-in">
+        <div className="w-14 h-14 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle size={26} />
+        </div>
+        <h2 className="text-lg font-bold text-gray-900">Accès IA désactivé</h2>
+        <p className="text-sm text-gray-500 mt-2">
+          Votre accès à l'assistant IA a été suspendu par l'administrateur. Veuillez contacter l'administration de la plateforme pour plus d'informations.
+        </p>
+      </div>
+    )
+  }
+
+  if (access === 'global-disabled') {
+    return (
+      <div className="max-w-lg mx-auto mt-10 card p-8 text-center animate-fade-in">
+        <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle size={26} />
+        </div>
+        <h2 className="text-lg font-bold text-gray-900">Maintenance de l'Assistant IA</h2>
+        <p className="text-sm text-gray-500 mt-2">
+          L'assistant IA pour les utilisateurs est temporairement désactivé par l'administrateur. Veuillez réessayer un peu plus tard.
+        </p>
+      </div>
+    )
+  }
+
   if (access === 'no-access' || access === 'no-subscription') {
     return (
       <div className="max-w-lg mx-auto mt-10 card p-8 text-center animate-fade-in">
@@ -179,6 +246,21 @@ export default function AiChatPage() {
 
   return (
     <div className="flex gap-4 h-[calc(100vh-9rem)] animate-fade-in">
+      {/* Modal de recharge de quota IA */}
+      <AiQuotaModal
+        isOpen={showQuotaModal}
+        onClose={() => setShowQuotaModal(false)}
+        initialQuota={userQuota}
+        onPurchased={(newQuota) => {
+          if (newQuota) {
+            setUserQuota(newQuota)
+            if (newQuota.totalRemaining > 0) setAccess('ok')
+          } else {
+            loadQuotaAndHistory()
+          }
+        }}
+      />
+
       {/* Liste des conversations (sidebar) */}
       <aside className={`${sidebarOpen ? 'fixed inset-0 z-40 bg-black/40 sm:static sm:bg-transparent' : 'hidden'} sm:block sm:w-64 flex-shrink-0`} onClick={() => setSidebarOpen(false)}>
         <div className="bg-white h-full w-64 sm:w-full border-r border-gray-100 sm:border sm:rounded-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -212,11 +294,34 @@ export default function AiChatPage() {
               <p className="text-[11px] text-gray-400">Questions pédagogiques & recherche web en direct</p>
             </div>
           </div>
-          {quota && (
+
+          {isUtilisateur ? (
+            <div className="flex items-center gap-2">
+              <div
+                className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 ${
+                  (userQuota?.totalRemaining || 0) > 5
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : (userQuota?.totalRemaining || 0) > 0
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}
+              >
+                <Zap size={13} className="text-indigo-600" />
+                <span>{userQuota?.totalRemaining || 0} requêtes restantes</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuotaModal(true)}
+                className="px-2.5 py-1 text-xs font-bold rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                Recharger
+              </button>
+            </div>
+          ) : quota ? (
             <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${quota.remaining > 5 ? 'bg-green-50 text-green-700' : quota.remaining > 0 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
               {quota.remaining} / {quota.total} questions
             </div>
-          )}
+          ) : null}
         </header>
 
         {/* Messages */}
@@ -244,10 +349,31 @@ export default function AiChatPage() {
 
         {/* Erreur / quota épuisé */}
         {(error || access === 'exhausted') && (
-          <div className="px-4 py-2 bg-red-50 border-t border-red-100 flex items-center gap-2 text-xs text-red-700">
-            <AlertTriangle size={14} className="flex-shrink-0" />
-            <span>{access === 'exhausted' ? 'Votre quota de questions IA est épuisé. Veuillez renouveler votre abonnement.' : error}</span>
-            {error && access !== 'exhausted' && <button onClick={() => setError('')} className="ml-auto"><X size={14} /></button>}
+          <div className="px-4 py-2.5 bg-red-50 border-t border-red-100 flex items-center justify-between text-xs text-red-700 gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} className="flex-shrink-0 text-red-600" />
+              <span>
+                {access === 'exhausted'
+                  ? isUtilisateur
+                    ? 'Votre quota de requêtes IA est épuisé (essai gratuit et forfaits consommés).'
+                    : 'Votre quota de questions IA est épuisé. Veuillez renouveler votre abonnement.'
+                  : error}
+              </span>
+            </div>
+            {isUtilisateur && (
+              <button
+                type="button"
+                onClick={() => setShowQuotaModal(true)}
+                className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 shrink-0"
+              >
+                Recharger maintenant
+              </button>
+            )}
+            {error && access !== 'exhausted' && (
+              <button onClick={() => setError('')} className="ml-auto">
+                <X size={14} />
+              </button>
+            )}
           </div>
         )}
 
@@ -257,12 +383,16 @@ export default function AiChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e) } }}
-            disabled={sending || access === 'exhausted'}
+            disabled={sending || access === 'exhausted' || access === 'user-disabled' || access === 'global-disabled'}
             rows={1}
-            placeholder={access === 'exhausted' ? 'Quota épuisé' : 'Écrivez votre question…'}
+            placeholder={access === 'exhausted' ? 'Quota épuisé — Rechargez pour continuer' : 'Écrivez votre question…'}
             className="input text-sm flex-1 resize-none max-h-32 disabled:bg-gray-50 disabled:text-gray-400"
           />
-          <button type="submit" disabled={sending || !input.trim() || access === 'exhausted'} className="btn-primary justify-center px-3.5 py-2.5 disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={sending || !input.trim() || access === 'exhausted' || access === 'user-disabled' || access === 'global-disabled'}
+            className="btn-primary justify-center px-3.5 py-2.5 disabled:opacity-50"
+          >
             {sending ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
           </button>
         </form>

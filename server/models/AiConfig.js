@@ -31,6 +31,9 @@ const aiConfigSchema = new mongoose.Schema(
     systemPrompt: { type: String, default: DEFAULT_SYSTEM_PROMPT },
     temperature: { type: Number, default: 0.5, min: 0, max: 2 },
     maxTokens: { type: Number, default: 1000, min: 50, max: 8000 },
+    // Gestion IA côté utilisateurs publics (role: 'utilisateur')
+    userFreeTrialQuota: { type: Number, default: 20, min: 0 },
+    userAiGlobalEnabled: { type: Boolean, default: true },
   },
   { timestamps: true }
 )

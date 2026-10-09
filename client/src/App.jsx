@@ -217,6 +217,7 @@ const UserPresencePage = lazyPage(() => import('./pages/UserPresencePage'))
 const AiChatPage = lazyPage(() => import('./pages/AiChatPage'))
 const DirectorAiPage = lazyPage(() => import('./pages/DirectorAiPage'))
 const AdminAiPage = lazyPage(() => import('./pages/AdminAiPage'))
+const AdminUserAiPage = lazyPage(() => import('./pages/AdminUserAiPage'))
 const AdminBannersPage = lazyPage(() => import('./pages/AdminBannersPage'))
 const RecruitmentPage = lazyPage(() => import('./pages/RecruitmentPage'))
 const NewsPage = lazyPage(() => import('./pages/NewsPage'))
@@ -376,6 +377,7 @@ export default function App() {
         <Route path="ia-chat" element={<AiChatPage />} />
         <Route path="ia" element={<DirectorAiPage />} />
         <Route path="ia-admin" element={<AdminAiPage />} />
+        <Route path="ia-utilisateurs" element={<AdminUserAiPage />} />
         <Route path="bannieres" element={<AdminBannersPage />} />
         <Route path="devoirs" element={<TeacherHomeworkPage />} />
         <Route path="activites" element={<TeacherActivitiesPage />} />

@@ -16,7 +16,13 @@ const {
   extractPdfText, revealedText, answerQuestion, generateCourseContent,
 } = require('../services/aiCourseService')
 const {
-  getActiveSubscription, consumeQuota, QUOTA_EXHAUSTED_MSG,
+  getActiveSubscription,
+  consumeQuota,
+  QUOTA_EXHAUSTED_MSG,
+  getUserQuotaInfo,
+  consumeUserQuota,
+  refundUserQuota,
+  USER_QUOTA_EXHAUSTED_MSG,
 } = require('../services/aiQuotaService')
 
 function schoolId(req) { return req.user.school?._id || req.user.school }
@@ -83,6 +89,7 @@ const courseUpload = upload.fields([
 
 // POST /api/ai-courses/generate-content — rédiger le cours automatiquement avec l'IA
 router.post('/generate-content', protect, authorize('enseignant', 'directeur', 'super_admin', 'vice_principal', 'utilisateur'), rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
+  let userConsumed = null
   try {
     const sid = schoolId(req)
     if (sid) {
@@ -90,9 +97,17 @@ router.post('/generate-content', protect, authorize('enseignant', 'directeur', '
       if (!sub || sub.remainingQuestions <= 0) {
         return res.status(403).json({ message: sub ? QUOTA_EXHAUSTED_MSG : "Aucune souscription IA active pour votre établissement." })
       }
+    } else if (req.user.role === 'utilisateur') {
+      const quota = await getUserQuotaInfo(req.user._id)
+      if (quota.totalRemaining <= 0) {
+        return res.status(403).json({ code: 'QUOTA_EXHAUSTED', message: USER_QUOTA_EXHAUSTED_MSG, quota })
+      }
+      userConsumed = await consumeUserQuota(req.user._id)
     }
+
     const { title, subject, level, className, durationMinutes, language, images } = req.body
     if (!title || !subject) {
+      if (userConsumed) await refundUserQuota(req.user._id, userConsumed.source).catch(() => {})
       return res.status(400).json({ message: 'Titre et matière requis pour la génération.' })
     }
     const result = await generateCourseContent({
@@ -104,8 +119,9 @@ router.post('/generate-content', protect, authorize('enseignant', 'directeur', '
       language: language || 'fr-FR',
       images: Array.isArray(images) ? images : [],
     })
-    res.json({ success: true, data: result })
+    res.json({ success: true, data: result, userQuota: userConsumed })
   } catch (err) {
+    if (userConsumed) await refundUserQuota(req.user._id, userConsumed.source).catch(() => {})
     res.status(err.status || 500).json({ message: err.message })
   }
 })
@@ -937,7 +953,8 @@ router.get('/:id/live', protect, async (req, res) => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 // POST /api/ai-courses/:id/questions { question }
-router.post('/:id/questions', protect, authorize('eleve', 'enseignant', 'directeur', 'super_admin'), rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
+router.post('/:id/questions', protect, authorize('eleve', 'enseignant', 'directeur', 'super_admin', 'utilisateur'), rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
+  let userConsumed = null
   try {
     const question = String(req.body.question || '').trim()
     if (!question) return res.status(400).json({ message: 'Votre question est vide.' })
@@ -952,7 +969,7 @@ router.post('/:id/questions', protect, authorize('eleve', 'enseignant', 'directe
     // Vérification de la classe et des limites d'élèves (uniquement pour le rôle 'eleve')
     if (req.user.role === 'eleve') {
       const cid = await studentClassId(req.user._id)
-      if (!cid || String(cid) !== String(course.class._id)) {
+      if (!cid || String(cid) !== String(course.class?._id)) {
         return res.status(403).json({ message: 'Ce cours ne concerne pas votre classe.' })
       }
       const mine = (course.questions || []).filter((q) => String(q.student) === String(req.user._id))
@@ -965,25 +982,40 @@ router.post('/:id/questions', protect, authorize('eleve', 'enseignant', 'directe
     if (!cfg.enabled) {
       return res.status(403).json({ message: "L'assistant IA est temporairement désactivé par l'administrateur." })
     }
-    const sub = await getActiveSubscription(course.school)
-    if (!sub) return res.status(403).json({ message: "Aucune souscription IA active pour votre établissement." })
-    if (sub.remainingQuestions <= 0) return res.status(403).json({ message: QUOTA_EXHAUSTED_MSG })
+
+    let sub = null
+    const isUserRole = req.user.role === 'utilisateur' || !course.school
+    if (isUserRole) {
+      const quota = await getUserQuotaInfo(req.user._id)
+      if (quota.totalRemaining <= 0) {
+        return res.status(403).json({ code: 'QUOTA_EXHAUSTED', message: USER_QUOTA_EXHAUSTED_MSG, quota })
+      }
+      userConsumed = await consumeUserQuota(req.user._id)
+    } else {
+      sub = await getActiveSubscription(course.school)
+      if (!sub) return res.status(403).json({ message: "Aucune souscription IA active pour votre établissement." })
+      if (sub.remainingQuestions <= 0) return res.status(403).json({ message: QUOTA_EXHAUSTED_MSG })
+    }
 
     // Réponse IA d'abord — on ne facture pas un échec OpenAI
     let result
     try {
       result = await answerQuestion({ course, className: course.class?.name || '', question })
     } catch (err) {
+      if (userConsumed) await refundUserQuota(req.user._id, userConsumed.source).catch(() => {})
       return res.status(err.status || 500).json({ message: err.message })
     }
 
-    const updated = await consumeQuota(sub)
-    if (!updated) return res.status(403).json({ message: QUOTA_EXHAUSTED_MSG })
+    let updated = sub
+    if (sub) {
+      updated = await consumeQuota(sub)
+      if (!updated) return res.status(403).json({ message: QUOTA_EXHAUSTED_MSG })
+    }
 
     // $push atomique : plusieurs élèves ou le professeur posent des questions
     const entry = {
       student: req.user._id,
-      studentName: req.user.name || (req.user.role === 'enseignant' ? 'Professeur' : 'Élève'),
+      studentName: req.user.name || (req.user.role === 'enseignant' ? 'Professeur' : req.user.role === 'utilisateur' ? 'Utilisateur' : 'Élève'),
       question,
       answer: result.answer,
       status: 'repondu',
@@ -995,19 +1027,26 @@ router.post('/:id/questions', protect, authorize('eleve', 'enseignant', 'directe
     // Journalise l'utilisation (stats + anti-abus)
     AiUsageLog.create({
       user: req.user._id,
-      school: course.school,
-      subscription: sub._id,
+      school: course.school || null,
+      subscription: sub?._id || null,
       model: result.model,
-      promptTokens: result.usage.promptTokens,
-      completionTokens: result.usage.completionTokens,
-      totalTokens: result.usage.totalTokens,
+      promptTokens: result.usage?.promptTokens || 0,
+      completionTokens: result.usage?.completionTokens || 0,
+      totalTokens: result.usage?.totalTokens || 0,
     }).catch((e) => console.error('AiUsageLog:', e.message))
 
     res.json({
       success: true,
-      data: { question: entry, remainingQuestions: updated.remainingQuestions },
+      data: {
+        question: entry,
+        remainingQuestions: updated ? updated.remainingQuestions : (userConsumed ? userConsumed.totalRemaining : 9999),
+        userQuota: userConsumed,
+      },
     })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) {
+    if (userConsumed) await refundUserQuota(req.user._id, userConsumed.source).catch(() => {})
+    res.status(500).json({ message: err.message })
+  }
 })
 
 module.exports = router

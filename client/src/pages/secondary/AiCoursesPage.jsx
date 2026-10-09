@@ -10,6 +10,7 @@ import { useCachedFetch } from '../../hooks/useCachedFetch'
 import { cache } from '../../lib/cache'
 import { useAuth } from '../../context/AuthContext'
 import { speakText, stopSpeaking, isSpeechSynthesisSupported } from '../../lib/speechService'
+import AiQuotaModal from '../../components/AiQuotaModal'
 
 // Cours de l'IA enseignante autonome (F2 Secondaire).
 // - Professeur : programme un cours (texte ou PDF, heure + durée) pour SES classes,
@@ -76,12 +77,19 @@ export default function AiCoursesPage() {
   const [error, setError] = useState('')
   const [generatingDraft, setGeneratingDraft] = useState(false)
   const [aiHealth, setAiHealth] = useState(null)
+  const [userQuota, setUserQuota] = useState(null)
+  const [showQuotaModal, setShowQuotaModal] = useState(false)
 
   useEffect(() => {
     aiApi.health().then((res) => {
       if (res) setAiHealth(res)
     }).catch(() => {})
-  }, [])
+    if (role === 'utilisateur') {
+      aiApi.getUserQuota().then((res) => {
+        if (res?.data) setUserQuota(res.data)
+      }).catch(() => {})
+    }
+  }, [role])
 
   const emptyForm = {
     classId: '', subject: '', title: '', sourceType: 'ai_generate', sourceText: '',
@@ -265,7 +273,13 @@ export default function AiCoursesPage() {
           sourceText: res.data.content,
         }))
       }
+      if (res.userQuota) {
+        setUserQuota(res.userQuota)
+      }
     } catch (err) {
+      if (/quota/i.test(err.message) || err.code === 'QUOTA_EXHAUSTED') {
+        setShowQuotaModal(true)
+      }
       setError("Erreur lors de la rédaction automatique : " + err.message)
     }
     setGeneratingDraft(false)
@@ -450,7 +464,25 @@ export default function AiCoursesPage() {
               : "Suivez les cours donnés en direct par l'IA enseignante et posez vos questions à la fin."}
           </p>
         </div>
-        {canCreate && (
+        {role === 'utilisateur' && (
+          <div className="flex items-center gap-2 self-start flex-wrap">
+            <div className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1.5 shadow-xs">
+              <Zap size={13} className="text-indigo-600" />
+              <span>{userQuota?.totalRemaining || 0} requêtes restantes</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowQuotaModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-sm"
+            >
+              Recharger Forfait
+            </button>
+            <button onClick={openCreate} className="btn-primary text-sm flex items-center gap-1.5 shadow-sm">
+              <Plus size={15} /> Programmer un cours
+            </button>
+          </div>
+        )}
+        {canCreate && role !== 'utilisateur' && (
           <div className="flex items-center gap-2 flex-wrap self-start">
             <button onClick={openCreate} className="btn-primary text-sm flex items-center gap-1.5 shadow-sm">
               <Plus size={15} /> Programmer un cours
@@ -1464,6 +1496,17 @@ export default function AiCoursesPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de recharge de quota IA pour l'utilisateur */}
+      <AiQuotaModal
+        isOpen={showQuotaModal}
+        onClose={() => setShowQuotaModal(false)}
+        initialQuota={userQuota}
+        onPurchased={(newQuota) => {
+          if (newQuota) setUserQuota(newQuota)
+          else aiApi.getUserQuota().then((res) => res?.data && setUserQuota(res.data)).catch(() => {})
+        }}
+      />
     </div>
   )
 }

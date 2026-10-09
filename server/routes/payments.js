@@ -707,6 +707,78 @@ async function applyOutcome(intent, status, raw) {
       } catch (subErr) {
         console.error('[payment:ai_subscription] ' + intent.reference + ' :', subErr.message)
       }
+    } else if (intent.purpose === 'user_ai_subscription') {
+      // Recharge Forfait IA Utilisateur payée par Mobile Money (Ikeepay H2H)
+      try {
+        const UserAiSubscription = require('../models/UserAiSubscription')
+        const AiPackage = require('../models/AiPackage')
+        const m = intent.meta || {}
+        const userId = intent.initiatedBy || m.userId
+
+        let pkg = null
+        if (m.packageId) {
+          pkg = await AiPackage.findById(m.packageId)
+        }
+
+        const questions = pkg?.totalQuestions || Number(m.totalQuestions) || 100
+        const pkgName = pkg?.name || m.packageName || 'Forfait IA Utilisateur'
+
+        // Met à jour ou crée la souscription utilisateur
+        let userSub = await UserAiSubscription.findOne({ paymentIntent: intent._id })
+        if (!userSub) {
+          userSub = await UserAiSubscription.create({
+            user: userId,
+            package: pkg?._id || m.packageId,
+            packageName: pkgName,
+            totalQuestions: questions,
+            price: intent.amount,
+            currency: intent.currency || 'F CFA',
+            paymentMethod: 'mobile_money',
+            paymentReference: intent.reference,
+            paymentIntent: intent._id,
+            status: 'approved',
+            approvedAt: new Date(),
+          })
+        } else {
+          userSub.status = 'approved'
+          userSub.approvedAt = new Date()
+          await userSub.save()
+        }
+
+        // Crédite le quota à l'utilisateur et s'assure qu'il est activé
+        if (userId) {
+          await User.updateOne(
+            { _id: userId },
+            {
+              $inc: { aiQuestionsQuota: questions },
+              $set: { aiAccessDisabled: false, aiAccess: true, aiAccessGrantedAt: new Date() },
+            }
+          )
+        }
+
+        // Encaisse le revenu souscription IA côté admin plateforme (best-effort)
+        try {
+          const admin = await wallet.getPlatformAdmin()
+          if (admin) {
+            await wallet.credit(admin._id, {
+              amount: intent.amount,
+              type: 'ai_subscription_revenue',
+              role: 'admin',
+              counterparty: userId,
+              paymentIntent: intent._id,
+              providerTransactionId: intent.providerTransactionId,
+              description: `Forfait IA Utilisateur (Mobile Money) — ${pkgName} (+${questions} requêtes)`,
+              meta: { userAiSubscription: String(userSub._id), packageId: String(userSub.package) },
+            })
+          }
+        } catch (creditErr) {
+          console.error('[payment:user_ai_subscription] credit admin error:', creditErr.message)
+        }
+
+        console.log(`[payment:user_ai_subscription] Quota IA crédité avec succès (+${questions} requêtes) pour utilisateur ${userId}`)
+      } catch (err) {
+        console.error('[payment:user_ai_subscription] ' + intent.reference + ' :', err.message)
+      }
     }
     intent.fulfilled = true
     await intent.save()

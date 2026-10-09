@@ -1,9 +1,12 @@
+import { useState, useEffect } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import {
   Home, Newspaper, Globe, Plus, Users, Briefcase,
   Wallet, Store, Landmark, Rocket, User, Bell,
-  ShoppingBag, Bot, Sparkles,
+  ShoppingBag, Bot, Sparkles, Zap, AlertTriangle, ChevronRight,
 } from 'lucide-react'
+import { aiApi } from '../../lib/api'
+import AiQuotaModal from '../../components/AiQuotaModal'
 
 // Palette de couleurs foncées (fond saturé + icône blanche) tournant par bouton, identique à AppLauncher des autres dashboards.
 const PALETTE = [
@@ -22,6 +25,26 @@ export default function UserStorePage() {
   const unreadMessages = ctx.unreadMessages || 0
   const unreadNotifs = ctx.unreadNotifs || 0
   const unreadNews = ctx.unreadNews || 0
+
+  const [userQuota, setUserQuota] = useState(null)
+  const [loadingQuota, setLoadingQuota] = useState(false)
+  const [showQuotaModal, setShowQuotaModal] = useState(false)
+
+  const loadQuota = async () => {
+    try {
+      setLoadingQuota(true)
+      const res = await aiApi.getUserQuota()
+      if (res?.data) setUserQuota(res.data)
+    } catch {
+      // silencieux si non connecté ou erreur réseau
+    } finally {
+      setLoadingQuota(false)
+    }
+  }
+
+  useEffect(() => {
+    loadQuota()
+  }, [])
 
   const sections = [
     {
@@ -78,7 +101,67 @@ export default function UserStorePage() {
       {/* Grille de sections avec exactement les mêmes formes et alignements que dans AppLauncher */}
       {sections.map((section) => (
         <div key={section.label} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-          <h3 className="text-[11px] font-semibold tracking-wider text-gray-400 uppercase mb-4">{section.label}</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[11px] font-semibold tracking-wider text-gray-400 uppercase">{section.label}</h3>
+            {section.label === 'INTELLIGENCE ARTIFICIELLE' && (
+              <button
+                type="button"
+                onClick={() => setShowQuotaModal(true)}
+                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
+              >
+                <Zap size={12} className="text-amber-500 fill-amber-500" />
+                <span>Plans & Forfaits</span>
+              </button>
+            )}
+          </div>
+
+          {section.label === 'INTELLIGENCE ARTIFICIELLE' && (
+            <div className="mb-5 p-3.5 sm:p-4 rounded-xl bg-gradient-to-r from-blue-50/80 via-indigo-50/80 to-purple-50/80 border border-indigo-100/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <Bot size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-gray-900">Forfait & Solde IA</span>
+                    {userQuota?.isUserDisabled ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">
+                        <AlertTriangle size={11} /> Désactivé par l'admin
+                      </span>
+                    ) : (userQuota?.totalRemaining || 0) > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        <Zap size={11} /> {userQuota.totalRemaining} requête{userQuota.totalRemaining > 1 ? 's' : ''} disponible{userQuota.totalRemaining > 1 ? 's' : ''}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                        <AlertTriangle size={11} /> Forfait épuisé
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {userQuota ? (
+                      <>
+                        Essai offert : {userQuota.trialRemaining} restant{userQuota.trialRemaining > 1 ? 's' : ''} / {userQuota.trialTotal} • Forfait acheté : {userQuota.purchasedQuota} req.
+                      </>
+                    ) : (
+                      'Essai de 20 requêtes gratuites offert, rechargez 100 requêtes pour 1000 F CFA.'
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowQuotaModal(true)}
+                type="button"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors whitespace-nowrap self-start sm:self-center"
+              >
+                <Sparkles size={13} />
+                <span>Recharger forfait</span>
+                <ChevronRight size={13} />
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-x-3 gap-y-5 justify-items-center">
             {section.items.map((item) => {
               const color = PALETTE[colorIndex++ % PALETTE.length]
@@ -110,6 +193,17 @@ export default function UserStorePage() {
           </div>
         </div>
       ))}
+
+      {/* Modale de recharge de forfait IA */}
+      <AiQuotaModal
+        isOpen={showQuotaModal}
+        onClose={() => setShowQuotaModal(false)}
+        onPurchased={(newQuota) => {
+          if (newQuota) setUserQuota(newQuota)
+          else loadQuota()
+        }}
+        initialQuota={userQuota}
+      />
     </div>
   )
 }

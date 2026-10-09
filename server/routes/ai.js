@@ -11,9 +11,16 @@ const AiPackage = require('../models/AiPackage')
 const AiSubscription = require('../models/AiSubscription')
 const AiConversation = require('../models/AiConversation')
 const AiUsageLog = require('../models/AiUsageLog')
+const UserAiSubscription = require('../models/UserAiSubscription')
 const PaymentIntent = require('../models/PaymentIntent')
 const wallet = require('../services/walletService')
 const ikeepay = require('../services/ikeepayService')
+const {
+  getUserQuotaInfo,
+  consumeUserQuota,
+  refundUserQuota,
+  USER_QUOTA_EXHAUSTED_MSG,
+} = require('../services/aiQuotaService')
 const { performWebSearch, buildSearchContext } = require('../services/webSearchService')
 const { generateChatResponse, OpenAiError } = require('../services/openaiService')
 const {
@@ -263,12 +270,52 @@ router.get('/health', protect, async (req, res) => {
 // OFFRES IA (administrateur : CRUD ; directeur : liste des offres actives)
 // ═════════════════════════════════════════════════════════════════════════════
 
-// GET /api/ai/packages — admin: toutes ; directeur: seulement actives
+// GET /api/ai/packages — admin: toutes ; autres: actives selon target
 router.get('/packages', protect, async (req, res) => {
   try {
     const filter = req.user.role === 'super_admin' ? {} : { isActive: true }
+    if (req.query.target) {
+      filter.target = { $in: [req.query.target, 'all'] }
+    }
     const packages = await AiPackage.find(filter).sort({ sortOrder: 1, price: 1 })
     res.json({ success: true, data: packages })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/ai/user-packages — packages visibles pour les utilisateurs (role: 'utilisateur')
+router.get('/user-packages', protect, async (req, res) => {
+  try {
+    let packages = await AiPackage.find({
+      isActive: true,
+      target: { $in: ['user', 'all'] },
+    }).sort({ sortOrder: 1, price: 1 })
+
+    // Auto-création de l'offre par défaut si aucune offre n'existe encore pour les utilisateurs (100 requêtes = 1 000 F CFA)
+    if (packages.length === 0) {
+      try {
+        const defaultPkg = await AiPackage.create({
+          name: 'Pack Découverte 100 Requêtes',
+          description: 'Idéal pour le chat IA et les cours interactifs',
+          totalQuestions: 100,
+          price: 1000,
+          currency: 'F CFA',
+          target: 'user',
+          isActive: true,
+          sortOrder: 1,
+        })
+        packages = [defaultPkg]
+      } catch (_) {}
+    }
+
+    res.json({ success: true, data: packages })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/ai/user-quota — consulte le quota de l'utilisateur connecté
+router.get('/user-quota', protect, async (req, res) => {
+  try {
+    const info = await getUserQuotaInfo(req.user._id)
+    res.json({ success: true, data: info })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -707,6 +754,452 @@ router.post('/access/revoke', ...directorOnly, async (req, res) => {
 })
 
 // ═════════════════════════════════════════════════════════════════════════════
+// SOUSCRIPTIONS & RECHARGES IA UTILISATEURS (role: 'utilisateur')
+// ═════════════════════════════════════════════════════════════════════════════
+
+// POST /api/ai/user-subscription/wallet — Recharge via portefeuille KATD-SCHÜLE
+router.post('/user-subscription/wallet', protect, async (req, res) => {
+  try {
+    const { packageId, pin } = req.body
+    if (!packageId) return res.status(400).json({ message: 'Forfait IA requis' })
+
+    const user = await User.findById(req.user._id).select('+walletPin')
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
+
+    if (user.walletPin && pin) {
+      const pinMatch = await user.matchPin(pin)
+      if (!pinMatch) return res.status(400).json({ message: 'Code PIN portefeuille incorrect' })
+    }
+
+    const pkg = await AiPackage.findById(packageId)
+    if (!pkg || !pkg.isActive) return res.status(404).json({ message: 'Forfait IA introuvable ou inactif' })
+
+    const price = Number(pkg.price)
+    const userWallet = await wallet.getOrCreateWallet(user._id)
+    if (userWallet.balance < price) {
+      return res.status(400).json({
+        message: `Solde insuffisant dans votre portefeuille (${userWallet.balance.toLocaleString('fr-FR')} ${userWallet.currency}). Veuillez recharger votre portefeuille ou payer par Mobile Money.`,
+        code: 'INSUFFICIENT_FUNDS',
+      })
+    }
+
+    const reference = genRef('uai_w')
+
+    // 1. Débit du portefeuille de l'utilisateur
+    await wallet.debit(user._id, {
+      amount: price,
+      type: 'ai_user_subscription',
+      role: user.role,
+      description: `Recharge IA — ${pkg.name} (+${pkg.totalQuestions} requêtes)`,
+      meta: { packageId: String(pkg._id), totalQuestions: pkg.totalQuestions, reference },
+    })
+
+    // 2. Crédit de l'administrateur plateforme
+    try {
+      const admin = await wallet.getPlatformAdmin()
+      if (admin) {
+        await wallet.credit(admin._id, {
+          amount: price,
+          type: 'ai_subscription_revenue',
+          role: 'admin',
+          counterparty: user._id,
+          description: `Recharge IA utilisateur (portefeuille) — ${pkg.name} de ${user.name}`,
+          meta: { packageId: String(pkg._id), userId: String(user._id), reference },
+        })
+      }
+    } catch (adminErr) {
+      console.error('[user-subscription:wallet] credit admin error:', adminErr.message)
+    }
+
+    // 3. Création de l'enregistrement de souscription
+    const sub = await UserAiSubscription.create({
+      user: user._id,
+      package: pkg._id,
+      packageName: pkg.name,
+      totalQuestions: pkg.totalQuestions,
+      price,
+      currency: pkg.currency || 'F CFA',
+      paymentMethod: 'wallet',
+      paymentReference: reference,
+      status: 'approved',
+      approvedAt: new Date(),
+    })
+
+    // 4. Crédit effectif du quota à l'utilisateur
+    user.aiQuestionsQuota = (user.aiQuestionsQuota || 0) + pkg.totalQuestions
+    user.aiAccessDisabled = false
+    user.aiAccess = true
+    user.aiAccessGrantedAt = new Date()
+    await user.save()
+
+    const quota = await getUserQuotaInfo(user._id)
+
+    res.json({
+      success: true,
+      data: sub,
+      quota,
+      message: `Félicitations ! Votre forfait IA a été activé (+${pkg.totalQuestions} requêtes).`,
+    })
+  } catch (err) {
+    console.error('user-subscription/wallet error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/ai/user-subscription/mobile-initiate — Démarre paiement Mobile Money (Ikeepay H2H)
+router.post('/user-subscription/mobile-initiate', protect, async (req, res) => {
+  try {
+    const { packageId, phone, operator, country = 'CM', otp } = req.body
+    if (!packageId) return res.status(400).json({ message: 'Forfait IA requis' })
+
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur Mobile Money requis.' })
+    }
+
+    const pkg = await AiPackage.findById(packageId)
+    if (!pkg || !pkg.isActive) return res.status(404).json({ message: 'Forfait IA introuvable ou indisponible' })
+
+    const reference = genRef('uai_m')
+    const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+    const amount = Number(pkg.price)
+
+    const intent = await PaymentIntent.create({
+      reference,
+      purpose: 'user_ai_subscription',
+      amount,
+      currency: targetCurrency,
+      payerPhone: rawPhone,
+      payerOperator: operator,
+      payerName: req.user.name,
+      payerEmail: req.user.email || '',
+      initiatedBy: req.user._id,
+      mode,
+      meta: {
+        packageId: String(pkg._id),
+        packageName: pkg.name,
+        totalQuestions: pkg.totalQuestions,
+        userId: String(req.user._id),
+      },
+    })
+
+    await UserAiSubscription.create({
+      user: req.user._id,
+      package: pkg._id,
+      packageName: pkg.name,
+      totalQuestions: pkg.totalQuestions,
+      price: amount,
+      currency: targetCurrency,
+      paymentMethod: 'mobile_money',
+      paymentReference: reference,
+      paymentIntent: intent._id,
+      status: 'pending',
+    })
+
+    const result = await ikeepay.createCollection({
+      amount,
+      phone: rawPhone,
+      operator,
+      reference,
+      callbackUrl: callbackUrl(),
+      customerEmail: req.user.email || '',
+      country: normCountry,
+      currency: targetCurrency,
+      otp,
+    })
+
+    if (result.transaction_id || result.id) {
+      intent.providerTransactionId = result.transaction_id || result.id
+      await intent.save()
+    }
+
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+
+    res.json({
+      success: true,
+      reference,
+      amount,
+      mode,
+      currency: targetCurrency,
+      transaction: result,
+      payment_link: paymentLink,
+      message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money pour activer vos requêtes IA.',
+    })
+  } catch (err) {
+    console.error('user-subscription/mobile-initiate error:', err.message)
+    res.status(err.status || 500).json({ message: err.message, data: err.data })
+  }
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GESTION IA UTILISATEURS (administrateur principal)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// GET /api/ai/admin/user-ai-config
+router.get('/admin/user-ai-config', ...adminOnly, async (req, res) => {
+  try {
+    const cfg = await AiConfig.getConfig()
+    res.json({
+      success: true,
+      data: {
+        userFreeTrialQuota: typeof cfg.userFreeTrialQuota === 'number' ? cfg.userFreeTrialQuota : 20,
+        userAiGlobalEnabled: cfg.userAiGlobalEnabled !== false,
+        enabled: cfg.enabled !== false,
+      },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/ai/admin/user-ai-config
+router.post('/admin/user-ai-config', ...adminOnly, async (req, res) => {
+  try {
+    const { userFreeTrialQuota, userAiGlobalEnabled } = req.body
+    const cfg = await AiConfig.getConfig()
+    if (userFreeTrialQuota !== undefined) {
+      cfg.userFreeTrialQuota = Math.max(0, parseInt(userFreeTrialQuota, 10) || 0)
+    }
+    if (userAiGlobalEnabled !== undefined) {
+      cfg.userAiGlobalEnabled = Boolean(userAiGlobalEnabled)
+    }
+    await cfg.save()
+    res.json({
+      success: true,
+      data: {
+        userFreeTrialQuota: cfg.userFreeTrialQuota,
+        userAiGlobalEnabled: cfg.userAiGlobalEnabled,
+        enabled: cfg.enabled,
+      },
+      message: 'Configuration IA utilisateurs mise à jour avec succès.',
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/ai/admin/toggle-all-users — Active / désactive l'IA pour l'ensemble des utilisateurs
+router.post('/admin/toggle-all-users', ...adminOnly, async (req, res) => {
+  try {
+    const { enabled } = req.body
+    const isEnable = enabled !== false
+    const cfg = await AiConfig.getConfig()
+    cfg.userAiGlobalEnabled = isEnable
+    await cfg.save()
+
+    if (isEnable) {
+      await User.updateMany(
+        { role: 'utilisateur' },
+        { $set: { aiAccessDisabled: false, aiAccess: true } }
+      )
+    } else {
+      await User.updateMany(
+        { role: 'utilisateur' },
+        { $set: { aiAccessDisabled: true } }
+      )
+    }
+
+    res.json({
+      success: true,
+      message: isEnable
+        ? "L'IA a été activée pour tous les utilisateurs avec succès !"
+        : "L'IA a été désactivée pour tous les utilisateurs.",
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/ai/admin/user-ai-stats — Statistiques & Chiffre d'affaires IA utilisateurs
+router.get('/admin/user-ai-stats', ...adminOnly, async (req, res) => {
+  try {
+    const [cfg, totalUsers, activeUsersWithQuota, subscriptions, usageLogsCount] = await Promise.all([
+      AiConfig.getConfig(),
+      User.countDocuments({ role: 'utilisateur' }),
+      User.countDocuments({
+        role: 'utilisateur',
+        aiAccessDisabled: { $ne: true },
+        $or: [
+          { aiQuestionsQuota: { $gt: 0 } },
+          { aiFreeTrialUsed: { $lt: cfg.userFreeTrialQuota || 20 } },
+        ],
+      }),
+      UserAiSubscription.find({ status: 'approved' }).select('price totalQuestions paymentMethod'),
+      AiUsageLog.countDocuments({ school: null }),
+    ])
+
+    const totalRevenue = subscriptions.reduce((sum, s) => sum + (s.price || 0), 0)
+    const totalPurchasedQuestions = subscriptions.reduce((sum, s) => sum + (s.totalQuestions || 0), 0)
+
+    res.json({
+      success: true,
+      data: {
+        totalUsers,
+        activeUsersWithQuota,
+        totalSubscriptions: subscriptions.length,
+        totalRevenue,
+        totalPurchasedQuestions,
+        usageLogsCount,
+        freeTrialQuota: cfg.userFreeTrialQuota || 20,
+        globalEnabled: cfg.userAiGlobalEnabled !== false && cfg.enabled !== false,
+      },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/ai/admin/user-subscriptions — Historique des paiements & souscriptions utilisateurs
+router.get('/admin/user-subscriptions', ...adminOnly, async (req, res) => {
+  try {
+    const { status, page = 1, limit = 50 } = req.query
+    const filter = {}
+    if (status && status !== 'all') filter.status = status
+
+    const subs = await UserAiSubscription.find(filter)
+      .populate('user', 'name email phone avatar')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit, 10))
+      .skip((parseInt(page, 10) - 1) * parseInt(limit, 10))
+
+    const total = await UserAiSubscription.countDocuments(filter)
+
+    res.json({
+      success: true,
+      data: subs,
+      pagination: {
+        total,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        pages: Math.ceil(total / parseInt(limit, 10)),
+      },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// GET /api/ai/admin/users — Liste des utilisateurs avec métriques IA
+router.get('/admin/users', ...adminOnly, async (req, res) => {
+  try {
+    const { search, page = 1, limit = 50 } = req.query
+    const filter = { role: 'utilisateur' }
+    if (search && String(search).trim()) {
+      const q = String(search).trim()
+      filter.$or = [
+        { name: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { phone: { $regex: q, $options: 'i' } },
+      ]
+    }
+
+    const cfg = await AiConfig.getConfig()
+    const trialTotal = typeof cfg.userFreeTrialQuota === 'number' ? cfg.userFreeTrialQuota : 20
+
+    const users = await User.find(filter)
+      .select('name email phone avatar aiQuestionsQuota aiFreeTrialUsed aiAccessDisabled aiAccess createdAt')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit, 10))
+      .skip((parseInt(page, 10) - 1) * parseInt(limit, 10))
+
+    const total = await User.countDocuments(filter)
+
+    const list = users.map((u) => {
+      const trialUsed = u.aiFreeTrialUsed || 0
+      const trialRemaining = Math.max(0, trialTotal - trialUsed)
+      const purchased = u.aiQuestionsQuota || 0
+      return {
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        avatar: u.avatar,
+        aiQuestionsQuota: purchased,
+        aiFreeTrialUsed: trialUsed,
+        aiFreeTrialRemaining: trialRemaining,
+        totalRemaining: trialRemaining + purchased,
+        aiAccessDisabled: !!u.aiAccessDisabled,
+        aiAccess: !!u.aiAccess,
+        createdAt: u.createdAt,
+      }
+    })
+
+    res.json({
+      success: true,
+      data: list,
+      pagination: {
+        total,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        pages: Math.ceil(total / parseInt(limit, 10)),
+      },
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/ai/admin/user/:userId/toggle — Active / désactive l'IA pour un utilisateur spécifique
+router.post('/admin/user/:userId/toggle', ...adminOnly, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId)
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
+
+    const { disabled } = req.body
+    if (disabled !== undefined) {
+      user.aiAccessDisabled = Boolean(disabled)
+    } else {
+      user.aiAccessDisabled = !user.aiAccessDisabled
+    }
+
+    if (!user.aiAccessDisabled) {
+      user.aiAccess = true
+      user.aiAccessGrantedAt = new Date()
+    }
+    await user.save()
+
+    res.json({
+      success: true,
+      data: {
+        _id: user._id,
+        aiAccessDisabled: user.aiAccessDisabled,
+      },
+      message: user.aiAccessDisabled
+        ? `L'accès IA de ${user.name} a été désactivé.`
+        : `L'accès IA de ${user.name} a été activé avec succès.`,
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/ai/admin/user/:userId/credit — Crédite manuellement des requêtes à un utilisateur
+router.post('/admin/user/:userId/credit', ...adminOnly, async (req, res) => {
+  try {
+    const { amount, reason } = req.body
+    const qty = parseInt(amount, 10)
+    if (!qty || isNaN(qty)) {
+      return res.status(400).json({ message: 'Nombre de requêtes invalide' })
+    }
+
+    const user = await User.findById(req.params.userId)
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
+
+    user.aiQuestionsQuota = Math.max(0, (user.aiQuestionsQuota || 0) + qty)
+    user.aiAccessDisabled = false
+    user.aiAccess = true
+    await user.save()
+
+    // Enregistre dans UserAiSubscription pour historique
+    await UserAiSubscription.create({
+      user: user._id,
+      packageName: reason || `Attribution manuelle admin (+${qty})`,
+      totalQuestions: qty,
+      price: 0,
+      paymentMethod: 'admin_grant',
+      status: 'approved',
+      approvedAt: new Date(),
+    })
+
+    const quota = await getUserQuotaInfo(user._id)
+
+    res.json({
+      success: true,
+      data: quota,
+      message: `${qty} requêtes IA ont été créditées à ${user.name} avec succès.`,
+    })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
 // CHAT IA
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -724,6 +1217,24 @@ router.post('/chat', protect, rateLimit({ windowMs: 60000, max: 20 }), async (re
     const cfg = await AiConfig.getConfig()
     if (!cfg.enabled) {
       return res.status(403).json({ message: "L'assistant IA est temporairement désactivé par l'administrateur." })
+    }
+
+    // Contrôles spécifiques aux utilisateurs publics
+    if (req.user.role === 'utilisateur') {
+      if (cfg.userAiGlobalEnabled === false) {
+        return res.status(403).json({ message: "L'assistant IA pour les utilisateurs est temporairement désactivé par l'administrateur." })
+      }
+      if (req.user.aiAccessDisabled) {
+        return res.status(403).json({ message: "Votre accès à l'assistant IA a été désactivé par l'administrateur." })
+      }
+      const quotaInfo = await getUserQuotaInfo(req.user._id)
+      if (quotaInfo.totalRemaining <= 0) {
+        return res.status(403).json({
+          code: 'QUOTA_EXHAUSTED',
+          message: USER_QUOTA_EXHAUSTED_MSG,
+          quota: quotaInfo,
+        })
+      }
     }
 
     const sid = schoolId(req)
@@ -780,10 +1291,26 @@ CONSIGNES ESSENTIELLES :
       maxTokens: Math.max(Number(cfg.maxTokens) || 4000, 4000), // Empêche toute coupure de réponse
     }
 
+    // Décrément préliminaire ou contrôle pour utilisateur public
+    let userConsumed = null
+    if (req.user.role === 'utilisateur') {
+      try {
+        userConsumed = await consumeUserQuota(req.user._id)
+      } catch (quotaErr) {
+        return res.status(403).json({
+          code: quotaErr.code || 'QUOTA_EXHAUSTED',
+          message: quotaErr.message,
+        })
+      }
+    }
+
     let result
     try {
       result = await generateChatResponse({ messages: [...history, userMessage], config: chatConfig })
     } catch (err) {
+      if (userConsumed) {
+        await refundUserQuota(req.user._id, userConsumed.source).catch(() => {})
+      }
       const status = err instanceof OpenAiError ? err.status : 500
       return res.status(status).json({ message: err.message })
     }
@@ -825,10 +1352,18 @@ CONSIGNES ESSENTIELLES :
       success: true,
       data: {
         conversationId: conversation._id,
+        messages: conversation.messages,
         answer: result.content,
+        reply: result.content,
+        quota: updated ? {
+          remaining: updated.remainingQuestions,
+          used: updated.usedQuestions,
+          total: updated.totalQuestions,
+        } : null,
         remainingQuestions: updated ? updated.remainingQuestions : 9999,
         usedQuestions: updated ? updated.usedQuestions : 0,
         totalQuestions: updated ? updated.totalQuestions : 9999,
+        userQuota: userConsumed,
         webSearch: {
           performed: webSearch.results.length > 0,
           sourcesCount: webSearch.results.length,

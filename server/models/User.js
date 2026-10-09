@@ -45,6 +45,10 @@ const userSchema = new mongoose.Schema(
     // directeurs disposent de l'accès d'office si l'école a une souscription IA.
     aiAccess: { type: Boolean, default: false },
     aiAccessGrantedAt: { type: Date },
+    // Gestion du quota IA pour les utilisateurs (role: 'utilisateur')
+    aiQuestionsQuota: { type: Number, default: 0, min: 0 },
+    aiFreeTrialUsed: { type: Number, default: 0, min: 0 },
+    aiAccessDisabled: { type: Boolean, default: false },
     // Compte marchand : activé par paiement (6933) ou octroyé par l'admin
     isMerchant: { type: Boolean, default: false },
     merchantSince: { type: Date, default: null },

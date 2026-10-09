@@ -10,6 +10,11 @@ const aiPackageSchema = new mongoose.Schema(
     totalQuestions: { type: Number, required: true, min: 1 },
     price: { type: Number, required: true, min: 0 },
     currency: { type: String, default: 'F CFA', trim: true },
+    target: {
+      type: String,
+      enum: ['school', 'user', 'all'],
+      default: 'all',
+    },
     isActive: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
   },

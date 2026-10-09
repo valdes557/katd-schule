@@ -1186,7 +1186,22 @@ export const aiApi = {
   chat: (message, conversationId) => api.post('/ai/chat', { message, conversationId }),
   history: () => api.get('/ai/history'),
   getConversation: (id) => api.get(`/ai/conversations/${id}`),
-  deleteConversation: (id) => api.del(`/ai/conversations/${id}`),
+  // Quota & Forfaits utilisateurs (role: 'utilisateur')
+  getUserQuota: () => api.get('/ai/user-quota'),
+  listUserPackages: () => api.get('/ai/user-packages'),
+  subscribeUserWallet: ({ packageId, pin }) => api.post('/ai/user-subscription/wallet', { packageId, pin }),
+  subscribeUserMobile: (payload) => api.post('/ai/user-subscription/mobile-initiate', payload),
+
+  // Gestion IA utilisateurs (super_admin)
+  getUserAiConfig: () => api.get('/ai/admin/user-ai-config'),
+  updateUserAiConfig: (data) => api.post('/ai/admin/user-ai-config', data),
+  toggleAllUsersAi: (data) => api.post('/ai/admin/toggle-all-users', data),
+  getUserAiStats: () => api.get('/ai/admin/user-ai-stats'),
+  listUserSubscriptions: (params = {}) => api.get(`/ai/admin/user-subscriptions?${new URLSearchParams(params).toString()}`),
+  listUsersAi: (params = {}) => api.get(`/ai/admin/users?${new URLSearchParams(params).toString()}`),
+  toggleUserAi: (userId, data = {}) => api.post(`/ai/admin/user/${userId}/toggle`, data),
+  creditUserAi: (userId, data) => api.post(`/ai/admin/user/${userId}/credit`, data),
+
   // Statistiques (admin global / directeur école)
   stats: () => api.get('/ai/stats'),
   // Santé / configuration du service IA
