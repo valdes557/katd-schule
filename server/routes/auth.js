@@ -520,7 +520,7 @@ router.post('/admin-reset-password', protect, async (req, res) => {
             </table>
             <p style="color:#6B7280;font-size:12px">Veuillez changer ce mot de passe après votre connexion.</p>
             <div style="margin-top:16px">
-              <a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="display:inline-block;background:#2563EB;color:white;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Se connecter</a>
+              <a href="${process.env.CLIENT_URL || 'https://katdschool.com'}/login" style="display:inline-block;background:#2563EB;color:white;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Se connecter</a>
             </div>
           </div>
         `,

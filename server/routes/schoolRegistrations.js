@@ -213,7 +213,7 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
             </div>
 
             <div style="text-align: center; margin-top: 25px;">
-              <a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="display: inline-block; background: linear-gradient(135deg, #2563EB, #4F46E5); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">
+              <a href="${process.env.CLIENT_URL || 'https://katdschool.com'}/login" style="display: inline-block; background: linear-gradient(135deg, #2563EB, #4F46E5); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">
                 🚀 Accéder à mon espace directeur
               </a>
             </div>
@@ -284,7 +284,7 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
       `• Email : ${reg.email}`,
       `• Mot de passe : ${rawPassword}`,
       ``,
-      `🚀 Connectez-vous : ${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login`,
+      `🚀 Connectez-vous : ${process.env.CLIENT_URL || 'https://katdschool.com'}/login`,
       ``,
       `⚠️ Changez votre mot de passe après votre première connexion.`,
     ].join('\n')
@@ -377,7 +377,7 @@ router.post('/:id/resend-credentials', protect, authorize('super_admin'), async 
               <p style="color:#DC2626;font-size:12px;margin:12px 0 0;font-weight:600">⚠️ Changez ce mot de passe après connexion.</p>
             </div>
             <div style="text-align:center;margin-top:20px">
-              <a href="${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login" style="display:inline-block;background:linear-gradient(135deg,#2563EB,#4F46E5);color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600">🚀 Accéder à mon espace</a>
+              <a href="${process.env.CLIENT_URL || 'https://katdschool.com'}/login" style="display:inline-block;background:linear-gradient(135deg,#2563EB,#4F46E5);color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600">🚀 Accéder à mon espace</a>
             </div>
           </div>
         </div>
@@ -396,7 +396,7 @@ router.post('/:id/resend-credentials', protect, authorize('super_admin'), async 
       `• Email : ${reg.email}`,
       `• Mot de passe : ${rawPassword}`,
       ``,
-      `🚀 Connectez-vous : ${process.env.CLIENT_URL || 'https://katd-schule.vercel.app'}/login`,
+      `🚀 Connectez-vous : ${process.env.CLIENT_URL || 'https://katdschool.com'}/login`,
       ``,
       `⚠️ Changez ce mot de passe après connexion.`,
     ].join('\n')
