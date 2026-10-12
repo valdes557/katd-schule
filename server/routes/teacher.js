@@ -12,6 +12,7 @@ const Attendance = require('../models/Attendance')
 const Homework = require('../models/Homework')
 const Class = require('../models/Class')
 const Subject = require('../models/Subject')
+const School = require('../models/School')
 const Activity = require('../models/Activity')
 const Resource = require('../models/Resource')
 const DailyReport = require('../models/DailyReport')
@@ -724,47 +725,166 @@ router.post('/activities', protect, pedagogueOnly, async (req, res) => {
   try {
     const ctx = await resolveAuthorContext(req)
     if (ctx.error) return res.status(404).json({ message: ctx.error })
-    if (!req.body.class || !ctx.classIds.includes(req.body.class.toString())) {
-      return res.status(403).json({ message: "Activité possible uniquement pour une classe de votre école" })
+
+    // Support de la multi-sélection de classes (ex: plusieurs classes ou toutes les classes pour le directeur)
+    const rawClasses = req.body.classIds || req.body.classes || (req.body.class ? [req.body.class] : [])
+    const targetClassIds = (Array.isArray(rawClasses) ? rawClasses : [rawClasses])
+      .map((c) => (c?._id ? c._id.toString() : String(c || '').trim()))
+      .filter(Boolean)
+
+    if (targetClassIds.length === 0) {
+      return res.status(400).json({ message: "Veuillez sélectionner au moins une classe pour cette activité" })
     }
-    const act = await Activity.create({
-      ...req.body,
-      teacher: ctx.teacherId || undefined,
-      createdByUser: req.user._id,
-      school: ctx.school,
+
+    const invalid = targetClassIds.filter((cid) => !ctx.classIds.includes(cid))
+    if (invalid.length > 0) {
+      return res.status(403).json({ message: "Activité possible uniquement pour les classes de votre établissement" })
+    }
+
+    // Récupérer les informations de l'école (nom, logo) pour les e-mails
+    const schoolDoc = await School.findById(ctx.school).select('name logo address').lean()
+    const schoolName = schoolDoc?.name || 'KATD-SCHÜLE'
+
+    // Création d'une activité pour chaque classe sélectionnée
+    const createdActivities = []
+    for (const cid of targetClassIds) {
+      const act = await Activity.create({
+        ...req.body,
+        class: cid,
+        teacher: ctx.teacherId || undefined,
+        createdByUser: req.user._id,
+        school: ctx.school,
+      })
+      createdActivities.push(act)
+    }
+
+    // Charger les activités enrichies
+    const populatedList = await Activity.find({ _id: { $in: createdActivities.map((a) => a._id) } })
+      .populate('class', 'name level')
+      .populate('teacher', 'firstName lastName')
+
+    res.status(201).json({
+      success: true,
+      data: populatedList[0],
+      items: populatedList,
+      count: populatedList.length,
     })
-    const populated = await Activity.findById(act._id).populate('class', 'name level').populate('teacher', 'firstName lastName')
-    res.status(201).json({ success: true, data: populated })
 
-    // Push aux parents de la classe (best-effort).
-    classParentUserIds(act.class).then((ids) => {
-      pushService.sendToUsers(ids, {
-        title: `🎯 Nouvelle activité — ${act.title}`,
-        body: `${act.type || 'Activité'} • ${new Date(act.date).toLocaleDateString('fr-FR')}${act.location ? ' • ' + act.location : ''}`,
-        url: '/dashboard/parent/activites',
-        tag: 'act_' + act._id.toString(),
-      })
+    // 1. Push notifications aux parents des classes concernées
+    classParentUserIds(targetClassIds).then((parentUserIds) => {
+      if (parentUserIds && parentUserIds.length > 0) {
+        pushService.sendToUsers(parentUserIds, {
+          title: `🎯 Nouvelle activité — ${req.body.title}`,
+          body: `${req.body.type || 'Activité'} • ${new Date(req.body.date).toLocaleDateString('fr-FR')}${req.body.location ? ' • ' + req.body.location : ''}`,
+          url: '/dashboard/parent/activites',
+          tag: 'act_' + createdActivities[0]._id.toString(),
+        })
+      }
     }).catch(() => {})
 
-    // Notify parents of class
-    Student.find({ class: act.class, status: 'active' }).populate('parentUser', 'email name').then((students) => {
-      students.filter((s) => s.parentUser?.email).forEach((s) => {
-        sendEmail({
-          to: s.parentUser.email,
-          subject: `🎯 Nouvelle activité — ${act.title}`,
-          html: `<p>Bonjour <strong>${s.parentUser.name}</strong>,</p>
-            <p>Une activité a été planifiée pour la classe de <strong>${s.lastName} ${s.firstName}</strong> :</p>
-            <ul>
-              <li><strong>${act.title}</strong> (${act.type})</li>
-              <li>Date : <strong>${new Date(act.date).toLocaleDateString('fr-FR')}</strong></li>
-              ${act.location ? `<li>Lieu : ${act.location}</li>` : ''}
-              ${act.cost ? `<li>Coût : ${act.cost} FCFA</li>` : ''}
-            </ul>
-            ${act.description ? `<p><em>${act.description}</em></p>` : ''}
-            <p style="color:#6B7280;font-size:12px">— KATD-SCHÜLE</p>`,
-        }).catch(() => {})
+    // 2. Envoi des e-mails aux parents enregistrés pour les élèves des classes ciblées
+    Student.find({ class: { $in: targetClassIds }, status: 'active' })
+      .populate('parentUser', 'email name')
+      .populate('class', 'name')
+      .lean()
+      .then((students) => {
+        // Dédoublonner par adresse e-mail pour ne pas spammer les parents ayant plusieurs enfants
+        const parentMap = new Map() // email -> { parentName, children: [{ childName, className }] }
+
+        for (const s of students) {
+          const email = (s.parentUser?.email || s.parent?.email || '').trim().toLowerCase()
+          if (!email) continue
+
+          const parentName = s.parentUser?.name || s.parent?.name || 'Cher Parent'
+          const childName = `${s.lastName} ${s.firstName}`
+          const className = s.class?.name || 'Classe'
+
+          if (!parentMap.has(email)) {
+            parentMap.set(email, { parentName, children: [] })
+          }
+          parentMap.get(email).children.push({ childName, className })
+        }
+
+        const dateStr = new Date(req.body.date).toLocaleDateString('fr-FR', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+        const endDateStr = req.body.endDate
+          ? new Date(req.body.endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+          : null
+
+        const clientUrl = process.env.CLIENT_URL || 'https://katd-schule.vercel.app'
+
+        for (const [email, info] of parentMap.entries()) {
+          const childrenDesc = info.children
+            .map((c) => `<strong>${c.childName}</strong> (${c.className})`)
+            .join(', ')
+
+          sendEmail({
+            to: email,
+            subject: `🎯 [${schoolName}] Nouvelle activité scolaire : ${req.body.title}`,
+            html: `
+              <div style="font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #4f46e5, #7c3aed); padding: 22px; color: #ffffff; text-align: center;">
+                  <h1 style="margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.5px;">${schoolName}</h1>
+                  <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Activité Scolaire Officielle</p>
+                </div>
+                <div style="padding: 24px 20px; color: #1f2937;">
+                  <p style="font-size: 15px; margin-top: 0;">Bonjour <strong>${info.parentName}</strong>,</p>
+                  <p style="font-size: 14px; line-height: 1.6; color: #374151;">
+                    La direction de l'établissement vous informe qu'une nouvelle activité scolaire a été planifiée pour votre enfant : ${childrenDesc}.
+                  </p>
+                  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin: 20px 0;">
+                    <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #4338ca; font-weight: 700;">
+                      ${req.body.title}
+                    </h3>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                      <tr>
+                        <td style="padding: 6px 0; color: #64748b; width: 110px;">Type d'activité</td>
+                        <td style="padding: 6px 0; font-weight: 600; color: #0f172a; text-transform: capitalize;">${req.body.type || 'Générale'}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #64748b;">Date</td>
+                        <td style="padding: 6px 0; font-weight: 600; color: #0f172a;">${dateStr}${endDateStr ? ' au ' + endDateStr : ''}</td>
+                      </tr>
+                      ${req.body.location ? `
+                      <tr>
+                        <td style="padding: 6px 0; color: #64748b;">Lieu</td>
+                        <td style="padding: 6px 0; font-weight: 600; color: #0f172a;">${req.body.location}</td>
+                      </tr>` : ''}
+                      ${req.body.cost ? `
+                      <tr>
+                        <td style="padding: 6px 0; color: #64748b;">Participation</td>
+                        <td style="padding: 6px 0; font-weight: 700; color: #ea580c;">${Number(req.body.cost).toLocaleString('fr-FR')} F CFA</td>
+                      </tr>` : ''}
+                      ${req.body.requiresAuthorization ? `
+                      <tr>
+                        <td style="padding: 6px 0; color: #64748b;">Autorisation</td>
+                        <td style="padding: 6px 0; font-weight: 700; color: #b45309;">⚠️ Accord parental requis</td>
+                      </tr>` : ''}
+                    </table>
+                    ${req.body.description ? `
+                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #475569; line-height: 1.5;">
+                      <em>${req.body.description}</em>
+                    </div>` : ''}
+                  </div>
+                  <div style="text-align: center; margin: 26px 0 10px 0;">
+                    <a href="${clientUrl}/dashboard/parent/activites" style="display: inline-block; background: #4f46e5; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 12px 28px; border-radius: 8px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);">
+                      Consulter sur mon Dashboard Parent
+                    </a>
+                  </div>
+                </div>
+                <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 14px 20px; text-align: center; font-size: 11px; color: #9ca3af;">
+                  ${schoolName} · Plateforme KATD-SCHÜLE
+                </div>
+              </div>
+            `,
+          }).catch((err) => console.error('[ACTIVITE EMAIL ERROR]', err.message))
+        }
       })
-    }).catch(() => {})
+      .catch((err) => console.error('[ACTIVITE STUDENTS FETCH ERROR]', err.message))
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

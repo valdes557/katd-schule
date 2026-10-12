@@ -62,7 +62,9 @@ export default function ParentActivitiesPage({ section = 'activities' }) {
                 {it.cost > 0 && <div className="text-orange-600 font-semibold">Coût: {it.cost} FCFA</div>}
                 {it.requiresAuthorization && <div className="text-amber-600 text-xs">⚠️ Autorisation requise</div>}
               </div>
-              <p className="text-xs text-gray-500 mt-2">par {it.teacher?.firstName} {it.teacher?.lastName}</p>
+              <p className="text-xs text-gray-500 mt-2">
+                par {it.teacher ? `${it.teacher.firstName || ''} ${it.teacher.lastName || ''}`.trim() : "Direction de l'établissement"}
+              </p>
             </div>
           ))}
         </div>

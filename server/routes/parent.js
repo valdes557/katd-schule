@@ -54,9 +54,10 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
 
     const childIds = children.map((c) => c._id)
     const schoolId = children[0]?.school?._id
+    const parentClassIds = children.map((c) => c.class?._id || c.class).filter(Boolean)
 
     // Aggregate stats across all children
-    const [totalGrades, attendanceAgg, homeworkStats, feeStats, unreadMessages, announcements] = await Promise.all([
+    const [totalGrades, attendanceAgg, homeworkStats, feeStats, unreadMessages, announcements, upcomingActivities] = await Promise.all([
       Grade.aggregate([
         { $match: { student: { $in: childIds } } },
         { $group: { _id: null, avg: { $avg: '$value' }, count: { $sum: 1 } } },
@@ -118,6 +119,18 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
             .limit(5)
             .select('title content createdAt')
         : [],
+      // Activités scolaires pour les classes des enfants (récentes et à venir)
+      parentClassIds.length > 0
+        ? Activity.find({
+            class: { $in: parentClassIds },
+            date: { $gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+          })
+            .populate('class', 'name level')
+            .populate('teacher', 'firstName lastName')
+            .sort({ date: 1 })
+            .limit(6)
+            .lean()
+        : [],
     ])
 
     const att = attendanceAgg[0] || { total: 0, present: 0, absent: 0, late: 0 }
@@ -173,6 +186,7 @@ router.get('/dashboard', protect, parentOnly, async (req, res) => {
           nearestInstallmentDeadline: nearestDeadline,
         },
         announcements,
+        activities: upcomingActivities || [],
       },
     })
   } catch (err) {

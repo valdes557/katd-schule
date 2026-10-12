@@ -3,7 +3,7 @@ import {
   Users, BookOpen, CalendarCheck, CreditCard, MessageSquare,
   TrendingUp, Clock, FileText, Loader2, RefreshCw, ArrowRight, Shield,
   GraduationCap, CheckCircle2, XCircle, AlertTriangle, Banknote, Calendar,
-  Receipt, Bell, Coins, Wallet,
+  Receipt, Bell, Coins, Wallet, Sparkles, MapPin,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { parentApi } from '../lib/api'
@@ -36,6 +36,7 @@ export default function ParentDashboardPage() {
   const children = data?.children || []
   const s = data?.stats || {}
   const announcements = data?.announcements || []
+  const activities = data?.activities || []
 
   if (children.length === 0) {
     return (
@@ -215,6 +216,58 @@ export default function ParentDashboardPage() {
                 <div className="font-semibold text-gray-800 truncate">{a.title || 'Annonce'}</div>
                 <div className="text-gray-500 line-clamp-2 text-[11px]">{a.content}</div>
                 <div className="text-[10px] text-gray-400 mt-0.5">{new Date(a.createdAt).toLocaleDateString('fr-FR')}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Activités scolaires */}
+      {activities.length > 0 && (
+        <div className="card p-5 border border-purple-100 bg-gradient-to-br from-white to-purple-50/30">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+              <Sparkles size={16} className="text-purple-600" />
+              Activités scolaires prévues
+            </h2>
+            <Link to="/dashboard/parent/activites" className="text-[11px] text-purple-600 font-semibold hover:underline flex items-center gap-1">
+              Voir tout ({activities.length}) →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {activities.map((a) => (
+              <div key={a._id} className="bg-white p-3.5 rounded-xl border border-purple-100/70 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-100 text-purple-700 uppercase">
+                      {a.type || 'Activité'}
+                    </span>
+                    <span className="text-[11px] font-medium text-gray-500">
+                      {a.class?.name || 'Classe'}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-sm text-gray-900 line-clamp-1">{a.title}</h3>
+                  {a.description && (
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{a.description}</p>
+                  )}
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-gray-100 text-[11px] text-gray-600 space-y-1">
+                  <div className="flex items-center gap-1.5 font-medium text-gray-700">
+                    <Calendar size={12} className="text-purple-600 flex-shrink-0" />
+                    <span>{new Date(a.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                  </div>
+                  {a.location && (
+                    <div className="flex items-center gap-1.5 truncate">
+                      <MapPin size={12} className="text-gray-400 flex-shrink-0" />
+                      <span className="truncate">{a.location}</span>
+                    </div>
+                  )}
+                  {a.cost > 0 && (
+                    <div className="text-orange-600 font-bold">
+                      Participation : {a.cost.toLocaleString('fr-FR')} F CFA
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

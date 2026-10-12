@@ -33,7 +33,7 @@ function fmtCountdown(totalSeconds) {
 export default function AiCourseLivePage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, school: authSchool } = useAuth()
   const isStudent = user?.role === 'eleve'
   const canAsk = ['eleve', 'enseignant', 'directeur', 'super_admin', 'utilisateur'].includes(user?.role)
 
@@ -112,7 +112,12 @@ export default function AiCourseLivePage() {
     if (!data) return
     setDownloadingPdf(true)
     try {
-      await exportAiCoursePdf({ course: data, questions: myQuestions })
+      const activeSchool = data?.school || (authSchool?.name ? authSchool : null) || user?.school
+      await exportAiCoursePdf({
+        course: { ...data, school: activeSchool },
+        questions: myQuestions,
+        school: activeSchool,
+      })
     } catch (err) {
       console.error('Erreur génération PDF cours IA:', err)
       window.print()

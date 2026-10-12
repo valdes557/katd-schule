@@ -1073,11 +1073,19 @@ export async function exportAiCoursePdf({ course, questions = [], school }) {
   const teacherName = course?.teacherName || "L'IA Enseignante"
   const duration = course?.durationMinutes || 45
   const dateStr = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-  const schoolName = school?.name || course?.school?.name || 'Établissement Scolaire'
-  const schoolCountry = getSchoolCountry(school || course?.school)
+  const resolvedSchool = school || course?.school
+  const schoolName = (
+    resolvedSchool?.name ||
+    course?.schoolName ||
+    course?.school?.name ||
+    (typeof school === 'string' && school ? school : null) ||
+    'KATD-SCHÜLE'
+  ).trim()
+  const schoolCountry = getSchoolCountry(resolvedSchool)
   const safeTitle = title.toLowerCase().replace(/[^\w]+/g, '_').slice(0, 50)
   const safeSubject = subject.toLowerCase().replace(/[^\w]+/g, '_').slice(0, 30)
-  const filename = `cours_${safeSubject}_${safeTitle}_${Date.now()}.pdf`
+  const safeSchool = schoolName.toLowerCase().replace(/[^\w]+/g, '_').slice(0, 30)
+  const filename = `cours_${safeSubject}_${safeTitle}_${safeSchool}_${Date.now()}.pdf`
 
   const container = document.createElement('div')
   container.id = 'export-ai-course-container'
@@ -1171,8 +1179,8 @@ export async function exportAiCoursePdf({ course, questions = [], school }) {
 
     <div style="margin-top: 36px; border-top: 1px solid #cbd5e1; padding-top: 12px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 10px; color: #94a3b8; page-break-inside: avoid;">
       <div>
-        <p style="margin: 0; font-weight: 600; color: #64748b;">KATD-SCHÜLE · Module d'Enseignement par Intelligence Artificielle</p>
-        <p style="margin: 2px 0 0 0;">Document pédagogique conforme au programme académique</p>
+        <p style="margin: 0; font-weight: 600; color: #64748b;">${schoolName} · KATD-SCHÜLE · Module d'Enseignement par Intelligence Artificielle</p>
+        <p style="margin: 2px 0 0 0;">Document pédagogique officiel conforme au programme académique</p>
       </div>
       <div style="text-align: right;">
         <p style="margin: 0; font-weight: 700; color: #4338ca;">Archives & Validation Établissement</p>

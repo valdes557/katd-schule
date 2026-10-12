@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Calendar, MapPin, Users, Trash2, Edit2, X, Loader2, Sparkles } from 'lucide-react'
+import { Plus, Calendar, MapPin, Users, Trash2, Edit2, X, Loader2, Sparkles, CheckCircle2, Check } from 'lucide-react'
 import { teacherApi, classesApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
@@ -21,7 +21,7 @@ export default function TeacherActivitiesPage() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     title: '', description: '', type: 'autre', date: '', endDate: '', location: '',
-    cost: 0, requiresAuthorization: false, class: '',
+    cost: 0, requiresAuthorization: false, class: '', classIds: [],
   })
 
   const { user, school } = useAuth()
@@ -46,6 +46,7 @@ export default function TeacherActivitiesPage() {
 
   const open = (act) => {
     if (act) {
+      const singleClassId = act.class?._id || act.class || ''
       setEditId(act._id)
       setForm({
         title: act.title, description: act.description || '', type: act.type,
@@ -53,21 +54,50 @@ export default function TeacherActivitiesPage() {
         endDate: act.endDate ? new Date(act.endDate).toISOString().slice(0, 10) : '',
         location: act.location || '', cost: act.cost || 0,
         requiresAuthorization: !!act.requiresAuthorization,
-        class: act.class?._id || act.class || '',
+        class: singleClassId,
+        classIds: singleClassId ? [singleClassId] : [],
       })
     } else {
       setEditId(null)
-      setForm({ title: '', description: '', type: 'autre', date: '', endDate: '', location: '', cost: 0, requiresAuthorization: false, class: '' })
+      setForm({
+        title: '', description: '', type: 'autre', date: '', endDate: '', location: '',
+        cost: 0, requiresAuthorization: false, class: '', classIds: [],
+      })
     }
     setShowForm(true)
   }
 
+  const toggleClass = (cid) => {
+    setForm((prev) => {
+      const exists = prev.classIds.includes(cid)
+      const nextIds = exists ? prev.classIds.filter((id) => id !== cid) : [...prev.classIds, cid]
+      return { ...prev, classIds: nextIds, class: nextIds[0] || '' }
+    })
+  }
+
+  const toggleAllClasses = () => {
+    setForm((prev) => {
+      const allSelected = prev.classIds.length === classes.length
+      const nextIds = allSelected ? [] : classes.map((c) => c._id)
+      return { ...prev, classIds: nextIds, class: nextIds[0] || '' }
+    })
+  }
+
   const save = async () => {
-    if (!form.title || !form.class || !form.date) return alert('Titre, classe et date sont requis')
+    const targetClasses = editId
+      ? (form.class ? [form.class] : [])
+      : (form.classIds.length > 0 ? form.classIds : (form.class ? [form.class] : []))
+
+    if (!form.title || targetClasses.length === 0 || !form.date) {
+      return alert('Titre, au moins une classe et date sont requis')
+    }
     setSaving(true)
     try {
-      if (editId) await teacherApi.updateActivity(editId, form)
-      else await teacherApi.createActivity(form)
+      if (editId) {
+        await teacherApi.updateActivity(editId, { ...form, class: targetClasses[0] })
+      } else {
+        await teacherApi.createActivity({ ...form, classIds: targetClasses, class: targetClasses[0] })
+      }
       setShowForm(false)
       refresh()
     } catch (e) { alert(e.message) }
@@ -134,21 +164,72 @@ export default function TeacherActivitiesPage() {
                 <label className="text-sm font-medium">Titre *</label>
                 <input value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="mt-1 w-full border rounded-lg px-3 py-2"/>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium">Type</label>
-                  <select value={form.type} onChange={(e) => setForm({...form, type: e.target.value})} className="mt-1 w-full border rounded-lg px-3 py-2">
-                    {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
+              <div>
+                <label className="text-sm font-medium">Type d'activité</label>
+                <select value={form.type} onChange={(e) => setForm({...form, type: e.target.value})} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">
+                  {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+
+              {/* Sélection des classes participantes */}
+              {editId ? (
                 <div>
                   <label className="text-sm font-medium">Classe *</label>
-                  <select value={form.class} onChange={(e) => setForm({...form, class: e.target.value})} className="mt-1 w-full border rounded-lg px-3 py-2">
+                  <select value={form.class} onChange={(e) => setForm({...form, class: e.target.value})} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">
                     <option value="">— Sélectionner —</option>
                     {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
                   </select>
                 </div>
-              </div>
+              ) : (
+                <div className="border border-purple-100 rounded-xl p-3.5 bg-purple-50/30 space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <label className="text-sm font-bold text-gray-800">
+                        Classes participantes *
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        Sélectionnez une ou plusieurs classes de l'établissement
+                      </p>
+                    </div>
+                    {classes.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={toggleAllClasses}
+                        className="text-xs font-semibold px-2.5 py-1 rounded-md bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+                      >
+                        {form.classIds.length === classes.length ? 'Tout désélectionner' : `Toutes les classes (${classes.length})`}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pt-1">
+                    {classes.map((c) => {
+                      const isSel = form.classIds.includes(c._id)
+                      return (
+                        <button
+                          key={c._id}
+                          type="button"
+                          onClick={() => toggleClass(c._id)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                            isSel
+                              ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                              : 'bg-white text-gray-700 border-gray-200 hover:border-purple-300 hover:bg-purple-50/50'
+                          }`}
+                        >
+                          {isSel ? <CheckCircle2 size={13} className="shrink-0" /> : <span className="w-3 h-3 rounded-full border border-gray-300 shrink-0" />}
+                          <span>{c.name}</span>
+                          {c.level && <span className="text-[10px] opacity-75">({c.level})</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {form.classIds.length > 0 && (
+                    <p className="text-[11px] font-medium text-purple-700">
+                      ✓ {form.classIds.length} classe{form.classIds.length > 1 ? 's' : ''} sélectionnée{form.classIds.length > 1 ? 's' : ''} — les parents recevront l'activité par e-mail et sur leur Dashboard.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-medium">Date *</label>

@@ -869,7 +869,9 @@ router.get('/', protect, async (req, res) => {
 // GET /api/ai-courses/:id — détail (sans le script pour les élèves/parents)
 router.get('/:id', protect, async (req, res) => {
   try {
-    const course = await AiCourse.findById(req.params.id).populate('class', 'name level')
+    const course = await AiCourse.findById(req.params.id)
+      .populate('class', 'name level')
+      .populate('school', 'name code country logo address')
     if (!course) return res.status(404).json({ message: 'Cours introuvable' })
     if (!(await canViewCourse(req.user, course))) return res.status(403).json({ message: 'Accès refusé' })
     const obj = course.toObject()
@@ -884,7 +886,9 @@ router.get('/:id', protect, async (req, res) => {
 // GET /api/ai-courses/:id/live — état en direct : portion visible + questions
 router.get('/:id/live', protect, async (req, res) => {
   try {
-    const course = await AiCourse.findById(req.params.id).populate('class', 'name level')
+    const course = await AiCourse.findById(req.params.id)
+      .populate('class', 'name level')
+      .populate('school', 'name code country logo address')
     if (!course) return res.status(404).json({ message: 'Cours introuvable' })
     if (!(await canViewCourse(req.user, course))) return res.status(403).json({ message: 'Accès refusé' })
 
@@ -902,6 +906,15 @@ router.get('/:id/live', protect, async (req, res) => {
         subject: course.subject,
         teacherName: course.teacherName,
         className: course.class?.name || '',
+        school: course.school ? {
+          _id: course.school._id,
+          name: course.school.name,
+          country: course.school.country || course.school.address?.country || 'Cameroun',
+          logo: course.school.logo,
+          code: course.school.code,
+          address: course.school.address,
+        } : null,
+        schoolName: course.school?.name || '',
         status: course.status,
         scheduledAt: course.scheduledAt,
         durationMinutes: course.durationMinutes,
