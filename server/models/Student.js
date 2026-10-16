@@ -32,6 +32,31 @@ const studentSchema = new mongoose.Schema(
     studentType: { type: String, enum: ['nouveau', 'ancien'], default: 'nouveau' },
     status: { type: String, enum: ['active', 'inactive', 'transferred'], default: 'active' },
     enrollmentDate: { type: Date, default: Date.now },
+    // Historique académique et preuve de scolarité dans les classes précédentes
+    academicHistory: [
+      {
+        class: { type: mongoose.Schema.Types.ObjectId, ref: 'Class' },
+        className: { type: String, required: true },
+        level: { type: String },
+        cycle: { type: String },
+        academicYear: { type: String, required: true },
+        decision: { type: String, default: 'admis_classe_superieure' },
+        decisionLabel: { type: String, default: 'Admis en classe supérieure' },
+        targetClassName: { type: String },
+        generalAverage: { type: Number },
+        rank: { type: String },
+        remarks: { type: String },
+        promotedAt: { type: Date, default: Date.now },
+        promotedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        promotedByName: { type: String },
+      },
+    ],
+    lastPromotion: {
+      promotedAt: { type: Date },
+      fromClass: { type: String },
+      toClass: { type: String },
+      decision: { type: String },
+    },
   },
   { timestamps: true }
 )

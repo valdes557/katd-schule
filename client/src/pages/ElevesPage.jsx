@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus, Ban, Power, Download, Contact } from 'lucide-react'
+import { GraduationCap, Search, Plus, Trash2, Edit2, Loader2, AlertCircle, X, KeyRound, CheckCircle2, UserPlus, Ban, Power, Download, Contact, ArrowUpCircle, History, Award, ExternalLink } from 'lucide-react'
 import { studentsApi, classesApi, teachersApi, authApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
-import { exportElevesFichePdf, exportCarteScolairePdf } from '../lib/exportFichesPdf'
+import { exportElevesFichePdf, exportCarteScolairePdf, exportAttestationPassagePdf } from '../lib/exportFichesPdf'
 
 const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', studentType: 'nouveau', photo: '', photoFile: null, parent: { name: '', phone: '', email: '', relation: 'pere' } }
 
@@ -110,6 +110,75 @@ export default function ElevesPage() {
   const [parentForm, setParentForm] = useState({ name: '', email: '', phone: '', password: '' })
   const [parentResult, setParentResult] = useState(null)
   const [parentSaving, setParentSaving] = useState(false)
+
+  // Passage en classe supérieure & Historique académique
+  const [promoteModal, setPromoteModal] = useState(null)
+  const [promoteForm, setPromoteForm] = useState({
+    targetClassId: '',
+    newAcademicYear: '',
+    decision: 'admis_classe_superieure',
+    decisionLabel: 'Admis en classe supérieure',
+    generalAverage: '',
+    rank: '',
+    remarks: '',
+  })
+  const [promoting, setPromoting] = useState(false)
+  const [historyModal, setHistoryModal] = useState(null)
+  const [downloadingAttestation, setDownloadingAttestation] = useState(false)
+
+  const openPromoteModal = (s) => {
+    let nextYear = ''
+    if (s.academicYear) {
+      const match = s.academicYear.match(/(\d{4})-(\d{4})/)
+      if (match) {
+        nextYear = `${parseInt(match[1]) + 1}-${parseInt(match[2]) + 1}`
+      }
+    }
+    if (!nextYear) {
+      const curYear = new Date().getFullYear()
+      nextYear = `${curYear}-${curYear + 1}`
+    }
+    setPromoteModal(s)
+    setPromoteForm({
+      targetClassId: '',
+      newAcademicYear: nextYear,
+      decision: 'admis_classe_superieure',
+      decisionLabel: 'Admis en classe supérieure',
+      generalAverage: '',
+      rank: '',
+      remarks: '',
+    })
+  }
+
+  const handlePromoteSubmit = async (e) => {
+    e.preventDefault()
+    if (!promoteForm.targetClassId) {
+      alert('Veuillez sélectionner la classe supérieure de destination.')
+      return
+    }
+    setPromoting(true)
+    try {
+      const res = await studentsApi.promote(promoteModal._id, promoteForm)
+      alert(res.message || 'Passage en classe supérieure validé avec succès !')
+      setPromoteModal(null)
+      refreshStudents()
+    } catch (err) {
+      alert(err.message || 'Erreur lors du passage en classe supérieure')
+    } finally {
+      setPromoting(false)
+    }
+  }
+
+  const handleDownloadAttestation = async (student, hist) => {
+    setDownloadingAttestation(true)
+    try {
+      await exportAttestationPassagePdf({ school, student, historyItem: hist })
+    } catch (err) {
+      alert('Erreur lors du téléchargement de l\'attestation : ' + err.message)
+    } finally {
+      setDownloadingAttestation(false)
+    }
+  }
 
   const [selectedStudentIds, setSelectedStudentIds] = useState([])
   const [linkParentModalOpen, setLinkParentModalOpen] = useState(false)
@@ -354,9 +423,20 @@ export default function ElevesPage() {
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${s.studentType === 'ancien' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>
                         {s.studentType === 'ancien' ? 'Ancien' : 'Nouveau'}
                       </span>
+                      {s.academicHistory && s.academicHistory.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setHistoryModal(s)}
+                          className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors flex items-center gap-1"
+                          title="Consulter l'historique officiel et les attestations de passage"
+                        >
+                          <GraduationCap size={11} className="text-blue-600" />
+                          <span>Admis ({s.academicHistory.length})</span>
+                        </button>
+                      )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{s.class?.name || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600 font-semibold">{s.class?.name || '—'}</td>
                   <td className="px-4 py-3"><span className={`badge ${s.gender === 'M' ? 'badge-blue' : 'badge-pink'} text-xs`}>{s.gender === 'M' ? 'G' : 'F'}</span></td>
                   <td className="px-4 py-3 text-xs text-gray-500">
                     {s.dateOfBirth ? new Date(s.dateOfBirth).toLocaleDateString('fr-FR') : '—'}
@@ -366,6 +446,10 @@ export default function ElevesPage() {
                   {isDirecteur && (
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
+                        <button title="Passage en classe supérieure (Valider admission)" onClick={() => openPromoteModal(s)} className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600"><ArrowUpCircle size={14} /></button>
+                        {s.academicHistory && s.academicHistory.length > 0 && (
+                          <button title="Historique académique & Preuves de scolarité" onClick={() => setHistoryModal(s)} className="p-1.5 rounded hover:bg-purple-50 text-purple-600"><History size={14} /></button>
+                        )}
                         <button title="Imprimer la carte scolaire" onClick={() => exportCarteScolairePdf({ school, students: [s] })} className="p-1.5 rounded hover:bg-indigo-50 text-indigo-600"><Contact size={14} /></button>
                         <button title="Créer compte parent" onClick={() => openParentModal(s)} className="p-1.5 rounded hover:bg-green-50 text-green-600"><UserPlus size={14} /></button>
                         {isSecondaire && !s.user && (
@@ -725,6 +809,261 @@ export default function ElevesPage() {
                 <button type="submit" className="btn-primary flex-1 justify-center">{editing ? 'Enregistrer' : 'Ajouter'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Passage en classe supérieure */}
+      {promoteModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <ArrowUpCircle size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Passage en classe supérieure</h3>
+                  <p className="text-xs text-gray-500">Validation de l'admission avec archivage de l'historique</p>
+                </div>
+              </div>
+              <button onClick={() => setPromoteModal(null)} className="p-1 rounded hover:bg-gray-100 text-gray-500">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Fiche actuelle de l'élève */}
+            <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5 mb-4 text-xs space-y-1.5">
+              <div className="flex items-center justify-between font-bold text-emerald-950">
+                <span>Élève : {promoteModal.lastName} {promoteModal.firstName}</span>
+                <span className="font-mono bg-white px-2 py-0.5 rounded border border-emerald-200 text-emerald-800">{promoteModal.matricule}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-emerald-900 pt-1">
+                <div>Classe actuelle : <strong>{promoteModal.class?.name || 'Sans classe'}</strong> ({promoteModal.class?.level || promoteModal.cycle || '—'})</div>
+                <div>Année scolaire en cours : <strong>{promoteModal.academicYear || 'Non spécifiée'}</strong></div>
+              </div>
+            </div>
+
+            <form onSubmit={handlePromoteSubmit} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold text-gray-700">Classe supérieure de destination *</label>
+                <select
+                  required
+                  value={promoteForm.targetClassId}
+                  onChange={(e) => setPromoteForm({ ...promoteForm, targetClassId: e.target.value })}
+                  className="input text-sm mt-1 w-full"
+                >
+                  <option value="">Sélectionner la classe supérieure...</option>
+                  {classes.filter((c) => c._id !== (promoteModal.class?._id || promoteModal.class)).map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.name} {c.level ? `(${c.level})` : ''} · {c.cycle || ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-gray-500 mt-1">L'élève sera automatiquement affecté à cette nouvelle classe.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700">Nouvelle année scolaire *</label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="Ex: 2025-2026"
+                    value={promoteForm.newAcademicYear}
+                    onChange={(e) => setPromoteForm({ ...promoteForm, newAcademicYear: e.target.value })}
+                    className="input text-sm mt-1 w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700">Décision d'admission *</label>
+                  <select
+                    value={promoteForm.decisionLabel}
+                    onChange={(e) => setPromoteForm({ ...promoteForm, decisionLabel: e.target.value })}
+                    className="input text-sm mt-1 w-full"
+                  >
+                    <option value="Admis en classe supérieure">Admis en classe supérieure</option>
+                    <option value="Admis avec félicitations">Admis avec félicitations</option>
+                    <option value="Admis avec tableau d'honneur">Admis avec tableau d'honneur</option>
+                    <option value="Admis avec encouragements">Admis avec encouragements</option>
+                    <option value="Admis sous réserve">Admis sous réserve</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Moyenne annuelle obtenue (/20)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    step="0.01"
+                    placeholder="Ex: 14.75"
+                    value={promoteForm.generalAverage}
+                    onChange={(e) => setPromoteForm({ ...promoteForm, generalAverage: e.target.value })}
+                    className="input text-sm mt-1 w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Rang annuel (optionnel)</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 3e / 42"
+                    value={promoteForm.rank}
+                    onChange={(e) => setPromoteForm({ ...promoteForm, rank: e.target.value })}
+                    className="input text-sm mt-1 w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700">Observations / Décision de la direction</label>
+                <textarea
+                  rows={2}
+                  placeholder="Observations pédagogiques, avis du conseil des maîtres / de classe..."
+                  value={promoteForm.remarks}
+                  onChange={(e) => setPromoteForm({ ...promoteForm, remarks: e.target.value })}
+                  className="input text-sm mt-1 w-full"
+                />
+              </div>
+
+              {/* Rassurance sur la conservation d'historique */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-blue-800">
+                  <CheckCircle2 size={14} className="text-blue-600 flex-shrink-0" />
+                  Conservation et certification d'historique garanties
+                </div>
+                <p className="text-blue-700 text-[11px] leading-relaxed">
+                  Toutes les notes, bulletins, assiduité et données de la classe précédente (<strong>{promoteModal.class?.name || 'classe actuelle'}</strong>) sont conservées et archivées. Elles serviront de preuve officielle de scolarité dans l'école.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPromoteModal(null)}
+                  disabled={promoting}
+                  className="btn-ghost flex-1 justify-center border border-gray-200"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={promoting}
+                  className="btn-primary flex-1 justify-center bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {promoting ? <Loader2 size={15} className="animate-spin" /> : 'Valider l\'admission'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Historique académique & Preuves de scolarité */}
+      {historyModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card-lg w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                  <History size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Historique académique & Preuves de scolarité</h3>
+                  <p className="text-xs text-gray-500">
+                    {historyModal.lastName} {historyModal.firstName} · Matricule : <span className="font-mono font-bold text-indigo-600">{historyModal.matricule}</span>
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setHistoryModal(null)} className="p-1 rounded hover:bg-gray-100 text-gray-500">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Classe active */}
+            <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-3 mb-4 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wide">Classe actuelle en cours</span>
+                <p className="text-sm font-black text-indigo-950 mt-0.5">
+                  {historyModal.class?.name || 'Sans classe'} {historyModal.class?.level ? `(${historyModal.class.level})` : ''} · Année {historyModal.academicYear || '—'}
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-600 text-white shadow-xs">
+                Actif / En cours
+              </span>
+            </div>
+
+            {/* Liste des classes précédentes archivées */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Classes précédentes validées & Archives officielles ({historyModal.academicHistory?.length || 0})
+              </h4>
+
+              {(!historyModal.academicHistory || historyModal.academicHistory.length === 0) ? (
+                <div className="card p-6 text-center text-gray-400">
+                  <GraduationCap size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-xs">Aucune classe précédente archivée pour le moment. L'élève est dans sa classe initiale d'inscription.</p>
+                </div>
+              ) : (
+                historyModal.academicHistory.map((hist, idx) => (
+                  <div key={idx} className="border border-gray-200 rounded-xl p-4 bg-gray-50/50 hover:bg-white transition-all space-y-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-gray-900">{hist.className}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800">
+                            ✓ {hist.decisionLabel || 'Admis en classe supérieure'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Année scolaire : <strong className="text-gray-700">{hist.academicYear}</strong> · Cycle : <strong>{hist.cycle || 'Primaire'}</strong>
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-gray-400">
+                        Validé le {hist.promotedAt ? new Date(hist.promotedAt).toLocaleDateString('fr-FR') : '—'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-gray-600 bg-white p-2.5 rounded-lg border border-gray-100">
+                      <div>Passage vers : <strong className="text-indigo-700">{hist.targetClassName || 'Classe sup.'}</strong></div>
+                      <div>Moyenne : <strong className="text-gray-900">{hist.generalAverage != null ? `${hist.generalAverage}/20` : '—'}</strong></div>
+                      <div>Rang : <strong className="text-gray-900">{hist.rank || '—'}</strong></div>
+                    </div>
+
+                    {hist.remarks && (
+                      <p className="text-xs text-gray-500 italic bg-gray-100/70 p-2 rounded">
+                        « {hist.remarks} » {hist.promotedByName ? <span className="not-italic text-gray-400 font-medium">({hist.promotedByName})</span> : ''}
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadAttestation(historyModal, hist)}
+                        disabled={downloadingAttestation}
+                        className="btn-ghost border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs px-3 py-1.5 flex items-center gap-1.5"
+                        title="Télécharger l'attestation officielle de scolarité et de passage"
+                      >
+                        {downloadingAttestation ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                        <span>Télécharger Attestation (PDF)</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4 mt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setHistoryModal(null)}
+                className="btn-primary text-sm px-5"
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}

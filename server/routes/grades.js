@@ -10,16 +10,37 @@ const Teacher = require('../models/Teacher')
 const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
 
+const MONTHS_BY_TERM = {
+  'Trimestre 1': ['Septembre', 'Octobre', 'Novembre', 'Décembre'],
+  'Trimestre 2': ['Janvier', 'Février', 'Mars'],
+  'Trimestre 3': ['Avril', 'Mai', 'Juin'],
+}
+
+const MONTH_TO_TERM = {
+  'Septembre': 'Trimestre 1',
+  'Octobre': 'Trimestre 1',
+  'Novembre': 'Trimestre 1',
+  'Décembre': 'Trimestre 1',
+  'Janvier': 'Trimestre 2',
+  'Février': 'Trimestre 2',
+  'Mars': 'Trimestre 2',
+  'Avril': 'Trimestre 3',
+  'Mai': 'Trimestre 3',
+  'Juin': 'Trimestre 3',
+}
+
 // GET /api/grades
 router.get('/', protect, async (req, res) => {
   try {
-    const { classId, student, subject, term, sequence, page = 1, limit = 200 } = req.query
+    const { classId, student, subject, term, sequence, month, type, page = 1, limit = 200 } = req.query
     const query = { school: req.user.school._id || req.user.school }
     if (classId) query.class = classId
     if (student) query.student = student
     if (subject) query.subject = subject
     if (term) query.term = term
     if (sequence) query.sequence = sequence
+    if (month) query.month = month
+    if (type) query.type = type
 
     // Scope by role
     if (req.user.role === 'enseignant') {
@@ -285,6 +306,107 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
     })
     const attendanceRate = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0
 
+    // 8. Calcul du bulletin des évaluations mensuelles (Primaire)
+    // Répartit les mois par trimestre : T1 (Sep, Oct, Nov, Déc), T2 (Jan, Fév, Mar), T3 (Avr, Mai, Juin)
+    const allYearGrades = await Grade.find({
+      student: studentId,
+      ...statusFilter,
+      ...(academicYear ? { academicYear } : {}),
+    }).lean()
+
+    const monthlyBySubject = {}
+    allYearGrades.forEach((g) => {
+      if (!monthlyBySubject[g.subject]) {
+        monthlyBySubject[g.subject] = {
+          name: g.subject,
+          coefficient: coefMap[g.subject] || g.coefficient || 1,
+          comments: [],
+          byMonth: {},
+        }
+      }
+      if (g.comment) monthlyBySubject[g.subject].comments.push(g.comment)
+      if (g.month) {
+        if (!monthlyBySubject[g.subject].byMonth[g.month]) {
+          monthlyBySubject[g.subject].byMonth[g.month] = []
+        }
+        monthlyBySubject[g.subject].byMonth[g.month].push(g.value)
+      }
+    })
+
+    const computeAvg = (arr) => (!arr || arr.length === 0 ? null : Math.round((arr.reduce((s, v) => s + v, 0) / arr.length) * 100) / 100)
+
+    const monthlySubjects = Object.values(monthlyBySubject).map((sub) => {
+      const termsData = {}
+      let totalSubWeighted = 0
+      let totalSubCount = 0
+
+      Object.entries(MONTHS_BY_TERM).forEach(([tName, mList]) => {
+        const monthsObj = {}
+        const termValues = []
+        mList.forEach((m) => {
+          const vals = sub.byMonth[m] || []
+          monthsObj[m] = {
+            avg: computeAvg(vals),
+            values: vals,
+            count: vals.length,
+          }
+          vals.forEach((v) => termValues.push(v))
+        })
+        const tAvg = computeAvg(termValues)
+        termsData[tName] = {
+          months: monthsObj,
+          average: tAvg,
+        }
+        if (tAvg !== null) {
+          totalSubWeighted += tAvg
+          totalSubCount += 1
+        }
+      })
+
+      const annualAvg = totalSubCount > 0 ? Math.round((totalSubWeighted / totalSubCount) * 100) / 100 : null
+
+      return {
+        name: sub.name,
+        coefficient: sub.coefficient,
+        terms: termsData,
+        annualAverage: annualAvg,
+        teacherComment: sub.comments.find(Boolean) || (annualAvg !== null ? appreciationFor(annualAvg) : '—'),
+      }
+    })
+
+    // Moyennes générales par trimestre et annuelle pour les évaluations mensuelles
+    const calcTermGeneralAvg = (tName) => {
+      const withAvg = monthlySubjects.filter((s) => s.terms[tName]?.average !== null)
+      if (withAvg.length === 0) return null
+      const totalCoef = withAvg.reduce((acc, s) => acc + (s.coefficient || 1), 0)
+      if (totalCoef === 0) return null
+      const sum = withAvg.reduce((acc, s) => acc + s.terms[tName].average * (s.coefficient || 1), 0)
+      return Math.round((sum / totalCoef) * 100) / 100
+    }
+
+    const t1GeneralAvg = calcTermGeneralAvg('Trimestre 1')
+    const t2GeneralAvg = calcTermGeneralAvg('Trimestre 2')
+    const t3GeneralAvg = calcTermGeneralAvg('Trimestre 3')
+
+    const activeTerms = [t1GeneralAvg, t2GeneralAvg, t3GeneralAvg].filter((v) => v !== null)
+    const annualGeneralAvg = activeTerms.length > 0
+      ? Math.round((activeTerms.reduce((s, v) => s + v, 0) / activeTerms.length) * 100) / 100
+      : null
+
+    const hasMonthlyGrades = allYearGrades.some((g) => g.month || g.type === 'evaluation_mensuelle')
+
+    const monthlyReport = {
+      termsMap: MONTHS_BY_TERM,
+      subjects: monthlySubjects,
+      generalAverages: {
+        'Trimestre 1': t1GeneralAvg,
+        'Trimestre 2': t2GeneralAvg,
+        'Trimestre 3': t3GeneralAvg,
+        annual: annualGeneralAvg,
+      },
+      hasMonthlyGrades,
+    }
+
     res.json({
       success: true,
       data: {
@@ -308,6 +430,7 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
         behavior: behaviorFor(attendanceRate),
         attendance: { totalDays, presentDays, absentCount, lateCount, rate: attendanceRate },
         classStats: { rank, classSize, classAverage, topAverage, bottomAverage },
+        monthlyReport,
         issuedAt: new Date(),
       },
     })
@@ -320,6 +443,14 @@ router.get('/bulletin/:studentId', protect, async (req, res) => {
 router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), async (req, res) => {
   try {
     const schoolId = req.user.school._id || req.user.school
+
+    const normalizeGrade = (g) => {
+      const item = { ...g }
+      if (item.month && !item.term) {
+        item.term = MONTH_TO_TERM[item.month] || 'Trimestre 1'
+      }
+      return item
+    }
 
     // For teachers, validate that the target class belongs to them
     let teacherId = null
@@ -334,10 +465,11 @@ router.post('/', protect, authorize('directeur', 'enseignant', 'super_admin'), a
     }
 
     if (Array.isArray(req.body)) {
-      const grades = await Grade.insertMany(req.body.map((g) => ({ ...g, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}), ...(g.status === 'publie' ? { publishedAt: new Date(), publishedBy: req.user._id } : {}) })))
+      const grades = await Grade.insertMany(req.body.map(normalizeGrade).map((g) => ({ ...g, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}), ...(g.status === 'publie' ? { publishedAt: new Date(), publishedBy: req.user._id } : {}) })))
       return res.status(201).json({ success: true, data: grades })
     }
-    const grade = await Grade.create({ ...req.body, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}), ...(req.body.status === 'publie' ? { publishedAt: new Date(), publishedBy: req.user._id } : {}) })
+    const payload = normalizeGrade(req.body)
+    const grade = await Grade.create({ ...payload, school: schoolId, ...(teacherId ? { teacher: teacherId } : {}), ...(payload.status === 'publie' ? { publishedAt: new Date(), publishedBy: req.user._id } : {}) })
     res.status(201).json({ success: true, data: grade })
 
     // Notify parent (async, non-blocking) — seulement si la note est PUBLIÉE

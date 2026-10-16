@@ -127,6 +127,7 @@ export default function BulletinPage() {
   const handlePrint = () => window.print()
 
   const accessibleList = user?.role === 'parent' ? children : students
+  const [bulletinType, setBulletinType] = useState('standard') // 'standard' | 'mensuel'
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -136,7 +137,12 @@ export default function BulletinPage() {
           <button onClick={() => navigate(-1)} className="btn-ghost text-sm border border-gray-200">
             <ArrowLeft size={14} /> Retour
           </button>
-          <h1 className="text-lg font-bold text-gray-900">Bulletin scolaire</h1>
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">Bulletin scolaire</h1>
+            <p className="text-xs text-gray-500">
+              {data?.student ? `${data.student.lastName} ${data.student.firstName} — ${data.class?.name || ''}` : 'Consultation et impression'}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {accessibleList.length > 1 && (
@@ -146,16 +152,43 @@ export default function BulletinPage() {
               ))}
             </select>
           )}
-          <select value={term} onChange={(e) => setTerm(e.target.value)} className="input text-sm w-auto">
-            {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <button onClick={handleDownloadPdf} disabled={!data} className="btn-primary text-sm">
+          {bulletinType === 'standard' && (
+            <select value={term} onChange={(e) => setTerm(e.target.value)} className="input text-sm w-auto">
+              {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
+          <button onClick={handleDownloadPdf} disabled={!data} className="btn-primary text-sm shadow-xs">
             <Download size={14} /> Télécharger (PDF)
           </button>
           <button onClick={handlePrint} disabled={!data} className="btn-ghost text-sm border border-gray-200">
             <Printer size={14} /> Imprimer
           </button>
         </div>
+      </div>
+
+      {/* Switcher: Bulletin standard vs Bulletin des évaluations mensuelles (Primaire) */}
+      <div className="no-print flex items-center justify-between flex-wrap gap-2 bg-white p-2 rounded-2xl border border-gray-200 shadow-xs">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setBulletinType('standard')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${bulletinType === 'standard' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            📋 Bulletin standard (Séquences / Trimestres)
+          </button>
+          <button
+            type="button"
+            onClick={() => setBulletinType('mensuel')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${bulletinType === 'mensuel' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            📅 Bulletin des évaluations mensuelles (Primaire)
+          </button>
+        </div>
+        {bulletinType === 'mensuel' && (
+          <span className="text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-1">
+            Mois répartis par trimestre : T1 (Sep-Déc), T2 (Jan-Mar), T3 (Avr-Juin)
+          </span>
+        )}
       </div>
 
       {/* Content */}
@@ -171,7 +204,7 @@ export default function BulletinPage() {
           <p className="text-sm">Aucun élève sélectionné</p>
         </div>
       ) : (
-        <BulletinView data={data} />
+        <BulletinView data={data} bulletinType={bulletinType} />
       )}
 
       <div className="no-print text-center text-xs text-gray-400 pt-2">

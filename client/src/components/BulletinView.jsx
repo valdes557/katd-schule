@@ -1,12 +1,14 @@
-import { Calendar, BarChart3, GraduationCap, Trophy, Users as UsersIcon, Star, User as UserIcon, Hash, CalendarDays, Smile } from 'lucide-react'
+import { useState } from 'react'
+import { Calendar, BarChart3, GraduationCap, Trophy, Users as UsersIcon, Star, User as UserIcon, Hash, CalendarDays, Smile, Layers } from 'lucide-react'
 
 /**
  * Formal report card (bulletin) view — matches KATD-SCHÜLE design.
- * Print-friendly: clicking "Download" triggers window.print() — user picks "Save as PDF".
+ * Supports standard quarterly/term report card and dedicated primary monthly evaluations report card.
  */
-export default function BulletinView({ data, schoolBranding = true }) {
+export default function BulletinView({ data, schoolBranding = true, bulletinType = 'standard' }) {
   if (!data) return null
-  const { school, student, class: klass, academicYear, term, subjects = [], generalAverage, appreciation, behavior, attendance = {}, classStats = {}, issuedAt } = data
+  const { school, student, class: klass, academicYear, term, subjects = [], generalAverage, appreciation, behavior, attendance = {}, classStats = {}, monthlyReport, issuedAt } = data
+  const [selectedMonthlyTerm, setSelectedMonthlyTerm] = useState('all') // 'all' | 'Trimestre 1' | 'Trimestre 2' | 'Trimestre 3'
 
   const formatDate = (d) => {
     if (!d) return ''
@@ -18,6 +20,7 @@ export default function BulletinView({ data, schoolBranding = true }) {
   }
 
   const termNumber = term ? (term.match(/\d+/)?.[0] || '1') : '1'
+  const isMonthly = bulletinType === 'mensuel'
 
   return (
     <div className="bulletin-doc">
@@ -33,7 +36,6 @@ export default function BulletinView({ data, schoolBranding = true }) {
           </div>
           <div className="bulletin-title-block">
             <h1 className="bulletin-school-name">{school?.name || 'KATD-SCHÜLE'}</h1>
-            <div className="bulletin-tagline">BORN TO LEAD</div>
           </div>
         </div>
         <div className="bulletin-year-box">
@@ -47,8 +49,8 @@ export default function BulletinView({ data, schoolBranding = true }) {
           <div className="bulletin-year-line">
             <CalendarDays size={11} />
             <div>
-              <div className="bulletin-year-label">TRIMESTRE</div>
-              <div className="bulletin-year-value">{termNumber}</div>
+              <div className="bulletin-year-label">{isMonthly ? 'TYPE DE BULLETIN' : 'TRIMESTRE'}</div>
+              <div className="bulletin-year-value">{isMonthly ? 'ÉVAL. MENSUELLES' : termNumber}</div>
             </div>
           </div>
         </div>
@@ -56,7 +58,9 @@ export default function BulletinView({ data, schoolBranding = true }) {
 
       {/* STUDENT INFO */}
       <div className="bulletin-section">
-        <div className="bulletin-section-title">INFORMATIONS SUR L'ÉLÈVE</div>
+        <div className="bulletin-section-title">
+          {isMonthly ? 'INFORMATIONS SUR L\'ÉLÈVE — CYCLE PRIMAIRE' : 'INFORMATIONS SUR L\'ÉLÈVE'}
+        </div>
         <div className="bulletin-student-grid">
           <div className="bulletin-photo">
             {student?.photo ? (
@@ -75,49 +79,257 @@ export default function BulletinView({ data, schoolBranding = true }) {
         </div>
       </div>
 
+      {/* SUB-FILTER FOR MONTHLY REPORT (Hidden on print) */}
+      {isMonthly && (
+        <div className="no-print mb-3 flex items-center justify-between flex-wrap gap-2 bg-purple-50 p-2.5 rounded-xl border border-purple-200">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-purple-900">
+            <Layers size={14} /> Période affichée :
+          </div>
+          <div className="flex gap-1 flex-wrap">
+            {[
+              { id: 'all', label: 'Vue annuelle (10 mois · 3 trimestres)' },
+              { id: 'Trimestre 1', label: 'Trimestre 1 (Sep · Oct · Nov · Déc)' },
+              { id: 'Trimestre 2', label: 'Trimestre 2 (Jan · Fév · Mar)' },
+              { id: 'Trimestre 3', label: 'Trimestre 3 (Avr · Mai · Juin)' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setSelectedMonthlyTerm(tab.id)}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${selectedMonthlyTerm === tab.id ? 'bg-purple-700 text-white shadow-xs' : 'bg-white text-gray-700 hover:bg-purple-100 border border-purple-200'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* RESULTS TABLE */}
-      <div className="bulletin-section">
-        <div className="bulletin-section-title">RÉSULTATS SCOLAIRES</div>
-        <table className="bulletin-table">
-          <thead>
-            <tr>
-              <th>MATIÈRES</th>
-              <th>COEF</th>
-              <th>DEVOIR<br/><span className="th-sub">(/20)</span></th>
-              <th>EXAMEN<br/><span className="th-sub">(/20)</span></th>
-              <th>COMPO.<br/><span className="th-sub">(/20)</span></th>
-              <th>ORAL<br/><span className="th-sub">(/20)</span></th>
-              <th>TP<br/><span className="th-sub">(/20)</span></th>
-              <th>MOYENNE<br/><span className="th-sub">(/20)</span></th>
-              <th>APPRÉCIATION DE L'ENSEIGNANT</th>
-            </tr>
-          </thead>
-          <tbody>
-            {subjects.length === 0 ? (
-              <tr><td colSpan={9} className="bulletin-empty">Aucune note enregistrée pour cette période</td></tr>
-            ) : (
-              subjects.map((s, i) => (
-                <tr key={i}>
-                  <td className="bulletin-subject-name">{s.name}</td>
-                  <td>{s.coefficient}</td>
-                  <TypeCell cell={s.byType?.devoir} />
-                  <TypeCell cell={s.byType?.examen} />
-                  <TypeCell cell={s.byType?.composition} />
-                  <TypeCell cell={s.byType?.oral} />
-                  <TypeCell cell={s.byType?.tp} />
-                  <td className="bulletin-avg">{s.average != null ? s.average.toFixed(2) : '—'}</td>
-                  <td className="bulletin-comment">{s.teacherComment}</td>
-                </tr>
-              ))
-            )}
-            <tr className="bulletin-row-total">
-              <td colSpan={7}>MOYENNE GÉNÉRALE</td>
-              <td className="bulletin-avg">{generalAverage != null ? generalAverage.toFixed(2) : '—'} <span className="bulletin-avg-unit">/20</span></td>
-              <td className="bulletin-comment">{appreciation}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {isMonthly ? (
+        /* TABLE DES ÉVALUATIONS MENSUELLES (RÉPARTIES PAR TRIMESTRE) */
+        <div className="bulletin-section">
+          <div className="bulletin-section-title flex justify-between items-center">
+            <span>RÉSULTATS DES ÉVALUATIONS MENSUELLES (RÉPARTITION PAR TRIMESTRE)</span>
+            <span className="text-[10px] text-purple-200 font-normal">
+              {selectedMonthlyTerm === 'all' ? 'Année complète' : selectedMonthlyTerm}
+            </span>
+          </div>
+
+          {selectedMonthlyTerm === 'all' ? (
+            /* VUE ANNUELLE COMPLÈTE : T1, T2, T3 */
+            <div className="overflow-x-auto">
+              <table className="bulletin-table bulletin-monthly-matrix">
+                <thead>
+                  <tr>
+                    <th rowSpan={2} style={{ minWidth: 120 }}>MATIÈRES</th>
+                    <th rowSpan={2} style={{ width: 35 }}>COEF</th>
+                    <th colSpan={5} className="th-term-t1">TRIMESTRE 1</th>
+                    <th colSpan={4} className="th-term-t2">TRIMESTRE 2</th>
+                    <th colSpan={4} className="th-term-t3">TRIMESTRE 3</th>
+                    <th rowSpan={2} style={{ width: 50 }}>MOY. ANN.</th>
+                    <th rowSpan={2} style={{ minWidth: 110 }}>APPRÉCIATION</th>
+                  </tr>
+                  <tr>
+                    {/* T1 */}
+                    <th className="th-submonth">Sept.</th>
+                    <th className="th-submonth">Oct.</th>
+                    <th className="th-submonth">Nov.</th>
+                    <th className="th-submonth">Déc.</th>
+                    <th className="th-subavg">Moy. T1</th>
+                    {/* T2 */}
+                    <th className="th-submonth">Janv.</th>
+                    <th className="th-submonth">Févr.</th>
+                    <th className="th-submonth">Mars</th>
+                    <th className="th-subavg">Moy. T2</th>
+                    {/* T3 */}
+                    <th className="th-submonth">Avr.</th>
+                    <th className="th-submonth">Mai</th>
+                    <th className="th-submonth">Juin</th>
+                    <th className="th-subavg">Moy. T3</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(!monthlyReport?.subjects || monthlyReport.subjects.length === 0) ? (
+                    <tr>
+                      <td colSpan={17} className="bulletin-empty">
+                        Aucune évaluation mensuelle enregistrée pour cette année scolaire.
+                      </td>
+                    </tr>
+                  ) : (
+                    monthlyReport.subjects.map((sub, i) => (
+                      <tr key={i}>
+                        <td className="bulletin-subject-name">{sub.name}</td>
+                        <td className="font-semibold text-gray-700">{sub.coefficient}</td>
+                        {/* T1 Months */}
+                        <MonthCell cell={sub.terms['Trimestre 1']?.months?.Septembre} />
+                        <MonthCell cell={sub.terms['Trimestre 1']?.months?.Octobre} />
+                        <MonthCell cell={sub.terms['Trimestre 1']?.months?.Novembre} />
+                        <MonthCell cell={sub.terms['Trimestre 1']?.months?.Décembre} />
+                        <td className="bulletin-term-avg font-bold text-indigo-700">
+                          {sub.terms['Trimestre 1']?.average != null ? sub.terms['Trimestre 1'].average.toFixed(2) : '—'}
+                        </td>
+                        {/* T2 Months */}
+                        <MonthCell cell={sub.terms['Trimestre 2']?.months?.Janvier} />
+                        <MonthCell cell={sub.terms['Trimestre 2']?.months?.Février} />
+                        <MonthCell cell={sub.terms['Trimestre 2']?.months?.Mars} />
+                        <td className="bulletin-term-avg font-bold text-purple-700">
+                          {sub.terms['Trimestre 2']?.average != null ? sub.terms['Trimestre 2'].average.toFixed(2) : '—'}
+                        </td>
+                        {/* T3 Months */}
+                        <MonthCell cell={sub.terms['Trimestre 3']?.months?.Avril} />
+                        <MonthCell cell={sub.terms['Trimestre 3']?.months?.Mai} />
+                        <MonthCell cell={sub.terms['Trimestre 3']?.months?.Juin} />
+                        <td className="bulletin-term-avg font-bold text-blue-700">
+                          {sub.terms['Trimestre 3']?.average != null ? sub.terms['Trimestre 3'].average.toFixed(2) : '—'}
+                        </td>
+                        {/* Annual Avg */}
+                        <td className="bulletin-avg text-indigo-900 font-extrabold">
+                          {sub.annualAverage != null ? sub.annualAverage.toFixed(2) : '—'}
+                        </td>
+                        <td className="bulletin-comment text-xs">{sub.teacherComment}</td>
+                      </tr>
+                    ))
+                  )}
+                  {/* Ligne récapitulative des moyennes générales */}
+                  <tr className="bulletin-row-total">
+                    <td colSpan={2}>MOYENNE GÉNÉRALE DU TRIMESTRE</td>
+                    <td colSpan={4} className="text-right text-[9px] text-gray-500 pr-2">Moy. T1 :</td>
+                    <td className="bulletin-avg text-indigo-700 font-extrabold">
+                      {monthlyReport?.generalAverages?.['Trimestre 1'] != null ? monthlyReport.generalAverages['Trimestre 1'].toFixed(2) : '—'}
+                    </td>
+                    <td colSpan={3} className="text-right text-[9px] text-gray-500 pr-2">Moy. T2 :</td>
+                    <td className="bulletin-avg text-purple-700 font-extrabold">
+                      {monthlyReport?.generalAverages?.['Trimestre 2'] != null ? monthlyReport.generalAverages['Trimestre 2'].toFixed(2) : '—'}
+                    </td>
+                    <td colSpan={3} className="text-right text-[9px] text-gray-500 pr-2">Moy. T3 :</td>
+                    <td className="bulletin-avg text-blue-700 font-extrabold">
+                      {monthlyReport?.generalAverages?.['Trimestre 3'] != null ? monthlyReport.generalAverages['Trimestre 3'].toFixed(2) : '—'}
+                    </td>
+                    <td className="bulletin-avg text-indigo-950 font-black text-sm">
+                      {monthlyReport?.generalAverages?.annual != null ? `${monthlyReport.generalAverages.annual.toFixed(2)}` : '—'}
+                    </td>
+                    <td className="bulletin-comment font-semibold text-indigo-900">
+                      {monthlyReport?.generalAverages?.annual != null ? appreciation : '—'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* VUE FOCALISÉE PAR TRIMESTRE */
+            <div className="overflow-x-auto">
+              <table className="bulletin-table">
+                <thead>
+                  <tr>
+                    <th>MATIÈRES</th>
+                    <th>COEF</th>
+                    {(selectedMonthlyTerm === 'Trimestre 1'
+                      ? ['Septembre', 'Octobre', 'Novembre', 'Décembre']
+                      : selectedMonthlyTerm === 'Trimestre 2'
+                      ? ['Janvier', 'Février', 'Mars']
+                      : ['Avril', 'Mai', 'Juin']
+                    ).map((m) => (
+                      <th key={m}>{m.toUpperCase()}<br/><span className="th-sub">(/20)</span></th>
+                    ))}
+                    <th>MOYENNE {selectedMonthlyTerm.toUpperCase()}<br/><span className="th-sub">(/20)</span></th>
+                    <th>APPRÉCIATION DE L'ENSEIGNANT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(!monthlyReport?.subjects || monthlyReport.subjects.length === 0) ? (
+                    <tr>
+                      <td colSpan={8} className="bulletin-empty">
+                        Aucune évaluation mensuelle pour {selectedMonthlyTerm}.
+                      </td>
+                    </tr>
+                  ) : (
+                    monthlyReport.subjects.map((sub, i) => {
+                      const tData = sub.terms[selectedMonthlyTerm]
+                      const months = selectedMonthlyTerm === 'Trimestre 1'
+                        ? ['Septembre', 'Octobre', 'Novembre', 'Décembre']
+                        : selectedMonthlyTerm === 'Trimestre 2'
+                        ? ['Janvier', 'Février', 'Mars']
+                        : ['Avril', 'Mai', 'Juin']
+
+                      return (
+                        <tr key={i}>
+                          <td className="bulletin-subject-name">{sub.name}</td>
+                          <td>{sub.coefficient}</td>
+                          {months.map((m) => (
+                            <MonthCell key={m} cell={tData?.months?.[m]} />
+                          ))}
+                          <td className="bulletin-avg">
+                            {tData?.average != null ? tData.average.toFixed(2) : '—'}
+                          </td>
+                          <td className="bulletin-comment">{sub.teacherComment}</td>
+                        </tr>
+                      )
+                    })
+                  )}
+                  <tr className="bulletin-row-total">
+                    <td colSpan={2}>MOYENNE GÉNÉRALE {selectedMonthlyTerm.toUpperCase()}</td>
+                    <td colSpan={selectedMonthlyTerm === 'Trimestre 1' ? 4 : 3} className="text-right pr-2 text-xs text-gray-500">
+                      Moyenne pondérée :
+                    </td>
+                    <td className="bulletin-avg">
+                      {monthlyReport?.generalAverages?.[selectedMonthlyTerm] != null
+                        ? `${monthlyReport.generalAverages[selectedMonthlyTerm].toFixed(2)}`
+                        : '—'}{' '}
+                      <span className="bulletin-avg-unit">/20</span>
+                    </td>
+                    <td className="bulletin-comment">{appreciation}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* STANDARD BULLETIN TABLE */
+        <div className="bulletin-section">
+          <div className="bulletin-section-title">RÉSULTATS SCOLAIRES</div>
+          <table className="bulletin-table">
+            <thead>
+              <tr>
+                <th>MATIÈRES</th>
+                <th>COEF</th>
+                <th>DEVOIR<br/><span className="th-sub">(/20)</span></th>
+                <th>EXAMEN<br/><span className="th-sub">(/20)</span></th>
+                <th>COMPO.<br/><span className="th-sub">(/20)</span></th>
+                <th>ORAL<br/><span className="th-sub">(/20)</span></th>
+                <th>TP<br/><span className="th-sub">(/20)</span></th>
+                <th>MOYENNE<br/><span className="th-sub">(/20)</span></th>
+                <th>APPRÉCIATION DE L'ENSEIGNANT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {subjects.length === 0 ? (
+                <tr><td colSpan={9} className="bulletin-empty">Aucune note enregistrée pour cette période</td></tr>
+              ) : (
+                subjects.map((s, i) => (
+                  <tr key={i}>
+                    <td className="bulletin-subject-name">{s.name}</td>
+                    <td>{s.coefficient}</td>
+                    <TypeCell cell={s.byType?.devoir} />
+                    <TypeCell cell={s.byType?.examen} />
+                    <TypeCell cell={s.byType?.composition} />
+                    <TypeCell cell={s.byType?.oral} />
+                    <TypeCell cell={s.byType?.tp} />
+                    <td className="bulletin-avg">{s.average != null ? s.average.toFixed(2) : '—'}</td>
+                    <td className="bulletin-comment">{s.teacherComment}</td>
+                  </tr>
+                ))
+              )}
+              <tr className="bulletin-row-total">
+                <td colSpan={7}>MOYENNE GÉNÉRALE</td>
+                <td className="bulletin-avg">{generalAverage != null ? generalAverage.toFixed(2) : '—'} <span className="bulletin-avg-unit">/20</span></td>
+                <td className="bulletin-comment">{appreciation}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* PERFORMANCE RECAP */}
       <div className="bulletin-section">
@@ -149,7 +361,9 @@ export default function BulletinView({ data, schoolBranding = true }) {
 
       {/* GENERAL APPRECIATION */}
       <div className="bulletin-section">
-        <div className="bulletin-section-title">APPRÉCIATION GÉNÉRALE DU PROFESSEUR PRINCIPAL</div>
+        <div className="bulletin-section-title">
+          {isMonthly ? 'APPRÉCIATION GÉNÉRALE DU MAÎTRE / DIRECTEUR' : 'APPRÉCIATION GÉNÉRALE DU PROFESSEUR PRINCIPAL'}
+        </div>
         <div className="bulletin-appreciation">{appreciation}</div>
       </div>
 
@@ -163,7 +377,7 @@ export default function BulletinView({ data, schoolBranding = true }) {
           </div>
         </div>
         <div className="bulletin-sig-block bulletin-sig-line">
-          <div className="bulletin-sig-label">Signature du Professeur Principal</div>
+          <div className="bulletin-sig-label">{isMonthly ? 'Signature de l\'Enseignant' : 'Signature du Professeur Principal'}</div>
           <div className="bulletin-sig-line-empty" />
         </div>
         <div className="bulletin-sig-block bulletin-sig-line">
@@ -178,7 +392,11 @@ export default function BulletinView({ data, schoolBranding = true }) {
         )}
       </div>
 
-      <div className="bulletin-footer">Ce bulletin n'est valable que pour le trimestre indiqué.</div>
+      <div className="bulletin-footer">
+        {isMonthly
+          ? 'Ce bulletin officiel certifie les évaluations mensuelles réparties par trimestre pour l\'élève susmentionné.'
+          : 'Ce bulletin n\'est valable que pour le trimestre indiqué.'}
+      </div>
 
       <style>{`
         .bulletin-doc { background: #fff; color: #111827; max-width: 820px; margin: 0 auto; padding: 18px 22px 28px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.06); border-radius: 8px; }
@@ -249,6 +467,17 @@ export default function BulletinView({ data, schoolBranding = true }) {
         .bulletin-stamp-circle { width: 56px; height: 56px; border-radius: 50%; border: 2px solid #1E1B4B; display: flex; align-items: center; justify-content: center; color: #1E1B4B; font-weight: 900; font-size: 24px; background: #FEF3C7; }
         .bulletin-stamp-text { font-size: 8px; color: #1E1B4B; font-weight: 700; letter-spacing: .5px; }
 
+        .bulletin-monthly-matrix { font-size: 9px; }
+        .bulletin-monthly-matrix th { padding: 4px 2px; }
+        .bulletin-monthly-matrix td { padding: 5px 2px; }
+        .th-term-t1 { background: #312E81 !important; color: #fff !important; font-weight: 800; }
+        .th-term-t2 { background: #4338CA !important; color: #fff !important; font-weight: 800; }
+        .th-term-t3 { background: #4F46E5 !important; color: #fff !important; font-weight: 800; }
+        .th-submonth { background: #EEF2FF !important; color: #3730A3 !important; font-weight: 700; font-size: 8.5px; }
+        .th-subavg { background: #E0E7FF !important; color: #1E1B4B !important; font-weight: 800; font-size: 8.5px; border-right: 1.5px solid #818CF8 !important; }
+        .bulletin-month-cell { font-size: 9.5px; color: #1F2937; }
+        .bulletin-term-avg { background: #F8FAFC; border-right: 1.5px solid #C7D2FE !important; font-size: 10px; }
+
         .bulletin-footer { text-align: center; font-size: 10px; color: #6B7280; font-style: italic; margin-top: 4px; }
 
         @media print {
@@ -260,6 +489,15 @@ export default function BulletinView({ data, schoolBranding = true }) {
         }
       `}</style>
     </div>
+  )
+}
+
+function MonthCell({ cell }) {
+  if (!cell || cell.avg == null) return <td className="bulletin-month-cell text-gray-400">—</td>
+  return (
+    <td className="bulletin-month-cell">
+      <span className="font-semibold text-gray-900">{cell.avg.toFixed(1)}</span>
+    </td>
   )
 }
 
@@ -294,3 +532,4 @@ function PerfCell({ icon, label, value }) {
     </div>
   )
 }
+

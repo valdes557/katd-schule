@@ -132,8 +132,11 @@ export const studentsApi = {
   myDiscipline: () => api.get('/students/me/discipline'),
   myFees: () => api.get('/students/me/fees'),
   // Discipline d'un élève (parent : ses enfants ; direction : élèves de l'école)
-  discipline: (studentId) => api.get(`/students/${studentId}/discipline`),
   linkParent: (email, studentIds) => api.post('/students/link-parent', { email, studentIds }),
+  // Passage en classe supérieure & historique de scolarité
+  promote: (id, data) => api.post(`/students/${id}/promote`, data),
+  promoteBatch: (data) => api.post('/students/promote-batch', data),
+  history: (id) => api.get(`/students/${id}/history`),
 }
 
 // Gestion des parents par le directeur (CRUD + associations élèves)

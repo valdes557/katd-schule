@@ -1190,3 +1190,182 @@ export async function exportAiCoursePdf({ course, questions = [], school }) {
 
   await generatePdfFromContainer(container, { filename })
 }
+
+/**
+ * Attestation officielle de scolarité et de passage en classe supérieure (PDF).
+ * Sert de preuve juridique et pédagogique que l'élève a bien étudié dans l'établissement
+ * et dans sa classe précédente avant d'être admis en classe supérieure.
+ */
+export async function exportAttestationPassagePdf({ school, student, historyItem }) {
+  const container = document.createElement('div')
+  container.style.cssText = `
+    width: 794px;
+    min-height: 1120px;
+    padding: 36px 42px;
+    box-sizing: border-box;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #0f172a;
+    background: #ffffff;
+    position: relative;
+  `
+
+  const schoolName = school?.name || 'ÉTABLISSEMENT SCOLAIRE'
+  const schoolCity = school?.address?.city || school?.city || ''
+  const schoolCountry = getSchoolCountry(school)
+  const flagSvg = getCountryFlagSvg(schoolCountry)
+
+  const studentName = `${student?.lastName || ''} ${student?.firstName || ''}`.trim()
+  const matricule = student?.matricule || '—'
+  const birthDate = student?.dateOfBirth ? new Date(student.dateOfBirth).toLocaleDateString('fr-FR') : '—'
+  const birthPlace = student?.placeOfBirth ? `à ${student.placeOfBirth}` : ''
+  const genderLabel = student?.gender === 'M' ? 'Masculin' : 'Féminin'
+
+  const prevClass = historyItem?.className || 'Classe précédente'
+  const prevYear = historyItem?.academicYear || 'Année écoulée'
+  const targetClass = historyItem?.targetClassName || student?.class?.name || 'Classe supérieure'
+  const decision = historyItem?.decisionLabel || 'ADMIS(E) EN CLASSE SUPÉRIEURE'
+  const promotedDate = historyItem?.promotedAt ? new Date(historyItem.promotedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  const filename = `Attestation_Passage_${student?.lastName || 'Eleve'}_${prevClass.replace(/\s+/g, '_')}.pdf`
+
+  container.innerHTML = `
+    <!-- Cadre de bordure officielle -->
+    <div style="border: 3px double #1e3a8a; padding: 28px 32px; border-radius: 8px; min-height: 1040px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; position: relative;">
+      
+      <!-- En-tête national & établissement -->
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1e3a8a; padding-bottom: 14px; margin-bottom: 20px;">
+          <div style="max-width: 65%;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <div style="width: 24px; height: 24px; border-radius: 5px; background: #2563EB; display: flex; align-items: center; justify-content: center;">
+                ${PLATFORM_LOGO_SVG}
+              </div>
+              <span style="font-size: 11px; font-weight: 800; color: #2563eb; letter-spacing: 0.5px;">KATD-SCHÜLE · PLATEFORME ÉDUCATIVE</span>
+            </div>
+            <h1 style="font-size: 20px; font-weight: 900; color: #1e3a8a; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">${schoolName}</h1>
+            <p style="font-size: 11px; color: #475569; margin: 3px 0 0 0;">
+              ${schoolCity ? `${schoolCity} · ` : ''}${schoolCountry}
+              ${school?.phone ? ` · Tél : ${school.phone}` : ''}
+              ${school?.email ? ` · Email : ${school.email}` : ''}
+            </p>
+          </div>
+
+          <div style="text-align: right;">
+            <div style="display: inline-flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; margin-bottom: 6px;">
+              ${flagSvg}
+              <span style="font-size: 10px; font-weight: 700; color: #1e3a8a; text-transform: uppercase;">${schoolCountry}</span>
+            </div>
+            <p style="font-size: 10px; color: #64748b; margin: 0;">Réf : CERT-${Math.random().toString(36).substring(2, 8).toUpperCase()}</p>
+          </div>
+        </div>
+
+        <!-- Grand Titre Officiel -->
+        <div style="text-align: center; margin: 26px 0 24px 0;">
+          <div style="display: inline-block; background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 8px; padding: 10px 24px;">
+            <h2 style="font-size: 16px; font-weight: 900; color: #1e3a8a; margin: 0; text-transform: uppercase; letter-spacing: 1px;">
+              ATTESTATION DE SCOLARITÉ ET DE PASSAGE EN CLASSE SUPÉRIEURE
+            </h2>
+            <p style="font-size: 10.5px; color: #3b82f6; font-weight: 700; margin: 4px 0 0 0; text-transform: uppercase; letter-spacing: 0.5px;">
+              Preuve officielle d'études régulières et de validation académique
+            </p>
+          </div>
+        </div>
+
+        <!-- Corps du texte administratif -->
+        <div style="font-size: 13.5px; line-height: 1.85; color: #1e293b; margin: 24px 0;">
+          <p style="margin: 0 0 16px 0;">
+            Le Chef d'Établissement soussigné atteste par la présente que l'élève :
+          </p>
+
+          <div style="background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0 20px 0; font-size: 13px; line-height: 1.7;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="width: 38%; color: #64748b; font-weight: 600;">Nom et prénom(s) :</td>
+                <td style="font-size: 14px; font-weight: 900; color: #0f172a;">${studentName}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 600;">Matricule scolaire :</td>
+                <td style="font-family: monospace; font-size: 13px; font-weight: 800; color: #2563eb;">${matricule}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 600;">Né(e) le :</td>
+                <td style="font-weight: 600; color: #1e293b;">${birthDate} ${birthPlace}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 600;">Genre :</td>
+                <td style="font-weight: 600; color: #1e293b;">${genderLabel}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="margin: 0 0 14px 0; text-align: justify;">
+            A régulièrement suivi les enseignements dispensés dans notre établissement au sein de la classe de 
+            <strong style="color: #1e3a8a; font-size: 14px;">${prevClass}</strong> 
+            au cours de l'année scolaire <strong style="color: #1e3a8a;">${prevYear}</strong>.
+          </p>
+
+          <p style="margin: 0 0 16px 0; text-align: justify;">
+            Au vu de ses résultats scolaires, de son assiduité et des délibérations du Conseil des maîtres et de classe, l'élève a été déclaré(e) :
+          </p>
+
+          <div style="text-align: center; margin: 18px 0 20px 0;">
+            <div style="display: inline-block; background: #ecfdf5; border: 2px solid #a7f3d0; border-radius: 8px; padding: 12px 30px;">
+              <span style="font-size: 15px; font-weight: 900; color: #047857; letter-spacing: 0.5px; text-transform: uppercase;">
+                ✓ ${decision} : ${targetClass}
+              </span>
+              ${historyItem?.generalAverage ? `
+                <div style="font-size: 12px; font-weight: 700; color: #065f46; margin-top: 4px;">
+                  Moyenne annuelle obtenue : ${historyItem.generalAverage} / 20 ${historyItem.rank ? `· Rang : ${historyItem.rank}` : ''}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          ${historyItem?.remarks ? `
+            <p style="font-size: 12px; color: #475569; font-style: italic; margin: 8px 0 14px 0; text-align: center;">
+              Observations de la direction : « ${historyItem.remarks} »
+            </p>
+          ` : ''}
+
+          <p style="margin: 18px 0 0 0; text-align: justify;">
+            En foi de quoi, la présente attestation officielle lui est délivrée pour servir et valoir de 
+            <strong>preuve officielle de scolarité</strong> et justifier de son niveau d'études auprès de toute autorité compétente.
+          </p>
+        </div>
+      </div>
+
+      <!-- Signatures et date -->
+      <div style="border-top: 1.5px solid #cbd5e1; padding-top: 18px; margin-top: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+          <div style="text-align: left; width: 45%;">
+            <p style="font-size: 11px; color: #64748b; margin: 0 0 4px 0;">
+              Fait à <strong>${schoolCity || schoolCountry}</strong>, le ${promotedDate}
+            </p>
+            <p style="font-size: 11.5px; font-weight: 700; color: #1e3a8a; margin: 10px 0 50px 0;">
+              Le Responsable Pédagogique / Enseignant
+            </p>
+            <div style="border-top: 1px dotted #94a3b8; width: 85%;"></div>
+          </div>
+
+          <div style="text-align: center; width: 45%;">
+            <p style="font-size: 11.5px; font-weight: 700; color: #1e3a8a; margin: 0 0 8px 0;">
+              Le Chef d'Établissement / La Direction
+            </p>
+            <div style="margin: 8px auto; width: 64px; height: 64px; border: 2px dashed #2563eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #f0f7ff;">
+              <span style="font-size: 10px; font-weight: 800; color: #2563eb; text-align: center; line-height: 1.1;">SCEAU<br/>ÉCOLE</span>
+            </div>
+            <p style="font-size: 10px; color: #64748b; margin: 4px 0 0 0;">Signature & Cachet officiel</p>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; text-align: center; font-size: 9.5px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 6px;">
+          Document certifié KATD-SCHÜLE · Enregistré aux archives numériques de l'établissement sous le matricule ${matricule}
+        </div>
+      </div>
+
+    </div>
+  `
+
+  await generatePdfFromContainer(container, { filename })
+}
+

@@ -8,22 +8,37 @@ import DownloadPdfButton from '../components/DownloadPdfButton'
 
 const TERMS = ['Trimestre 1', 'Trimestre 2', 'Trimestre 3']
 const SEQUENCES = ['Séquence 1', 'Séquence 2', 'Séquence 3', 'Séquence 4', 'Séquence 5', 'Séquence 6']
+const MONTHS = ['Septembre', 'Octobre', 'Novembre', 'Décembre', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin']
+const MONTH_TO_TERM = {
+  'Septembre': 'Trimestre 1',
+  'Octobre': 'Trimestre 1',
+  'Novembre': 'Trimestre 1',
+  'Décembre': 'Trimestre 1',
+  'Janvier': 'Trimestre 2',
+  'Février': 'Trimestre 2',
+  'Mars': 'Trimestre 2',
+  'Avril': 'Trimestre 3',
+  'Mai': 'Trimestre 3',
+  'Juin': 'Trimestre 3',
+}
 
 export default function NotesPage() {
   const pdfRef = useRef(null)
   const [tab, setTab] = useState('notes')
   const [selectedClass, setSelectedClass] = useState('')
-  const [selectedTerm, setSelectedTerm] = useState('Trimestre 1')
+  const [selectedTerm, setSelectedTerm] = useState('')
   const [selectedSeq, setSelectedSeq] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState('')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [publishing, setPublishing] = useState(false)
-  const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'publie' })
+  const [form, setForm] = useState({ student: '', subject: '', value: '', type: 'devoir', month: '', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'publie' })
 
   const params = new URLSearchParams()
   if (selectedClass) params.set('classId', selectedClass)
   if (selectedTerm) params.set('term', selectedTerm)
   if (selectedSeq) params.set('sequence', selectedSeq)
+  if (selectedMonth) params.set('month', selectedMonth)
   const qs = params.toString()
 
   const gradesQ = useCachedFetch(`/grades?${qs}`, async () => (await gradesApi.list(qs)).data || [], [qs])
@@ -50,7 +65,7 @@ export default function NotesPage() {
         class: student?.class?._id || student?.class || selectedClass,
       })
       setShowModal(false)
-      setForm({ student: '', subject: '', value: '', type: 'devoir', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'publie' })
+      setForm({ student: '', subject: '', value: '', type: 'devoir', month: '', term: 'Trimestre 1', sequence: '', coefficient: 1, status: 'publie' })
       refreshGrades()
     } catch (e) { alert(e.message) }
   }
@@ -123,7 +138,12 @@ export default function NotesPage() {
           {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
         </select>
         <select value={selectedTerm} onChange={(e) => setSelectedTerm(e.target.value)} className="input text-sm w-auto">
+          <option value="">Tous les trimestres</option>
           {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="input text-sm w-auto">
+          <option value="">Tous les mois (Éval. mensuelle)</option>
+          {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         <select value={selectedSeq} onChange={(e) => setSelectedSeq(e.target.value)} className="input text-sm w-auto">
           <option value="">Toutes les séquences</option>
@@ -148,7 +168,7 @@ export default function NotesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  {['Élève', 'Matière', 'Type', 'Note', 'Coeff', 'Trimestre', 'Séquence', 'Statut', ''].map((h) => (
+                  {['Élève', 'Matière', 'Type', 'Note', 'Coeff', 'Trimestre', 'Mois / Séquence', 'Statut', ''].map((h) => (
                     <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
                   ))}
                 </tr>
@@ -158,11 +178,23 @@ export default function NotesPage() {
                   <tr key={g._id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{g.student?.lastName} {g.student?.firstName}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{g.subject}</td>
-                    <td className="px-4 py-3"><span className="badge badge-blue text-xs">{g.type}</span></td>
+                    <td className="px-4 py-3">
+                      <span className={`badge ${g.type === 'evaluation_mensuelle' ? 'bg-purple-100 text-purple-700' : 'badge-blue'} text-xs`}>
+                        {g.type === 'evaluation_mensuelle' ? 'Éval. mensuelle' : g.type}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-sm font-bold" style={{ color: g.value >= 10 ? '#10B981' : '#EF4444' }}>{g.value}/20</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{g.coefficient}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{g.term}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{g.sequence || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-700">
+                      {g.month ? (
+                        <span className="font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-2 py-0.5">
+                          📅 {g.month}
+                        </span>
+                      ) : (
+                        g.sequence || '—'
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {g.status === 'brouillon'
                         ? <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Brouillon</span>
@@ -259,17 +291,66 @@ export default function NotesPage() {
                 <div><label className="text-xs font-medium text-gray-600">Note (/20)</label><input required type="number" min="0" max="20" step="0.5" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} className="input text-sm mt-1" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs font-medium text-gray-600">Type</label>
-                  <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input text-sm mt-1">
-                    <option value="devoir">Devoir</option><option value="examen">Examen</option><option value="composition">Composition</option><option value="oral">Oral</option><option value="tp">TP</option><option value="examen_blanc">Examen blanc</option><option value="examen_officiel">Examen officiel</option>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Type d'évaluation</label>
+                  <select
+                    value={form.type}
+                    onChange={(e) => {
+                      const t = e.target.value
+                      setForm({
+                        ...form,
+                        type: t,
+                        month: t === 'evaluation_mensuelle' && !form.month ? 'Septembre' : form.month,
+                        term: t === 'evaluation_mensuelle' && !form.month ? 'Trimestre 1' : form.term,
+                      })
+                    }}
+                    className="input text-sm mt-1"
+                  >
+                    <option value="devoir">Devoir</option>
+                    <option value="evaluation_mensuelle">Évaluation mensuelle (Primaire)</option>
+                    <option value="examen">Examen</option>
+                    <option value="composition">Composition</option>
+                    <option value="oral">Oral</option>
+                    <option value="tp">TP</option>
+                    <option value="examen_blanc">Examen blanc</option>
+                    <option value="examen_officiel">Examen officiel</option>
                   </select>
                 </div>
-                <div><label className="text-xs font-medium text-gray-600">Trimestre</label>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Trimestre</label>
                   <select value={form.term} onChange={(e) => setForm({ ...form, term: e.target.value })} className="input text-sm mt-1">
                     {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
               </div>
+
+              {form.type === 'evaluation_mensuelle' && (
+                <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-purple-900">Mois de l'évaluation mensuelle</label>
+                    <span className="text-[11px] font-semibold text-purple-700 bg-white border border-purple-200 rounded-md px-2 py-0.5">
+                      Rattaché à : {form.term}
+                    </span>
+                  </div>
+                  <select
+                    value={form.month || 'Septembre'}
+                    onChange={(e) => {
+                      const m = e.target.value
+                      const deduced = MONTH_TO_TERM[m] || form.term
+                      setForm({ ...form, month: m, term: deduced })
+                    }}
+                    className="input text-sm w-full bg-white"
+                  >
+                    {MONTHS.map((m) => (
+                      <option key={m} value={m}>{m} ({MONTH_TO_TERM[m]})</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-purple-700">
+                    Les évaluations mensuelles alimentent le bulletin mensuel primaire réparti par trimestre.
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Séquence <span className="text-gray-400">(optionnel)</span></label>
                   <select value={form.sequence} onChange={(e) => setForm({ ...form, sequence: e.target.value })} className="input text-sm mt-1">

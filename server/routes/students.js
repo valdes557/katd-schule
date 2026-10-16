@@ -480,4 +480,196 @@ router.post('/link-parent', protect, authorize('directeur', 'super_admin'), asyn
   }
 })
 
+// POST /api/students/:id/promote — passage / admission en classe supérieure avec conservation d'historique
+router.post('/:id/promote', protect, authorize('directeur', 'vice_principal', 'super_admin'), async (req, res) => {
+  try {
+    const { targetClassId, newAcademicYear, decision, decisionLabel, generalAverage, rank, remarks } = req.body
+    if (!targetClassId) {
+      return res.status(400).json({ message: 'Veuillez sélectionner la classe supérieure de destination' })
+    }
+
+    const student = await Student.findById(req.params.id).populate('class')
+    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+
+    const schoolId = req.user.school?._id || req.user.school
+    if (req.user.role !== 'super_admin' && String(student.school) !== String(schoolId)) {
+      return res.status(403).json({ message: 'Vous ne pouvez promouvoir que les élèves de votre établissement' })
+    }
+
+    const Class = require('../models/Class')
+    const targetClass = await Class.findById(targetClassId)
+    if (!targetClass) return res.status(404).json({ message: 'Classe de destination non trouvée' })
+    if (req.user.role !== 'super_admin' && String(targetClass.school) !== String(schoolId)) {
+      return res.status(403).json({ message: 'La classe choisie n\'appartient pas à votre établissement' })
+    }
+
+    // 1. Sauvegarde de la classe précédente dans l'historique académique officiel comme preuve
+    const prevClass = student.class
+    const prevClassName = prevClass?.name || 'Classe précédente'
+    const prevLevel = prevClass?.level || ''
+    const prevCycle = prevClass?.cycle || student.cycle || 'Primaire'
+    const prevAcademicYear = student.academicYear || `${new Date().getFullYear() - 1}-${new Date().getFullYear()}`
+
+    const historyRecord = {
+      class: prevClass?._id || null,
+      className: prevClassName,
+      level: prevLevel,
+      cycle: prevCycle,
+      academicYear: prevAcademicYear,
+      decision: decision || 'admis_classe_superieure',
+      decisionLabel: decisionLabel || 'Admis en classe supérieure',
+      targetClassName: targetClass.name,
+      generalAverage: generalAverage !== undefined && generalAverage !== '' ? Number(generalAverage) : undefined,
+      rank: rank || '',
+      remarks: remarks || `Admis en classe supérieure : passage de ${prevClassName} vers ${targetClass.name}`,
+      promotedAt: new Date(),
+      promotedBy: req.user._id,
+      promotedByName: req.user.name,
+    }
+
+    if (!Array.isArray(student.academicHistory)) {
+      student.academicHistory = []
+    }
+    student.academicHistory.push(historyRecord)
+
+    // 2. Mise à jour de l'élève pour pointer vers la nouvelle classe
+    student.class = targetClass._id
+    student.cycle = targetClass.cycle || student.cycle
+    if (newAcademicYear) {
+      student.academicYear = newAcademicYear
+    }
+    student.studentType = 'ancien'
+    student.status = 'active'
+    student.lastPromotion = {
+      promotedAt: new Date(),
+      fromClass: prevClassName,
+      toClass: targetClass.name,
+      decision: historyRecord.decisionLabel,
+    }
+
+    await student.save()
+
+    const populatedStudent = await Student.findById(student._id)
+      .populate('class', 'name level cycle room')
+      .populate('user', 'isActive email')
+
+    res.json({
+      success: true,
+      message: `L'élève ${student.lastName} ${student.firstName} a été admis avec succès en ${targetClass.name}. L'historique de ${prevClassName} a été archivé comme preuve officielle.`,
+      data: populatedStudent,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/students/promote-batch — admission collective en classe supérieure
+router.post('/promote-batch', protect, authorize('directeur', 'vice_principal', 'super_admin'), async (req, res) => {
+  try {
+    const { studentIds, targetClassId, newAcademicYear, decision, decisionLabel } = req.body
+    if (!Array.isArray(studentIds) || studentIds.length === 0 || !targetClassId) {
+      return res.status(400).json({ message: 'Élèves et classe de destination requis' })
+    }
+    const schoolId = req.user.school?._id || req.user.school
+    const Class = require('../models/Class')
+    const targetClass = await Class.findById(targetClassId)
+    if (!targetClass) return res.status(404).json({ message: 'Classe de destination non trouvée' })
+
+    const students = await Student.find({ _id: { $in: studentIds }, school: schoolId }).populate('class')
+    let count = 0
+    for (const student of students) {
+      const prevClass = student.class
+      const prevClassName = prevClass?.name || 'Classe précédente'
+      const prevLevel = prevClass?.level || ''
+      const prevCycle = prevClass?.cycle || student.cycle || 'Primaire'
+      const prevAcademicYear = student.academicYear || `${new Date().getFullYear() - 1}-${new Date().getFullYear()}`
+
+      student.academicHistory = student.academicHistory || []
+      student.academicHistory.push({
+        class: prevClass?._id || null,
+        className: prevClassName,
+        level: prevLevel,
+        cycle: prevCycle,
+        academicYear: prevAcademicYear,
+        decision: decision || 'admis_classe_superieure',
+        decisionLabel: decisionLabel || 'Admis en classe supérieure',
+        targetClassName: targetClass.name,
+        promotedAt: new Date(),
+        promotedBy: req.user._id,
+        promotedByName: req.user.name,
+      })
+      student.class = targetClass._id
+      student.cycle = targetClass.cycle || student.cycle
+      if (newAcademicYear) student.academicYear = newAcademicYear
+      student.studentType = 'ancien'
+      student.lastPromotion = {
+        promotedAt: new Date(),
+        fromClass: prevClassName,
+        toClass: targetClass.name,
+        decision: decisionLabel || 'Admis en classe supérieure',
+      }
+      await student.save()
+      count++
+    }
+
+    res.json({
+      success: true,
+      message: `${count} élève(s) promu(s) en ${targetClass.name} avec conservation d'historique`,
+      promotedCount: count,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/students/:id/history — historique académique et preuves de scolarité
+router.get('/:id/history', protect, async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id)
+      .populate('class', 'name level cycle room')
+      .populate('school', 'name logo city country')
+      .populate('academicHistory.class', 'name level cycle')
+    if (!student) return res.status(404).json({ message: 'Élève non trouvé' })
+
+    // Contrôle d'accès : parent de l'élève, élève lui-même, ou personnel de l'école
+    if (req.user.role === 'parent' && String(student.parentUser || '') !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Accès refusé' })
+    }
+    if (req.user.role === 'eleve' && String(student.user || '') !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Accès refusé' })
+    }
+    if (['directeur', 'vice_principal', 'enseignant'].includes(req.user.role)) {
+      const mySchool = req.user.school?._id || req.user.school
+      if (String(student.school?._id || student.school) !== String(mySchool)) {
+        return res.status(403).json({ message: 'Accès refusé' })
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        student: {
+          _id: student._id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          matricule: student.matricule,
+          dateOfBirth: student.dateOfBirth,
+          placeOfBirth: student.placeOfBirth,
+          gender: student.gender,
+          photo: student.photo,
+          studentType: student.studentType,
+          academicYear: student.academicYear,
+        },
+        school: student.school,
+        currentClass: student.class,
+        academicHistory: student.academicHistory || [],
+        lastPromotion: student.lastPromotion,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router
+
