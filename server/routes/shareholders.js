@@ -50,7 +50,7 @@ router.get('/me', protect, async (req, res) => {
 //   (ville / quartier / adresse) correspond à la zone saisie. Approximation assumée :
 //   les comptes sans école n'ont pas de localisation en base.
 async function zoneUserIds(sh) {
-  if (sh.planKey === 'national' || sh.planKey === 'international') return null
+  if (sh.planKey === 'national' || sh.planKey === 'international' || sh.planKey === 'mondial') return null
   const z = String(sh.zone || '').trim()
   if (!z) return []
   const rx = new RegExp(z.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')

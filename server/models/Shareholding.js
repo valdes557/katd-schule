@@ -8,7 +8,7 @@ const shareholdingSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     // Plan souscrit (copie figée au moment de la souscription)
-    planKey: { type: String, enum: ['arrondissement', 'regional', 'national', 'international'], required: true, index: true },
+    planKey: { type: String, enum: ['arrondissement', 'regional', 'national', 'international', 'mondial'], required: true, index: true },
     planLabel: { type: String, default: '' },
     percent: { type: Number, default: 1 },
     amount: { type: Number, required: true, min: 1 },   // somme versée (non remboursable)

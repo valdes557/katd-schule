@@ -171,9 +171,11 @@ const AdminTransactionFeesPage = lazyPage(() => import('./pages/AdminTransaction
 const AdminUsersPage = lazyPage(() => import('./pages/AdminUsersPage'))
 const AdminMerchantsPage = lazyPage(() => import('./pages/AdminMerchantsPage'))
 const AdminShareholdersPage = lazyPage(() => import('./pages/AdminShareholdersPage'))
+const AdminCollectPage = lazyPage(() => import('./pages/AdminCollectPage'))
 const AdminBoostsPage = lazyPage(() => import('./pages/AdminBoostsPage'))
 const UserMerchantPage = lazyPage(() => import('./pages/user/UserMerchantPage'))
 const UserShareholdersPage = lazyPage(() => import('./pages/user/UserShareholdersPage'))
+const UserCollectPage = lazyPage(() => import('./pages/user/UserCollectPage'))
 const UserVideosPage = lazyPage(() => import('./pages/user/UserVideosPage'))
 const UserBoostsPage = lazyPage(() => import('./pages/user/UserBoostsPage'))
 const UserStorePage = lazyPage(() => import('./pages/user/UserStorePage'))
@@ -399,6 +401,8 @@ export default function App() {
         <Route path="utilisateurs-admin" element={<AdminUsersPage />} />
         <Route path="marchands-admin" element={<AdminMerchantsPage />} />
         <Route path="actionnaires-admin" element={<AdminShareholdersPage />} />
+        <Route path="collectes-admin" element={<AdminCollectPage />} />
+        <Route path="collecte" element={<UserCollectPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
         <Route path="recrutement" element={<RecruitmentPage />} />
         <Route path="repetitions" element={<TutoringPage />} />
@@ -498,6 +502,7 @@ export default function App() {
         <Route path="portefeuille" element={<PortefeuillePage />} />
         <Route path="marchand" element={<UserMerchantPage />} />
         <Route path="actionnaires" element={<UserShareholdersPage />} />
+        <Route path="collecte" element={<UserCollectPage />} />
         <Route path="mes-boosts" element={<UserBoostsPage />} />
         <Route path="ia-chat" element={<AiChatPage />} />
         <Route path="ia-cours" element={<AiCoursesPage />} />

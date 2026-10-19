@@ -25,10 +25,15 @@ const DEFAULT_PLANS = [
     percent: 1, durationYears: 35,
     description: "1% d'action au niveau international. Somme non remboursable, valable 35 ans.",
   },
+  {
+    key: 'mondial', label: '1% mondial', price: 10000000,
+    percent: 1, durationYears: 35,
+    description: "1% d'action au niveau mondial. Somme non remboursable, valable 35 ans.",
+  },
 ]
 
 const planSchema = new mongoose.Schema({
-  key: { type: String, required: true },          // arrondissement | regional | national | international
+  key: { type: String, required: true },          // arrondissement | regional | national | international | mondial
   label: { type: String, required: true },
   price: { type: Number, required: true, min: 1 },
   percent: { type: Number, default: 1 },
@@ -54,7 +59,16 @@ const shareholderConfigSchema = new mongoose.Schema(
 // Renvoie le document de configuration (créé avec les valeurs par défaut au premier appel)
 shareholderConfigSchema.statics.getOrCreate = async function () {
   let cfg = await this.findOne({ key: 'main' })
-  if (!cfg) cfg = await this.create({ key: 'main' })
+  if (!cfg) {
+    cfg = await this.create({ key: 'main' })
+  } else if (cfg.plans && !cfg.plans.some((p) => p.key === 'mondial')) {
+    // Si la configuration existe déjà sans le plan mondial, on l'ajoute automatiquement
+    const mondialPlan = DEFAULT_PLANS.find((p) => p.key === 'mondial')
+    if (mondialPlan) {
+      cfg.plans.push(mondialPlan)
+      await cfg.save()
+    }
+  }
   return cfg
 }
 

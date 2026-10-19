@@ -16,6 +16,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleString('fr-FR', { day: '2-digit',
 const ROLE_LABELS = {
   super_admin: 'Administrateur', directeur: 'Directeur', enseignant: 'Enseignant',
   parent: 'Parent', eleve: 'Élève', utilisateur: 'Utilisateur', admin: 'Administrateur',
+  agent_collecte: 'Agent de Collecte',
 }
 
 // Libellé lisible d'une période (« 2026-07 » → « Juillet 2026 », « 2026-07-11 » → « 11/07/2026 »)
@@ -139,6 +140,7 @@ export default function AdminTransactionFeesPage() {
             <div className="text-sm font-bold text-gray-900 mt-1">Transferts : {fmt(stats.byType?.transfer?.total)} XAF</div>
             <div className="text-sm font-bold text-gray-900">Retraits : {fmt(stats.byType?.withdrawal?.total)} XAF</div>
             <div className="text-sm font-bold text-gray-900">Maintenance : {fmt(stats.byType?.maintenance?.total)} XAF</div>
+            <div className="text-sm font-bold text-amber-700">Collecte : {fmt(stats.byType?.collect?.total)} XAF</div>
           </div>
         </div>
 
@@ -149,6 +151,7 @@ export default function AdminTransactionFeesPage() {
               <option value="">Tous les profils</option>
               <option value="staff">Personnel de la plateforme</option>
               <option value="users">Utilisateurs</option>
+              <option value="collect">Agents de collecte journalière</option>
               <option value="directeur">Directeurs</option>
               <option value="enseignant">Enseignants</option>
               <option value="parent">Parents</option>
@@ -160,6 +163,7 @@ export default function AdminTransactionFeesPage() {
               <option value="transfer">Frais de transfert (0,25%)</option>
               <option value="withdrawal">Frais de retrait (1%)</option>
               <option value="maintenance">Frais de maintenance</option>
+              <option value="collect">Frais de collecte (1 100 F/client)</option>
             </select>
             <label className="text-xs text-gray-500 flex items-center gap-1.5">Du <input type="date" value={from} onChange={changeFilter(setFrom)} className="input text-sm w-auto" /></label>
             <label className="text-xs text-gray-500 flex items-center gap-1.5">Au <input type="date" value={to} onChange={changeFilter(setTo)} className="input text-sm w-auto" /></label>
@@ -201,6 +205,41 @@ export default function AdminTransactionFeesPage() {
                       <td className="px-4 py-2 font-medium text-gray-800">{periodLabel(p.period)}</td>
                       <td className="px-4 py-2 text-right text-gray-600">{fmt(p.count)}</td>
                       <td className="px-4 py-2 text-right font-bold text-amber-700">{fmt(p.total)} <span className="text-xs font-medium text-gray-400">XAF</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Synthèse des frais de collecte par Agence / Agent */}
+        {stats.collectAgenciesSummary && Object.values(stats.collectAgenciesSummary).length > 0 && (
+          <div className="card p-5 border-l-4 border-amber-500 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Coins size={18} className="text-amber-600" />
+                <h3 className="font-bold text-gray-900 text-sm">Frais de collecte journalière par Agence / Agent</h3>
+              </div>
+              <span className="text-xs text-gray-500 font-medium">1 100 FCFA / client déduits chaque mois</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase text-gray-400 border-b border-gray-100">
+                    <th className="py-2.5 px-3">Agence</th>
+                    <th className="py-2.5 px-3">Agent Responsable</th>
+                    <th className="py-2.5 px-3 text-center">Clients enregistrés</th>
+                    <th className="py-2.5 px-3 text-right">Total des frais additionnés</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {Object.values(stats.collectAgenciesSummary).map((ag) => (
+                    <tr key={ag.agencyName} className="hover:bg-amber-50/40">
+                      <td className="py-2.5 px-3 font-bold text-gray-900">{ag.agencyName}</td>
+                      <td className="py-2.5 px-3 text-gray-600">{ag.agentName}</td>
+                      <td className="py-2.5 px-3 text-center font-bold text-gray-700">{ag.totalClients} client(s)</td>
+                      <td className="py-2.5 px-3 text-right font-black text-amber-700">{fmt(ag.totalAmount)} XAF</td>
                     </tr>
                   ))}
                 </tbody>

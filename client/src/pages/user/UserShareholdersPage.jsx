@@ -24,12 +24,14 @@ const ZONE_LABELS = {
   regional: 'Nom de la région',
   national: 'Pays',
   international: 'Zone internationale (optionnel)',
+  mondial: 'Couverture mondiale (global)',
 }
 const PLAN_GRADIENTS = {
   arrondissement: 'from-emerald-500 to-teal-600',
   regional: 'from-blue-500 to-indigo-600',
   national: 'from-amber-500 to-orange-600',
   international: 'from-purple-600 to-fuchsia-600',
+  mondial: 'from-rose-600 via-pink-600 to-purple-700',
 }
 const POST_META = {
   depense: { label: 'Dépense', icon: Receipt, cls: 'bg-orange-100 text-orange-700' },

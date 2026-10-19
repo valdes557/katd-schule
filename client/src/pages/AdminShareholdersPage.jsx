@@ -12,7 +12,7 @@ import {
 import { shareholdersApi } from '../lib/api'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
-const PLAN_NAMES = { arrondissement: 'Arrondissement', regional: 'Régional', national: 'National', international: 'International' }
+const PLAN_NAMES = { arrondissement: 'Arrondissement', regional: 'Régional', national: 'National', international: 'International', mondial: 'Mondial' }
 const POST_CATEGORIES = [
   { value: 'depense', label: 'Dépense (à faire ou faite)', icon: Receipt },
   { value: 'paiement', label: 'Somme exigée à payer', icon: Banknote },

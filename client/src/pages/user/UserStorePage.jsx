@@ -3,7 +3,7 @@ import { Link, useOutletContext } from 'react-router-dom'
 import {
   Home, Newspaper, Globe, Plus, Users, Briefcase,
   Wallet, Store, Landmark, Rocket, User, Bell,
-  ShoppingBag, Bot, Sparkles, Zap, AlertTriangle, ChevronRight,
+  ShoppingBag, Bot, Sparkles, Zap, AlertTriangle, ChevronRight, Coins,
 } from 'lucide-react'
 import { aiApi } from '../../lib/api'
 import AiQuotaModal from '../../components/AiQuotaModal'
@@ -69,6 +69,7 @@ export default function UserStorePage() {
       label: 'COMMERCE & SERVICES',
       items: [
         { label: 'Mon Portefeuille', icon: Wallet, path: '/u/portefeuille' },
+        { label: 'Collecte Journalière', icon: Coins, path: '/u/collecte', badgeText: 'Agent' },
         { label: 'Espace Marchand', icon: Store, path: '/u/marchand' },
         { label: 'Actionnaires', icon: Landmark, path: '/u/actionnaires' },
         { label: 'Mes Boosts', icon: Rocket, path: '/u/mes-boosts' },

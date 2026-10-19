@@ -1361,4 +1361,32 @@ export const pushApi = {
   unsubscribe: (data) => api.post('/push/unsubscribe', data),
 }
 
+// Collecte journalière (Tontine / Journalière)
+export const collectApi = {
+  getConfig: () => api.get('/collect/config'),
+  getMyAgentStatus: () => api.get('/collect/my-agent-status'),
+  optIn: (data) => api.post('/collect/opt-in', data),
+  getAgentDashboard: () => api.get('/collect/agent/dashboard'),
+  getClients: () => api.get('/collect/agent/clients'),
+  addClient: (data) => api.post('/collect/agent/clients', data),
+  getClient: (id) => api.get(`/collect/agent/clients/${id}`),
+  updateClient: (id, data) => api.put(`/collect/agent/clients/${id}`, data),
+  depositWallet: (id, data) => api.post(`/collect/agent/clients/${id}/deposit-wallet`, data),
+  depositMomo: (id, data) => api.post(`/collect/agent/clients/${id}/deposit-momo`, data),
+  getDailyCollections: (date = '') => api.get(`/collect/agent/daily${date ? `?date=${date}` : ''}`),
+  addDailyCollection: (data) => api.post('/collect/agent/daily', data),
+  updateDailyCollection: (id, data) => api.put(`/collect/agent/daily/${id}`, data),
+  deleteDailyCollection: (id) => api.del(`/collect/agent/daily/${id}`),
+  getAgentReports: () => api.get('/collect/agent/reports'),
+  submitDailyReport: (data) => api.post('/collect/agent/reports/submit', data),
+  // Côté administrateur
+  adminOverview: () => api.get('/collect/admin/overview'),
+  adminAgents: () => api.get('/collect/admin/agents'),
+  adminAgentDetail: (id) => api.get(`/collect/admin/agents/${id}`),
+  adminToggleAgentStatus: (id, data) => api.post(`/collect/admin/agents/${id}/status`, data),
+  adminFeesSummary: () => api.get('/collect/admin/fees-summary'),
+  adminTriggerMonthlyFees: () => api.post('/collect/admin/trigger-monthly-fees'),
+  adminUpdateTerms: (data) => api.put('/collect/admin/terms', data),
+}
+
 export default api

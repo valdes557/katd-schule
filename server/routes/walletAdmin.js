@@ -434,43 +434,60 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
       .populate('counterparty', 'name role email phone matricule walletAccountNo')
       .limit(10000).lean()
 
-    const FEE_LABELS = { transfer: 'Frais de transfert (0,25%)', withdrawal: 'Frais de retrait (1%)', maintenance: 'Frais de maintenance' }
+    const FEE_LABELS = {
+      transfer: 'Frais de transfert (0,25%)',
+      withdrawal: 'Frais de retrait (1%)',
+      maintenance: 'Frais de maintenance',
+      collect: 'Frais de collecte journalière (1 100 FCFA / client)',
+    }
     let fees = docs.map((tx) => {
       const p = tx.counterparty || {}
-      // Distingue frais de transfert (0,25%), retrait (1%) et maintenance via meta.feeType.
+      // Distingue frais de transfert (0,25%), retrait (1%), maintenance et collecte via meta.feeType.
       const ft = tx.meta && tx.meta.feeType
-      const kind = ft === 'withdrawal' ? 'withdrawal' : ft === 'maintenance' ? 'maintenance' : 'transfer'
+      const kind = ft === 'withdrawal' ? 'withdrawal' : ft === 'maintenance' ? 'maintenance' : ft === 'collect' ? 'collect' : 'transfer'
+      const isCollect = kind === 'collect'
+      const agencyName = tx.meta?.agencyName || tx.meta?.agentName || ''
+      const agentDisplayName = isCollect && agencyName
+        ? `Agence ${agencyName}${tx.meta?.agentName ? ` (${tx.meta.agentName})` : ''}`
+        : (p.name || '—')
+
       return {
         _id: String(tx._id), date: tx.createdAt,
         feeType: kind,
         feeLabel: FEE_LABELS[kind] || FEE_LABELS.transfer,
         amount: tx.amount, currency: tx.currency || 'XOF',
         baseAmount: (tx.meta && tx.meta.baseAmount) || null,
-        rate: (tx.meta && tx.meta.rate) || (kind === 'withdrawal' ? 0.01 : kind === 'maintenance' ? null : 0.0025),
+        rate: (tx.meta && tx.meta.rate) || (kind === 'withdrawal' ? 0.01 : kind === 'maintenance' ? null : kind === 'collect' ? null : 0.0025),
+        isCollect,
+        clientCount: tx.meta?.clientCount || (isCollect ? Math.round(tx.amount / 1100) : null),
+        agencyName: tx.meta?.agencyName || null,
+        agentName: tx.meta?.agentName || null,
         payer: {
-          id: p._id, name: p.name || '—', role: p.role || '', email: p.email || '',
+          id: p._id, name: agentDisplayName, role: isCollect ? 'agent_collecte' : (p.role || ''), email: p.email || '',
           phone: p.phone || '', matricule: p.matricule || '', accountNo: p.walletAccountNo || '',
-          group: roleGroup(p.role),
+          group: isCollect ? 'collect' : roleGroup(p.role),
         },
       }
     })
 
-    if (['transfer', 'withdrawal', 'maintenance'].includes(feeType)) fees = fees.filter((f) => f.feeType === feeType)
+    if (['transfer', 'withdrawal', 'maintenance', 'collect'].includes(feeType)) fees = fees.filter((f) => f.feeType === feeType)
     if (group) {
-      if (group === 'staff' || group === 'users') fees = fees.filter((f) => f.payer.group === group)
+      if (group === 'staff' || group === 'users' || group === 'collect') fees = fees.filter((f) => f.payer.group === group)
       else fees = fees.filter((f) => f.payer.role === group)
     }
     if (q && String(q).trim()) {
       const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
       fees = fees.filter((f) => rx.test(f.payer.name) || rx.test(f.payer.phone) ||
-        rx.test(f.payer.matricule) || rx.test(f.payer.accountNo) || rx.test(f.payer.email))
+        rx.test(f.payer.matricule) || rx.test(f.payer.accountNo) || rx.test(f.payer.email) ||
+        rx.test(f.agencyName || '') || rx.test(f.agentName || ''))
     }
 
     // Statistiques
     const stats = {
       totalCount: fees.length, totalAmount: 0, avg: 0,
-      byGroup: { staff: { count: 0, total: 0 }, users: { count: 0, total: 0 } },
-      byType: { transfer: { count: 0, total: 0 }, withdrawal: { count: 0, total: 0 }, maintenance: { count: 0, total: 0 } },
+      byGroup: { staff: { count: 0, total: 0 }, users: { count: 0, total: 0 }, collect: { count: 0, total: 0 } },
+      byType: { transfer: { count: 0, total: 0 }, withdrawal: { count: 0, total: 0 }, maintenance: { count: 0, total: 0 }, collect: { count: 0, total: 0 } },
+      collectAgenciesSummary: {},
       byPeriod: [], period,
     }
     const periodMap = {}
@@ -478,6 +495,13 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
       stats.totalAmount += f.amount
       const g = stats.byGroup[f.payer.group]; if (g) { g.count++; g.total += f.amount }
       const ty = stats.byType[f.feeType]; if (ty) { ty.count++; ty.total += f.amount }
+      if (f.isCollect && (f.agencyName || f.agentName)) {
+        const agKey = f.agencyName || f.agentName
+        const item = (stats.collectAgenciesSummary[agKey] ||= { agencyName: agKey, agentName: f.agentName || agKey, totalClients: 0, totalAmount: 0, opsCount: 0 })
+        item.totalClients += (f.clientCount || 0)
+        item.totalAmount += f.amount
+        item.opsCount++
+      }
       const d = new Date(f.date)
       const key = period === 'day'
         ? d.toISOString().slice(0, 10)
