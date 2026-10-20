@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense, useEffect, Component } from 'react'
 import { useAuth } from './context/AuthContext'
 import PrivacyPolicyModal from './components/PrivacyPolicyModal'
+import OfflineBanner from './components/OfflineBanner'
 
 // Eager: public landing + login + layout + espace utilisateur (small, needed immediately)
 import LandingPage from './pages/LandingPage'
@@ -322,6 +323,7 @@ export default function App() {
 
   return (
     <RouteErrorBoundary>
+    <OfflineBanner />
     <Suspense fallback={<PageFallback />}>
     <Routes>
       {/* Public routes */}

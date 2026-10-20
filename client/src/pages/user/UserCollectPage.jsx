@@ -6,6 +6,7 @@ import {
   FileText, Send, ShieldCheck, Edit2, Trash2, MapPin, RefreshCw, ChevronRight,
 } from 'lucide-react'
 import { collectApi, walletApi } from '../../lib/api'
+import ClientCollectDashboard from '../../components/ClientCollectDashboard'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
@@ -13,6 +14,7 @@ const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-di
 export default function UserCollectPage() {
   const [loading, setLoading] = useState(true)
   const [agentStatus, setAgentStatus] = useState(null)
+  const [viewMode, setViewMode] = useState('auto') // 'client' | 'agent' | 'auto'
   const [tab, setTab] = useState('dashboard') // dashboard | clients | reports | settings
   const [banner, setBanner] = useState({ type: '', text: '' })
 
@@ -42,6 +44,21 @@ export default function UserCollectPage() {
       <div className="flex justify-center items-center py-24">
         <Loader2 className="animate-spin text-indigo-600" size={32} />
       </div>
+    )
+  }
+
+  const isClient = !!agentStatus?.isClient
+  const isAgent = !!agentStatus?.isAgent
+  const currentView = viewMode === 'auto' ? (isClient ? 'client' : 'agent') : viewMode
+
+  // Si le mode est client et que l'utilisateur est client, afficher le dashboard client ("Épargnez au Quotidien")
+  if (currentView === 'client' && isClient) {
+    return (
+      <ClientCollectDashboard
+        clientInfo={agentStatus.client}
+        isAlsoAgent={isAgent}
+        onSwitchToAgent={() => setViewMode('agent')}
+      />
     )
   }
 
@@ -82,6 +99,22 @@ export default function UserCollectPage() {
   // 3. Espace Agent de Collecte actif
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12 animate-fade-in">
+      {/* Switcher si l'agent est aussi client */}
+      {isClient && (
+        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 px-4 py-2.5 rounded-2xl shadow-2xs">
+          <div className="flex items-center gap-2 text-xs font-bold text-emerald-900">
+            <Coins size={16} className="text-emerald-600" />
+            <span>Vous avez également un compte d'épargne client actif</span>
+          </div>
+          <button
+            onClick={() => setViewMode('client')}
+            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-2xs"
+          >
+            Voir mon Épargne Client ➔
+          </button>
+        </div>
+      )}
+
       {/* En-tête de l'agence */}
       <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-indigo-800 rounded-3xl p-6 text-white shadow-md">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

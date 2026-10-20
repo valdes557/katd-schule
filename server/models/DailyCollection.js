@@ -11,10 +11,15 @@ const dailyCollectionSchema = new mongoose.Schema(
     neighborhood: { type: String, required: true }, // Quartier
     date: { type: String, required: true, index: true }, // Format 'YYYY-MM-DD'
     datetime: { type: Date, default: Date.now },
-    amount: { type: Number, default: 0, min: 0 },
+    amount: { type: Number, default: 0 },
+    type: {
+      type: String,
+      enum: ['depot', 'retrait'],
+      default: 'depot',
+    },
     status: {
       type: String,
-      enum: ['paye', 'non_paye'],
+      enum: ['paye', 'non_paye', 'retrait'],
       default: 'paye',
       index: true,
     },

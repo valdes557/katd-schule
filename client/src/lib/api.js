@@ -1379,6 +1379,10 @@ export const collectApi = {
   deleteDailyCollection: (id) => api.del(`/collect/agent/daily/${id}`),
   getAgentReports: () => api.get('/collect/agent/reports'),
   submitDailyReport: (data) => api.post('/collect/agent/reports/submit', data),
+  // Côté client ("Épargnez au Quotidien")
+  getClientDashboard: () => api.get('/collect/client/dashboard'),
+  clientPay: (data) => api.post('/collect/client/pay', data),
+  clientWithdraw: (data) => api.post('/collect/client/withdraw', data),
   // Côté administrateur
   adminOverview: () => api.get('/collect/admin/overview'),
   adminAgents: () => api.get('/collect/admin/agents'),

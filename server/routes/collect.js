@@ -143,17 +143,33 @@ router.get('/config', protect, async (req, res) => {
 // 2. STATUT DE L'AGENT & ADHÉSION (Opt-in)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// GET /api/collect/my-agent-status — Vérifie si l'utilisateur connecté est un agent de collecte
+// GET /api/collect/my-agent-status — Vérifie si l'utilisateur connecté est un agent de collecte ou un client enregistré
 router.get('/my-agent-status', protect, async (req, res) => {
   try {
     const agent = await CollectAgent.findOne({ user: req.user._id })
     const cfg = await CollectConfig.getOrCreate()
+
+    // Vérifie si l'utilisateur est un client enregistré par un agent
+    const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
+    let clientDoc = await CollectClient.findOne({ user: req.user._id }).populate('agent')
+    if (!clientDoc && cleanPh) {
+      clientDoc = await CollectClient.findOne({
+        phone: new RegExp(cleanPh.slice(-9) + '$'),
+      }).populate('agent')
+      if (clientDoc && !clientDoc.user) {
+        clientDoc.user = req.user._id
+        await clientDoc.save()
+      }
+    }
+
     res.json({
       success: true,
       isAgent: !!agent,
       agent,
       termsAccepted: !!agent?.termsAccepted,
       status: agent ? agent.status : null,
+      isClient: !!clientDoc,
+      client: clientDoc,
       termsAndConditions: cfg.termsAndConditions,
       monthlyFee: cfg.monthlyFee,
     })
@@ -476,7 +492,7 @@ router.post('/agent/clients', protect, async (req, res) => {
       return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
     }
 
-    const { fullName, phone, neighborhood, city, cni, dailyTarget, notes } = req.body
+    const { fullName, phone, neighborhood, city, cni, dailyTarget, monthlyTarget, notes } = req.body
     if (!fullName || !String(fullName).trim()) {
       return res.status(400).json({ message: 'Nom et prénom du client requis' })
     }
@@ -487,15 +503,31 @@ router.post('/agent/clients', protect, async (req, res) => {
       return res.status(400).json({ message: 'Quartier obligatoire' })
     }
 
+    const cleanPh = String(phone || '').replace(/[^0-9]/g, '')
+    let linkedUser = null
+    if (cleanPh) {
+      linkedUser = await User.findOne({
+        $or: [
+          { phone: cleanPh },
+          { phone: new RegExp(cleanPh.slice(-9) + '$') },
+        ],
+      })
+    }
+
+    const dTarget = Number(dailyTarget) || 1000
+    const mTarget = Number(monthlyTarget) || (dTarget * 31)
+
     const client = await CollectClient.create({
       agent: agent._id,
       agentUser: req.user._id,
+      user: linkedUser ? linkedUser._id : null,
       fullName: String(fullName).trim(),
       phone: String(phone).trim(),
       neighborhood: String(neighborhood).trim(),
       city: String(city || agent.city || '').trim(),
       cni: String(cni || '').trim(),
-      dailyTarget: Number(dailyTarget) || 1000,
+      dailyTarget: dTarget,
+      monthlyTarget: mTarget,
       balance: 0,
       notes: notes || '',
     })
@@ -949,6 +981,373 @@ router.put('/admin/terms', protect, adminOnly, async (req, res) => {
     await cfg.save()
 
     res.json({ success: true, message: 'Termes et conditions mis à jour avec succès.', config: cfg })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. ESPACE CLIENT ("ÉPARGNEZ AU QUOTIDIEN")
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/collect/client/dashboard — Dashboard du client exactement comme sur la capture
+router.get('/client/dashboard', protect, async (req, res) => {
+  try {
+    const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
+    let client = await CollectClient.findOne({ user: req.user._id })
+    if (!client && cleanPh) {
+      client = await CollectClient.findOne({
+        phone: new RegExp(cleanPh.slice(-9) + '$'),
+      })
+      if (client && !client.user) {
+        client.user = req.user._id
+        await client.save()
+      }
+    }
+
+    if (!client) {
+      return res.status(404).json({
+        message: "Vous n'avez pas encore été enregistré comme client par un agent de collecte.",
+      })
+    }
+
+    const agent = await CollectAgent.findById(client.agent).populate('user', 'name phone email avatar')
+
+    // Dates et calcul du mois
+    const now = new Date()
+    const year = now.getFullYear()
+    const monthIndex = now.getMonth() // 0 = Janvier, 9 = Octobre
+    const currentDay = now.getDate()
+
+    const MONTH_NAMES = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+    ]
+    const monthName = MONTH_NAMES[monthIndex]
+    const monthStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}` // 'YYYY-MM'
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate() // ex: 31 pour Octobre
+
+    // Objectif mensuel
+    const dailyTarget = client.dailyTarget || 1000
+    const monthlyTarget = client.monthlyTarget || (dailyTarget * daysInMonth)
+
+    // Collectes du mois
+    const monthCollections = await DailyCollection.find({
+      client: client._id,
+      date: new RegExp('^' + monthStr),
+    }).lean()
+
+    const collectionMap = {}
+    for (const c of monthCollections) {
+      collectionMap[c.date] = c
+    }
+
+    const todayStr = `${monthStr}-${String(currentDay).padStart(2, '0')}`
+    const todayCol = collectionMap[todayStr]
+    const todayPaid = todayCol && todayCol.status === 'paye' ? todayCol.amount : 0
+    const todayStatus = todayCol && todayCol.status === 'paye' ? 'paye' : 'en_attente'
+
+    // Construction du calendrier des jours du mois
+    // Calcul du premier jour de la semaine (1 = Lundi, 7 = Dimanche)
+    const firstDayDate = new Date(year, monthIndex, 1)
+    let firstDayOfWeek = firstDayDate.getDay() // 0 = Dimanche, 1 = Lundi, ...
+    if (firstDayOfWeek === 0) firstDayOfWeek = 7 // format européen Lu=1..Di=7
+
+    let paidDaysCount = 0
+    let missedDaysCount = 0
+    const calendarDays = []
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dStr = `${monthStr}-${String(d).padStart(2, '0')}`
+      const col = collectionMap[dStr]
+      let dayStatus = 'a_venir'
+
+      if (d < currentDay) {
+        if (col && col.status === 'paye') {
+          dayStatus = 'paye'
+          paidDaysCount++
+        } else {
+          dayStatus = 'manque'
+          missedDaysCount++
+        }
+      } else if (d === currentDay) {
+        if (col && col.status === 'paye') {
+          dayStatus = 'paye'
+          paidDaysCount++
+        } else {
+          dayStatus = 'en_attente'
+        }
+      } else {
+        dayStatus = 'a_venir'
+      }
+
+      calendarDays.push({
+        day: d,
+        date: dStr,
+        status: dayStatus,
+        amount: col ? col.amount : 0,
+      })
+    }
+
+    const daysRemaining = Math.max(0, daysInMonth - currentDay)
+    const progressPercent = monthlyTarget > 0 ? Math.min(100, Math.round((client.balance / monthlyTarget) * 100)) : 0
+
+    // Historique récent des opérations (dépôts et retraits)
+    const recentHistory = await DailyCollection.find({ client: client._id }).sort({ date: -1, datetime: -1 }).limit(30)
+
+    res.json({
+      success: true,
+      client,
+      agent,
+      month: {
+        label: `${monthName} ${year}`,
+        monthIndex,
+        year,
+        daysInMonth,
+        currentDay,
+        firstDayOfWeek, // pour alignement sur Lu-Di
+      },
+      stats: {
+        totalBalance: client.balance || 0,
+        monthlyTarget,
+        dailyTarget,
+        paidDaysCount,
+        daysInMonth,
+        daysRemaining,
+        progressPercent,
+        todayPaid,
+        todayStatus,
+      },
+      calendar: calendarDays,
+      history: recentHistory,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/collect/client/pay — Le client paie lui-même sa collecte journalière
+router.post('/client/pay', protect, async (req, res) => {
+  try {
+    const { amount, paymentMethod = 'wallet', phone, operator, country = 'CM', otp } = req.body
+    const amt = Number(amount)
+    if (!amt || amt <= 0) {
+      return res.status(400).json({ message: 'Montant de collecte invalide' })
+    }
+
+    const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
+    let client = await CollectClient.findOne({ user: req.user._id })
+    if (!client && cleanPh) {
+      client = await CollectClient.findOne({ phone: new RegExp(cleanPh.slice(-9) + '$') })
+      if (client && !client.user) {
+        client.user = req.user._id
+        await client.save()
+      }
+    }
+    if (!client) {
+      return res.status(404).json({ message: 'Compte client introuvable.' })
+    }
+
+    const agent = await CollectAgent.findById(client.agent).populate('user', 'name email phone')
+
+    if (paymentMethod === 'wallet') {
+      await wallet.debit(req.user._id, {
+        amount: amt,
+        type: 'transfer_sent',
+        description: `Paiement collecte journalière — ${client.fullName} (${client.accountNumber})`,
+        meta: { reason: 'client_collect_pay', clientId: String(client._id) },
+      })
+    } else if (paymentMethod === 'momo') {
+      if (!phone || !operator) {
+        return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
+      }
+      const PaymentIntent = require('../models/PaymentIntent')
+      const providerRef = `col_pay_${Date.now()}`
+      const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
+
+      const pi = await PaymentIntent.create({
+        user: req.user._id,
+        type: 'collect_deposit',
+        amount: amt,
+        currency: country === 'CM' ? 'XAF' : 'XOF',
+        provider: 'ikeepay',
+        providerRef,
+        meta: { clientId: String(client._id), clientName: client.fullName },
+      })
+
+      const directRes = await ikeepay.createDirectCharge({
+        amount: amt,
+        phone,
+        operator,
+        country,
+        currency: country === 'CM' ? 'XAF' : 'XOF',
+        reference: providerRef,
+        otp,
+        callbackUrl: `${base}/api/payments/webhook`,
+      })
+
+      if (directRes.status === 'approved' || directRes.status === 'success') {
+        pi.status = 'approved'
+        pi.fulfilled = true
+        await pi.save()
+      }
+    }
+
+    // Mise à jour du solde client
+    client.balance += amt
+    await client.save()
+
+    // Enregistrement dans DailyCollection pour aujourd'hui
+    const today = getTodayStr()
+    let col = await DailyCollection.findOne({ client: client._id, date: today })
+    if (col) {
+      col.amount = (col.amount || 0) + amt
+      col.status = 'paye'
+      col.paymentMethod = paymentMethod
+      col.datetime = new Date()
+      await col.save()
+    } else {
+      col = await DailyCollection.create({
+        agent: client.agent,
+        agentUser: agent?.user?._id || client.agentUser,
+        client: client._id,
+        clientName: client.fullName,
+        clientPhone: client.phone,
+        neighborhood: client.neighborhood,
+        date: today,
+        amount: amt,
+        status: 'paye',
+        paymentMethod,
+        notes: 'Payé par le client depuis son espace',
+        datetime: new Date(),
+      })
+    }
+
+    // Notification par email à l'agent
+    try {
+      const agentUser = agent?.user
+      if (agentUser?.email) {
+        const { sendEmail } = require('../utils/emailService')
+        await sendEmail({
+          to: agentUser.email,
+          subject: `Paiement de collecte journalière — ${client.fullName}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px;">
+              <h2 style="color: #059669; margin-top: 0;">Paiement de collecte journalière reçu</h2>
+              <p>Bonjour <b>${agentUser.name || agent.agencyName}</b>,</p>
+              <p>Votre client(e) <b>${client.fullName}</b> (N° Compte : <b>${client.accountNumber}</b>) vient d'effectuer lui-même le versement de sa collecte journalière pour aujourd'hui.</p>
+              <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                <p style="margin: 4px 0;"><b>Montant versé :</b> <span style="color: #059669; font-size: 17px; font-weight: bold;">${amt.toLocaleString('fr-FR')} FCFA</span></p>
+                <p style="margin: 4px 0;"><b>Date du paiement :</b> ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                <p style="margin: 4px 0;"><b>Nouveau solde du client :</b> <span style="font-weight: bold;">${client.balance.toLocaleString('fr-FR')} FCFA</span></p>
+                <p style="margin: 4px 0;"><b>Mode de règlement :</b> ${paymentMethod === 'wallet' ? 'Portefeuille KATD' : 'Mobile Money'}</p>
+              </div>
+              <p style="color: #4b5563; font-size: 13px;">Votre tableau de bord d'agent et les statistiques du jour ont été mis à jour automatiquement.</p>
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+              <p style="font-size: 11px; color: #9ca3af; text-align: center;">KATD-SCHÜLE • Système de Collecte & Épargne Sécurisée</p>
+            </div>
+          `,
+        })
+      }
+    } catch (emailErr) {
+      console.error('[Collect Client Pay Email Error]:', emailErr.message)
+    }
+
+    res.json({
+      success: true,
+      message: `Votre collecte de ${amt.toLocaleString('fr-FR')} FCFA a été payée avec succès !`,
+      newBalance: client.balance,
+      todayCollection: col,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/collect/client/withdraw — Le client retire lui-même le montant qu'il veut
+router.post('/client/withdraw', protect, async (req, res) => {
+  try {
+    const { amount, payoutMethod = 'wallet', momoNumber, momoOperator, accountName, country = 'CM' } = req.body
+    const amt = Number(amount)
+    if (!amt || amt <= 0) {
+      return res.status(400).json({ message: 'Montant de retrait invalide' })
+    }
+
+    const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
+    let client = await CollectClient.findOne({ user: req.user._id })
+    if (!client && cleanPh) {
+      client = await CollectClient.findOne({ phone: new RegExp(cleanPh.slice(-9) + '$') })
+      if (client && !client.user) {
+        client.user = req.user._id
+        await client.save()
+      }
+    }
+    if (!client) {
+      return res.status(404).json({ message: 'Compte client introuvable.' })
+    }
+
+    if (client.balance < amt) {
+      return res.status(400).json({
+        message: `Solde insuffisant pour ce retrait. Votre solde disponible est de ${client.balance.toLocaleString('fr-FR')} FCFA.`,
+      })
+    }
+
+    const agent = await CollectAgent.findById(client.agent).populate('user', 'name email phone')
+
+    if (payoutMethod === 'wallet') {
+      await wallet.credit(req.user._id, {
+        amount: amt,
+        type: 'transfer_received',
+        description: `Retrait depuis mon compte de collecte journalière (${client.accountNumber})`,
+        meta: { reason: 'client_collect_withdraw', clientId: String(client._id) },
+      })
+    } else if (payoutMethod === 'momo') {
+      if (!momoNumber || !momoOperator) {
+        return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis pour le retrait' })
+      }
+      try {
+        await ikeepay.createPayout({
+          amount: amt,
+          phone: momoNumber,
+          operator: momoOperator,
+          accountName: accountName || client.fullName,
+          country,
+          currency: country === 'CM' ? 'XAF' : 'XOF',
+          reference: `wd_col_${Date.now()}`,
+        })
+      } catch (payoutErr) {
+        console.warn('[Collect Payout warning]:', payoutErr.message)
+      }
+    }
+
+    // Déduction du solde client
+    client.balance -= amt
+    await client.save()
+
+    // Enregistrement de l'opération dans DailyCollection
+    const today = getTodayStr()
+    const record = await DailyCollection.create({
+      agent: client.agent,
+      agentUser: agent?.user?._id || client.agentUser,
+      client: client._id,
+      clientName: client.fullName,
+      clientPhone: client.phone,
+      neighborhood: client.neighborhood,
+      date: today,
+      amount: -amt,
+      type: 'retrait',
+      status: 'retrait',
+      paymentMethod: payoutMethod,
+      notes: `Retrait effectué par le client vers ${payoutMethod === 'wallet' ? 'Portefeuille' : momoNumber}`,
+      datetime: new Date(),
+    })
+
+    res.json({
+      success: true,
+      message: `Votre retrait de ${amt.toLocaleString('fr-FR')} FCFA a été effectué avec succès !`,
+      newBalance: client.balance,
+      record,
+    })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
