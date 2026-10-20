@@ -3,10 +3,12 @@ import { useState, useEffect } from 'react'
 import {
   Coins, Loader2, Users, CheckCircle2, AlertCircle, X, Plus, Calendar,
   TrendingUp, Clock, AlertTriangle, ArrowUpRight, Wallet, Smartphone,
-  FileText, Send, ShieldCheck, Edit2, Trash2, MapPin, RefreshCw, ChevronRight, Mail,
+  FileText, Send, ShieldCheck, Edit2, Trash2, MapPin, RefreshCw, ChevronRight, Mail, Lock,
 } from 'lucide-react'
 import { collectApi, walletApi } from '../../lib/api'
 import ClientCollectDashboard from '../../components/ClientCollectDashboard'
+import SignaturePad from '../../components/SignaturePad'
+import ClientContractModal from '../../components/ClientContractModal'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
@@ -486,7 +488,7 @@ function AgentDashboardTab({ showBanner }) {
                     <td className="py-3 px-3 text-center whitespace-nowrap">
                       {col.status === 'paye' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                          <CheckCircle2 size={12} /> Payé
+                          <CheckCircle2 size={12} /> Collecté
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
@@ -494,24 +496,11 @@ function AgentDashboardTab({ showBanner }) {
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-gray-500 capitalize">{col.paymentMethod || 'Espèces'}</td>
+                    <td className="py-3 px-3 text-gray-500 capitalize">{col.paymentMethod || 'Portefeuille'}</td>
                     <td className="py-3 px-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => { setEditItem(col); setShowAddModal(true) }}
-                          className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(col._id)}
-                          className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                        <Lock size={11} className="text-emerald-600" /> Enregistré
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -723,7 +712,7 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
                     : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                 }`}
               >
-                <CheckCircle2 size={14} /> Payé (En argent réel)
+                <CheckCircle2 size={14} /> Collecté
               </button>
               <button
                 type="button"
@@ -901,6 +890,7 @@ function AgentClientsTab({ showBanner }) {
   const [showActivateEmail, setShowActivateEmail] = useState(false)
   const [depositClient, setDepositClient] = useState(null)
   const [historyClient, setHistoryClient] = useState(null)
+  const [contractClient, setContractClient] = useState(null)
 
   const loadClients = async () => {
     try {
@@ -1022,7 +1012,7 @@ function AgentClientsTab({ showBanner }) {
                     <td className="py-3 px-3 text-center whitespace-nowrap">
                       {c.todayStatus === 'paye' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                          <CheckCircle2 size={11} /> Payé
+                          <CheckCircle2 size={11} /> Collecté
                         </span>
                       ) : c.todayStatus === 'non_paye' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
@@ -1036,6 +1026,13 @@ function AgentClientsTab({ showBanner }) {
                     </td>
                     <td className="py-3 px-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setContractClient(c)}
+                          className="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                          title="Voir et imprimer le contrat officiel signé"
+                        >
+                          <FileText size={13} /> Contrat
+                        </button>
                         <button
                           onClick={() => setDepositClient(c)}
                           className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
@@ -1065,7 +1062,7 @@ function AgentClientsTab({ showBanner }) {
           onClose={() => setShowAddClient(false)}
           onSuccess={() => {
             setShowAddClient(false)
-            showBanner('Nouveau client enregistré avec succès !')
+            showBanner('Nouveau client enregistré avec succès avec contrat signé !')
             loadClients()
           }}
         />
@@ -1100,12 +1097,20 @@ function AgentClientsTab({ showBanner }) {
           onClose={() => setHistoryClient(null)}
         />
       )}
+
+      {contractClient && (
+        <ClientContractModal
+          client={contractClient}
+          onClose={() => setContractClient(null)}
+        />
+      )}
     </div>
   )
 }
 
-// Modal d'enregistrement d'un nouveau client avec numéros Mobile Money et Email utilisateur
+// Modal d'enregistrement d'un nouveau client avec numéros Mobile Money, Termes & Conditions et Signatures au doigt
 function AddClientModal({ onClose, onSuccess }) {
+  const [step, setStep] = useState(1) // 1 = Coordonnées, 2 = Termes & Signatures au doigt
   const [fullName, setFullName] = useState('')
   const [momoMtn, setMomoMtn] = useState('')
   const [momoOrange, setMomoOrange] = useState('')
@@ -1115,11 +1120,42 @@ function AddClientModal({ onClose, onSuccess }) {
   const [city, setCity] = useState('')
   const [dailyTarget, setDailyTarget] = useState(1000)
   const [cni, setCni] = useState('')
+
+  // Étape 2 : Termes & Signatures
+  const [termsText, setTermsText] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [loadingTerms, setLoadingTerms] = useState(false)
+  const [agentSignature, setAgentSignature] = useState('')
+  const [clientSignature, setClientSignature] = useState('')
+
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  // Charger les Termes & Conditions officiels fixés par le Super Admin
+  const loadTerms = async () => {
+    try {
+      setLoadingTerms(true)
+      const res = await collectApi.getConfig()
+      if (res?.termsAndConditions) {
+        setTermsText(res.termsAndConditions)
+      } else {
+        setTermsText(`1. Objet du Service : Le service de collecte journalière et d'épargne permet aux clients de confier un montant quotidien à un agent certifié KATD SCHULE pour constitution d'une épargne sécurisée.
+2. Déduction mensuelle : Des frais de tenue de compte de 1 100 FCFA sont prélevés mensuellement sur le compte de collecte du client.
+3. Disponibilité des fonds : Le client et le super administrateur peuvent ordonner le retrait des fonds vers les numéros Mobile Money enregistrés.
+4. Immuabilité et Transparence : Chaque versement quotidien enregistré donne lieu à une traçabilité inviolable sur la plateforme.`)
+      }
+    } catch {
+      setTermsText(`Termes et Conditions de Collecte Journalière KATD SCHULE :
+1. Dépôts quotidiens sécurisés et enregistrés en temps réel.
+2. Frais mensuels de gestion de 1 100 FCFA déduits chaque mois du solde client.
+3. Retraits disponibles via Mobile Money (MTN / Orange Money).`)
+    } finally {
+      setLoadingTerms(false)
+    }
+  }
+
+  const handleGoToStep2 = (e) => {
+    e?.preventDefault?.()
     const mtnVal = momoMtn.trim()
     const orangeVal = momoOrange.trim()
 
@@ -1136,6 +1172,29 @@ function AddClientModal({ onClose, onSuccess }) {
       return
     }
 
+    setErr('')
+    loadTerms()
+    setStep(2)
+  }
+
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.()
+    const mtnVal = momoMtn.trim()
+    const orangeVal = momoOrange.trim()
+
+    if (!termsAccepted) {
+      setErr('Veuillez cocher la case confirmant la prise de connaissance et l\'approbation des Termes & Conditions.')
+      return
+    }
+    if (!agentSignature) {
+      setErr('Veuillez apposer la signature numérique au doigt de l\'Agent de collecte.')
+      return
+    }
+    if (!clientSignature) {
+      setErr('Veuillez faire signer numériquement le Client avec son doigt sur l\'écran tactile.')
+      return
+    }
+
     setSaving(true)
     setErr('')
     try {
@@ -1149,6 +1208,9 @@ function AddClientModal({ onClose, onSuccess }) {
         city: city.trim(),
         dailyTarget: Number(dailyTarget),
         cni: cni.trim(),
+        agentSignature,
+        clientSignature,
+        termsContent: termsText,
       })
       onSuccess()
     } catch (e) {
@@ -1160,11 +1222,22 @@ function AddClientModal({ onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
-      <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl border border-gray-100 space-y-4 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-2 border-b border-gray-100">
           <div>
-            <h3 className="font-bold text-gray-900 text-base">Enregistrer un nouveau client</h3>
-            <p className="text-xs text-gray-500">Coordonnées Mobile Money pour les retraits sécurisés</p>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                Étape {step} / 2
+              </span>
+              <h3 className="font-bold text-gray-900 text-base">
+                {step === 1 ? 'Enregistrer un nouveau client' : 'Termes & Conditions et Signatures Numériques'}
+              </h3>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {step === 1
+                ? 'Coordonnées Mobile Money pour les retraits sécurisés'
+                : 'Signature obligatoire au doigt de l\'agent et du client pour officialiser le contrat'}
+            </p>
           </div>
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg">
             <X size={18} />
@@ -1178,145 +1251,237 @@ function AddClientModal({ onClose, onSuccess }) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Nom et Prénom du client *</label>
-            <input
-              type="text"
-              required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Ex : Amina Bello"
-              className="input text-xs w-full"
-            />
-          </div>
-
-          {/* Section Mobile Money obligatoire */}
-          <div className="p-3.5 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-3">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
-              <Smartphone size={15} className="text-amber-700" />
-              <span>Numéros Mobile Money du client (Obligatoire : au moins un) *</span>
-            </div>
-            <p className="text-[11px] text-amber-800">
-              Ces numéros apparaîtront automatiquement lors des retraits ordonnés par le client ou le Super Administrateur.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[11px] font-bold text-gray-700 block mb-1">Numéro MTN MoMo</label>
-                <input
-                  type="tel"
-                  value={momoMtn}
-                  onChange={(e) => setMomoMtn(e.target.value)}
-                  placeholder="Ex : 670000000"
-                  className="input text-xs w-full font-mono bg-white"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-gray-700 block mb-1">Numéro Orange Money</label>
-                <input
-                  type="tel"
-                  value={momoOrange}
-                  onChange={(e) => setMomoOrange(e.target.value)}
-                  placeholder="Ex : 690000000"
-                  className="input text-xs w-full font-mono bg-white"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+        {step === 1 ? (
+          <form onSubmit={handleGoToStep2} className="space-y-3.5">
             <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Téléphone d'appel (Optionnel)</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Ex : 690000000"
-                className="input text-xs w-full"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Quartier *</label>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Nom et Prénom du client *</label>
               <input
                 type="text"
                 required
-                value={neighborhood}
-                onChange={(e) => setNeighborhood(e.target.value)}
-                placeholder="Ex : Marché Central"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Ex : Amina Bello"
                 className="input text-xs w-full"
               />
             </div>
-          </div>
 
-          {/* Email utilisateur */}
-          <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-1.5">
-            <label className="text-xs font-bold text-blue-900 block flex items-center gap-1.5">
-              <Mail size={14} className="text-blue-700" /> Email Utilisateur KATD (Optionnel)
+            {/* Section Mobile Money obligatoire */}
+            <div className="p-3.5 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-3">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                <Smartphone size={15} className="text-amber-700" />
+                <span>Numéros Mobile Money du client (Obligatoire : au moins un) *</span>
+              </div>
+              <p className="text-[11px] text-amber-800">
+                Ces numéros apparaîtront automatiquement lors des retraits ordonnés par le client ou le Super Administrateur.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-1">Numéro MTN MoMo</label>
+                  <input
+                    type="tel"
+                    value={momoMtn}
+                    onChange={(e) => setMomoMtn(e.target.value)}
+                    placeholder="Ex : 670000000"
+                    className="input text-xs w-full font-mono bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-1">Numéro Orange Money</label>
+                  <input
+                    type="tel"
+                    value={momoOrange}
+                    onChange={(e) => setMomoOrange(e.target.value)}
+                    placeholder="Ex : 690000000"
+                    className="input text-xs w-full font-mono bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Téléphone d'appel (Optionnel)</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Ex : 690000000"
+                  className="input text-xs w-full"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Quartier *</label>
+                <input
+                  type="text"
+                  required
+                  value={neighborhood}
+                  onChange={(e) => setNeighborhood(e.target.value)}
+                  placeholder="Ex : Marché Central"
+                  className="input text-xs w-full"
+                />
+              </div>
+            </div>
+
+            {/* Email utilisateur */}
+            <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-1.5">
+              <label className="text-xs font-bold text-blue-900 block flex items-center gap-1.5">
+                <Mail size={14} className="text-blue-700" /> Email Utilisateur KATD (Optionnel)
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Ex : client@gmail.com"
+                className="input text-xs w-full bg-white font-mono"
+              />
+              <p className="text-[11px] text-blue-800">
+                Si le client a déjà un compte utilisateur KATD, son dashboard d'épargne dédié sera activé automatiquement. S'il n'en a pas encore, l'email sera associé dès sa future inscription.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-1">
+                <label className="text-xs font-bold text-gray-700 block mb-1">Ville</label>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="Ex : Douala"
+                  className="input text-xs w-full"
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="text-xs font-bold text-gray-700 block mb-1">Collecte/j</label>
+                <input
+                  type="number"
+                  min="100"
+                  step="100"
+                  value={dailyTarget}
+                  onChange={(e) => setDailyTarget(e.target.value)}
+                  className="input text-xs w-full font-bold"
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="text-xs font-bold text-gray-700 block mb-1">CNI (Optionnel)</label>
+                <input
+                  type="text"
+                  value={cni}
+                  onChange={(e) => setCni(e.target.value)}
+                  placeholder="Ex : 100234567"
+                  className="input text-xs w-full"
+                />
+              </div>
+            </div>
+
+            <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500">
+              💡 Frais mensuels de gestion : 1 100 FCFA déduits chaque mois du solde de ce client.
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button type="button" onClick={onClose} className="btn-secondary text-xs">
+                Annuler
+              </button>
+              <button
+                type="submit"
+                className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 font-bold"
+              >
+                <span>Continuer vers les Termes & Signatures</span>
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4 animate-fade-in">
+            {/* Boîte des termes et conditions */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                  <ShieldCheck size={15} className="text-emerald-600" />
+                  Termes & Conditions définis par le Super Administrateur
+                </label>
+                <span className="text-[10px] text-gray-400 font-mono">Contrat KATD SCHULE</span>
+              </div>
+              <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-2xl max-h-36 overflow-y-auto text-xs text-gray-700 whitespace-pre-line leading-relaxed shadow-inner">
+                {loadingTerms ? (
+                  <div className="py-4 text-center text-gray-400 flex items-center justify-center gap-2">
+                    <Loader2 size={16} className="animate-spin text-emerald-600" />
+                    <span>Chargement des termes contractuels...</span>
+                  </div>
+                ) : (
+                  termsText
+                )}
+              </div>
+            </div>
+
+            {/* Case à cocher d'approbation */}
+            <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 mt-0.5"
+              />
+              <span className="text-xs text-emerald-950 font-medium">
+                Nous (l'Agent et le Client <strong>{fullName}</strong>) déclarons avoir pris connaissance et accepté sans réserve l'intégralité des termes et conditions contractuels régissant la collecte journalière KATD SCHULE.
+              </span>
             </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Ex : client@gmail.com"
-              className="input text-xs w-full bg-white font-mono"
-            />
-            <p className="text-[11px] text-blue-800">
-              Si le client a déjà un compte utilisateur KATD, son dashboard d'épargne dédié sera activé automatiquement. S'il n'en a pas encore, l'email sera associé dès sa future inscription.
-            </p>
-          </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1">
-              <label className="text-xs font-bold text-gray-700 block mb-1">Ville</label>
-              <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="Ex : Douala"
-                className="input text-xs w-full"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="text-xs font-bold text-gray-700 block mb-1">Collecte/j</label>
-              <input
-                type="number"
-                min="100"
-                step="100"
-                value={dailyTarget}
-                onChange={(e) => setDailyTarget(e.target.value)}
-                className="input text-xs w-full font-bold"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="text-xs font-bold text-gray-700 block mb-1">CNI (Optionnel)</label>
-              <input
-                type="text"
-                value={cni}
-                onChange={(e) => setCni(e.target.value)}
-                placeholder="Ex : 100234567"
-                className="input text-xs w-full"
-              />
-            </div>
-          </div>
+            {/* Signatures numériques tactiles au doigt */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              <div className="space-y-1">
+                <SignaturePad
+                  label="1. Signature de l'Agent (au doigt)"
+                  onChange={(data) => setAgentSignature(data)}
+                />
+                <span className="text-[10px] text-gray-400 block px-1">
+                  Tracé tactile de l'agent certifié en charge du compte
+                </span>
+              </div>
 
-          <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500">
-            💡 Frais mensuels de gestion : 1 100 FCFA déduits chaque mois du solde de ce client.
-          </div>
+              <div className="space-y-1">
+                <SignaturePad
+                  label={`2. Signature du Client (${fullName || 'Client'})`}
+                  onChange={(data) => setClientSignature(data)}
+                />
+                <span className="text-[10px] text-gray-400 block px-1">
+                  Tracé tactile du client validant l'ouverture de son compte
+                </span>
+              </div>
+            </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-            <button type="button" onClick={onClose} className="btn-secondary text-xs">
-              Annuler
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 font-bold"
-            >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              <span>Enregistrer le client</span>
-            </button>
+            <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-900 flex items-center gap-2">
+              <FileText size={16} className="shrink-0 text-blue-600" />
+              <span>
+                Une copie officielle signée de ce contrat sera immédiatement transmise à l'Administrateur pour téléchargement et impression.
+              </span>
+            </div>
+
+            {/* Boutons d'action */}
+            <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="btn-secondary text-xs flex items-center gap-1.5"
+              >
+                ← Modifier les coordonnées
+              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={onClose} className="btn-secondary text-xs">
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={saving || !termsAccepted || !agentSignature || !clientSignature}
+                  className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  <span>Valider et Signer le Contrat</span>
+                </button>
+              </div>
+            </div>
           </div>
-        </form>
+        )}
       </div>
     </div>
   )

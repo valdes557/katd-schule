@@ -24,15 +24,28 @@ const collectClientSchema = new mongoose.Schema(
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     lastMonthlyFeeMonth: { type: String, default: '' },         // ex: '2026-10' pour déduction mensuelle 1100 FCFA
     notes: { type: String, default: '' },
+
+    // Signature numérique & Termes et Conditions signés par l'agent et le client
+    termsAccepted: { type: Boolean, default: false },
+    termsSignedAt: { type: Date, default: null },
+    agentSignature: { type: String, default: '' },              // Image Base64 de la signature de l'agent
+    clientSignature: { type: String, default: '' },             // Image Base64 de la signature du client
+    termsContent: { type: String, default: '' },                // Contenu des termes et conditions au moment de la signature
+    contractNumber: { type: String, default: '' },              // N° de contrat officiel (ex: CTR-2026-8910)
   },
   { timestamps: true }
 )
 
-// Génération automatique du numéro de compte client (ex: CL-849201)
+// Génération automatique du numéro de compte client (ex: CL-849201) et du contrat
 collectClientSchema.pre('save', async function (next) {
   if (!this.accountNumber) {
     const rnd = crypto.randomInt(100000, 999999)
     this.accountNumber = `CL-${rnd}`
+  }
+  if (!this.contractNumber) {
+    const year = new Date().getFullYear()
+    const rnd = crypto.randomInt(1000, 9999)
+    this.contractNumber = `CTR-${year}-${rnd}`
   }
   next()
 })

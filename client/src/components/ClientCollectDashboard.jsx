@@ -118,9 +118,17 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
       showToast(`Le montant dépasse votre solde d'épargne disponible (${fmt(curBalance)} FCFA).`, 'error')
       return
     }
-    if (withdrawMethod === 'momo' && !withdrawPhone) {
-      showToast('Veuillez saisir le numéro Mobile Money de réception.', 'error')
-      return
+
+    let finalPhone = ''
+    if (withdrawMethod === 'momo') {
+      finalPhone = withdrawOperator === 'mtn'
+        ? (data?.client?.momoMtn || data?.client?.phone || '')
+        : (data?.client?.momoOrange || data?.client?.phone || '')
+
+      if (!finalPhone) {
+        showToast(`Aucun numéro ${withdrawOperator === 'mtn' ? 'MTN MoMo' : 'Orange Money'} n'a été enregistré pour votre compte. Veuillez choisir l'autre opérateur ou contacter votre agent.`, 'error')
+        return
+      }
     }
 
     try {
@@ -128,9 +136,9 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
       const res = await collectApi.clientWithdraw({
         amount: amt,
         payoutMethod: withdrawMethod,
-        momoNumber: withdrawPhone,
+        momoNumber: finalPhone,
         momoOperator: withdrawOperator,
-        accountName: withdrawName,
+        accountName: data?.client?.fullName || withdrawName,
         country: 'CM',
       })
       showToast(res.message || 'Retrait effectué avec succès !')
@@ -269,7 +277,7 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
               </div>
               {stats.todayStatus === 'paye' ? (
                 <span className="px-3 py-1 rounded-xl text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-700">
-                  Payé
+                  Collecté
                 </span>
               ) : (
                 <span className="px-3 py-1 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-700">
@@ -342,11 +350,11 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                     key={item.day}
                     title={`${item.date} : ${
                       item.status === 'paye'
-                        ? `Payé (${fmt(item.amount)}F)`
+                        ? `Collecté (${fmt(item.amount)}F)`
                         : item.status === 'manque'
                         ? 'Manqué'
                         : item.status === 'en_attente'
-                        ? "Aujourd'hui (en attente de paiement)"
+                        ? "Aujourd'hui (en attente de collecte)"
                         : 'À venir'
                     }`}
                     className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold transition-transform hover:scale-105 cursor-default ${bgClass}`}
@@ -361,7 +369,7 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
             <div className="flex items-center justify-center gap-5 mt-5 text-xs font-semibold text-gray-700">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#0f9755]" />
-                <span>Payé</span>
+                <span>Collecté</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#e24438]" />
@@ -434,7 +442,7 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
             <div className="grid grid-cols-3 gap-2 pt-2 text-center text-xs">
               <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-150">
                 <div className="text-emerald-600 font-black text-base">{stats.paidDaysCount}</div>
-                <div className="text-gray-500 font-medium text-[10px]">Jours Payés</div>
+                <div className="text-gray-500 font-medium text-[10px]">Jours Collectés</div>
               </div>
               <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-150">
                 <div className="text-red-500 font-black text-base">
@@ -827,54 +835,85 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                 </div>
               </div>
 
-              {/* Paramètres Momo */}
+              {/* Paramètres Momo avec sélection automatique du numéro enregistré */}
               {withdrawMethod === 'momo' && (
-                <div className="space-y-3 p-3 bg-red-50/40 border border-red-200 rounded-2xl animate-fade-in">
+                <div className="space-y-3 p-3.5 bg-red-50/40 border border-red-200 rounded-2xl animate-fade-in">
                   <div>
-                    <label className="font-bold text-gray-700 block mb-1">Opérateur</label>
+                    <label className="font-bold text-gray-700 block mb-1.5">Opérateur Mobile Money *</label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => setWithdrawOperator('mtn')}
-                        className={`py-2 px-3 rounded-xl font-bold border text-xs ${
-                          withdrawOperator === 'mtn' ? 'bg-[#ffcc00] text-black border-amber-500' : 'bg-white text-gray-600 border-gray-200'
+                        className={`py-2 px-3 rounded-xl font-bold border text-xs text-left transition-all ${
+                          withdrawOperator === 'mtn' ? 'bg-[#ffcc00] text-black border-amber-500 ring-2 ring-amber-400/40' : 'bg-white text-gray-600 border-gray-200'
                         }`}
                       >
-                        MTN MoMo
+                        <div className="flex items-center justify-between">
+                          <span>MTN MoMo</span>
+                          {data?.client?.momoMtn && <span className="text-[10px] bg-black/10 px-1.5 py-0.2 rounded font-mono">Lié</span>}
+                        </div>
+                        <div className="text-[10px] opacity-75 font-mono truncate mt-0.5">
+                          {data?.client?.momoMtn || 'Non renseigné'}
+                        </div>
                       </button>
                       <button
                         type="button"
                         onClick={() => setWithdrawOperator('orange')}
-                        className={`py-2 px-3 rounded-xl font-bold border text-xs ${
-                          withdrawOperator === 'orange' ? 'bg-[#ff6600] text-white border-orange-600' : 'bg-white text-gray-600 border-gray-200'
+                        className={`py-2 px-3 rounded-xl font-bold border text-xs text-left transition-all ${
+                          withdrawOperator === 'orange' ? 'bg-[#ff6600] text-white border-orange-600 ring-2 ring-orange-400/40' : 'bg-white text-gray-600 border-gray-200'
                         }`}
                       >
-                        Orange Money
+                        <div className="flex items-center justify-between">
+                          <span>Orange Money</span>
+                          {data?.client?.momoOrange && <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded font-mono">Lié</span>}
+                        </div>
+                        <div className="text-[10px] opacity-90 font-mono truncate mt-0.5">
+                          {data?.client?.momoOrange || 'Non renseigné'}
+                        </div>
                       </button>
                     </div>
                   </div>
-                  <div>
-                    <label className="font-bold text-gray-700 block mb-1">Numéro de réception</label>
-                    <input
-                      type="tel"
-                      required
-                      value={withdrawPhone}
-                      onChange={(e) => setWithdrawPhone(e.target.value)}
-                      placeholder="Ex: 6XXXXXXXX"
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#e24438] bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-gray-700 block mb-1">Nom du titulaire</label>
-                    <input
-                      type="text"
-                      required
-                      value={withdrawName}
-                      onChange={(e) => setWithdrawName(e.target.value)}
-                      placeholder="Nom complet"
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#e24438] bg-white"
-                    />
-                  </div>
+
+                  {/* Numéro automatiquement sélectionné (aucun remplissage manuel requis) */}
+                  {(() => {
+                    const activePhone = withdrawOperator === 'mtn'
+                      ? (data?.client?.momoMtn || data?.client?.phone || '')
+                      : (data?.client?.momoOrange || data?.client?.phone || '')
+
+                    if (!activePhone) {
+                      return (
+                        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-[11px] space-y-1">
+                          <p className="font-bold">⚠️ Numéro {withdrawOperator === 'mtn' ? 'MTN MoMo' : 'Orange Money'} non enregistré</p>
+                          <p className="text-gray-600">
+                            Votre agent n'a pas renseigné ce numéro lors de votre inscription. Veuillez basculer sur l'autre opérateur ou demander à votre agent de mettre à jour votre profil.
+                          </p>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div className="p-3 bg-white border border-gray-200 rounded-xl space-y-1.5 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                            Numéro de réception automatique
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle2 size={11} /> Compte certifié
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between font-mono font-black text-sm text-gray-900">
+                          <span>📱 {activePhone}</span>
+                          <span className="text-[11px] font-sans font-bold text-gray-500">
+                            {withdrawOperator === 'mtn' ? 'MTN Cameroon' : 'Orange Cameroun'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-500 border-t border-gray-100 pt-1 flex items-center justify-between">
+                          <span>Titulaire enregistré :</span>
+                          <strong className="text-gray-800">{data?.client?.fullName}</strong>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
 

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { collectApi } from '../lib/api'
+import ClientContractModal from '../components/ClientContractModal'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
@@ -408,11 +409,12 @@ export default function AdminCollectPage() {
   )
 }
 
-// Modal pour voir tous les clients et collectes d'un agent avec retrait Super Administrateur
+// Modal pour voir tous les clients et collectes d'un agent avec retrait Super Administrateur & Contrat
 function AgentClientsModal({ agent, onClose }) {
   const [details, setDetails] = useState(null)
   const [loading, setLoading] = useState(true)
   const [withdrawClient, setWithdrawClient] = useState(null)
+  const [contractClient, setContractClient] = useState(null)
   const [msg, setMsg] = useState({ text: '', type: '' })
 
   const loadAgentDetails = () => {
@@ -506,17 +508,26 @@ function AgentClientsModal({ agent, onClose }) {
                             <td className="py-2.5 px-3 text-right text-gray-600 whitespace-nowrap">{fmt(c.dailyTarget)} F</td>
                             <td className="py-2.5 px-3 text-right font-black text-emerald-700 whitespace-nowrap">{fmt(c.balance)} F</td>
                             <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                              {c.balance > 0 ? (
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button
-                                  onClick={() => setWithdrawClient(c)}
-                                  className="px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-colors border border-rose-200 shadow-2xs"
-                                  title="Retirer / Décaisser pour ce client"
+                                  onClick={() => setContractClient(c)}
+                                  className="px-2.5 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-colors border border-slate-200"
+                                  title="Consulter, télécharger et imprimer le contrat signé avec signatures numériques"
                                 >
-                                  <ArrowDownCircle size={13} /> Retirer
+                                  <FileText size={13} /> Contrat
                                 </button>
-                              ) : (
-                                <span className="text-[11px] text-gray-400">Solde nul</span>
-                              )}
+                                {c.balance > 0 ? (
+                                  <button
+                                    onClick={() => setWithdrawClient(c)}
+                                    className="px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-colors border border-rose-200 shadow-2xs"
+                                    title="Retirer / Décaisser pour ce client"
+                                  >
+                                    <ArrowDownCircle size={13} /> Retirer
+                                  </button>
+                                ) : (
+                                  <span className="text-[11px] text-gray-400">Solde nul</span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -539,7 +550,7 @@ function AgentClientsModal({ agent, onClose }) {
                         <div>
                           <span className="font-bold text-gray-900">Rapport du {fmtDate(rep.date)}</span>
                           <span className="text-gray-500 block text-[11px]">
-                            {rep.totalClients} client(s) • {rep.paidClientsCount} payé(s) • {rep.unpaidClientsCount} non payé(s)
+                            {rep.totalClients} client(s) • {rep.paidClientsCount} collecté(s) • {rep.unpaidClientsCount} non payé(s)
                           </span>
                         </div>
                         <div className="font-black text-emerald-700">{fmt(rep.totalCollected)} XAF</div>
@@ -568,6 +579,14 @@ function AgentClientsModal({ agent, onClose }) {
             showModalMsg(`Retrait validé avec succès pour ${updated.fullName || withdrawClient.fullName} !`)
             loadAgentDetails()
           }}
+        />
+      )}
+
+      {contractClient && (
+        <ClientContractModal
+          client={contractClient}
+          agent={agent}
+          onClose={() => setContractClient(null)}
         />
       )}
     </div>
@@ -710,16 +729,32 @@ function AdminClientWithdrawModal({ client, onClose, onSuccess }) {
           {(payoutMethod === 'momo_mtn' || payoutMethod === 'momo_orange') && (
             <div>
               <label className="text-xs font-bold text-gray-700 block mb-1">
-                Numéro Mobile Money destinataire (pré-rempli automatiquement) *
+                Numéro Mobile Money du client (sélectionné automatiquement) *
               </label>
-              <input
-                type="tel"
-                required
-                value={customPhone}
-                onChange={(e) => setCustomPhone(e.target.value)}
-                placeholder="Ex : 670000000"
-                className="input text-xs w-full font-mono font-bold"
-              />
+              {(() => {
+                const autoPhone = payoutMethod === 'momo_mtn'
+                  ? (client.momoMtn || client.phone)
+                  : (client.momoOrange || client.phone)
+
+                if (!autoPhone) {
+                  return (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+                      ⚠️ Aucun numéro {payoutMethod === 'momo_mtn' ? 'MTN MoMo' : 'Orange Money'} enregistré pour ce client. Veuillez basculer sur l'autre opérateur ou vers le portefeuille.
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="p-3 bg-white border border-gray-200 rounded-xl flex items-center justify-between shadow-2xs">
+                    <div className="font-mono font-black text-sm text-gray-900">
+                      📱 {autoPhone}
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      {payoutMethod === 'momo_mtn' ? 'MTN Certifié' : 'Orange Certifié'}
+                    </span>
+                  </div>
+                )
+              })()}
             </div>
           )}
 

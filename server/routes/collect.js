@@ -418,37 +418,28 @@ router.post('/agent/daily', protect, async (req, res) => {
 
     const finalNeighborhood = String(neighborhood || client.neighborhood || '').trim()
 
-    // Vérifie s'il existe déjà une saisie pour ce client à cette date
-    let col = await DailyCollection.findOne({ client: client._id, date: collectionDate })
-    if (col) {
-      if (col.status === 'paye') {
-        client.balance -= col.amount
-      }
-      col.agent = agent._id
-      col.agentUser = req.user._id
-      col.amount = amt
-      col.neighborhood = finalNeighborhood
-      col.status = status
-      col.paymentMethod = paymentMethod
-      col.notes = notes || ''
-      col.datetime = new Date()
-      await col.save()
-    } else {
-      col = await DailyCollection.create({
-        agent: agent._id,
-        agentUser: req.user._id,
-        client: client._id,
-        clientName: client.fullName,
-        clientPhone: client.phone,
-        neighborhood: finalNeighborhood,
-        date: collectionDate,
-        amount: amt,
-        status,
-        paymentMethod,
-        notes: notes || '',
-        datetime: new Date(),
+    // Vérifie s'il existe déjà une saisie pour ce client à cette date : RÈGLE STRICTE, IMMUABLE
+    const existingCol = await DailyCollection.findOne({ client: client._id, date: collectionDate })
+    if (existingCol) {
+      return res.status(400).json({
+        message: "La collecte pour ce client a déjà été enregistrée pour cette date (" + collectionDate + ") avec le statut " + (existingCol.status === 'paye' ? 'Collecté' : 'Non payé') + ". Elle ne peut plus être modifiée.",
       })
     }
+
+    const col = await DailyCollection.create({
+      agent: agent._id,
+      agentUser: req.user._id,
+      client: client._id,
+      clientName: client.fullName,
+      clientPhone: client.phone,
+      neighborhood: finalNeighborhood,
+      date: collectionDate,
+      amount: amt,
+      status,
+      paymentMethod,
+      notes: notes || '',
+      datetime: new Date(),
+    })
 
     if (status === 'paye') {
       client.balance += amt
@@ -468,48 +459,11 @@ router.post('/agent/daily', protect, async (req, res) => {
   }
 })
 
-// PUT /api/collect/agent/daily/:id — Modifie une ligne de collecte mal renseignée
+// PUT /api/collect/agent/daily/:id — Interdit : la collecte créée est immuable
 router.put('/agent/daily/:id', protect, async (req, res) => {
-  try {
-    const agent = await CollectAgent.findOne({ user: req.user._id })
-    if (!agent || agent.status !== 'active') {
-      return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
-    }
-
-    const col = await DailyCollection.findOne({ _id: req.params.id, agent: agent._id })
-    if (!col) return res.status(404).json({ message: 'Ligne de collecte introuvable' })
-
-    const client = await CollectClient.findById(col.client)
-    if (!client) return res.status(404).json({ message: 'Client associé introuvable' })
-
-    const { amount, neighborhood, status, paymentMethod, notes } = req.body
-
-    // Annule l'effet précédent sur le solde client
-    if (col.status === 'paye') {
-      client.balance -= col.amount
-    }
-
-    const newAmt = amount !== undefined ? Number(amount) : col.amount
-    const newStatus = status !== undefined ? status : col.status
-
-    col.amount = newAmt
-    if (neighborhood) col.neighborhood = String(neighborhood).trim()
-    col.status = newStatus
-    if (paymentMethod) col.paymentMethod = paymentMethod
-    if (notes !== undefined) col.notes = notes
-
-    await col.save()
-
-    // Applique le nouveau solde si payé
-    if (newStatus === 'paye') {
-      client.balance += newAmt
-    }
-    await client.save()
-
-    res.json({ success: true, message: 'Ligne de collecte mise à jour', collection: col, newClientBalance: client.balance })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
+  return res.status(403).json({
+    message: "Règle de sécurité : L'agent ne peut pas modifier le statut ou les informations d'une collecte déjà enregistrée.",
+  })
 })
 
 // DELETE /api/collect/agent/daily/:id — Supprime une saisie erronée
@@ -588,7 +542,7 @@ router.post('/agent/clients', protect, async (req, res) => {
       return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
     }
 
-    const { fullName, phone, momoMtn, momoOrange, email, neighborhood, city, cni, dailyTarget, monthlyTarget, notes } = req.body
+    const { fullName, phone, momoMtn, momoOrange, email, neighborhood, city, cni, dailyTarget, monthlyTarget, notes, agentSignature, clientSignature, termsContent } = req.body
     if (!fullName || !String(fullName).trim()) {
       return res.status(400).json({ message: 'Nom et prénom du client requis' })
     }
@@ -603,6 +557,12 @@ router.post('/agent/clients', protect, async (req, res) => {
 
     if (!neighborhood || !String(neighborhood).trim()) {
       return res.status(400).json({ message: 'Quartier obligatoire' })
+    }
+
+    if (!agentSignature || !clientSignature) {
+      return res.status(400).json({
+        message: "La signature numérique au doigt de l'agent et du client sur les Termes & Conditions est obligatoire pour créer le compte.",
+      })
     }
 
     const cleanPh = String(phone || mtnVal || orangeVal || '').replace(/[^0-9]/g, '')
@@ -624,6 +584,9 @@ router.post('/agent/clients', protect, async (req, res) => {
     const dTarget = Number(dailyTarget) || 1000
     const mTarget = Number(monthlyTarget) || (dTarget * 31)
 
+    const cfg = await CollectConfig.getOrCreate()
+    const finalTerms = String(termsContent || cfg.termsAndConditions || '')
+
     const client = await CollectClient.create({
       agent: agent._id,
       agentUser: req.user._id,
@@ -640,6 +603,11 @@ router.post('/agent/clients', protect, async (req, res) => {
       monthlyTarget: mTarget,
       balance: 0,
       notes: notes || '',
+      termsAccepted: true,
+      termsSignedAt: new Date(),
+      agentSignature: String(agentSignature || '').trim(),
+      clientSignature: String(clientSignature || '').trim(),
+      termsContent: finalTerms,
     })
 
     // Déduction des frais mensuels (1 100 FCFA) pour ce client
@@ -727,6 +695,9 @@ router.post('/agent/activate-by-email', protect, async (req, res) => {
       monthlyTarget: mTarget,
       balance: 0,
       notes: targetUser ? ("Activé par email via le compte utilisateur de " + targetUser.name) : 'Pré-activé par email',
+      termsAccepted: true,
+      termsSignedAt: new Date(),
+      termsContent: (await CollectConfig.getOrCreate()).termsAndConditions,
     })
 
     await applyMonthlyFeesForAgent(agent._id)
