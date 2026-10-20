@@ -149,16 +149,24 @@ router.get('/my-agent-status', protect, async (req, res) => {
     const agent = await CollectAgent.findOne({ user: req.user._id })
     const cfg = await CollectConfig.getOrCreate()
 
-    // Vérifie si l'utilisateur est un client enregistré par un agent
+    // Vérifie si l'utilisateur est un client enregistré par un agent (par user._id, email ou téléphone)
     const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
+    const userEmail = String(req.user.email || '').trim().toLowerCase()
     let clientDoc = await CollectClient.findOne({ user: req.user._id }).populate('agent')
-    if (!clientDoc && cleanPh) {
-      clientDoc = await CollectClient.findOne({
-        phone: new RegExp(cleanPh.slice(-9) + '$'),
-      }).populate('agent')
-      if (clientDoc && !clientDoc.user) {
-        clientDoc.user = req.user._id
-        await clientDoc.save()
+    if (!clientDoc) {
+      const orConds = []
+      if (userEmail) orConds.push({ email: userEmail })
+      if (cleanPh) {
+        const phEnd = cleanPh.slice(-9)
+        const phReg = new RegExp(phEnd + '$')
+        orConds.push({ phone: phReg }, { momoMtn: phReg }, { momoOrange: phReg })
+      }
+      if (orConds.length > 0) {
+        clientDoc = await CollectClient.findOne({ $or: orConds }).populate('agent')
+        if (clientDoc && !clientDoc.user) {
+          clientDoc.user = req.user._id
+          await clientDoc.save()
+        }
       }
     }
 
@@ -321,7 +329,7 @@ router.get('/agent/daily', protect, async (req, res) => {
   }
 })
 
-// POST /api/collect/agent/daily — Enregistre une collecte journalière
+// POST /api/collect/agent/daily — Enregistre une collecte journalière en argent réel
 router.post('/agent/daily', protect, async (req, res) => {
   try {
     const agent = await CollectAgent.findOne({ user: req.user._id })
@@ -329,23 +337,95 @@ router.post('/agent/daily', protect, async (req, res) => {
       return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
     }
 
-    const { clientId, amount, neighborhood, status = 'paye', paymentMethod = 'especes', notes, date } = req.body
+    const { clientId, amount, neighborhood, status = 'paye', paymentMethod = 'wallet', momoPhone, momoOperator = 'mtn', country = 'CM', otp, notes, date } = req.body
     if (!clientId) return res.status(400).json({ message: 'Client obligatoire' })
 
-    const client = await CollectClient.findOne({ _id: clientId, agent: agent._id })
-    if (!client) return res.status(404).json({ message: 'Client introuvable dans votre agence' })
+    const agentNeighborhood = String(agent.neighborhood || '').trim().toLowerCase()
+    let client = await CollectClient.findById(clientId)
+    if (!client) return res.status(404).json({ message: 'Client introuvable' })
+
+    const clientNeighborhood = String(client.neighborhood || '').trim().toLowerCase()
+    const isAllowed = client.agent.equals(agent._id) || (agentNeighborhood && clientNeighborhood === agentNeighborhood)
+    if (!isAllowed) {
+      return res.status(403).json({ message: "Vous n'avez pas l'autorisation de collecter pour un client situé hors de votre zone" })
+    }
 
     const collectionDate = date || getTodayStr()
     const amt = Number(amount) || 0
+    if (status === 'paye' && amt <= 0) {
+      return res.status(400).json({ message: 'Le montant de la collecte doit être supérieur à 0' })
+    }
+
+    // SI LE STATUT EST 'PAYE' : PAIEMENT EN ARGENT RÉEL EXIGÉ
+    if (status === 'paye') {
+      if (paymentMethod === 'wallet') {
+        // Débit en argent réel du portefeuille de l'agent
+        try {
+          await wallet.debit(req.user._id, {
+            amount: amt,
+            type: 'transfer_sent',
+            description: "Collecte journalière client : " + client.fullName + " (" + client.accountNumber + ")",
+            meta: {
+              reason: 'agent_collect_pay',
+              clientId: String(client._id),
+              agentId: String(agent._id),
+            },
+          })
+        } catch (walletErr) {
+          return res.status(400).json({
+            message: "Solde insuffisant dans votre portefeuille pour régler cette collecte (" + amt.toLocaleString('fr-FR') + " FCFA). Veuillez recharger votre portefeuille ou choisir Mobile Money.",
+          })
+        }
+      } else if (paymentMethod === 'momo' || paymentMethod === 'mtn' || paymentMethod === 'orange') {
+        const phoneToUse = momoPhone || agent.phone
+        const opToUse = momoOperator || (paymentMethod === 'orange' ? 'orange' : 'mtn')
+        if (!phoneToUse) {
+          return res.status(400).json({ message: 'Numéro de téléphone Mobile Money requis pour le paiement' })
+        }
+
+        const PaymentIntent = require('../models/PaymentIntent')
+        const providerRef = "col_agent_" + Date.now()
+        const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
+
+        const pi = await PaymentIntent.create({
+          user: req.user._id,
+          type: 'collect_deposit',
+          amount: amt,
+          currency: country === 'CM' ? 'XAF' : 'XOF',
+          provider: 'ikeepay',
+          providerRef,
+          meta: { agentId: String(agent._id), clientId: String(client._id), clientName: client.fullName },
+        })
+
+        const directRes = await ikeepay.createDirectCharge({
+          amount: amt,
+          phone: phoneToUse,
+          operator: opToUse,
+          country,
+          currency: country === 'CM' ? 'XAF' : 'XOF',
+          reference: providerRef,
+          otp,
+          callbackUrl: base + "/api/payments/webhook",
+        })
+
+        if (directRes.status === 'approved' || directRes.status === 'success') {
+          pi.status = 'approved'
+          pi.fulfilled = true
+          await pi.save()
+        }
+      }
+    }
+
     const finalNeighborhood = String(neighborhood || client.neighborhood || '').trim()
 
     // Vérifie s'il existe déjà une saisie pour ce client à cette date
     let col = await DailyCollection.findOne({ client: client._id, date: collectionDate })
     if (col) {
-      // Ajuste l'ancien solde si le statut précédent était 'paye'
       if (col.status === 'paye') {
         client.balance -= col.amount
       }
+      col.agent = agent._id
+      col.agentUser = req.user._id
       col.amount = amt
       col.neighborhood = finalNeighborhood
       col.status = status
@@ -370,13 +450,19 @@ router.post('/agent/daily', protect, async (req, res) => {
       })
     }
 
-    // Si payé : on crédite le compte du client
     if (status === 'paye') {
       client.balance += amt
     }
     await client.save()
 
-    res.json({ success: true, message: 'Collecte enregistrée avec succès', collection: col, newClientBalance: client.balance })
+    res.json({
+      success: true,
+      message: status === 'paye'
+        ? "Collecte de " + amt.toLocaleString('fr-FR') + " FCFA réglée et créditée avec succès."
+        : 'Statut non payé enregistré pour ce jour.',
+      collection: col,
+      newClientBalance: client.balance,
+    })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -463,10 +549,19 @@ router.get('/agent/clients', protect, async (req, res) => {
     }
 
     const today = getTodayStr()
-    const clients = await CollectClient.find({ agent: agent._id }).sort({ createdAt: -1 }).lean()
+    const agentZone = String(agent.neighborhood || '').trim()
+    const zoneQuery = agentZone ? [{ neighborhood: new RegExp('^' + agentZone + '$', 'i') }] : []
+    const query = {
+      $or: [
+        { agent: agent._id },
+        ...zoneQuery
+      ]
+    }
+    const clients = await CollectClient.find(query).sort({ createdAt: -1 }).lean()
 
     // Récupère les statuts du jour pour chaque client
-    const todayCols = await DailyCollection.find({ agent: agent._id, date: today }).lean()
+    const clientIds = clients.map((c) => c._id)
+    const todayCols = await DailyCollection.find({ client: { $in: clientIds }, date: today }).lean()
     const todayMap = {}
     for (const c of todayCols) {
       todayMap[String(c.client)] = c
@@ -474,6 +569,7 @@ router.get('/agent/clients', protect, async (req, res) => {
 
     const enriched = clients.map((c) => ({
       ...c,
+      isOwnClient: String(c.agent) === String(agent._id),
       todayCollection: todayMap[String(c._id)] || null,
       todayStatus: todayMap[String(c._id)] ? todayMap[String(c._id)].status : 'en_attente',
     }))
@@ -484,7 +580,7 @@ router.get('/agent/clients', protect, async (req, res) => {
   }
 })
 
-// POST /api/collect/agent/clients — Ajout d'un nouveau client
+// POST /api/collect/agent/clients — Ajout d'un nouveau client avec numéros Mobile Money et email utilisateur
 router.post('/agent/clients', protect, async (req, res) => {
   try {
     const agent = await CollectAgent.findOne({ user: req.user._id })
@@ -492,20 +588,31 @@ router.post('/agent/clients', protect, async (req, res) => {
       return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
     }
 
-    const { fullName, phone, neighborhood, city, cni, dailyTarget, monthlyTarget, notes } = req.body
+    const { fullName, phone, momoMtn, momoOrange, email, neighborhood, city, cni, dailyTarget, monthlyTarget, notes } = req.body
     if (!fullName || !String(fullName).trim()) {
       return res.status(400).json({ message: 'Nom et prénom du client requis' })
     }
-    if (!phone || !String(phone).trim()) {
-      return res.status(400).json({ message: 'Numéro de téléphone requis' })
+
+    const mtnVal = String(momoMtn || '').trim()
+    const orangeVal = String(momoOrange || '').trim()
+    if (!mtnVal && !orangeVal) {
+      return res.status(400).json({
+        message: 'Veuillez obligatoirement renseigner au moins un numéro Mobile Money (MTN MoMo ou Orange Money) pour le client.',
+      })
     }
+
     if (!neighborhood || !String(neighborhood).trim()) {
       return res.status(400).json({ message: 'Quartier obligatoire' })
     }
 
-    const cleanPh = String(phone || '').replace(/[^0-9]/g, '')
+    const cleanPh = String(phone || mtnVal || orangeVal || '').replace(/[^0-9]/g, '')
+    const cleanEmail = String(email || '').trim().toLowerCase()
+
     let linkedUser = null
-    if (cleanPh) {
+    if (cleanEmail) {
+      linkedUser = await User.findOne({ email: cleanEmail })
+    }
+    if (!linkedUser && cleanPh) {
       linkedUser = await User.findOne({
         $or: [
           { phone: cleanPh },
@@ -522,7 +629,10 @@ router.post('/agent/clients', protect, async (req, res) => {
       agentUser: req.user._id,
       user: linkedUser ? linkedUser._id : null,
       fullName: String(fullName).trim(),
-      phone: String(phone).trim(),
+      phone: String(phone || mtnVal || orangeVal).trim(),
+      email: cleanEmail,
+      momoMtn: mtnVal,
+      momoOrange: orangeVal,
       neighborhood: String(neighborhood).trim(),
       city: String(city || agent.city || '').trim(),
       cni: String(cni || '').trim(),
@@ -535,7 +645,99 @@ router.post('/agent/clients', protect, async (req, res) => {
     // Déduction des frais mensuels (1 100 FCFA) pour ce client
     await applyMonthlyFeesForAgent(agent._id)
 
-    res.json({ success: true, message: 'Client enregistré avec succès', client })
+    res.json({
+      success: true,
+      message: linkedUser
+        ? "Client enregistré et rattaché au compte utilisateur de " + linkedUser.name + " avec succès !"
+        : 'Client enregistré avec succès.',
+      client,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/collect/agent/activate-by-email — Activer directement le compte collecte d'un utilisateur par son email
+router.post('/agent/activate-by-email', protect, async (req, res) => {
+  try {
+    const agent = await CollectAgent.findOne({ user: req.user._id })
+    if (!agent || agent.status !== 'active') {
+      return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
+    }
+
+    const { email, dailyTarget, monthlyTarget, momoMtn, momoOrange, neighborhood } = req.body
+    if (!email || !String(email).trim()) {
+      return res.status(400).json({ message: "L'adresse email utilisateur est obligatoire" })
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase()
+    const targetUser = await User.findOne({ email: cleanEmail })
+
+    // Vérifie si cet utilisateur possède déjà un compte collecte
+    const existingClient = await CollectClient.findOne({
+      $or: [
+        ...(targetUser ? [{ user: targetUser._id }] : []),
+        { email: cleanEmail },
+      ],
+    })
+
+    if (existingClient) {
+      if (targetUser && !existingClient.user) {
+        existingClient.user = targetUser._id
+        await existingClient.save()
+      }
+      return res.status(400).json({
+        message: "Cet utilisateur (" + existingClient.fullName + ") possède déjà un compte collecte actif (N° " + existingClient.accountNumber + ").",
+        client: existingClient,
+      })
+    }
+
+    const mtnVal = String(momoMtn || '').trim()
+    const orangeVal = String(momoOrange || '').trim()
+    const userPhone = targetUser?.phone || ''
+
+    let finalMtn = mtnVal
+    let finalOrange = orangeVal
+    if (!finalMtn && !finalOrange && userPhone) {
+      if (/^(237)?(67|68|650|651|652|653|654)/.test(userPhone)) finalMtn = userPhone
+      else finalOrange = userPhone
+    }
+
+    if (!finalMtn && !finalOrange) {
+      return res.status(400).json({
+        message: 'Veuillez obligatoirement renseigner au moins un numéro Mobile Money (MTN MoMo ou Orange Money) pour ce client.',
+      })
+    }
+
+    const dTarget = Number(dailyTarget) || 1000
+    const mTarget = Number(monthlyTarget) || (dTarget * 31)
+
+    const client = await CollectClient.create({
+      agent: agent._id,
+      agentUser: req.user._id,
+      user: targetUser ? targetUser._id : null,
+      fullName: targetUser?.name ? targetUser.name : ("Client (" + cleanEmail.split('@')[0] + ")"),
+      phone: userPhone || finalMtn || finalOrange,
+      email: cleanEmail,
+      momoMtn: finalMtn,
+      momoOrange: finalOrange,
+      neighborhood: String(neighborhood || agent.neighborhood || 'Quartier principal').trim(),
+      city: String(agent.city || '').trim(),
+      dailyTarget: dTarget,
+      monthlyTarget: mTarget,
+      balance: 0,
+      notes: targetUser ? ("Activé par email via le compte utilisateur de " + targetUser.name) : 'Pré-activé par email',
+    })
+
+    await applyMonthlyFeesForAgent(agent._id)
+
+    res.json({
+      success: true,
+      message: targetUser
+        ? "Compte collecte activé avec succès pour l'utilisateur " + targetUser.name + " ! Dès sa prochaine connexion, son dashboard d'épargne sera immédiatement opérationnel."
+        : "Compte collecte pré-activé pour " + cleanEmail + ". Dès qu'il créera son compte utilisateur, il y aura directement accès.",
+      client,
+    })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -547,8 +749,14 @@ router.get('/agent/clients/:id', protect, async (req, res) => {
     const agent = await CollectAgent.findOne({ user: req.user._id })
     if (!agent) return res.status(403).json({ message: 'Accès refusé' })
 
-    const client = await CollectClient.findOne({ _id: req.params.id, agent: agent._id })
+    const client = await CollectClient.findById(req.params.id)
     if (!client) return res.status(404).json({ message: 'Client introuvable' })
+    const agentZone = String(agent.neighborhood || '').trim().toLowerCase()
+    const clientZone = String(client.neighborhood || '').trim().toLowerCase()
+    const isAllowed = client.agent.equals(agent._id) || (agentZone && clientZone === agentZone)
+    if (!isAllowed) {
+      return res.status(403).json({ message: "Vous n'avez pas l'autorisation d'approvisionner un client hors de votre zone" })
+    }
 
     const collections = await DailyCollection.find({ client: client._id }).sort({ date: -1 }).limit(100)
     const fees = await CollectFeeRecord.find({ client: client._id }).sort({ month: -1 })
@@ -565,12 +773,27 @@ router.put('/agent/clients/:id', protect, async (req, res) => {
     const agent = await CollectAgent.findOne({ user: req.user._id })
     if (!agent || agent.status !== 'active') return res.status(403).json({ message: 'Accès refusé' })
 
-    const client = await CollectClient.findOne({ _id: req.params.id, agent: agent._id })
+    const client = await CollectClient.findById(req.params.id)
     if (!client) return res.status(404).json({ message: 'Client introuvable' })
+    const agentZone = String(agent.neighborhood || '').trim().toLowerCase()
+    const clientZone = String(client.neighborhood || '').trim().toLowerCase()
+    const isAllowed = client.agent.equals(agent._id) || (agentZone && clientZone === agentZone)
+    if (!isAllowed) {
+      return res.status(403).json({ message: "Vous n'avez pas l'autorisation d'approvisionner un client hors de votre zone" })
+    }
 
-    const { fullName, phone, neighborhood, city, cni, dailyTarget, status, notes } = req.body
+    const { fullName, phone, momoMtn, momoOrange, email, neighborhood, city, cni, dailyTarget, status, notes } = req.body
     if (fullName) client.fullName = String(fullName).trim()
     if (phone) client.phone = String(phone).trim()
+    if (momoMtn !== undefined) client.momoMtn = String(momoMtn).trim()
+    if (momoOrange !== undefined) client.momoOrange = String(momoOrange).trim()
+    if (email !== undefined) {
+      client.email = String(email).trim().toLowerCase()
+      if (client.email && !client.user) {
+        const u = await User.findOne({ email: client.email })
+        if (u) client.user = u._id
+      }
+    }
     if (neighborhood) client.neighborhood = String(neighborhood).trim()
     if (city !== undefined) client.city = String(city).trim()
     if (cni !== undefined) client.cni = String(cni).trim()
@@ -994,14 +1217,22 @@ router.put('/admin/terms', protect, adminOnly, async (req, res) => {
 router.get('/client/dashboard', protect, async (req, res) => {
   try {
     const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
+    const userEmail = String(req.user.email || '').trim().toLowerCase()
     let client = await CollectClient.findOne({ user: req.user._id })
-    if (!client && cleanPh) {
-      client = await CollectClient.findOne({
-        phone: new RegExp(cleanPh.slice(-9) + '$'),
-      })
-      if (client && !client.user) {
-        client.user = req.user._id
-        await client.save()
+    if (!client) {
+      const orConds = []
+      if (userEmail) orConds.push({ email: userEmail })
+      if (cleanPh) {
+        const phEnd = cleanPh.slice(-9)
+        const phReg = new RegExp(phEnd + '$')
+        orConds.push({ phone: phReg }, { momoMtn: phReg }, { momoOrange: phReg })
+      }
+      if (orConds.length > 0) {
+        client = await CollectClient.findOne({ $or: orConds })
+        if (client && !client.user) {
+          client.user = req.user._id
+          await client.save()
+        }
       }
     }
 

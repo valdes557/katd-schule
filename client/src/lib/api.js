@@ -1383,7 +1383,9 @@ export const collectApi = {
   getClientDashboard: () => api.get('/collect/client/dashboard'),
   clientPay: (data) => api.post('/collect/client/pay', data),
   clientWithdraw: (data) => api.post('/collect/client/withdraw', data),
+  agentActivateByEmail: (data) => api.post('/collect/agent/activate-by-email', data),
   // Côté administrateur
+  adminWithdrawClient: (id, data) => api.post(`/collect/admin/clients/${id}/withdraw`, data),
   adminOverview: () => api.get('/collect/admin/overview'),
   adminAgents: () => api.get('/collect/admin/agents'),
   adminAgentDetail: (id) => api.get(`/collect/admin/agents/${id}`),

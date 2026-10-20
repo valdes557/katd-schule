@@ -12,7 +12,10 @@ const collectClientSchema = new mongoose.Schema(
     accountNumber: { type: String, unique: true, index: true },
     fullName: { type: String, required: true, trim: true },
     phone: { type: String, required: true, trim: true },
-    neighborhood: { type: String, required: true, trim: true }, // Quartier
+    email: { type: String, default: '', trim: true, lowercase: true, index: true }, // Email utilisateur lié
+    momoMtn: { type: String, default: '', trim: true },                             // N° Mobile Money MTN
+    momoOrange: { type: String, default: '', trim: true },                          // N° Orange Money
+    neighborhood: { type: String, required: true, trim: true, index: true },        // Quartier / Zone
     city: { type: String, default: '', trim: true },
     cni: { type: String, default: '', trim: true },
     dailyTarget: { type: Number, default: 1000, min: 0 },       // Montant de la collecte journalière
