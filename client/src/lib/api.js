@@ -834,7 +834,7 @@ export const teacherAttendanceApi = {
   history: (params = {}) => api.get(`/teacher-attendance/history?${new URLSearchParams(params).toString()}`),
   stats: (params = {}) => api.get(`/teacher-attendance/stats?${new URLSearchParams(params).toString()}`),
   me: () => api.get('/teacher-attendance/me'),
-  scan: (token) => api.post('/teacher-attendance/scan', { token }),
+  scan: (token, timestamp) => api.post('/teacher-attendance/scan', typeof token === 'object' ? token : { token, ...(timestamp ? { timestamp } : {}) }),
 }
 
 // Présence par QR individuel (cycle Secondaire) : QR téléchargés par le principal,

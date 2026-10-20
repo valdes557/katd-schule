@@ -279,10 +279,10 @@ router.get('/me', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/teacher-attendance/scan — l'enseignant scanne le QR (arrivée puis départ)
+// POST /api/teacher-attendance/scan — l'enseignant scanne le QR (arrivée puis départ, support hors-ligne)
 router.post('/scan', protect, authorize('enseignant'), async (req, res) => {
   try {
-    const { token } = req.body
+    const { token, timestamp } = req.body
     if (!token) return res.status(400).json({ message: 'QR code invalide' })
 
     const sid = schoolId(req)
@@ -297,7 +297,14 @@ router.post('/scan', protect, authorize('enseignant'), async (req, res) => {
     const teacher = await Teacher.findOne({ user: req.user._id, school: sid })
     if (!teacher) return res.status(404).json({ message: 'Profil enseignant introuvable' })
 
-    const now = new Date()
+    // Horodatage du scan (prise en compte de l'heure exacte du scan hors-ligne)
+    let now = new Date()
+    if (timestamp) {
+      const parsed = new Date(timestamp)
+      if (!isNaN(parsed.getTime()) && parsed <= new Date(Date.now() + 5 * 60 * 1000) && parsed >= new Date(Date.now() - 36 * 60 * 60 * 1000)) {
+        now = parsed
+      }
+    }
     const day = todayKey(now)
     const cfg = school.attendanceConfig || { lateAfter: '08:00', earliestDeparture: '16:00' }
 
