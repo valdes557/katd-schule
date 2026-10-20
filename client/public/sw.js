@@ -63,7 +63,9 @@ self.addEventListener('fetch', (event) => {
           // Hors-ligne : sert la page demandée depuis le cache ou index.html
           const cached = await caches.match(req)
           if (cached) return cached
-          return caches.match('/index.html')
+          const indexCached = await caches.match('/index.html')
+          if (indexCached) return indexCached
+          return caches.match('/')
         })
     )
     return
@@ -102,6 +104,10 @@ self.addEventListener('fetch', (event) => {
 
   // 3. Fichiers statiques (Vite bundles JS/CSS, images, polices) : Stale-While-Revalidate
   const isStatic =
+    req.destination === 'script' ||
+    req.destination === 'style' ||
+    req.destination === 'image' ||
+    req.destination === 'font' ||
     url.pathname.startsWith('/assets/') ||
     url.pathname.endsWith('.js') ||
     url.pathname.endsWith('.css') ||
