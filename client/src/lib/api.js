@@ -1222,6 +1222,7 @@ export const paymentsApi = {
 
 export const walletApi = {
   me: () => api.get('/wallet/me'),
+  getBalance: () => api.get('/wallet/me'),
   withdrawals: () => api.get('/wallet/withdrawals'),
   teachers: () => api.get('/wallet/teachers'),
   initiateDeposit: (payload) => api.post('/wallet/deposit/initiate', payload),

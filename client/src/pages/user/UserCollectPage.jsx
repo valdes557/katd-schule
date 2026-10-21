@@ -1374,8 +1374,8 @@ function AddClientModal({ onClose, onSuccess }) {
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">Ville</label>
                 <input
                   type="text"
@@ -1385,18 +1385,7 @@ function AddClientModal({ onClose, onSuccess }) {
                   className="input text-xs w-full"
                 />
               </div>
-              <div className="col-span-1">
-                <label className="text-xs font-bold text-gray-700 block mb-1">Collecte/j</label>
-                <input
-                  type="number"
-                  min="100"
-                  step="100"
-                  value={dailyTarget}
-                  onChange={(e) => setDailyTarget(e.target.value)}
-                  className="input text-xs w-full font-bold"
-                />
-              </div>
-              <div className="col-span-1">
+              <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">CNI (Optionnel)</label>
                 <input
                   type="text"
@@ -1466,6 +1455,7 @@ function AddClientModal({ onClose, onSuccess }) {
               <div className="space-y-1">
                 <SignaturePad
                   label="1. Signature de l'Agent (au doigt)"
+                  onSave={(data) => setAgentSignature(data)}
                   onChange={(data) => setAgentSignature(data)}
                 />
                 <span className="text-[10px] text-gray-400 block px-1">
@@ -1476,6 +1466,7 @@ function AddClientModal({ onClose, onSuccess }) {
               <div className="space-y-1">
                 <SignaturePad
                   label={`2. Signature du Client (${fullName || 'Client'})`}
+                  onSave={(data) => setClientSignature(data)}
                   onChange={(data) => setClientSignature(data)}
                 />
                 <span className="text-[10px] text-gray-400 block px-1">
@@ -1678,8 +1669,8 @@ function ActivateByEmailModal({ onClose, onSuccess }) {
 function DepositModal({ client, onClose, onSuccess }) {
   const [method, setMethod] = useState('wallet') // wallet | momo
   const [amount, setAmount] = useState(1000)
-  const [phone, setPhone] = useState(client.phone || '')
   const [operator, setOperator] = useState('mtn')
+  const [phone, setPhone] = useState(client.momoMtn || client.phone || '')
   const [walletBalance, setWalletBalance] = useState(0)
   const [loadingBalance, setLoadingBalance] = useState(true)
   const [processing, setProcessing] = useState(false)
@@ -1785,6 +1776,22 @@ function DepositModal({ client, onClose, onSuccess }) {
           {method === 'momo' && (
             <>
               <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur</label>
+                <select
+                  value={operator}
+                  onChange={(e) => {
+                    const op = e.target.value
+                    setOperator(op)
+                    if (op === 'mtn') setPhone(client.momoMtn || client.phone || '')
+                    else if (op === 'orange') setPhone(client.momoOrange || client.phone || '')
+                  }}
+                  className="input text-xs w-full"
+                >
+                  <option value="mtn">MTN Mobile Money</option>
+                  <option value="orange">Orange Money</option>
+                </select>
+              </div>
+              <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">Numéro Mobile Money *</label>
                 <input
                   type="tel"
@@ -1792,19 +1799,8 @@ function DepositModal({ client, onClose, onSuccess }) {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="Ex : 690000000"
-                  className="input text-xs w-full"
+                  className="input text-xs w-full font-mono font-bold"
                 />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur</label>
-                <select
-                  value={operator}
-                  onChange={(e) => setOperator(e.target.value)}
-                  className="input text-xs w-full"
-                >
-                  <option value="mtn">MTN Mobile Money</option>
-                  <option value="orange">Orange Money</option>
-                </select>
               </div>
             </>
           )}

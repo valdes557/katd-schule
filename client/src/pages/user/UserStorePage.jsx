@@ -5,7 +5,7 @@ import {
   Wallet, Store, Landmark, Rocket, User, Bell,
   ShoppingBag, Bot, Sparkles, Zap, AlertTriangle, ChevronRight, Coins,
 } from 'lucide-react'
-import { aiApi } from '../../lib/api'
+import { aiApi, collectApi } from '../../lib/api'
 import AiQuotaModal from '../../components/AiQuotaModal'
 
 // Palette de couleurs foncées (fond saturé + icône blanche) tournant par bouton, identique à AppLauncher des autres dashboards.
@@ -29,6 +29,7 @@ export default function UserStorePage() {
   const [userQuota, setUserQuota] = useState(null)
   const [loadingQuota, setLoadingQuota] = useState(false)
   const [showQuotaModal, setShowQuotaModal] = useState(false)
+  const [collectBadge, setCollectBadge] = useState(null)
 
   const loadQuota = async () => {
     try {
@@ -44,6 +45,17 @@ export default function UserStorePage() {
 
   useEffect(() => {
     loadQuota()
+    collectApi.getMyAgentStatus()
+      .then((res) => {
+        if (res?.isClient) {
+          setCollectBadge('Client')
+        } else if (res?.isAgent) {
+          setCollectBadge('Agent')
+        } else {
+          setCollectBadge(null)
+        }
+      })
+      .catch(() => {})
   }, [])
 
   const sections = [
@@ -69,7 +81,7 @@ export default function UserStorePage() {
       label: 'COMMERCE & SERVICES',
       items: [
         { label: 'Mon Portefeuille', icon: Wallet, path: '/u/portefeuille' },
-        { label: 'Collecte Journalière', icon: Coins, path: '/u/collecte', badgeText: 'Agent' },
+        { label: 'Collecte Journalière', icon: Coins, path: '/u/collecte', badgeText: collectBadge || undefined },
         { label: 'Espace Marchand', icon: Store, path: '/u/marchand' },
         { label: 'Associés', icon: Landmark, path: '/u/associes', badgeText: 'Promo 10%' },
         { label: 'Mes Boosts', icon: Rocket, path: '/u/mes-boosts' },

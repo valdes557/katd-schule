@@ -41,16 +41,17 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
       setLoading(true)
       const [dashRes, walRes] = await Promise.all([
         collectApi.getClientDashboard(),
-        walletApi.getBalance().catch(() => ({ balance: 0 })),
+        walletApi.me().catch(() => ({ wallet: { balance: 0 } })),
       ])
       setData(dashRes)
-      setUserWalletBalance(walRes?.balance || 0)
+      setUserWalletBalance(walRes?.wallet?.balance ?? walRes?.balance ?? 0)
       if (dashRes?.stats?.dailyTarget && !payAmount) {
         setPayAmount(String(dashRes.stats.dailyTarget))
       }
-      if (dashRes?.client?.phone && !momoPhone) {
-        setMomoPhone(dashRes.client.phone)
-        setWithdrawPhone(dashRes.client.phone)
+      const initialMoMo = (momoOperator === 'orange' ? dashRes?.client?.momoOrange : dashRes?.client?.momoMtn) || dashRes?.client?.momoMtn || dashRes?.client?.phone || ''
+      if (initialMoMo) {
+        setMomoPhone(initialMoMo)
+        setWithdrawPhone(initialMoMo)
       }
       if (dashRes?.client?.fullName && !withdrawName) {
         setWithdrawName(dashRes.client.fullName)
@@ -690,7 +691,11 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setMomoOperator('mtn')}
+                        onClick={() => {
+                          setMomoOperator('mtn')
+                          const p = data?.client?.momoMtn || data?.client?.phone || ''
+                          if (p) setMomoPhone(p)
+                        }}
                         className={`py-2 px-3 rounded-xl font-bold border text-xs ${
                           momoOperator === 'mtn' ? 'bg-[#ffcc00] text-black border-amber-500' : 'bg-white text-gray-600 border-gray-200'
                         }`}
@@ -699,7 +704,11 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                       </button>
                       <button
                         type="button"
-                        onClick={() => setMomoOperator('orange')}
+                        onClick={() => {
+                          setMomoOperator('orange')
+                          const p = data?.client?.momoOrange || data?.client?.phone || ''
+                          if (p) setMomoPhone(p)
+                        }}
                         className={`py-2 px-3 rounded-xl font-bold border text-xs ${
                           momoOperator === 'orange' ? 'bg-[#ff6600] text-white border-orange-600' : 'bg-white text-gray-600 border-gray-200'
                         }`}

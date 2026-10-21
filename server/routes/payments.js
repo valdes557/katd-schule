@@ -779,6 +779,64 @@ async function applyOutcome(intent, status, raw) {
       } catch (err) {
         console.error('[payment:user_ai_subscription] ' + intent.reference + ' :', err.message)
       }
+    
+    } else if (intent.purpose === 'collect_deposit' || intent.purpose === 'collect_payment') {
+      try {
+        const CollectClient = require('../models/CollectClient')
+        const CollectAgent = require('../models/CollectAgent')
+        const DailyCollection = require('../models/DailyCollection')
+        const collectModule = require('./collect')
+
+        const m = intent.meta || {}
+        let client = null
+        if (m.clientId) {
+          client = await CollectClient.findById(m.clientId)
+        }
+        if (!client && intent.initiatedBy) {
+          client = await CollectClient.findOne({ user: intent.initiatedBy })
+        }
+        if (client) {
+          client.balance += intent.amount
+          await client.save()
+
+          let agent = null
+          if (client.agent) {
+            agent = await CollectAgent.findById(client.agent).populate('user', 'name email phone')
+          }
+
+          if (typeof collectModule.checkAndApplyMonthlyFeeForClient === 'function') {
+            await collectModule.checkAndApplyMonthlyFeeForClient(client, agent)
+          }
+
+          const today = new Date().toISOString().slice(0, 10)
+          let col = await DailyCollection.findOne({ client: client._id, date: today })
+          if (col) {
+            col.amount = (col.amount || 0) + intent.amount
+            col.status = 'paye'
+            col.paymentMethod = 'momo'
+            col.datetime = new Date()
+            await col.save()
+          } else {
+            await DailyCollection.create({
+              agent: client.agent,
+              agentUser: agent?.user?._id || client.agentUser,
+              client: client._id,
+              clientName: client.fullName,
+              clientPhone: client.phone,
+              neighborhood: client.neighborhood,
+              date: today,
+              amount: intent.amount,
+              status: 'paye',
+              paymentMethod: 'momo',
+              notes: intent.purpose === 'collect_payment' ? 'Payé par le client (Mobile Money)' : 'Dépôt collecte Mobile Money',
+              datetime: new Date(),
+            })
+          }
+          console.log('[payment:collect] Collecte créditée avec succès pour le client ' + client.fullName + ' (' + intent.amount + ' FCFA)')
+        }
+      } catch (colErr) {
+        console.error('[payment:collect] error:', colErr.message)
+      }
     }
     intent.fulfilled = true
     await intent.save()

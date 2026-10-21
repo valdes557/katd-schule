@@ -166,6 +166,14 @@ router.post('/transfer-to-collect-client', protect, async (req, res) => {
     client.balance += amt
     await client.save()
 
+    // Vérifie et applique les frais mensuels si solde >= 1100 FCFA
+    try {
+      const collectModule = require('./collect')
+      if (typeof collectModule.checkAndApplyMonthlyFeeForClient === 'function') {
+        await collectModule.checkAndApplyMonthlyFeeForClient(client)
+      }
+    } catch (_) {}
+
     // Enregistrement dans DailyCollection
     const today = new Date().toISOString().slice(0, 10)
     await DailyCollection.create({

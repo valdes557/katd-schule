@@ -37,8 +37,92 @@ function adminOnly(req, res, next) {
 }
 
 // ── Fonction utilitaire : Déduction mensuelle des frais de tenue de compte (1 100 FCFA / client) ──
-// Répartition : 70% pour l'agent de collecte (770 FCFA) versé sur son portefeuille commissions séparé
-//               30% pour la gestion des collectes / plateforme (330 FCFA) versé sur le compte admin.
+// RÈGLE STRICTE : Déduction effectuée UNIQUEMENT si le client dispose d'un solde >= 1 100 FCFA.
+// Répartition : 70% pour l'agent (770 FCFA) sur son portefeuille de commissions séparé,
+//               30% pour l'administration (330 FCFA) versé sur la plateforme / gestion des collectes.
+async function checkAndApplyMonthlyFeeForClient(client, agent) {
+  try {
+    if (!client) return false
+    const currentMonth = getCurrentMonthStr()
+    const cfg = await CollectConfig.getOrCreate()
+    const fee = Number(cfg.monthlyFee) || 1100
+
+    // Déduit UNIQUEMENT si le mois en cours n'a pas encore été prélevé ET que le solde client est >= 1 100 FCFA
+    if (client.lastMonthlyFeeMonth === currentMonth || (Number(client.balance) || 0) < fee) {
+      return false
+    }
+
+    const agentShare = Math.round(fee * 0.70) // 770 FCFA
+    const platformShare = fee - agentShare    // 330 FCFA
+
+    client.balance -= fee
+    client.lastMonthlyFeeMonth = currentMonth
+    await client.save()
+
+    let agentDoc = agent
+    if (!agentDoc && client.agent) {
+      agentDoc = await CollectAgent.findById(client.agent).populate('user', 'name email phone')
+    }
+
+    if (agentDoc) {
+      agentDoc.commissionBalance = (agentDoc.commissionBalance || 0) + agentShare
+      agentDoc.commissionTotalEarned = (agentDoc.commissionTotalEarned || 0) + agentShare
+      await agentDoc.save()
+    }
+
+    const platformAdmin = await wallet.getPlatformAdmin()
+    let tx = null
+    if (platformAdmin) {
+      const adminWallet = await wallet.getOrCreateWallet(platformAdmin._id, { role: 'admin' })
+      adminWallet.balance += platformShare
+      adminWallet.totalIn += platformShare
+      await adminWallet.save()
+
+      tx = await WalletTransaction.create({
+        wallet: adminWallet._id,
+        owner: platformAdmin._id,
+        direction: 'credit',
+        amount: platformShare,
+        currency: adminWallet.currency || 'XAF',
+        type: 'fee_collected',
+        balanceAfter: adminWallet.balance,
+        counterparty: agentDoc?.user?._id || agentDoc?.user || null,
+        description: 'Frais de gestion collecte (30%) — Client ' + client.fullName + ' (' + client.accountNumber + ')',
+        meta: {
+          feeType: 'collect_platform_share',
+          agentId: agentDoc ? String(agentDoc._id) : null,
+          clientId: String(client._id),
+          clientName: client.fullName,
+          month: currentMonth,
+          baseAmount: fee,
+          agentShare,
+          platformShare,
+        },
+      })
+    }
+
+    await CollectFeeRecord.create({
+      agent: agentDoc?._id || client.agent,
+      agentUser: agentDoc?.user?._id || agentDoc?.user || null,
+      agencyName: agentDoc?.agencyName || 'Collecte',
+      agentName: agentDoc?.user?.name || agentDoc?.agencyName || 'Agent',
+      client: client._id,
+      clientName: client.fullName,
+      month: currentMonth,
+      amount: fee,
+      agentShare,
+      platformShare,
+      walletTransaction: tx?._id || null,
+      deductedAt: new Date(),
+    })
+
+    return true
+  } catch (err) {
+    console.error('[checkAndApplyMonthlyFeeForClient error]:', err.message)
+    return false
+  }
+}
+
 async function applyMonthlyFeesForAgent(agentId) {
   try {
     const agent = await CollectAgent.findById(agentId).populate('user', 'name email phone')
@@ -50,88 +134,41 @@ async function applyMonthlyFeesForAgent(agentId) {
 
     const cfg = await CollectConfig.getOrCreate()
     const feePerClient = Number(cfg.monthlyFee) || 1100
-    const agentShare = Math.round(feePerClient * 0.70) // 770 FCFA
-    const platformShare = feePerClient - agentShare // 330 FCFA
-
-    let newlyDeductedCount = 0
-    const recordsToCreate = []
 
     for (const client of clients) {
-      if (client.lastMonthlyFeeMonth !== currentMonth) {
-        // Déduction des 1 100 FCFA sur le compte de collecte du client
-        client.balance -= feePerClient
-        client.lastMonthlyFeeMonth = currentMonth
-        await client.save()
-
-        recordsToCreate.push({
-          agent: agent._id,
-          agentUser: agent.user?._id || agent.user,
-          agencyName: agent.agencyName,
-          agentName: agent.user?.name || agent.agencyName,
-          client: client._id,
-          clientName: client.fullName,
-          month: currentMonth,
-          amount: feePerClient,
-          agentShare,
-          platformShare,
-          deductedAt: new Date(),
-        })
-        newlyDeductedCount++
-      }
-    }
-
-    if (recordsToCreate.length > 0) {
-      const createdRecords = await CollectFeeRecord.insertMany(recordsToCreate)
-      const totalAmount = newlyDeductedCount * feePerClient
-      const totalAgentShare = newlyDeductedCount * agentShare
-      const totalPlatformShare = newlyDeductedCount * platformShare
-
-      // 1. Crédit du portefeuille séparé de commissions de l'agent (70%)
-      agent.commissionBalance = (agent.commissionBalance || 0) + totalAgentShare
-      agent.commissionTotalEarned = (agent.commissionTotalEarned || 0) + totalAgentShare
-      await agent.save()
-
-      // 2. Crédit de la plateforme / gestion des collectes (30%)
-      const platformAdmin = await wallet.getPlatformAdmin()
-      if (platformAdmin) {
-        const adminWallet = await wallet.getOrCreateWallet(platformAdmin._id, { role: 'admin' })
-        adminWallet.balance += totalPlatformShare
-        adminWallet.totalIn += totalPlatformShare
-        await adminWallet.save()
-
-        const tx = await WalletTransaction.create({
-          wallet: adminWallet._id,
-          owner: platformAdmin._id,
-          direction: 'credit',
-          amount: totalPlatformShare,
-          currency: adminWallet.currency || 'XAF',
-          type: 'fee_collected',
-          balanceAfter: adminWallet.balance,
-          counterparty: agent.user?._id || agent.user,
-          description: 'Frais de gestion collecte (30%) — ' + agent.agencyName + ' (' + newlyDeductedCount + ' clients)',
-          meta: {
-            feeType: 'collect_platform_share',
-            agentId: String(agent._id),
-            agentName: agent.user?.name || agent.agencyName,
-            agencyName: agent.agencyName,
-            clientCount: newlyDeductedCount,
-            month: currentMonth,
-            baseAmount: totalAmount,
-            agentShare: totalAgentShare,
-            platformShare: totalPlatformShare,
-          },
-        })
-
-        // Associe le txId aux enregistrements
-        await CollectFeeRecord.updateMany(
-          { _id: { $in: createdRecords.map((r) => r._id) } },
-          { $set: { walletTransaction: tx._id } }
-        )
+      // Conditionné strictement au solde >= 1 100 FCFA
+      if (client.lastMonthlyFeeMonth !== currentMonth && (Number(client.balance) || 0) >= feePerClient) {
+        await checkAndApplyMonthlyFeeForClient(client, agent)
       }
     }
   } catch (err) {
     console.error('[applyMonthlyFeesForAgent error]:', err.message)
   }
+}
+
+// Résout un client pour un utilisateur connecté (par ID, email, téléphone ou MoMo)
+async function resolveClientForUser(user) {
+  if (!user) return null
+  let client = await CollectClient.findOne({ user: user._id })
+  if (client) return client
+
+  const cleanPh = String(user.phone || '').replace(/[^0-9]/g, '')
+  const userEmail = String(user.email || '').trim().toLowerCase()
+  const orConds = []
+  if (userEmail) orConds.push({ email: userEmail })
+  if (cleanPh) {
+    const phEnd = cleanPh.slice(-9)
+    const phReg = new RegExp(phEnd + '$')
+    orConds.push({ phone: phReg }, { momoMtn: phReg }, { momoOrange: phReg })
+  }
+  if (orConds.length > 0) {
+    client = await CollectClient.findOne({ $or: orConds })
+    if (client && !client.user) {
+      client.user = user._id
+      await client.save()
+    }
+  }
+  return client
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -586,17 +623,19 @@ router.post('/agent/daily', protect, async (req, res) => {
         }
 
         const PaymentIntent = require('../models/PaymentIntent')
-        const providerRef = "col_agent_" + Date.now()
+        const providerRef = "col_agent_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6)
         const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
 
         const pi = await PaymentIntent.create({
-          user: req.user._id,
-          type: 'collect_deposit',
+          reference: providerRef,
+          purpose: 'collect_deposit',
           amount: amt,
           currency: country === 'CM' ? 'XAF' : 'XOF',
-          provider: 'ikeepay',
-          providerRef,
-          meta: { agentId: String(agent._id), clientId: String(client._id), clientName: client.fullName },
+          initiatedBy: req.user._id,
+          payerPhone: phoneToUse,
+          payerOperator: opToUse,
+          status: 'pending',
+          meta: { agentId: String(agent._id), clientId: String(client._id), clientName: client.fullName, source: 'agent_daily' },
         })
 
         const directRes = await ikeepay.createDirectCharge({
@@ -645,8 +684,11 @@ router.post('/agent/daily', protect, async (req, res) => {
 
     if (status === 'paye') {
       client.balance += amt
+      await client.save()
+      await checkAndApplyMonthlyFeeForClient(client, agent)
+    } else {
+      await client.save()
     }
-    await client.save()
 
     res.json({
       success: true,
@@ -783,8 +825,8 @@ router.post('/agent/clients', protect, async (req, res) => {
       })
     }
 
-    const dTarget = Number(dailyTarget) || 1000
-    const mTarget = Number(monthlyTarget) || (dTarget * 31)
+    const dTarget = Number(dailyTarget) || 0
+    const mTarget = Number(monthlyTarget) || 0
 
     const cfg = await CollectConfig.getOrCreate()
     const finalTerms = String(termsContent || cfg.termsAndConditions || '')
@@ -879,8 +921,8 @@ router.post('/agent/activate-by-email', protect, async (req, res) => {
       })
     }
 
-    const dTarget = Number(dailyTarget) || 1000
-    const mTarget = Number(monthlyTarget) || (dTarget * 31)
+    const dTarget = Number(dailyTarget) || 0
+    const mTarget = Number(monthlyTarget) || 0
 
     const client = await CollectClient.create({
       agent: agent._id,
@@ -1016,6 +1058,9 @@ router.post('/agent/clients/:id/deposit-wallet', protect, async (req, res) => {
     client.balance += amt
     await client.save()
 
+    // Vérifie et applique la déduction mensuelle des frais (1100 F) si solde >= 1100 F
+    await checkAndApplyMonthlyFeeForClient(client, agent)
+
     // Enregistre l'opération dans la collecte journalière
     const today = getTodayStr()
     await DailyCollection.create({
@@ -1060,20 +1105,23 @@ router.post('/agent/clients/:id/deposit-momo', protect, async (req, res) => {
     if (!phone || !operator) return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
 
     const PaymentIntent = require('../models/PaymentIntent')
-    const providerRef = `col_momo_${Date.now()}`
+    const providerRef = `col_momo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
 
     const pi = await PaymentIntent.create({
-      user: req.user._id,
-      type: 'collect_deposit',
+      reference: providerRef,
+      purpose: 'collect_deposit',
       amount: amt,
       currency: country === 'CM' ? 'XAF' : 'XOF',
-      provider: 'ikeepay',
-      providerRef,
+      initiatedBy: req.user._id,
+      payerPhone: phone,
+      payerOperator: operator,
+      status: 'pending',
       meta: {
         agentId: String(agent._id),
         clientId: String(client._id),
         clientName: client.fullName,
+        source: 'agent_deposit_momo',
       },
     })
 
@@ -1095,6 +1143,7 @@ router.post('/agent/clients/:id/deposit-momo', protect, async (req, res) => {
 
       client.balance += amt
       await client.save()
+      await checkAndApplyMonthlyFeeForClient(client, agent)
 
       const today = getTodayStr()
       await DailyCollection.create({
@@ -1497,25 +1546,7 @@ router.put('/admin/terms', protect, adminOnly, async (req, res) => {
 // GET /api/collect/client/dashboard — Dashboard du client exactement comme sur la capture
 router.get('/client/dashboard', protect, async (req, res) => {
   try {
-    const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
-    const userEmail = String(req.user.email || '').trim().toLowerCase()
-    let client = await CollectClient.findOne({ user: req.user._id })
-    if (!client) {
-      const orConds = []
-      if (userEmail) orConds.push({ email: userEmail })
-      if (cleanPh) {
-        const phEnd = cleanPh.slice(-9)
-        const phReg = new RegExp(phEnd + '$')
-        orConds.push({ phone: phReg }, { momoMtn: phReg }, { momoOrange: phReg })
-      }
-      if (orConds.length > 0) {
-        client = await CollectClient.findOne({ $or: orConds })
-        if (client && !client.user) {
-          client.user = req.user._id
-          await client.save()
-        }
-      }
-    }
+    const client = await resolveClientForUser(req.user)
 
     if (!client) {
       return res.status(404).json({
@@ -1647,15 +1678,7 @@ router.post('/client/pay', protect, async (req, res) => {
       return res.status(400).json({ message: 'Montant de collecte invalide' })
     }
 
-    const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
-    let client = await CollectClient.findOne({ user: req.user._id })
-    if (!client && cleanPh) {
-      client = await CollectClient.findOne({ phone: new RegExp(cleanPh.slice(-9) + '$') })
-      if (client && !client.user) {
-        client.user = req.user._id
-        await client.save()
-      }
-    }
+    const client = await resolveClientForUser(req.user)
     if (!client) {
       return res.status(404).json({ message: 'Compte client introuvable.' })
     }
@@ -1674,17 +1697,19 @@ router.post('/client/pay', protect, async (req, res) => {
         return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
       }
       const PaymentIntent = require('../models/PaymentIntent')
-      const providerRef = `col_pay_${Date.now()}`
+      const providerRef = `col_pay_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
 
       const pi = await PaymentIntent.create({
-        user: req.user._id,
-        type: 'collect_deposit',
+        reference: providerRef,
+        purpose: 'collect_payment',
         amount: amt,
         currency: country === 'CM' ? 'XAF' : 'XOF',
-        provider: 'ikeepay',
-        providerRef,
-        meta: { clientId: String(client._id), clientName: client.fullName },
+        initiatedBy: req.user._id,
+        payerPhone: phone,
+        payerOperator: operator,
+        status: 'pending',
+        meta: { clientId: String(client._id), clientName: client.fullName, source: 'client_pay' },
       })
 
       const directRes = await ikeepay.createDirectCharge({
@@ -1708,6 +1733,9 @@ router.post('/client/pay', protect, async (req, res) => {
     // Mise à jour du solde client
     client.balance += amt
     await client.save()
+
+    // Vérifie et applique les frais mensuels si solde >= 1100 FCFA
+    await checkAndApplyMonthlyFeeForClient(client, agent)
 
     // Enregistrement dans DailyCollection pour aujourd'hui
     const today = getTodayStr()
@@ -1785,15 +1813,7 @@ router.post('/client/withdraw', protect, async (req, res) => {
       return res.status(400).json({ message: 'Montant de retrait invalide' })
     }
 
-    const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
-    let client = await CollectClient.findOne({ user: req.user._id })
-    if (!client && cleanPh) {
-      client = await CollectClient.findOne({ phone: new RegExp(cleanPh.slice(-9) + '$') })
-      if (client && !client.user) {
-        client.user = req.user._id
-        await client.save()
-      }
-    }
+    const client = await resolveClientForUser(req.user)
     if (!client) {
       return res.status(404).json({ message: 'Compte client introuvable.' })
     }
@@ -1865,4 +1885,6 @@ router.post('/client/withdraw', protect, async (req, res) => {
   }
 })
 
+router.checkAndApplyMonthlyFeeForClient = checkAndApplyMonthlyFeeForClient
+router.resolveClientForUser = resolveClientForUser
 module.exports = router

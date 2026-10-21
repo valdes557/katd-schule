@@ -4,10 +4,14 @@ import { RotateCcw, Check, PenTool } from 'lucide-react'
 
 export default function SignaturePad({
   title = 'Signature',
+  label,
   subtitle = 'Signez avec votre doigt ou stylet dans le cadre ci-dessous',
   onSave,
+  onChange,
+  value,
   required = true,
 }) {
+  const displayTitle = label || title
   const canvasRef = useRef(null)
   const isDrawing = useRef(false)
   const [hasDrawn, setHasDrawn] = useState(false)
@@ -81,9 +85,12 @@ export default function SignaturePad({
     isDrawing.current = false
 
     // Émet l'image PNG en base64 au parent
+    const dataUrl = canvas.toDataURL('image/png')
     if (onSave) {
-      const dataUrl = canvas.toDataURL('image/png')
       onSave(dataUrl)
+    }
+    if (onChange) {
+      onChange(dataUrl)
     }
   }
 
@@ -97,6 +104,7 @@ export default function SignaturePad({
     ctx.restore()
     setHasDrawn(false)
     if (onSave) onSave('')
+    if (onChange) onChange('')
   }
 
   return (
@@ -105,7 +113,7 @@ export default function SignaturePad({
         <div>
           <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
             <PenTool size={13} className="text-emerald-600" />
-            <span>{title}</span>
+            <span>{displayTitle}</span>
             {required && <span className="text-red-500">*</span>}
           </label>
           {subtitle && <p className="text-[10px] text-gray-400">{subtitle}</p>}
