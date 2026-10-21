@@ -259,7 +259,7 @@ export const navSections = [
       { label: 'Gestion API (Paiements)', icon: KeyRound, path: '/dashboard/plateforme?tab=api' },
       { label: 'Gestion des utilisateurs', icon: UserCog, path: '/dashboard/utilisateurs-admin' },
       { label: 'Gestion des marchands', icon: Store, path: '/dashboard/marchands-admin' },
-      { label: 'Gestion des actionnaires', icon: Landmark, path: '/dashboard/actionnaires-admin' },
+      { label: 'Gestion des associés', icon: Landmark, path: '/dashboard/actionnaires-admin' },
       { label: 'Gestion des collectes', icon: Coins, path: '/dashboard/collectes-admin' },
       { label: 'Gestion des boosts', icon: Rocket, path: '/dashboard/boosts-admin' },
       { label: 'Gestion des transactions', icon: ArrowLeftRight, path: '/dashboard/transactions-admin' },

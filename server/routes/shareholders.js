@@ -21,17 +21,41 @@ function superAdminOnly(req, res, next) {
   next()
 }
 
+// Plafond strict de promotion : 10% d'actions au total allouées sur la plateforme.
+// Dès que le cumul des parts actives atteint 10%, la section de souscription est bloquée.
+const MAX_PROMO_PERCENT = 10
+
+async function getPromoStats() {
+  const rows = await Shareholding.aggregate([
+    { $match: { status: 'active' } },
+    { $group: { _id: null, total: { $sum: '$percent' } } },
+  ])
+  const totalSubscribed = rows[0]?.total || 0
+  const remainingPercent = Math.max(0, MAX_PROMO_PERCENT - totalSubscribed)
+  const isSoldOut = totalSubscribed >= MAX_PROMO_PERCENT
+  const percentUsed = Math.min(100, Math.round((totalSubscribed / MAX_PROMO_PERCENT) * 100))
+  return {
+    maxPercent: MAX_PROMO_PERCENT,
+    totalSubscribed,
+    remainingPercent,
+    isSoldOut,
+    percentUsed,
+  }
+}
+
 // ───────────────────────── UTILISATEUR ─────────────────────────
 
-// GET /api/shareholders/config — plans actifs + textes (termes, avantages, droits…)
+// GET /api/shareholders/config — plans actifs + textes (termes, avantages, droits…) + stats promo
 router.get('/config', protect, async (req, res) => {
   try {
     const cfg = await ShareholderConfig.getOrCreate()
+    const promo = await getPromoStats()
     res.json({
       success: true,
       terms: cfg.terms, advantages: cfg.advantages,
       responsibilities: cfg.responsibilities, rights: cfg.rights,
       plans: (cfg.plans || []).filter((p) => p.isActive !== false),
+      promo,
     })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
@@ -146,6 +170,20 @@ router.post('/subscribe', protect, async (req, res) => {
 
     // Calcul dynamique du pourcentage et du prix
     const requestedPercent = Math.max(1, Math.min(100, Math.floor(Number(percent) || Number(plan.percent) || 1)))
+
+    // Contrôle strict de l'offre promotionnelle plafonnée à 10%
+    const promo = await getPromoStats()
+    if (promo.isSoldOut) {
+      return res.status(400).json({
+        message: "L'offre promotionnelle de 10% d'actions est entièrement atteinte. Les souscriptions sont fermées jusqu'à nouvel ordre."
+      })
+    }
+    if (requestedPercent > promo.remainingPercent) {
+      return res.status(400).json({
+        message: `Offre promotionnelle limitée à 10% d'actions au total : il ne reste plus que ${promo.remainingPercent}% disponible(s).`
+      })
+    }
+
     const basePercent = Number(plan.percent) || 1
     const unitPrice = (Number(plan.price) || 0) / basePercent
     const rawPrice = requestedPercent * unitPrice
@@ -212,6 +250,20 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
 
     // Calcul dynamique du pourcentage et du prix (remise 20% dès 3%)
     const requestedPercent = Math.max(1, Math.min(100, Math.floor(Number(percent) || Number(plan.percent) || 1)))
+
+    // Contrôle strict de l'offre promotionnelle plafonnée à 10%
+    const promo = await getPromoStats()
+    if (promo.isSoldOut) {
+      return res.status(400).json({
+        message: "L'offre promotionnelle de 10% d'actions est entièrement atteinte. Les souscriptions sont fermées jusqu'à nouvel ordre."
+      })
+    }
+    if (requestedPercent > promo.remainingPercent) {
+      return res.status(400).json({
+        message: `Offre promotionnelle limitée à 10% d'actions au total : il ne reste plus que ${promo.remainingPercent}% disponible(s).`
+      })
+    }
+
     const basePercent = Number(plan.percent) || 1
     const unitPrice = (Number(plan.price) || 0) / basePercent
     const rawPrice = requestedPercent * unitPrice
@@ -231,7 +283,7 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
     // Débit du souscripteur
     await wallet.debit(req.user._id, {
       amount: price, type: 'shareholder_payment',
-      description: 'Souscription actionnaire (' + requestedPercent + '%) — ' + (plan.label || plan.key),
+      description: 'Souscription associé (' + requestedPercent + '%) — ' + (plan.label || plan.key),
       meta: { planKey: plan.key, zone: z, percent: requestedPercent, rawPrice, discountRate },
     })
 
@@ -249,23 +301,24 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
         await wallet.credit(admin._id, {
           amount: price, type: 'shareholder_subscription', role: 'admin',
           counterparty: req.user._id,
-          description: 'Souscription actionnaire (portefeuille ' + requestedPercent + '%) — ' + (plan.label || plan.key),
+          description: 'Souscription associé (portefeuille ' + requestedPercent + '%) — ' + (plan.label || plan.key),
           meta: { planKey: plan.key, zone: z, percent: requestedPercent, method: 'wallet' },
         })
       }
     } catch (e) {}
 
-    res.json({ success: true, message: 'Souscription confirmée. Bienvenue parmi les actionnaires !', shareholding, balance: w.balance - price })
+    res.json({ success: true, message: 'Souscription confirmée. Bienvenue parmi les associés !', shareholding, balance: w.balance - price })
   } catch (err) { res.status(err.status || 400).json({ message: err.message }) }
 })
 
 // ───────────────────────── SUPER ADMIN ─────────────────────────
 
-// GET /api/shareholders/admin/config — config complète (y compris plans désactivés)
+// GET /api/shareholders/admin/config — config complète (y compris plans désactivés) + stats promo
 router.get('/admin/config', protect, superAdminOnly, async (req, res) => {
   try {
     const cfg = await ShareholderConfig.getOrCreate()
-    res.json({ success: true, config: cfg })
+    const promo = await getPromoStats()
+    res.json({ success: true, config: cfg, promo })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -280,7 +333,7 @@ router.put('/admin/config', protect, superAdminOnly, async (req, res) => {
     if (rights !== undefined) cfg.rights = String(rights)
     if (Array.isArray(plans)) {
       // Valide chaque plan : clé connue, prix > 0
-      const KEYS = ['arrondissement', 'regional', 'national', 'international']
+      const KEYS = ['arrondissement', 'regional', 'national', 'international', 'mondial']
       for (const p of plans) {
         if (!KEYS.includes(p.key)) return res.status(400).json({ message: 'Clé de plan inconnue : ' + p.key })
         if (!(Number(p.price) > 0)) return res.status(400).json({ message: 'Prix invalide pour le plan ' + p.key })
@@ -292,7 +345,8 @@ router.put('/admin/config', protect, superAdminOnly, async (req, res) => {
       }))
     }
     await cfg.save()
-    res.json({ success: true, config: cfg })
+    const promo = await getPromoStats()
+    res.json({ success: true, config: cfg, promo })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -336,7 +390,7 @@ router.put('/admin/:id', protect, superAdminOnly, async (req, res) => {
       s.status = status
     }
     if (planKey !== undefined) {
-      if (!['arrondissement', 'regional', 'national', 'international'].includes(planKey)) {
+      if (!['arrondissement', 'regional', 'national', 'international', 'mondial'].includes(planKey)) {
         return res.status(400).json({ message: 'Palier invalide' })
       }
       s.planKey = planKey

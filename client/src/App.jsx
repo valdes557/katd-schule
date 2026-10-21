@@ -413,6 +413,7 @@ export default function App() {
         <Route path="utilisateurs-admin" element={<AdminUsersPage />} />
         <Route path="marchands-admin" element={<AdminMerchantsPage />} />
         <Route path="actionnaires-admin" element={<AdminShareholdersPage />} />
+        <Route path="associes-admin" element={<AdminShareholdersPage />} />
         <Route path="collectes-admin" element={<AdminCollectPage />} />
         <Route path="collecte" element={<UserCollectPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />
@@ -514,6 +515,7 @@ export default function App() {
         <Route path="portefeuille" element={<PortefeuillePage />} />
         <Route path="marchand" element={<UserMerchantPage />} />
         <Route path="actionnaires" element={<UserShareholdersPage />} />
+        <Route path="associes" element={<UserShareholdersPage />} />
         <Route path="collecte" element={<UserCollectPage />} />
         <Route path="mes-boosts" element={<UserBoostsPage />} />
         <Route path="ia-chat" element={<AiChatPage />} />

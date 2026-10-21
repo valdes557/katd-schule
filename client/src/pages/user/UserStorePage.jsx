@@ -71,7 +71,7 @@ export default function UserStorePage() {
         { label: 'Mon Portefeuille', icon: Wallet, path: '/u/portefeuille' },
         { label: 'Collecte Journalière', icon: Coins, path: '/u/collecte', badgeText: 'Agent' },
         { label: 'Espace Marchand', icon: Store, path: '/u/marchand' },
-        { label: 'Actionnaires', icon: Landmark, path: '/u/actionnaires' },
+        { label: 'Associés', icon: Landmark, path: '/u/associes', badgeText: 'Promo 10%' },
         { label: 'Mes Boosts', icon: Rocket, path: '/u/mes-boosts' },
       ],
     },

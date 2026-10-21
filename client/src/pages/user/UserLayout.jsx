@@ -33,7 +33,7 @@ export default function UserLayout() {
   const isNews = pathname.startsWith('/u/news')
   const isWallet = pathname.startsWith('/u/portefeuille')
   const isMerchant = pathname.startsWith('/u/marchand')
-  const isShareholder = pathname.startsWith('/u/actionnaires')
+  const isShareholder = pathname.startsWith('/u/actionnaires') || pathname.startsWith('/u/associes')
   const isVideos = pathname.startsWith('/u/videos')
   const isBoosts = pathname.startsWith('/u/mes-boosts')
 

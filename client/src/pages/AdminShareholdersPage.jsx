@@ -1,13 +1,13 @@
-// pages/AdminShareholdersPage.jsx — Super admin : gestion des actionnaires.
-// - Configuration : termes & conditions, avantages, responsabilités, droits + plans.
-// - Actionnaires : liste, ACTIVER / MODIFIER / ÉDITER / SUPPRIMER le plan de chaque
-//   actionnaire, versement de gains (dividendes).
+// pages/AdminShareholdersPage.jsx — Super admin : gestion des associés.
+// - Configuration : termes & conditions, avantages, responsabilités, droits + plans (prix promo).
+// - Associés : liste, ACTIVER / MODIFIER / ÉDITER / SUPPRIMER le plan de chaque
+//   associé, versement de gains (dividendes).
 // - Publications : dépenses à faire/faites, sommes exigées, réunions physiques/en ligne
-//   (affichées dans le portefeuille des actionnaires).
+//   (affichées dans le portefeuille des associés).
 import { useState, useEffect } from 'react'
 import {
   Landmark, Loader2, Save, Users, Coins, MapPin, Ban, RefreshCw, Pencil, Trash2,
-  CheckCircle2, X, Megaphone, Plus, Banknote, CalendarClock, Receipt, Gift,
+  CheckCircle2, X, Megaphone, Plus, Banknote, CalendarClock, Receipt, Gift, Lock, Sparkles,
 } from 'lucide-react'
 import { shareholdersApi } from '../lib/api'
 
@@ -26,12 +26,12 @@ export default function AdminShareholdersPage() {
     <div className="space-y-5 animate-fade-in">
       <div>
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <Landmark size={22} className="text-indigo-600" /> Gestion des actionnaires
+          <Landmark size={22} className="text-indigo-600" /> Gestion des associés
         </h1>
-        <p className="text-sm text-gray-500">Termes, plans, liste des actionnaires et publications qui leur sont destinées.</p>
+        <p className="text-sm text-gray-500">Termes, plans de souscription (promo 10% max), liste des associés et publications.</p>
       </div>
       <div className="flex gap-2 flex-wrap">
-        {[['config', 'Configuration'], ['list', 'Actionnaires'], ['posts', 'Publications']].map(([k, l]) => (
+        {[['config', 'Configuration & Plans'], ['list', 'Associés'], ['posts', 'Publications']].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`text-sm px-4 py-2 rounded-xl font-medium ${tab === k ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>{l}</button>
         ))}
       </div>
@@ -42,9 +42,10 @@ export default function AdminShareholdersPage() {
   )
 }
 
-// ── Onglet configuration : textes + plans ──
+// ── Onglet configuration : textes + plans + promo 10% ──
 function ConfigPanel() {
   const [cfg, setCfg] = useState(null)
+  const [promo, setPromo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -52,7 +53,10 @@ function ConfigPanel() {
 
   useEffect(() => {
     shareholdersApi.adminConfig()
-      .then((r) => setCfg(r.config))
+      .then((r) => {
+        setCfg(r.config)
+        setPromo(r.promo)
+      })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false))
   }, [])
@@ -65,6 +69,7 @@ function ConfigPanel() {
         responsibilities: cfg.responsibilities, rights: cfg.rights, plans: cfg.plans,
       })
       setCfg(r.config)
+      if (r.promo) setPromo(r.promo)
       setMsg('Configuration enregistrée.')
     } catch (e) { setErr(e.message) } finally { setSaving(false) }
   }
@@ -75,17 +80,48 @@ function ConfigPanel() {
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-indigo-600" /></div>
   if (!cfg) return <div className="text-sm text-red-600">{err || 'Configuration introuvable'}</div>
 
+  const isSoldOut = !!promo?.isSoldOut
+
   return (
     <div className="space-y-5">
+      {/* Statut de l'offre promotionnelle plafonnée à 10% */}
+      {promo && (
+        <div className={`rounded-2xl p-4 border shadow-xs ${
+          isSoldOut ? 'bg-red-50 border-red-200' : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200'
+        }`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-xs font-black uppercase px-2.5 py-0.5 rounded-full flex items-center gap-1.5 ${
+              isSoldOut ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+            }`}>
+              {isSoldOut ? <><Lock size={12} /> PROMO 10% ATTEINTE — SECTION BLOQUÉE</> : <><Sparkles size={12} /> OFFRE PROMOTIONNELLE (10% MAX)</>}
+            </span>
+            <span className="text-xs font-bold text-gray-700">
+              {promo.totalSubscribed}% / {promo.maxPercent}% souscrits ({promo.remainingPercent}% restants)
+            </span>
+          </div>
+          <p className="text-xs text-gray-700 font-medium">
+            {isSoldOut
+              ? "Le quota de 10% d'actions allouées a été entièrement souscrit. La section souscription est automatiquement verrouillée pour tous les utilisateurs jusqu'à nouvel ordre."
+              : "Le système livre seulement 10% d'actions au total en promotion. Dès que le total des parts actives atteint 10%, la souscription sera automatiquement bloquée."}
+          </p>
+          <div className="mt-2.5 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${isSoldOut ? 'bg-red-600' : 'bg-amber-500'}`}
+              style={{ width: `${Math.min(100, Math.max(3, (promo.totalSubscribed / promo.maxPercent) * 100))}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {msg && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-sm">{msg}</div>}
       {err && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm">{err}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {[
-          ['terms', 'Termes et conditions de souscription'],
-          ['advantages', "Avantages de l'actionnaire"],
-          ['responsibilities', 'Responsabilités'],
-          ['rights', 'Droits et obligations'],
+          ['terms', 'Termes et conditions de souscription d\'associés'],
+          ['advantages', "Avantages de l'associé"],
+          ['responsibilities', "Responsabilités de l'associé"],
+          ['rights', "Droits et obligations de l'associé"],
         ].map(([key, label]) => (
           <div key={key} className="card p-4">
             <label className="text-xs font-semibold text-gray-700 mb-1.5 block">{label}</label>
@@ -100,15 +136,15 @@ function ConfigPanel() {
       </div>
 
       <div className="card p-4 space-y-3">
-        <h2 className="font-semibold text-gray-900 text-sm">Plans de souscription (1% d'action)</h2>
+        <h2 className="font-semibold text-gray-900 text-sm">Plans de souscription associés (prix en promotion)</h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
                 <th className="py-2 pr-3">Palier</th>
                 <th className="py-2 pr-3">Libellé</th>
-                <th className="py-2 pr-3">Prix (F)</th>
-                <th className="py-2 pr-3">%</th>
+                <th className="py-2 pr-3">Prix promo (F)</th>
+                <th className="py-2 pr-3">% base</th>
                 <th className="py-2 pr-3">Durée (ans)</th>
                 <th className="py-2">Actif</th>
               </tr>
@@ -143,7 +179,7 @@ function ConfigPanel() {
   )
 }
 
-// ── Onglet liste : activer / modifier / éditer / supprimer le plan de chaque actionnaire ──
+// ── Onglet liste : activer / modifier / éditer / supprimer le plan de chaque associé ──
 function ListPanel() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -163,7 +199,7 @@ function ListPanel() {
     try { await shareholdersApi.adminUpdate(s._id, { status: 'active' }); load() } catch (e) { alert(e.message) }
   }
   const revoke = async (s) => {
-    if (!window.confirm('Révoquer cette souscription d\'actionnaire ?')) return
+    if (!window.confirm('Révoquer cette souscription d\'associé ?')) return
     try { await shareholdersApi.adminRevoke(s._id); load() } catch (e) { alert(e.message) }
   }
   const remove = async (s) => {
@@ -179,7 +215,7 @@ function ListPanel() {
       {err && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm">{err}</div>}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="card p-4 border-l-4 border-indigo-500">
-          <div className="flex items-center gap-2 text-indigo-600"><Users size={15} /><span className="text-xs font-semibold uppercase">Actionnaires</span></div>
+          <div className="flex items-center gap-2 text-indigo-600"><Users size={15} /><span className="text-xs font-semibold uppercase">Associés</span></div>
           <p className="text-xl font-bold text-gray-900 mt-1">{stats?.total ?? '—'}</p>
         </div>
         <div className="card p-4 border-l-4 border-emerald-500">
@@ -197,7 +233,7 @@ function ListPanel() {
 
       <div className="card overflow-x-auto">
         <div className="flex items-center justify-between p-3 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900 text-sm">Liste des actionnaires</h2>
+          <h2 className="font-semibold text-gray-900 text-sm">Liste des associés</h2>
           <button onClick={load} className="btn-ghost text-xs border border-gray-200"><RefreshCw size={13} /> Actualiser</button>
         </div>
         {loading ? (
@@ -207,7 +243,7 @@ function ListPanel() {
             <thead>
               <tr className="text-left text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
                 <th className="px-3 py-2.5">Date</th>
-                <th className="px-3 py-2.5">Actionnaire</th>
+                <th className="px-3 py-2.5">Associé</th>
                 <th className="px-3 py-2.5">Palier</th>
                 <th className="px-3 py-2.5">Zone</th>
                 <th className="px-3 py-2.5">Montant</th>
@@ -218,7 +254,7 @@ function ListPanel() {
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-8 text-gray-400 text-sm">Aucun actionnaire pour le moment.</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-gray-400 text-sm">Aucun associé pour le moment.</td></tr>
               )}
               {rows.map((s) => (
                 <tr key={s._id} className="border-b border-gray-50">
@@ -260,7 +296,7 @@ function ListPanel() {
   )
 }
 
-// Modale : modifier/éditer le plan d'un actionnaire (palier, zone, %, durée, montant, statut)
+// Modale : modifier/éditer le plan d'un associé (palier, zone, %, durée, montant, statut)
 function EditModal({ s, onClose, onSaved }) {
   const [f, setF] = useState({
     planKey: s.planKey, planLabel: s.planLabel || '', percent: s.percent,
@@ -279,7 +315,7 @@ function EditModal({ s, onClose, onSaved }) {
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && onClose()}>
       <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-3 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-gray-900">Modifier le plan — {s.user?.name || 'Actionnaire'}</h3>
+          <h3 className="font-bold text-gray-900">Modifier le plan — {s.user?.name || 'Associé'}</h3>
           <button onClick={() => !busy && onClose()} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -332,7 +368,7 @@ function EditModal({ s, onClose, onSaved }) {
   )
 }
 
-// Modale : verser un gain (dividende) à l'actionnaire — crédite son portefeuille
+// Modale : verser un gain (dividende) à l'associé — crédite son portefeuille
 function PayGainModal({ s, onClose, onDone }) {
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -357,7 +393,7 @@ function PayGainModal({ s, onClose, onDone }) {
           <h3 className="font-bold text-gray-900 flex items-center gap-2"><Gift size={17} className="text-emerald-600" /> Verser un gain</h3>
           <button onClick={() => !busy && onClose()} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <p className="text-xs text-gray-500">{s.user?.name || 'Actionnaire'} — {PLAN_NAMES[s.planKey] || s.planKey} {s.zone ? '(' + s.zone + ')' : ''}</p>
+        <p className="text-xs text-gray-500">{s.user?.name || 'Associé'} — {PLAN_NAMES[s.planKey] || s.planKey} {s.zone ? '(' + s.zone + ')' : ''}</p>
         <div>
           <label className="text-xs font-medium text-gray-600 mb-1 block">Montant (F) *</label>
           <input type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} className="input w-full" placeholder="Ex. 25000" />
@@ -375,7 +411,7 @@ function PayGainModal({ s, onClose, onDone }) {
   )
 }
 
-// ── Onglet publications : dépenses / sommes à payer / réunions pour les actionnaires ──
+// ── Onglet publications : dépenses / sommes à payer / réunions pour les associés ──
 function PostsPanel() {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -401,7 +437,7 @@ function PostsPanel() {
     <div className="space-y-4">
       {err && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm">{err}</div>}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Visibles dans le portefeuille de tous les actionnaires actifs.</p>
+        <p className="text-sm text-gray-500">Visibles dans le portefeuille de tous les associés actifs.</p>
         <button onClick={() => setEditing({})} className="btn-primary text-sm"><Plus size={15} /> Nouvelle publication</button>
       </div>
 
@@ -520,7 +556,7 @@ function PostModal({ post, onClose, onSaved }) {
         )}
         <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
           <input type="checkbox" checked={f.isPublished} onChange={(e) => setF({ ...f, isPublished: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
-          Publier immédiatement (visible par les actionnaires)
+          Publier immédiatement (visible par les associés)
         </label>
         {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{err}</p>}
         <div className="flex gap-3 pt-1">
@@ -533,3 +569,4 @@ function PostModal({ post, onClose, onSaved }) {
     </div>
   )
 }
+
