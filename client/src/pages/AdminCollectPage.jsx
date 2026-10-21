@@ -174,7 +174,8 @@ export default function AdminCollectPage() {
       <div className="flex gap-2 p-1.5 bg-gray-100 rounded-2xl border border-gray-200/60 overflow-x-auto">
         {[
           { key: 'agents', label: 'Agents & Clients enregistrés', icon: Users },
-          { key: 'fees', label: 'Frais de Collecte par Agence', icon: Coins },
+          { key: 'fees', label: 'Frais de Collecte par Agence (30% Plateforme / 70% Agent)', icon: Coins },
+          { key: 'withdrawals', label: 'Historique des retraits Administrateur', icon: ArrowDownCircle },
           { key: 'terms', label: "Termes & Conditions d'adhésion", icon: FileText },
         ].map((t) => (
           <button
@@ -315,9 +316,10 @@ export default function AdminCollectPage() {
                 <thead>
                   <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
                     <th className="py-3 px-3">Agence & Responsable</th>
-                    <th className="py-3 px-3 text-center">Nombre de Clients</th>
-                    <th className="py-3 px-3 text-right">Frais par Client</th>
-                    <th className="py-3 px-3 text-right">Total Frais Encaissés</th>
+                    <th className="py-3 px-3 text-center">Clients</th>
+                    <th className="py-3 px-3 text-right">Total Prélevé</th>
+                    <th className="py-3 px-3 text-right">Part Agent (70%)</th>
+                    <th className="py-3 px-3 text-right">Part Plateforme (30%)</th>
                     <th className="py-3 px-3 text-right">Dernier Prélèvement</th>
                   </tr>
                 </thead>
@@ -329,9 +331,14 @@ export default function AdminCollectPage() {
                         <div className="text-[11px] text-gray-400">Agent : {f.agentName}</div>
                       </td>
                       <td className="py-3 px-3 text-center font-bold text-gray-800">{f.totalClientsCount}</td>
-                      <td className="py-3 px-3 text-right text-gray-500">1 100 XAF</td>
-                      <td className="py-3 px-3 text-right font-black text-amber-700 whitespace-nowrap">
+                      <td className="py-3 px-3 text-right font-black text-gray-900 whitespace-nowrap">
                         {fmt(f.totalAmount)} <span className="text-[10px] font-normal text-gray-400">XAF</span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
+                        {fmt(f.totalAgentShare || Math.round(f.totalAmount * 0.70))} <span className="text-[10px] font-normal text-gray-400">XAF</span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-bold text-amber-700 whitespace-nowrap">
+                        {fmt(f.totalPlatformShare || (f.totalAmount - Math.round(f.totalAmount * 0.70)))} <span className="text-[10px] font-normal text-gray-400">XAF</span>
                       </td>
                       <td className="py-3 px-3 text-right text-gray-500 whitespace-nowrap">
                         {fmtDate(f.lastDeductedAt)}
@@ -344,6 +351,9 @@ export default function AdminCollectPage() {
           )}
         </div>
       )}
+
+      {/* ONGLET NOUVEAU : HISTORIQUE DES RETRAITS ADMINISTRATEUR */}
+      {tab === 'withdrawals' && <AdminWithdrawalsHistoryTab showBanner={showBanner} />}
 
       {/* ONGLET 3 : TERMES ET CONDITIONS D'ADHÉSION */}
       {tab === 'terms' && <AdminTermsTab showBanner={showBanner} />}
@@ -628,8 +638,9 @@ function AdminClientWithdrawModal({ client, onClose, onSuccess }) {
     try {
       const res = await collectApi.adminWithdrawClient(client._id, {
         amount: amt,
-        payoutMethod,
-        customPhone: customPhone.trim(),
+        payoutMethod: payoutMethod === 'wallet' ? 'wallet' : 'momo',
+        momoOperator: payoutMethod === 'momo_orange' ? 'orange' : 'mtn',
+        momoNumber: customPhone.trim(),
         notes,
       })
       onSuccess(res.client || { _id: client._id, fullName: client.fullName, balance: res.newBalance })
@@ -888,6 +899,110 @@ function AdminTermsTab({ showBanner }) {
           <span>Enregistrer les termes & conditions</span>
         </button>
       </form>
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPOSANT : HISTORIQUE COMPLET DES RETRAITS PAR L'ADMINISTRATEUR
+// ─────────────────────────────────────────────────────────────────────────────
+function AdminWithdrawalsHistoryTab({ showBanner }) {
+  const [withdrawals, setWithdrawals] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const loadHistory = async () => {
+    try {
+      setLoading(true)
+      const res = await collectApi.adminWithdrawalsHistory()
+      setWithdrawals(res.withdrawals || [])
+    } catch (e) {
+      showBanner(e.message || 'Erreur lors du chargement de l\'historique des retraits.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadHistory()
+  }, [])
+
+  return (
+    <div className="card p-5 sm:p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-gray-100">
+        <div>
+          <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <ArrowDownCircle size={18} className="text-rose-600" /> Historique des Retraits Effectués par l'Administrateur
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Registre d'audit détaillé de tous les décaissements de collecte ordonnés par l'administration.
+          </p>
+        </div>
+        <button
+          onClick={loadHistory}
+          disabled={loading}
+          className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 rounded-xl self-start sm:self-auto"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Actualiser
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="py-16 text-center text-gray-400">
+          <Loader2 size={24} className="animate-spin text-emerald-600 mx-auto" />
+        </div>
+      ) : withdrawals.length === 0 ? (
+        <div className="py-16 text-center text-gray-400 text-xs">
+          Aucun retrait effectué par un administrateur enregistré dans l'historique.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                <th className="py-3 px-3">Date & Heure</th>
+                <th className="py-3 px-3">Administrateur</th>
+                <th className="py-3 px-3">Client Bénéficiaire</th>
+                <th className="py-3 px-3 text-right">Montant</th>
+                <th className="py-3 px-3">Mode & Numéro</th>
+                <th className="py-3 px-3">Motif / Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {withdrawals.map((w) => (
+                <tr key={w._id} className="hover:bg-gray-50/70 transition-colors">
+                  <td className="py-3 px-3 whitespace-nowrap text-gray-600">
+                    <div className="font-bold text-gray-800">{new Date(w.executedAt || w.createdAt).toLocaleDateString('fr-FR')}</div>
+                    <div className="text-[11px] text-gray-400">{new Date(w.executedAt || w.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+                  </td>
+                  <td className="py-3 px-3">
+                    <div className="font-bold text-gray-900">{w.adminName || w.admin?.name || 'Administrateur'}</div>
+                    <div className="text-[11px] text-gray-400 font-mono">{w.adminEmail || w.admin?.email}</div>
+                    <div className="text-[10px] text-indigo-600 font-semibold uppercase">{w.adminRole || w.admin?.role || 'Admin'}</div>
+                  </td>
+                  <td className="py-3 px-3">
+                    <div className="font-bold text-gray-900">{w.clientName || w.client?.fullName}</div>
+                    <div className="text-[11px] text-gray-500 font-mono">{w.clientAccountNumber || w.client?.accountNumber}</div>
+                    {w.neighborhood && <div className="text-[10px] text-gray-400">📍 {w.neighborhood}</div>}
+                  </td>
+                  <td className="py-3 px-3 text-right font-black text-rose-700 whitespace-nowrap">
+                    -{fmt(w.amount)} <span className="text-[10px] font-normal text-gray-400">XAF</span>
+                  </td>
+                  <td className="py-3 px-3">
+                    <div className="font-semibold text-gray-800 capitalize">
+                      {w.payoutMethod === 'momo' ? ('Mobile Money (' + (w.momoOperator ? w.momoOperator.toUpperCase() : 'MOMO') + ')') : w.payoutMethod}
+                    </div>
+                    {w.momoNumber && <div className="text-xs font-mono text-gray-600 font-bold">📱 {w.momoNumber}</div>}
+                  </td>
+                  <td className="py-3 px-3 text-xs text-gray-500 max-w-xs truncate">
+                    {w.notes || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

@@ -56,8 +56,7 @@ router.get('/me', protect, async (req, res) => {
     const hasPin = !!(await User.findById(req.user._id).select('+walletPin').then(u => u && u.walletPin))
     // Génère le numéro de compte KS-XXXXXX à la première ouverture (couvre les comptes existants).
     const accountNo = await wallet.ensureAccountNo(req.user._id)
-    res.json({ success: true, balance: w.balance, locked: w.locked, currency: w.currency,
-      totalIn: w.totalIn, totalOut: w.totalOut, hasPin, accountNo, transactions })
+    res.json({ success: true, balance: w.balance, wallet: { balance: w.balance, locked: w.locked, currency: w.currency }, locked: w.locked, currency: w.currency, totalIn: w.totalIn, totalOut: w.totalOut, hasPin, accountNo, transactions })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

@@ -88,4 +88,115 @@ router.post('/initiate', protect, async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
 
+
+const CollectClient = require('../models/CollectClient')
+const DailyCollection = require('../models/DailyCollection')
+
+// GET /api/merchant/collect-client-lookup?accountNumber=CL-XXXXXX
+router.get('/collect-client-lookup', protect, async (req, res) => {
+  try {
+    const acc = String(req.query.accountNumber || '').trim().toUpperCase()
+    if (!acc) return res.status(400).json({ message: 'Numéro de compte client requis' })
+    const client = await CollectClient.findOne({ accountNumber: acc, status: 'active' }).populate('agent')
+    if (!client) {
+      return res.status(404).json({ message: 'Aucun compte client de collecte trouvé avec ce numéro.' })
+    }
+    res.json({
+      success: true,
+      client: {
+        _id: client._id,
+        accountNumber: client.accountNumber,
+        fullName: client.fullName,
+        neighborhood: client.neighborhood,
+        phone: client.phone,
+        agencyName: client.agent?.agencyName || '',
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/merchant/transfer-to-collect-client — Transfert depuis le solde marchand vers le compte d'un client collecte
+router.post('/transfer-to-collect-client', protect, async (req, res) => {
+  try {
+    const u = await User.findById(req.user._id).select('isMerchant name phone role')
+    if (!u?.isMerchant && u?.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Action réservée aux comptes marchands actifs.' })
+    }
+
+    const { accountNumber, amount, notes } = req.body
+    const amt = Number(amount)
+    if (!amt || amt <= 0) {
+      return res.status(400).json({ message: 'Montant de transfert invalide (doit être supérieur à 0).' })
+    }
+
+    const acc = String(accountNumber || '').trim().toUpperCase()
+    if (!acc) {
+      return res.status(400).json({ message: 'Numéro de compte client requis.' })
+    }
+
+    const client = await CollectClient.findOne({ accountNumber: acc, status: 'active' })
+    if (!client) {
+      return res.status(404).json({ message: 'Compte client de collecte introuvable ou inactif.' })
+    }
+
+    // Vérifie le solde du portefeuille marchand
+    const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
+    if (w.balance < amt) {
+      return res.status(400).json({
+        message: 'Solde insuffisant sur votre compte marchand (' + w.balance.toLocaleString('fr-FR') + ' FCFA disponibles).',
+      })
+    }
+
+    // Débit du compte marchand
+    await wallet.debit(req.user._id, {
+      amount: amt,
+      type: 'transfer_sent',
+      description: 'Transfert marchand vers compte collecte : ' + client.fullName + ' (' + client.accountNumber + ')',
+      meta: {
+        reason: 'merchant_transfer_to_collect_client',
+        clientId: String(client._id),
+        clientAccountNumber: client.accountNumber,
+        notes: notes || '',
+      },
+    })
+
+    // Crédit du solde de collecte du client
+    client.balance += amt
+    await client.save()
+
+    // Enregistrement dans DailyCollection
+    const today = new Date().toISOString().slice(0, 10)
+    await DailyCollection.create({
+      agent: client.agent,
+      agentUser: client.agentUser,
+      client: client._id,
+      clientName: client.fullName,
+      clientPhone: client.phone,
+      neighborhood: client.neighborhood,
+      date: today,
+      amount: amt,
+      type: 'depot',
+      status: 'paye',
+      paymentMethod: 'wallet',
+      notes: 'Transfert reçu du marchand ' + (u.name || 'Marchand') + (notes ? ' (' + notes + ')' : ''),
+      datetime: new Date(),
+    })
+
+    res.json({
+      success: true,
+      message: 'Transfert de ' + amt.toLocaleString('fr-FR') + ' FCFA vers le compte de ' + client.fullName + ' (' + client.accountNumber + ') effectué avec succès !',
+      client: {
+        _id: client._id,
+        accountNumber: client.accountNumber,
+        fullName: client.fullName,
+        newBalance: client.balance,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

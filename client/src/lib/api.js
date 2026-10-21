@@ -1294,6 +1294,8 @@ export const adminBoostsApi = {
 export const merchantApi = {
   me: () => api.get('/merchant/me'),
   initiate: (payload) => api.post('/merchant/initiate', payload),
+  lookupCollectClient: (accountNumber) => api.get('/merchant/collect-client-lookup?accountNumber=' + encodeURIComponent(accountNumber)),
+  transferToCollectClient: (payload) => api.post('/merchant/transfer-to-collect-client', payload),
 }
 
 // Gestion des marchands (admin) : liste + soldes + commissions, octroi, approvisionnement
@@ -1393,6 +1395,11 @@ export const collectApi = {
   adminFeesSummary: () => api.get('/collect/admin/fees-summary'),
   adminTriggerMonthlyFees: () => api.post('/collect/admin/trigger-monthly-fees'),
   adminUpdateTerms: (data) => api.put('/collect/admin/terms', data),
+  // Portefeuille commissions agent (70%)
+  getCommissionWallet: () => api.get('/collect/agent/commission-wallet'),
+  withdrawCommissions: (data) => api.post('/collect/agent/commission-withdraw', data),
+  // Historique des retraits administrateur
+  adminWithdrawalsHistory: () => api.get('/collect/admin/withdrawals-history'),
 }
 
 export default api

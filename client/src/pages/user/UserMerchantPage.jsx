@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Store, Loader2, Coins, Wallet, X, CheckCircle2, TrendingUp, Sparkles, Gift, Copy, Check, Users } from 'lucide-react'
+import {
+  Store, Loader2, Coins, Wallet, X, CheckCircle2, TrendingUp, Sparkles, Gift,
+  Copy, Check, Users, Send, Search, ArrowUpRight, AlertCircle, Phone, MapPin, User,
+} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { merchantApi, paymentsApi, authApi } from '../../lib/api'
+import { merchantApi, authApi } from '../../lib/api'
 import { useInlineCheckout } from '../../components/payments/useInlineCheckout'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
@@ -16,26 +19,66 @@ export default function UserMerchantPage() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [showPay, setShowPay] = useState(false)
+  const [showTransferCollect, setShowTransferCollect] = useState(false)
+  const [successBanner, setSuccessBanner] = useState('')
 
   const load = async () => {
-    try { setLoading(true); const d = await merchantApi.me(); setData(d) }
-    catch (e) { setErr(e.message) } finally { setLoading(false) }
+    try {
+      setLoading(true)
+      const d = await merchantApi.me()
+      setData(d)
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setLoading(false)
+    }
   }
-  useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  const showMsg = (msg) => {
+    setSuccessBanner(msg)
+    setTimeout(() => setSuccessBanner(''), 5000)
+  }
 
   // Rafraîchit l'utilisateur global (isMerchant) après activation
   const refreshUser = async () => {
-    try { const res = await authApi.me(); if (res?.user) { setUser(res.user); localStorage.setItem('katd_user', JSON.stringify(res.user)) } } catch (_) {}
+    try {
+      const res = await authApi.me()
+      if (res?.user) {
+        setUser(res.user)
+        localStorage.setItem('katd_user', JSON.stringify(res.user))
+      }
+    } catch (_) {}
   }
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-orange-600" /></div>
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Store className="text-orange-600" size={26} />
-        <h1 className="text-xl font-bold text-gray-900">Compte marchand</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Store className="text-orange-600" size={26} />
+          <h1 className="text-xl font-bold text-gray-900">Compte marchand</h1>
+        </div>
+        {data?.isMerchant && (
+          <button
+            onClick={() => setShowTransferCollect(true)}
+            className="btn-primary text-xs py-2 px-3.5 flex items-center gap-1.5 rounded-xl shadow-xs"
+          >
+            <Send size={14} /> Transférer vers client collecte
+          </button>
+        )}
       </div>
+
+      {successBanner && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs sm:text-sm flex items-center gap-2">
+          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+          <span>{successBanner}</span>
+        </div>
+      )}
 
       {err && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm">{err}</div>}
 
@@ -66,7 +109,7 @@ export default function UserMerchantPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-gradient-to-br from-orange-600 to-amber-600 text-white rounded-2xl p-5 shadow-lg sm:col-span-1">
-              <div className="flex items-center gap-2 opacity-90"><Wallet size={16} /><span className="text-xs font-semibold uppercase">Solde</span></div>
+              <div className="flex items-center gap-2 opacity-90"><Wallet size={16} /><span className="text-xs font-semibold uppercase">Solde Marchand</span></div>
               <p className="text-2xl font-bold mt-1">{fmt(data.balance)} <span className="text-sm">F</span></p>
               {data.accountNo && <p className="text-xs opacity-80 mt-1 font-mono">{data.accountNo}</p>}
             </div>
@@ -78,6 +121,23 @@ export default function UserMerchantPage() {
               <div className="flex items-center gap-2 text-blue-600"><TrendingUp size={16} /><span className="text-xs font-semibold uppercase">Ce mois</span></div>
               <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(data.commissionThisMonth)} <span className="text-sm text-gray-400">F</span></p>
             </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                <Send size={16} className="text-orange-600" /> Transfert vers compte collecte client
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Alimentez directement le compte d'épargne collecte d'un client à l'aide de son numéro de compte (ex : CL-123456).
+              </p>
+            </div>
+            <button
+              onClick={() => setShowTransferCollect(true)}
+              className="btn-primary text-xs py-2 px-4 rounded-xl shrink-0 w-full sm:w-auto justify-center"
+            >
+              Effectuer un transfert
+            </button>
           </div>
 
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
@@ -106,6 +166,208 @@ export default function UserMerchantPage() {
       )}
 
       {showPay && <PayModal fee={data?.fee} onClose={() => setShowPay(false)} onDone={async () => { setShowPay(false); await refreshUser(); load() }} />}
+
+      {showTransferCollect && (
+        <MerchantTransferToCollectModal
+          merchantBalance={data?.balance || 0}
+          onClose={() => setShowTransferCollect(false)}
+          onSuccess={(msg) => {
+            setShowTransferCollect(false)
+            showMsg(msg)
+            load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Modal pour transférer depuis le solde marchand vers le numéro de compte d'un client collecte
+function MerchantTransferToCollectModal({ merchantBalance, onClose, onSuccess }) {
+  const [accountNumber, setAccountNumber] = useState('')
+  const [amount, setAmount] = useState('')
+  const [notes, setNotes] = useState('')
+  const [clientInfo, setClientInfo] = useState(null)
+  const [searching, setSearching] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [err, setErr] = useState('')
+
+  const handleLookup = async (accToSearch) => {
+    const acc = (accToSearch || accountNumber).trim().toUpperCase()
+    if (!acc) return
+    setSearching(true)
+    setErr('')
+    try {
+      const res = await merchantApi.lookupCollectClient(acc)
+      setClientInfo(res.client)
+    } catch (e) {
+      setClientInfo(null)
+      setErr(e.message || 'Numéro de compte client introuvable.')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setErr('')
+    const amt = Number(amount)
+    if (!accountNumber.trim()) {
+      setErr('Veuillez renseigner le numéro de compte client.')
+      return
+    }
+    if (!clientInfo) {
+      setErr('Veuillez vérifier et valider le numéro de compte client avant de confirmer.')
+      return
+    }
+    if (!amt || amt <= 0) {
+      setErr('Veuillez saisir un montant supérieur à 0.')
+      return
+    }
+    if (amt > merchantBalance) {
+      setErr(`Solde marchand insuffisant (${fmt(merchantBalance)} FCFA disponibles).`)
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await merchantApi.transferToCollectClient({
+        accountNumber: accountNumber.trim().toUpperCase(),
+        amount: amt,
+        notes: notes.trim(),
+      })
+      onSuccess(res.message || 'Transfert effectué avec succès !')
+    } catch (e) {
+      setErr(e.message || 'Erreur lors du transfert.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
+      <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+          <div>
+            <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+              <Send size={18} className="text-orange-600" /> Transfert vers compte client
+            </h3>
+            <p className="text-xs text-gray-500">Débit direct de votre solde marchand</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg">
+            <X size={18} />
+          </button>
+        </div>
+
+        {err && (
+          <div className="p-3 bg-red-50 text-red-800 text-xs rounded-xl flex items-start gap-2 border border-red-200">
+            <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-600" />
+            <span>{err}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">
+              Numéro de compte du client (ex: CL-849201) *
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={accountNumber}
+                onChange={(e) => {
+                  setAccountNumber(e.target.value.toUpperCase())
+                  setClientInfo(null)
+                  setErr('')
+                }}
+                placeholder="CL-XXXXXX"
+                className="input text-xs w-full font-mono uppercase font-bold"
+              />
+              <button
+                type="button"
+                onClick={() => handleLookup()}
+                disabled={searching || !accountNumber.trim()}
+                className="btn-secondary text-xs px-3 py-2 flex items-center gap-1 rounded-xl shrink-0"
+              >
+                {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                <span>Vérifier</span>
+              </button>
+            </div>
+          </div>
+
+          {clientInfo && (
+            <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs space-y-1.5 animate-fade-in">
+              <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                <CheckCircle2 size={15} className="text-emerald-600" /> Client identifié :
+              </div>
+              <div className="font-black text-gray-900 text-sm flex items-center gap-1.5">
+                <User size={14} className="text-gray-500" /> {clientInfo.fullName}
+              </div>
+              <div className="text-gray-600 flex items-center gap-1.5">
+                <MapPin size={13} className="text-gray-400" /> Quartier : <b>{clientInfo.neighborhood || 'Non spécifié'}</b>
+              </div>
+              {clientInfo.phone && (
+                <div className="text-gray-600 flex items-center gap-1.5">
+                  <Phone size={13} className="text-gray-400" /> Contact : <b>{clientInfo.phone}</b>
+                </div>
+              )}
+              {clientInfo.agencyName && (
+                <div className="text-[11px] text-gray-500">
+                  Agence de collecte : <b>{clientInfo.agencyName}</b>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-gray-700">Montant à transférer (XAF) *</label>
+              <span className="text-[11px] text-gray-500">
+                Solde : <b className="text-orange-700">{fmt(merchantBalance)} F</b>
+              </span>
+            </div>
+            <input
+              type="number"
+              min="100"
+              step="50"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Ex: 5000"
+              className="input text-xs w-full font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Note ou motif (optionnel)</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Ex : Versement pour collecte journalière"
+              className="input text-xs w-full"
+            />
+          </div>
+
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="btn-secondary text-xs py-2 px-4 rounded-xl"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !clientInfo || !amount}
+              className="btn-primary text-xs py-2 px-4 rounded-xl flex items-center gap-1.5"
+            >
+              {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              <span>Confirmer le transfert</span>
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

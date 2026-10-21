@@ -207,6 +207,14 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
   const [err, setErr] = useState('')
   const inline = useInlineCheckout()
 
+
+  const basePercent = Number(selected?.percent) || 1
+  const unitPrice = (Number(selected?.price) || 0) / basePercent
+  const rawPrice = percent * unitPrice
+  const hasDiscount = percent >= 3
+  const discountAmount = hasDiscount ? Math.round(rawPrice * 0.20) : 0
+  const finalPrice = Math.max(0, rawPrice - discountAmount)
+
   const needZone = selected && selected.key !== 'international'
 
   // Charge le solde du portefeuille à l'ouverture (pour le paiement par portefeuille)
@@ -223,11 +231,14 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
     // ── Paiement depuis le solde du portefeuille ──
     if (method === 'wallet') {
       if (!f.pin) { setErr('Code PIN requis'); return }
-      if (balance != null && balance < selected.price) { setErr('Solde insuffisant. Effectuez d\'abord un dépôt sur votre portefeuille.'); return }
+      if (balance != null && balance < finalPrice) {
+        setErr('Solde insuffisant (' + fmt(balance) + ' F disponibles contre ' + fmt(finalPrice) + ' F requis). Effectuez d\'abord un dépôt.');
+        return
+      }
       setBusy(true)
       setStatus('Paiement depuis votre portefeuille...')
       try {
-        await shareholdersApi.subscribeWallet({ planKey: selected.key, zone: f.zone.trim(), pin: f.pin })
+        await shareholdersApi.subscribeWallet({ planKey: selected.key, percent, zone: f.zone.trim(), pin: f.pin })
         onDone()
       } catch (e) { setErr(e.message); setStatus('') } finally { setBusy(false) }
       return
@@ -235,9 +246,9 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
 
     // ── Paiement Mobile Money (Direct Charge H2H) ──
     inline.start(
-      (momo = {}) => shareholdersApi.subscribe({ planKey: selected.key, zone: f.zone.trim(), ...momo }),
+      (momo = {}) => shareholdersApi.subscribe({ planKey: selected.key, percent, zone: f.zone.trim(), ...momo }),
       async () => { onDone() },
-      { amount: selected.price, title: `Souscription actionnaire — ${selected.label || ''}` }
+      { amount: finalPrice, title: 'Souscription actionnaire (' + percent + '%) — ' + (selected.label || '') }
     )
   }
 
@@ -260,7 +271,7 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
                   key={p.key}
                   type="button"
                   disabled={owned}
-                  onClick={() => setSelected(p)}
+                  onClick={() => { setSelected(p); setPercent(Number(p.percent) || 1); }}
                   className={`text-left rounded-xl overflow-hidden border-2 transition-all ${
                     owned ? 'opacity-50 cursor-not-allowed border-gray-100'
                       : isSel ? 'border-indigo-600 ring-2 ring-indigo-200 scale-[1.02]' : 'border-gray-100 hover:border-indigo-200'
@@ -285,6 +296,60 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
           {/* Formulaire (zone + mode de paiement) — visible dès qu'un plan est choisi */}
           {selected && (
             <div className="space-y-3 border-t border-gray-100 pt-3">
+              {/* Choix dynamique du pourcentage d'actions et remise de 20% dès 3% */}
+              <div className="bg-gradient-to-br from-indigo-50/80 to-purple-50/60 rounded-2xl p-4 border border-indigo-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800">
+                    Pourcentage d'actions souhaité (%)
+                  </label>
+                  {hasDiscount && (
+                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 animate-pulse">
+                      🎉 -20% de remise appliquée !
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setPercent((prev) => Math.max(1, prev - 1))}
+                    className="w-9 h-9 rounded-xl bg-white border border-gray-200 font-black text-gray-700 hover:bg-gray-50 flex items-center justify-center text-base shadow-2xs"
+                  >
+                    -
+                  </button>
+                  <div className="flex-1 relative">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={percent}
+                      onChange={(e) => setPercent(Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1))))}
+                      className="input w-full text-center font-black text-lg text-indigo-700 py-1.5"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-gray-400 text-sm">%</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPercent((prev) => Math.min(100, prev + 1))}
+                    className="w-9 h-9 rounded-xl bg-white border border-gray-200 font-black text-gray-700 hover:bg-gray-50 flex items-center justify-center text-base shadow-2xs"
+                  >
+                    +
+                  </button>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-600 pt-1 border-t border-indigo-100/60">
+                  <span>Base (1%) : <b>{fmt(unitPrice)} F</b></span>
+                  <div className="text-right">
+                    {hasDiscount && (
+                      <span className="line-through text-gray-400 mr-2 text-[11px]">{fmt(rawPrice)} F</span>
+                    )}
+                    <span className="font-black text-indigo-700 text-sm">{fmt(finalPrice)} FCFA</span>
+                  </div>
+                </div>
+                {hasDiscount && (
+                  <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                    ✨ Remise spéciale : économie de <b>{fmt(discountAmount)} FCFA</b> ({percent}% souscrits).
+                  </p>
+                )}
+              </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{ZONE_LABELS[selected.key]}{needZone ? ' *' : ''}</label>
                 <input value={f.zone} onChange={(e) => setF({ ...f, zone: e.target.value })} className="input w-full" placeholder={ZONE_LABELS[selected.key]} />
@@ -312,12 +377,12 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2">
                     <span className="text-xs text-gray-600">Solde disponible</span>
-                    <span className={`text-sm font-bold ${balance != null && balance < selected.price ? 'text-red-600' : 'text-indigo-700'}`}>
+                    <span className={`text-sm font-bold ${balance != null && balance < finalPrice ? 'text-red-600' : 'text-indigo-700'}`}>
                       {balance == null ? '…' : fmt(balance) + ' F'}
                     </span>
                   </div>
-                  {balance != null && balance < selected.price && (
-                    <p className="text-[11px] text-red-600">Solde insuffisant pour ce plan ({fmt(selected.price)} F). Rechargez votre portefeuille.</p>
+                  {balance != null && balance < finalPrice && (
+                    <p className="text-[11px] text-red-600">Solde insuffisant ({fmt(finalPrice)} F requis). Rechargez votre portefeuille.</p>
                   )}
                   <div>
                     <label className="text-xs font-medium text-gray-600 mb-1 block">Code PIN du portefeuille *</label>
@@ -350,8 +415,8 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
           <button onClick={submit} disabled={busy || inline.busy || !selected} className="btn-primary w-full justify-center">
             {(busy || inline.busy) ? <><Loader2 size={16} className="animate-spin" /> Traitement...</>
               : !selected ? <>Sélectionnez un plan</>
-              : method === 'wallet' ? <>Payer {fmt(selected.price)} F depuis mon portefeuille</>
-              : <>Valider — Payer {fmt(selected.price)} F</>}
+              : method === 'wallet' ? <>Payer {fmt(finalPrice)} F depuis mon portefeuille ({percent}%)</>
+              : <>Valider — Payer {fmt(finalPrice)} F ({percent}%)</>}
           </button>
           {inline.element}
         </div>

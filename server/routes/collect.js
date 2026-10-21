@@ -12,6 +12,7 @@ const CollectClient = require('../models/CollectClient')
 const DailyCollection = require('../models/DailyCollection')
 const CollectReport = require('../models/CollectReport')
 const CollectFeeRecord = require('../models/CollectFeeRecord')
+const CollectAdminWithdrawal = require('../models/CollectAdminWithdrawal')
 const Wallet = require('../models/Wallet')
 const WalletTransaction = require('../models/WalletTransaction')
 const User = require('../models/User')
@@ -36,8 +37,8 @@ function adminOnly(req, res, next) {
 }
 
 // ── Fonction utilitaire : Déduction mensuelle des frais de tenue de compte (1 100 FCFA / client) ──
-// Déduit les 1 100 FCFA sur chaque client actif pour le mois en cours s'ils n'ont pas encore été prélevés,
-// et crédite le total correspondant sur le portefeuille de l'administrateur sous le nom de l'agence/agent.
+// Répartition : 70% pour l'agent de collecte (770 FCFA) versé sur son portefeuille commissions séparé
+//               30% pour la gestion des collectes / plateforme (330 FCFA) versé sur le compte admin.
 async function applyMonthlyFeesForAgent(agentId) {
   try {
     const agent = await CollectAgent.findById(agentId).populate('user', 'name email phone')
@@ -49,13 +50,15 @@ async function applyMonthlyFeesForAgent(agentId) {
 
     const cfg = await CollectConfig.getOrCreate()
     const feePerClient = Number(cfg.monthlyFee) || 1100
+    const agentShare = Math.round(feePerClient * 0.70) // 770 FCFA
+    const platformShare = feePerClient - agentShare // 330 FCFA
 
     let newlyDeductedCount = 0
     const recordsToCreate = []
 
     for (const client of clients) {
       if (client.lastMonthlyFeeMonth !== currentMonth) {
-        // Déduction des frais de gestion
+        // Déduction des 1 100 FCFA sur le compte de collecte du client
         client.balance -= feePerClient
         client.lastMonthlyFeeMonth = currentMonth
         await client.save()
@@ -69,6 +72,8 @@ async function applyMonthlyFeesForAgent(agentId) {
           clientName: client.fullName,
           month: currentMonth,
           amount: feePerClient,
+          agentShare,
+          platformShare,
           deductedAt: new Date(),
         })
         newlyDeductedCount++
@@ -78,33 +83,42 @@ async function applyMonthlyFeesForAgent(agentId) {
     if (recordsToCreate.length > 0) {
       const createdRecords = await CollectFeeRecord.insertMany(recordsToCreate)
       const totalAmount = newlyDeductedCount * feePerClient
+      const totalAgentShare = newlyDeductedCount * agentShare
+      const totalPlatformShare = newlyDeductedCount * platformShare
 
-      // Crédit de la somme totale perçue sur le portefeuille de l'administrateur
+      // 1. Crédit du portefeuille séparé de commissions de l'agent (70%)
+      agent.commissionBalance = (agent.commissionBalance || 0) + totalAgentShare
+      agent.commissionTotalEarned = (agent.commissionTotalEarned || 0) + totalAgentShare
+      await agent.save()
+
+      // 2. Crédit de la plateforme / gestion des collectes (30%)
       const platformAdmin = await wallet.getPlatformAdmin()
       if (platformAdmin) {
         const adminWallet = await wallet.getOrCreateWallet(platformAdmin._id, { role: 'admin' })
-        adminWallet.balance += totalAmount
-        adminWallet.totalIn += totalAmount
+        adminWallet.balance += totalPlatformShare
+        adminWallet.totalIn += totalPlatformShare
         await adminWallet.save()
 
         const tx = await WalletTransaction.create({
           wallet: adminWallet._id,
           owner: platformAdmin._id,
           direction: 'credit',
-          amount: totalAmount,
+          amount: totalPlatformShare,
           currency: adminWallet.currency || 'XAF',
           type: 'fee_collected',
           balanceAfter: adminWallet.balance,
           counterparty: agent.user?._id || agent.user,
-          description: `Frais de collecte journalière — ${agent.agencyName} (${newlyDeductedCount} clients)`,
+          description: 'Frais de gestion collecte (30%) — ' + agent.agencyName + ' (' + newlyDeductedCount + ' clients)',
           meta: {
-            feeType: 'collect',
+            feeType: 'collect_platform_share',
             agentId: String(agent._id),
             agentName: agent.user?.name || agent.agencyName,
             agencyName: agent.agencyName,
             clientCount: newlyDeductedCount,
             month: currentMonth,
             baseAmount: totalAmount,
+            agentShare: totalAgentShare,
+            platformShare: totalPlatformShare,
           },
         })
 
@@ -236,6 +250,140 @@ router.post('/opt-in', protect, async (req, res) => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2bis. PORTEFEUILLE COMMISSIONS SÉPARÉ DE L'AGENT (70% des frais de collecte)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/collect/agent/commission-wallet — Solde commissions, éligibilité retrait (règle 1 mois) & historique
+router.get('/agent/commission-wallet', protect, async (req, res) => {
+  try {
+    const agent = await CollectAgent.findOne({ user: req.user._id })
+    if (!agent) {
+      return res.status(403).json({ message: "Vous n'avez pas de compte d'agent de collecte." })
+    }
+
+    // Synchronisation automatique des commissions
+    await applyMonthlyFeesForAgent(agent._id)
+    const freshAgent = await CollectAgent.findById(agent._id)
+
+    const now = Date.now()
+    const accountOpenedAt = freshAgent.termsAcceptedAt || freshAgent.createdAt || new Date()
+    const lastWithdrawalAt = freshAgent.lastCommissionWithdrawal
+
+    // Règle des 1 mois : 30 jours à compter de l'ouverture du compte, ou 30 jours après le dernier retrait
+    const baseDate = lastWithdrawalAt ? new Date(lastWithdrawalAt) : new Date(accountOpenedAt)
+    const nextWithdrawalDate = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const canWithdraw = now >= nextWithdrawalDate.getTime()
+    const msRemaining = Math.max(0, nextWithdrawalDate.getTime() - now)
+    const daysRemaining = Math.ceil(msRemaining / (24 * 60 * 60 * 1000))
+
+    res.json({
+      success: true,
+      balance: freshAgent.commissionBalance || 0,
+      totalEarned: freshAgent.commissionTotalEarned || 0,
+      totalWithdrawn: freshAgent.commissionTotalWithdrawn || 0,
+      accountOpenedAt,
+      lastWithdrawalAt,
+      canWithdraw,
+      nextWithdrawalDate,
+      daysRemaining,
+      withdrawals: (freshAgent.commissionWithdrawals || []).sort((a, b) => new Date(b.withdrawnAt) - new Date(a.withdrawnAt)),
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/collect/agent/commission-withdraw — Retrait du portefeuille commissions vers portefeuille ou Mobile Money
+router.post('/agent/commission-withdraw', protect, async (req, res) => {
+  try {
+    const agent = await CollectAgent.findOne({ user: req.user._id })
+    if (!agent || agent.status !== 'active') {
+      return res.status(403).json({ message: 'Accès réservé aux agents actifs.' })
+    }
+
+    const { amount, destination = 'wallet', phone, operator = 'mtn', accountName } = req.body
+    const amt = Number(amount)
+    if (!amt || amt <= 0) {
+      return res.status(400).json({ message: 'Montant de retrait invalide.' })
+    }
+
+    if ((agent.commissionBalance || 0) < amt) {
+      return res.status(400).json({
+        message: 'Solde de commissions insuffisant (' + (agent.commissionBalance || 0).toLocaleString('fr-FR') + ' FCFA disponibles).',
+      })
+    }
+
+    // Vérification de la règle d'1 mois
+    const now = Date.now()
+    const accountOpenedAt = agent.termsAcceptedAt || agent.createdAt || new Date()
+    const lastWithdrawalAt = agent.lastCommissionWithdrawal
+    const baseDate = lastWithdrawalAt ? new Date(lastWithdrawalAt) : new Date(accountOpenedAt)
+    const nextWithdrawalDate = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+    if (now < nextWithdrawalDate.getTime()) {
+      const daysRemaining = Math.ceil((nextWithdrawalDate.getTime() - now) / (24 * 60 * 60 * 1000))
+      return res.status(400).json({
+        message: 'Le retrait des commissions n\'est possible qu\'après 1 mois complet. Prochain retrait disponible dans ' + daysRemaining + ' jour(s) (le ' + nextWithdrawalDate.toLocaleDateString('fr-FR') + ').',
+      })
+    }
+
+    // Exécution du retrait
+    if (destination === 'wallet') {
+      // Crédit du portefeuille principal de l'agent
+      await wallet.credit(req.user._id, {
+        amount: amt,
+        type: 'transfer_received',
+        description: 'Retrait de commissions de collecte (70%) vers portefeuille personnel',
+        meta: { reason: 'agent_commission_withdraw', agentId: String(agent._id) },
+      })
+    } else if (destination === 'momo') {
+      const payoutPhone = phone || agent.phone
+      if (!payoutPhone) {
+        return res.status(400).json({ message: 'Numéro Mobile Money requis pour le retrait.' })
+      }
+      try {
+        await ikeepay.createPayout({
+          amount: amt,
+          phone: payoutPhone,
+          operator: operator || 'mtn',
+          accountName: accountName || agent.agencyName,
+          country: 'CM',
+          currency: 'XAF',
+          reference: 'wd_comm_' + Date.now(),
+        })
+      } catch (payoutErr) {
+        console.warn('[Commission Payout warning]:', payoutErr.message)
+      }
+    }
+
+    // Débit du solde commissions
+    agent.commissionBalance = Math.max(0, (agent.commissionBalance || 0) - amt)
+    agent.commissionTotalWithdrawn = (agent.commissionTotalWithdrawn || 0) + amt
+    agent.lastCommissionWithdrawal = new Date()
+    agent.commissionWithdrawals.push({
+      amount: amt,
+      destination,
+      phone: phone || agent.phone || '',
+      operator: operator || '',
+      accountName: accountName || agent.agencyName || '',
+      withdrawnAt: new Date(),
+      status: 'completed',
+    })
+    await agent.save()
+
+    res.json({
+      success: true,
+      message: 'Retrait de vos commissions de ' + amt.toLocaleString('fr-FR') + ' FCFA effectué avec succès !',
+      commissionBalance: agent.commissionBalance,
+      lastCommissionWithdrawal: agent.lastCommissionWithdrawal,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // 3. TABLEAU DE BORD DE L'AGENT & STATISTIQUES
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -287,9 +435,25 @@ router.get('/agent/dashboard', protect, async (req, res) => {
     // 4. Solde cumulé total des comptes clients de cet agent
     const totalClientBalances = clients.reduce((sum, c) => sum + (c.balance || 0), 0)
 
+    const nowMs = Date.now()
+    const acctOpened = agent.termsAcceptedAt || agent.createdAt || new Date()
+    const lastWd = agent.lastCommissionWithdrawal
+    const baseWdDate = lastWd ? new Date(lastWd) : new Date(acctOpened)
+    const nextWdDate = new Date(baseWdDate.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const canWithdrawCommission = nowMs >= nextWdDate.getTime()
+    const daysRemainingCommission = Math.max(0, Math.ceil((nextWdDate.getTime() - nowMs) / (24 * 60 * 60 * 1000)))
+
     res.json({
       success: true,
       agent,
+      commissionWallet: {
+        balance: agent.commissionBalance || 0,
+        totalEarned: agent.commissionTotalEarned || 0,
+        totalWithdrawn: agent.commissionTotalWithdrawn || 0,
+        canWithdraw: canWithdrawCommission,
+        nextWithdrawalDate: nextWdDate,
+        daysRemaining: daysRemainingCommission,
+      },
       stats: {
         today,
         currentMonth,
@@ -323,7 +487,44 @@ router.get('/agent/daily', protect, async (req, res) => {
 
     const date = req.query.date || getTodayStr()
     const collections = await DailyCollection.find({ agent: agent._id, date }).sort({ createdAt: -1 })
-    res.json({ success: true, date, collections })
+
+    // Clients actifs de cet agent ou de sa zone
+    const agentNeighborhood = String(agent.neighborhood || '').trim()
+    const conds = [{ agent: agent._id }]
+    if (agentNeighborhood) {
+      conds.push({ neighborhood: agentNeighborhood })
+    }
+    const clients = await CollectClient.find({
+      $or: conds,
+      status: 'active',
+    }).sort({ fullName: 1 })
+
+    // Identifier les clients sans collecte aujourd'hui -> automatiquement marqués 'non_collecte'
+    const collectedClientIds = new Set(collections.map((c) => String(c.client)))
+    const fullDailyList = [...collections]
+
+    for (const cl of clients) {
+      if (!collectedClientIds.has(String(cl._id))) {
+        fullDailyList.push({
+          _id: 'pending_' + cl._id + '_' + date,
+          agent: agent._id,
+          agentUser: req.user._id,
+          client: cl._id,
+          clientName: cl.fullName,
+          clientPhone: cl.phone,
+          neighborhood: cl.neighborhood,
+          date,
+          amount: 0,
+          status: 'non_collecte', // Statut automatique non collecté
+          paymentMethod: '—',
+          notes: 'Non collecté ce jour',
+          isPending: true,
+          clientBalance: cl.balance,
+        })
+      }
+    }
+
+    res.json({ success: true, date, collections: fullDailyList })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -337,7 +538,8 @@ router.post('/agent/daily', protect, async (req, res) => {
       return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
     }
 
-    const { clientId, amount, neighborhood, status = 'paye', paymentMethod = 'wallet', momoPhone, momoOperator = 'mtn', country = 'CM', otp, notes, date } = req.body
+    const { clientId, amount, neighborhood, paymentMethod = 'wallet', momoPhone, momoOperator = 'mtn', country = 'CM', otp, notes, date } = req.body
+    const status = 'paye'
     if (!clientId) return res.status(400).json({ message: 'Client obligatoire' })
 
     const agentNeighborhood = String(agent.neighborhood || '').trim().toLowerCase()
@@ -1139,6 +1341,8 @@ router.get('/admin/fees-summary', protect, adminOnly, async (req, res) => {
           agentUser: { $first: '$agentUser' },
           totalClientsCount: { $sum: 1 },
           totalAmount: { $sum: '$amount' },
+          totalAgentShare: { $sum: { $ifNull: ['$agentShare', 770] } },
+          totalPlatformShare: { $sum: { $ifNull: ['$platformShare', 330] } },
           lastDeductedAt: { $max: '$deductedAt' },
         },
       },
@@ -1159,6 +1363,112 @@ router.post('/admin/trigger-monthly-fees', protect, adminOnly, async (req, res) 
       await applyMonthlyFeesForAgent(ag._id)
     }
     res.json({ success: true, message: 'Déduction et synchronisation des frais mensuels effectuées avec succès.' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+
+// POST /api/collect/admin/clients/:id/withdraw — Retrait ordonné par le Super Administrateur depuis le compte d'un client
+router.post('/admin/clients/:id/withdraw', protect, adminOnly, async (req, res) => {
+  try {
+    const client = await CollectClient.findById(req.params.id)
+    if (!client) return res.status(404).json({ message: 'Client introuvable' })
+
+    const { amount, payoutMethod = 'momo', momoNumber, momoOperator, notes } = req.body
+    const amt = Number(amount)
+    if (!amt || amt <= 0) {
+      return res.status(400).json({ message: 'Montant de retrait invalide (doit être supérieur à 0).' })
+    }
+
+    if (client.balance < amt) {
+      return res.status(400).json({
+        message: 'Solde insuffisant pour ce retrait. Solde disponible : ' + client.balance.toLocaleString('fr-FR') + ' FCFA.',
+      })
+    }
+
+    // Déduction du solde du client
+    client.balance -= amt
+    await client.save()
+
+    const today = getTodayStr()
+    const agent = await CollectAgent.findById(client.agent).populate('user', 'name email phone')
+
+    // Enregistrement dans DailyCollection
+    const record = await DailyCollection.create({
+      agent: client.agent,
+      agentUser: agent?.user?._id || client.agentUser,
+      client: client._id,
+      clientName: client.fullName,
+      clientPhone: client.phone,
+      neighborhood: client.neighborhood,
+      date: today,
+      amount: -amt,
+      type: 'retrait',
+      status: 'retrait',
+      paymentMethod: payoutMethod,
+      notes: 'Retrait ordonné par l\'administrateur (' + (req.user.name || 'Admin') + ') vers ' + (payoutMethod === 'momo' ? (momoOperator + ' ' + momoNumber) : payoutMethod) + (notes ? ' - ' + notes : ''),
+      datetime: new Date(),
+    })
+
+    // Enregistrement dans l'historique complet des retraits administrateur avec tous les détails
+    const adminWithdrawal = await CollectAdminWithdrawal.create({
+      admin: req.user._id,
+      adminName: req.user.name || 'Super Administrateur',
+      adminEmail: req.user.email || '',
+      adminRole: req.user.role || 'super_admin',
+      client: client._id,
+      clientName: client.fullName,
+      clientAccountNumber: client.accountNumber,
+      clientPhone: client.phone,
+      neighborhood: client.neighborhood,
+      amount: amt,
+      payoutMethod,
+      momoOperator: momoOperator || '',
+      momoNumber: momoNumber || '',
+      notes: notes || '',
+      executedAt: new Date(),
+    })
+
+    // Best effort Mobile Money payout si demandé
+    if (payoutMethod === 'momo' && momoNumber && momoOperator) {
+      try {
+        await ikeepay.createPayout({
+          amount: amt,
+          phone: momoNumber,
+          operator: momoOperator,
+          accountName: client.fullName,
+          country: 'CM',
+          currency: 'XAF',
+          reference: 'wd_adm_' + Date.now(),
+        })
+      } catch (payoutErr) {
+        console.warn('[Admin Collect Payout warning]:', payoutErr.message)
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Retrait de ' + amt.toLocaleString('fr-FR') + ' FCFA validé avec succès pour ' + client.fullName + ' !',
+      newBalance: client.balance,
+      withdrawal: adminWithdrawal,
+      client,
+      record,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/collect/admin/withdrawals-history — Historique de tous les retraits effectués par l'administrateur
+router.get('/admin/withdrawals-history', protect, adminOnly, async (req, res) => {
+  try {
+    const withdrawals = await CollectAdminWithdrawal.find({})
+      .populate('admin', 'name email role phone')
+      .populate('client', 'fullName accountNumber neighborhood phone')
+      .sort({ executedAt: -1 })
+      .limit(200)
+    res.json({ success: true, withdrawals })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

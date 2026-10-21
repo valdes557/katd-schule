@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import {
   Coins, Loader2, Users, CheckCircle2, AlertCircle, X, Plus, Calendar,
   TrendingUp, Clock, AlertTriangle, ArrowUpRight, Wallet, Smartphone,
-  FileText, Send, ShieldCheck, Edit2, Trash2, MapPin, RefreshCw, ChevronRight, Mail, Lock,
+  FileText, Send, ShieldCheck, Edit2, Trash2, MapPin, RefreshCw, ChevronRight, Mail, Lock, PlusCircle, ArrowDownCircle, Check,
 } from 'lucide-react'
 import { collectApi, walletApi } from '../../lib/api'
 import ClientCollectDashboard from '../../components/ClientCollectDashboard'
@@ -162,6 +162,7 @@ export default function UserCollectPage() {
       <div className="flex gap-2 p-1.5 bg-gray-100/80 rounded-2xl border border-gray-200/60 overflow-x-auto">
         {[
           { key: 'dashboard', label: 'Tableau de bord', icon: TrendingUp },
+          { key: 'commissions', label: 'Portefeuille Commissions (70%)', icon: Wallet },
           { key: 'clients', label: 'Clients & Comptes', icon: Users },
           { key: 'reports', label: 'Rapports journaliers', icon: FileText },
           { key: 'settings', label: 'Paramètres Agence', icon: ShieldCheck },
@@ -181,7 +182,8 @@ export default function UserCollectPage() {
         ))}
       </div>
 
-      {tab === 'dashboard' && <AgentDashboardTab showBanner={showBanner} agent={agentStatus.agent} />}
+      {tab === 'dashboard' && <AgentDashboardTab showBanner={showBanner} agent={agentStatus.agent} onGoCommissions={() => setTab('commissions')} />}
+      {tab === 'commissions' && <AgentCommissionWalletTab showBanner={showBanner} agent={agentStatus.agent} />}
       {tab === 'clients' && <AgentClientsTab showBanner={showBanner} agent={agentStatus.agent} />}
       {tab === 'reports' && <AgentReportsTab showBanner={showBanner} agent={agentStatus.agent} />}
       {tab === 'settings' && <AgentSettingsTab showBanner={showBanner} agent={agentStatus.agent} onUpdate={loadStatus} />}
@@ -342,7 +344,7 @@ function OptInScreen({ config, onSuccess }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. ONGLET 1 : TABLEAU DE BORD (STATISTIQUES & COLLECTE DU JOUR)
 // ─────────────────────────────────────────────────────────────────────────────
-function AgentDashboardTab({ showBanner }) {
+function AgentDashboardTab({ showBanner, onGoCommissions }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -425,6 +427,32 @@ function AgentDashboardTab({ showBanner }) {
         </div>
       </div>
 
+      {/* Carte Portefeuille Commissions (70%) */}
+      <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white rounded-3xl p-5 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Wallet size={16} className="text-emerald-200" />
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">
+              Portefeuille Commissions Dédié (70%)
+            </span>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black">
+            {fmt(data?.commissionWallet?.balance || 0)} <span className="text-sm font-semibold text-emerald-200">XAF</span>
+          </div>
+          <p className="text-xs text-emerald-100">
+            70% des frais de collecte mensuels déduits · {data?.commissionWallet?.canWithdraw ? '✅ Retrait disponible' : ('⏳ Prochain retrait dans ' + (data?.commissionWallet?.daysRemaining || 0) + ' jour(s)')}
+          </p>
+        </div>
+        {onGoCommissions && (
+          <button
+            onClick={onGoCommissions}
+            className="bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-bold py-2.5 px-4 rounded-xl shadow-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            <ArrowUpRight size={15} /> Gérer mon portefeuille
+          </button>
+        )}
+      </div>
+
       {/* Section Tableau de la collecte du jour */}
       <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-gray-100">
@@ -475,35 +503,60 @@ function AgentDashboardTab({ showBanner }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {collections.map((col) => (
-                  <tr key={col._id} className="hover:bg-gray-50/70 transition-colors">
-                    <td className="py-3 px-3 font-semibold text-gray-900">
-                      <div>{col.clientName}</div>
-                      {col.clientPhone && <div className="text-[11px] text-gray-400 font-normal">📱 {col.clientPhone}</div>}
-                    </td>
-                    <td className="py-3 px-3 text-gray-600">{col.neighborhood || '—'}</td>
-                    <td className="py-3 px-3 text-right font-black text-gray-900 whitespace-nowrap">
-                      {fmt(col.amount)} <span className="text-[11px] font-normal text-gray-400">XAF</span>
-                    </td>
-                    <td className="py-3 px-3 text-center whitespace-nowrap">
-                      {col.status === 'paye' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                          <CheckCircle2 size={12} /> Collecté
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
-                          <X size={12} /> Non payé
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-gray-500 capitalize">{col.paymentMethod || 'Portefeuille'}</td>
-                    <td className="py-3 px-3 text-right whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                        <Lock size={11} className="text-emerald-600" /> Enregistré
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {collections.map((col) => {
+                  const isUncollected = col.status === 'non_collecte' || col.isPending
+                  return (
+                    <tr key={col._id} className="hover:bg-gray-50/70 transition-colors">
+                      <td className="py-3 px-3 font-semibold text-gray-900">
+                        <div>{col.clientName}</div>
+                        {col.clientPhone && <div className="text-[11px] text-gray-400 font-normal">📱 {col.clientPhone}</div>}
+                      </td>
+                      <td className="py-3 px-3 text-gray-600">{col.neighborhood || '—'}</td>
+                      <td className="py-3 px-3 text-right font-black text-gray-900 whitespace-nowrap">
+                        {isUncollected ? (
+                          <span className="text-gray-400 text-xs font-normal">0 XAF</span>
+                        ) : (
+                          <>{fmt(col.amount)} <span className="text-[11px] font-normal text-gray-400">XAF</span></>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        {col.status === 'paye' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                            <CheckCircle2 size={12} /> Collecté
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            <Clock size={12} /> Non collecté
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-gray-500 capitalize">{col.paymentMethod || '—'}</td>
+                      <td className="py-3 px-3 text-right whitespace-nowrap">
+                        {isUncollected ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditItem({
+                                client: col.client,
+                                clientName: col.clientName,
+                                neighborhood: col.neighborhood,
+                                amount: '',
+                              })
+                              setShowAddModal(true)
+                            }}
+                            className="btn-primary text-xs py-1 px-2.5 rounded-lg inline-flex items-center gap-1 shadow-2xs"
+                          >
+                            <PlusCircle size={12} /> Collecter
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                            <Lock size={11} className="text-emerald-600" /> Enregistré
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -544,7 +597,7 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
 
   useEffect(() => {
     walletApi.me()
-      .then((res) => setWalletBalance(res?.wallet?.balance || 0))
+      .then((res) => setWalletBalance(res?.balance ?? res?.wallet?.balance ?? 0))
       .catch(() => {})
       .finally(() => setLoadingWallet(false))
   }, [])
@@ -700,35 +753,17 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Statut de la collecte pour ce jour *</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setStatus('paye')}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  status === 'paye'
-                    ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
-                    : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                }`}
-              >
-                <CheckCircle2 size={14} /> Collecté
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatus('non_paye')}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  status === 'non_paye'
-                    ? 'bg-rose-500 text-white border-rose-600 shadow-xs'
-                    : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                }`}
-              >
-                <X size={14} /> Non payé (Manqué)
-              </button>
-            </div>
+          {/* Le statut est automatiquement Collecté dès l'encaissement */}
+          <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-200 flex items-center justify-between text-xs">
+            <span className="font-semibold text-emerald-900 flex items-center gap-1.5">
+              <CheckCircle2 size={15} className="text-emerald-600" /> Statut après encaissement :
+            </span>
+            <span className="font-black text-emerald-700 bg-white px-2.5 py-0.5 rounded-full border border-emerald-200">
+              Collecté (Automatique)
+            </span>
           </div>
 
-          {status === 'paye' ? (
+          {true ? (
             <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
               <label className="text-xs font-bold text-gray-800 block">
                 Mode de paiement en argent réel de l'agent *
@@ -1652,7 +1687,7 @@ function DepositModal({ client, onClose, onSuccess }) {
 
   useEffect(() => {
     walletApi.me()
-      .then((res) => setWalletBalance(res?.wallet?.balance || 0))
+      .then((res) => setWalletBalance(res?.balance ?? res?.wallet?.balance ?? 0))
       .catch(() => {})
       .finally(() => setLoadingBalance(false))
   }, [])
@@ -2057,6 +2092,364 @@ function AgentSettingsTab({ agent, onUpdate, showBanner }) {
             {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
             <span>Enregistrer les modifications</span>
           </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPOSANT : PORTEFEUILLE COMMISSIONS SÉPARÉ (70%) DE L'AGENT
+// ─────────────────────────────────────────────────────────────────────────────
+function AgentCommissionWalletTab({ showBanner, agent }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+
+  const loadWallet = async () => {
+    try {
+      setLoading(true)
+      const res = await collectApi.getCommissionWallet()
+      setData(res)
+    } catch (e) {
+      showBanner(e.message || 'Erreur lors du chargement des commissions.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadWallet()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="py-20 text-center">
+        <Loader2 size={24} className="animate-spin text-emerald-600 mx-auto" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* En-tête */}
+      <div className="bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-800 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 bg-white/15 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-xs">
+              <Wallet size={14} /> Portefeuille Commissions Dédié (70%)
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-black">
+              {fmt(data?.balance)} <span className="text-lg font-bold text-emerald-200">XAF</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-emerald-100 max-w-md">
+              Vous percevez automatiquement <b>70% des 1 100 FCFA</b> de frais de collecte mensuels déduits sur chaque client actif de votre agence (soit <b>770 FCFA / client</b>).
+            </p>
+          </div>
+
+          <div className="flex flex-col items-start sm:items-end gap-3">
+            {data?.canWithdraw ? (
+              <button
+                onClick={() => setShowWithdrawModal(true)}
+                disabled={!data?.balance || data.balance <= 0}
+                className="bg-white text-emerald-800 hover:bg-emerald-50 disabled:opacity-50 text-xs sm:text-sm font-bold py-3 px-6 rounded-2xl shadow-lg flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <ArrowDownCircle size={16} /> Retirer mes commissions
+              </button>
+            ) : (
+              <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-3.5 text-left text-xs max-w-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                  <Clock size={14} /> Retrait bloqué temporairement
+                </div>
+                <p className="text-emerald-100 text-[11px] leading-relaxed">
+                  Conformément aux règles de la plateforme, les retraits de commissions sont autorisés après chaque intervalle d'<b>un (1) mois</b>.
+                </p>
+                <p className="text-white font-bold text-[11px] pt-1">
+                  Prochain retrait dans : <span className="text-amber-300">{data?.daysRemaining || 0} jour(s)</span> ({fmtDate(data?.nextWithdrawalDate)})
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Cartes de synthèse */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="card p-4.5 border-l-4 border-emerald-500">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">Commissions cumulées</span>
+          <div className="text-xl sm:text-2xl font-black text-gray-900 mt-1">
+            {fmt(data?.totalEarned)} <span className="text-xs text-gray-400 font-normal">FCFA</span>
+          </div>
+          <span className="text-[11px] text-emerald-600 font-semibold mt-0.5 block">70% de tous les frais mensuels</span>
+        </div>
+
+        <div className="card p-4.5 border-l-4 border-blue-500">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">Total déjà retiré</span>
+          <div className="text-xl sm:text-2xl font-black text-gray-900 mt-1">
+            {fmt(data?.totalWithdrawn)} <span className="text-xs text-gray-400 font-normal">FCFA</span>
+          </div>
+          <span className="text-[11px] text-gray-500 mt-0.5 block">Vers portefeuille ou Mobile Money</span>
+        </div>
+
+        <div className="card p-4.5 border-l-4 border-amber-500">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">Compte Collecte ouvert le</span>
+          <div className="text-lg sm:text-xl font-black text-gray-900 mt-1">
+            {fmtDate(data?.accountOpenedAt)}
+          </div>
+          <span className="text-[11px] text-gray-500 mt-0.5 block">
+            Dernier retrait : {data?.lastWithdrawalAt ? fmtDate(data.lastWithdrawalAt) : 'Aucun retrait'}
+          </span>
+        </div>
+      </div>
+
+      {/* Historique des retraits de commissions */}
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 sm:p-6 space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+          <div>
+            <h3 className="font-bold text-gray-900 text-base">Historique des retraits de commissions</h3>
+            <p className="text-xs text-gray-500">Consultez tous vos décaissements de commissions mensuelles.</p>
+          </div>
+          <button
+            onClick={loadWallet}
+            className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+            title="Actualiser"
+          >
+            <RefreshCw size={15} />
+          </button>
+        </div>
+
+        {(!data?.withdrawals || data.withdrawals.length === 0) ? (
+          <div className="py-12 text-center text-xs text-gray-400">
+            Aucun retrait de commission effectué pour le moment.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                  <th className="py-3 px-3">Date</th>
+                  <th className="py-3 px-3 text-right">Montant</th>
+                  <th className="py-3 px-3">Destination</th>
+                  <th className="py-3 px-3">Coordonnées</th>
+                  <th className="py-3 px-3 text-center">Statut</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {data.withdrawals.map((w, idx) => (
+                  <tr key={w._id || idx} className="hover:bg-gray-50/70 transition-colors">
+                    <td className="py-3 px-3 font-semibold text-gray-900">{fmtDate(w.withdrawnAt)}</td>
+                    <td className="py-3 px-3 text-right font-black text-gray-900 whitespace-nowrap">
+                      {fmt(w.amount)} <span className="text-[11px] font-normal text-gray-400">FCFA</span>
+                    </td>
+                    <td className="py-3 px-3 font-medium text-gray-700 capitalize">
+                      {w.destination === 'wallet' ? 'Portefeuille KATD' : ('Mobile Money (' + (w.operator || 'MTN') + ')')}
+                    </td>
+                    <td className="py-3 px-3 text-gray-500 font-mono text-xs">
+                      {w.phone || w.accountName || '—'}
+                    </td>
+                    <td className="py-3 px-3 text-center">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                        <CheckCircle2 size={12} /> Validé
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showWithdrawModal && (
+        <AgentCommissionWithdrawModal
+          maxAmount={data?.balance || 0}
+          agentPhone={agent?.phone || ''}
+          agentName={agent?.agencyName || ''}
+          onClose={() => setShowWithdrawModal(false)}
+          onSuccess={(msg) => {
+            setShowWithdrawModal(false)
+            showBanner(msg)
+            loadWallet()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function AgentCommissionWithdrawModal({ maxAmount, agentPhone, agentName, onClose, onSuccess }) {
+  const [amount, setAmount] = useState(maxAmount)
+  const [destination, setDestination] = useState('wallet') // 'wallet' | 'momo'
+  const [operator, setOperator] = useState('mtn')
+  const [phone, setPhone] = useState(agentPhone || '')
+  const [submitting, setSubmitting] = useState(false)
+  const [err, setErr] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setErr('')
+    const amt = Number(amount)
+    if (!amt || amt <= 0) {
+      setErr('Veuillez saisir un montant valide.')
+      return
+    }
+    if (amt > maxAmount) {
+      setErr('Le montant ne peut pas dépasser votre solde disponible (' + fmt(maxAmount) + ' FCFA).')
+      return
+    }
+    if (destination === 'momo' && !phone.trim()) {
+      setErr('Veuillez renseigner le numéro Mobile Money.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await collectApi.withdrawCommissions({
+        amount: amt,
+        destination,
+        operator,
+        phone: phone.trim(),
+        accountName: agentName,
+      })
+      onSuccess(res.message || 'Retrait de commissions effectué avec succès !')
+    } catch (e) {
+      setErr(e.message || 'Erreur lors du retrait de vos commissions.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
+      <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-100 space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+          <div>
+            <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+              <ArrowDownCircle size={18} className="text-emerald-600" /> Retirer mes commissions
+            </h3>
+            <p className="text-xs text-gray-500">70% de frais de collecte mensuels</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg">
+            <X size={18} />
+          </button>
+        </div>
+
+        {err && (
+          <div className="p-3 bg-red-50 text-red-800 text-xs rounded-xl flex items-start gap-2 border border-red-200">
+            <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-600" />
+            <span>{err}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-gray-700">Montant à retirer (FCFA) *</label>
+              <button
+                type="button"
+                onClick={() => setAmount(maxAmount)}
+                className="text-[11px] font-bold text-emerald-700 hover:underline"
+              >
+                Max ({fmt(maxAmount)} F)
+              </button>
+            </div>
+            <input
+              type="number"
+              min="100"
+              max={maxAmount}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="input text-xs w-full font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Destination du retrait *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDestination('wallet')}
+                className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
+                  destination === 'wallet'
+                    ? 'border-emerald-600 bg-emerald-50/50 text-emerald-900 ring-2 ring-emerald-600/20'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Wallet size={18} className="text-emerald-600" />
+                <span>Mon portefeuille</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDestination('momo')}
+                className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
+                  destination === 'momo'
+                    ? 'border-emerald-600 bg-emerald-50/50 text-emerald-900 ring-2 ring-emerald-600/20'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Smartphone size={18} className="text-emerald-600" />
+                <span>Mobile Money</span>
+              </button>
+            </div>
+          </div>
+
+          {destination === 'momo' && (
+            <div className="space-y-3 p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur Mobile Money *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOperator('mtn')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold ${
+                      operator === 'mtn' ? 'bg-yellow-500 text-white border-yellow-600' : 'bg-white text-gray-700 border-gray-200'
+                    }`}
+                  >
+                    MTN Mobile Money
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOperator('orange')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold ${
+                      operator === 'orange' ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-gray-700 border-gray-200'
+                    }`}
+                  >
+                    Orange Money
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Numéro Mobile Money *</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Ex : 6XXXXXXXX"
+                  className="input text-xs w-full font-mono"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="btn-secondary text-xs py-2 px-4 rounded-xl"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !amount || Number(amount) <= 0}
+              className="btn-primary text-xs py-2 px-4 rounded-xl flex items-center gap-1.5"
+            >
+              {submitting ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownCircle size={14} />}
+              <span>Valider le retrait de {fmt(amount)} F</span>
+            </button>
+          </div>
         </form>
       </div>
     </div>

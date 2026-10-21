@@ -123,12 +123,13 @@ router.get('/dashboard', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/shareholders/subscribe — souscrit à un plan (paiement Mobile Money Ikeepay H2H).
-// Body: { planKey, zone, phone, operator, country, otp }. Le PRIX est résolu côté serveur depuis la
-// config (jamais depuis le client). L'actionnariat est créé au webhook approuvé.
+// POST /api/shareholders/subscribe — souscrit à un plan dynamique (paiement Mobile Money Ikeepay H2H).
+// Body: { planKey, percent, zone, phone, operator, country, otp }.
+// Calcul dynamique : Le prix est proportionnel au % (ex: 100 000 F pour 1%, 200 000 F pour 2%).
+// Dès 3%, remise exceptionnelle automatique de 20%.
 router.post('/subscribe', protect, async (req, res) => {
   try {
-    const { planKey, zone, phone, operator, country = 'CM', otp } = req.body
+    const { planKey, percent, zone, phone, operator, country = 'CM', otp } = req.body
     if (!planKey) return res.status(400).json({ message: 'Plan requis' })
     const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
     if (!rawPhone || !operator) {
@@ -143,41 +144,50 @@ router.post('/subscribe', protect, async (req, res) => {
     const existing = await Shareholding.findOne({ user: req.user._id, planKey, status: 'active' })
     if (existing) return res.status(400).json({ message: 'Vous avez déjà souscrit à ce plan' })
 
+    // Calcul dynamique du pourcentage et du prix
+    const requestedPercent = Math.max(1, Math.min(100, Math.floor(Number(percent) || Number(plan.percent) || 1)))
+    const basePercent = Number(plan.percent) || 1
+    const unitPrice = (Number(plan.price) || 0) / basePercent
+    const rawPrice = requestedPercent * unitPrice
+    const discountRate = requestedPercent >= 3 ? 0.20 : 0
+    const finalPrice = Math.round(rawPrice * (1 - discountRate))
+
     const reference = genRef('shr')
     const { mode } = await ikeepay.resolveConfig()
     const normCountry = String(country || 'CM').trim().toUpperCase()
     const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
 
     const intent = await PaymentIntent.create({
-      reference, purpose: 'shareholder', amount: plan.price, currency: targetCurrency,
+      reference, purpose: 'shareholder', amount: finalPrice, currency: targetCurrency,
       payerPhone: rawPhone, payerOperator: operator, initiatedBy: req.user._id,
       school: req.user.school?._id || null, mode,
       meta: {
-        planKey: plan.key, planLabel: plan.label, percent: plan.percent,
+        planKey: plan.key, planLabel: plan.label, percent: requestedPercent,
         durationYears: plan.durationYears, zone: String(zone || '').trim(),
+        rawPrice, discountRate,
       },
     })
     const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
     const result = await ikeepay.createCollection({
-      amount: plan.price, phone: rawPhone, operator, reference,
+      amount: finalPrice, phone: rawPhone, operator, reference,
       callbackUrl: base + '/api/payments/webhook', country: normCountry,
       currency: targetCurrency, customerEmail: req.user.email || '', otp
     })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
     const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
     res.json({
-      success: true, reference, amount: plan.price, mode, currency: targetCurrency,
+      success: true, reference, amount: finalPrice, mode, currency: targetCurrency,
       payment_link: paymentLink, message: 'Validez le paiement sur votre téléphone Mobile Money.'
     })
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
 
-// POST /api/shareholders/subscribe-wallet — souscrit à un plan en payant DIRECTEMENT
-// depuis le solde du portefeuille (pas de Mobile Money). Body: { planKey, zone, pin }.
-// Le PRIX est résolu côté serveur. L'actionnariat est créé immédiatement (pas de webhook).
+// POST /api/shareholders/subscribe-wallet — souscrit à un plan dynamique en payant DIRECTEMENT
+// depuis le solde du portefeuille. Body: { planKey, percent, zone, pin }.
+// Le PRIX est résolu côté serveur selon le % choisi et 20% de remise dès 3%.
 router.post('/subscribe-wallet', protect, async (req, res) => {
   try {
-    const { planKey, zone, pin } = req.body
+    const { planKey, percent, zone, pin } = req.body
     if (!planKey) return res.status(400).json({ message: 'Plan requis' })
     if (!pin) return res.status(400).json({ message: 'Code PIN requis' })
 
@@ -200,11 +210,18 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
     const pinOk = await bcrypt.compare(String(pin), u.walletPin)
     if (!pinOk) return res.status(401).json({ message: 'Code PIN incorrect' })
 
+    // Calcul dynamique du pourcentage et du prix (remise 20% dès 3%)
+    const requestedPercent = Math.max(1, Math.min(100, Math.floor(Number(percent) || Number(plan.percent) || 1)))
+    const basePercent = Number(plan.percent) || 1
+    const unitPrice = (Number(plan.price) || 0) / basePercent
+    const rawPrice = requestedPercent * unitPrice
+    const discountRate = requestedPercent >= 3 ? 0.20 : 0
+    const price = Math.round(rawPrice * (1 - discountRate))
+
     // Vérifie le solde
     const wallet = require('../services/walletService')
     const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
-    const price = Number(plan.price)
-    if (w.balance < price) return res.status(400).json({ message: 'Solde insuffisant sur votre portefeuille. Effectuez d\'abord un dépôt.' })
+    if (w.balance < price) return res.status(400).json({ message: 'Solde insuffisant sur votre portefeuille (' + w.balance.toLocaleString('fr-FR') + ' FCFA). Effectuez d\'abord un dépôt.' })
 
     const years = Number(plan.durationYears) || 35
     const startAt = new Date()
@@ -214,14 +231,14 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
     // Débit du souscripteur
     await wallet.debit(req.user._id, {
       amount: price, type: 'shareholder_payment',
-      description: 'Souscription actionnaire — ' + (plan.label || plan.key),
-      meta: { planKey: plan.key, zone: z },
+      description: 'Souscription actionnaire (' + requestedPercent + '%) — ' + (plan.label || plan.key),
+      meta: { planKey: plan.key, zone: z, percent: requestedPercent, rawPrice, discountRate },
     })
 
     // Création de l'actionnariat
     const shareholding = await Shareholding.create({
       user: req.user._id, planKey: plan.key, planLabel: plan.label || '',
-      percent: Number(plan.percent) || 1, amount: price, durationYears: years,
+      percent: requestedPercent, amount: price, durationYears: years,
       zone: z, startAt, endAt, status: 'active', paymentIntent: null,
     })
 
@@ -232,8 +249,8 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
         await wallet.credit(admin._id, {
           amount: price, type: 'shareholder_subscription', role: 'admin',
           counterparty: req.user._id,
-          description: 'Souscription actionnaire (portefeuille) — ' + (plan.label || plan.key),
-          meta: { planKey: plan.key, zone: z, method: 'wallet' },
+          description: 'Souscription actionnaire (portefeuille ' + requestedPercent + '%) — ' + (plan.label || plan.key),
+          meta: { planKey: plan.key, zone: z, percent: requestedPercent, method: 'wallet' },
         })
       }
     } catch (e) {}

@@ -1,4 +1,5 @@
 // models/CollectFeeRecord.js — Enregistrement des frais mensuels (1 100 FCFA) déduits par client.
+// Répartition : 70% pour l'agent de collecte (770 FCFA) et 30% pour la plateforme / gestion des collectes (330 FCFA).
 const mongoose = require('mongoose')
 
 const collectFeeRecordSchema = new mongoose.Schema(
@@ -11,6 +12,8 @@ const collectFeeRecordSchema = new mongoose.Schema(
     clientName: { type: String, required: true },
     month: { type: String, required: true, index: true }, // Format 'YYYY-MM'
     amount: { type: Number, default: 1100 },
+    agentShare: { type: Number, default: 770 },       // 70% reversés dans le portefeuille commissions agent
+    platformShare: { type: Number, default: 330 },    // 30% reversés à la gestion des collectes admin
     deductedAt: { type: Date, default: Date.now },
     walletTransaction: { type: mongoose.Schema.Types.ObjectId, ref: 'WalletTransaction', default: null },
   },
