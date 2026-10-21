@@ -396,8 +396,14 @@ function DirectorDashboard({ user, school }) {
 export default function DashboardPage() {
   const { user, school } = useAuth()
 
+  const storedUser = localStorage.getItem('katd_user')
+  let activeUser = user
+  if (!activeUser && storedUser) {
+    try { activeUser = JSON.parse(storedUser) } catch (_) {}
+  }
+
   // Un compte utilisateur grand public est redirigé vers son espace dédié
-  if (user?.role === 'utilisateur') {
+  if (activeUser?.role === 'utilisateur') {
     return <Navigate to="/u" replace />
   }
 

@@ -268,7 +268,14 @@ function PageFallback() {
 
 function ProtectedRoute({ children }) {
   const { user, loading, acceptPrivacyPolicy, logout } = useAuth()
-  if (loading) {
+  const token = localStorage.getItem('token')
+  const storedUser = localStorage.getItem('katd_user')
+  let activeUser = user
+  if (!activeUser && token && storedUser) {
+    try { activeUser = JSON.parse(storedUser) } catch (_) {}
+  }
+
+  if (loading && !activeUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-3">
@@ -281,19 +288,22 @@ function ProtectedRoute({ children }) {
       </div>
     )
   }
-  if (!user) return <Navigate to="/login" replace />
+  if (!activeUser) return <Navigate to="/login" replace />
 
   // L'utilisateur ne doit pas pouvoir naviguer sans accepter la politique de confidentialité
-  if (user.role !== 'super_admin' && !user.privacyPolicyAccepted) {
+  if (activeUser.role !== 'super_admin' && !activeUser.privacyPolicyAccepted) {
     return (
-      <PrivacyPolicyModal
-        isOpen={true}
-        isMandatory={true}
-        onAccepted={async () => {
-          await acceptPrivacyPolicy()
-        }}
-        onLogout={logout}
-      />
+      <>
+        <PrivacyPolicyModal
+          isOpen={true}
+          isMandatory={true}
+          onAccepted={async () => {
+            await acceptPrivacyPolicy()
+          }}
+          onLogout={logout}
+        />
+        {children}
+      </>
     )
   }
 

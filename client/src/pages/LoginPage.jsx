@@ -20,8 +20,14 @@ export default function LoginPage() {
 
   // Si l'utilisateur est déjà connecté, rediriger automatiquement vers son espace dédié
   useEffect(() => {
-    if (user) {
-      if (user.role === 'utilisateur') navigate('/u', { replace: true })
+    const token = localStorage.getItem('token')
+    const stored = localStorage.getItem('katd_user')
+    let activeUser = user
+    if (!activeUser && token && stored) {
+      try { activeUser = JSON.parse(stored) } catch (_) {}
+    }
+    if (activeUser) {
+      if (activeUser.role === 'utilisateur') navigate('/u', { replace: true })
       else navigate('/dashboard', { replace: true })
     }
   }, [user, navigate])
@@ -53,7 +59,9 @@ export default function LoginPage() {
     const result = await login(email, password, 'ecole')
     setLoading(false)
     if (result.success) {
-      navigate('/dashboard')
+      try { sessionStorage.removeItem('katd_chunk_reloaded') } catch (_) {}
+      const target = result.user?.role === 'utilisateur' ? '/u' : '/dashboard'
+      navigate(target, { replace: true })
     } else {
       setError(result.message || 'Email ou mot de passe incorrect.')
     }
@@ -79,7 +87,8 @@ export default function LoginPage() {
     }
     if (result.success) {
       try { sessionStorage.removeItem('katd_chunk_reloaded') } catch (_) {}
-      navigate('/u')
+      const target = result.user?.role === 'utilisateur' ? '/u' : '/dashboard'
+      navigate(target, { replace: true })
     } else {
       setError(result.message || "Une erreur est survenue.")
     }
@@ -95,7 +104,8 @@ export default function LoginPage() {
     if (result.success) {
       // Vide le flag anti-boucle pour que les chunks lazy se chargent correctement
       try { sessionStorage.removeItem('katd_chunk_reloaded') } catch (_) {}
-      navigate('/u')
+      const target = result.user?.role === 'utilisateur' ? '/u' : '/dashboard'
+      navigate(target, { replace: true })
     } else {
       setError(result.message || 'Code incorrect.')
     }

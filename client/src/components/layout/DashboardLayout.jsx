@@ -41,8 +41,14 @@ export default function DashboardLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
+  const storedUser = localStorage.getItem('katd_user')
+  let activeUser = user
+  if (!activeUser && storedUser) {
+    try { activeUser = JSON.parse(storedUser) } catch (_) {}
+  }
+
   // Un compte utilisateur grand public n'a pas accès au dashboard école
-  if (user?.role === 'utilisateur') {
+  if (activeUser?.role === 'utilisateur') {
     return <Navigate to="/u" replace />
   }
   const isDirecteur = user?.role === 'directeur'

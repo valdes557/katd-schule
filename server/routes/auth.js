@@ -189,18 +189,11 @@ router.post(
       // fonctionnent que sur l'onglet Utilisateur, et vice-versa pour l'espace École.
       // Sur demande : on indique clairement quand AUCUN compte du bon type n'existe
       // pour cette adresse (au lieu du message générique qui prêtait à confusion).
-      const isSchoolAccount = (u) => u && u.role !== 'utilisateur'
-      if (space === 'ecole') {
-        if (!isSchoolAccount(user)) {
-          return res.status(404).json({ message: "Aucun compte école n'est associé à cet email. Vérifiez l'adresse ou inscrivez votre établissement." })
-        }
-      } else if (space === 'user') {
-        if (!user || user.role !== 'utilisateur') {
-          return res.status(404).json({ message: "Aucun compte utilisateur n'est associé à cet email. Vérifiez l'adresse ou créez un compte." })
-        }
-      } else if (!user) {
-        // Espace non précisé : message générique (anti-énumération).
-        return res.status(401).json({ message: 'Email ou mot de passe incorrect' })
+      // Authentification unifiée : si le compte existe et le mot de passe est correct,
+      // on autorise la connexion quel que soit l'onglet sélectionné (Utilisateur ou École),
+      // et le frontend redirige automatiquement vers le dashboard approprié selon son rôle.
+      if (!user) {
+        return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
       }
       // Compte verrouillé après trop de tentatives
       if (user.isLocked()) {
