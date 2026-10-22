@@ -9,6 +9,7 @@ import { collectApi, walletApi } from '../../lib/api'
 import ClientCollectDashboard from '../../components/ClientCollectDashboard'
 import SignaturePad from '../../components/SignaturePad'
 import ClientContractModal from '../../components/ClientContractModal'
+import { useInlineCheckout } from '../../components/payments/useInlineCheckout'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
@@ -138,7 +139,7 @@ export default function UserCollectPage() {
           </div>
           <div className="text-right sm:border-l sm:border-white/20 sm:pl-5">
             <span className="text-[11px] uppercase tracking-wider font-semibold text-emerald-200 block">Frais de tenue</span>
-            <span className="text-lg font-bold">1 100 FCFA <span className="text-xs font-normal text-emerald-200">/ client / mois</span></span>
+            <span className="text-lg font-bold">1 000 FCFA <span className="text-xs font-normal text-emerald-200">/ client / mois</span></span>
           </div>
         </div>
 
@@ -311,7 +312,7 @@ function OptInScreen({ config, onSuccess }) {
           <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/70 text-amber-900 text-xs flex items-start gap-2.5">
             <Coins size={16} className="text-amber-700 shrink-0 mt-0.5" />
             <div>
-              <b>Frais de gestion :</b> Une somme forfaitaire de <b>1 100 FCFA</b> sera prélevée chaque mois sur le compte de chaque client que vous enregistrez pour assurer la gestion et la sécurité du service.
+              <b>Frais de gestion :</b> Une somme forfaitaire de <b>1 000 FCFA</b> sera prélevée chaque mois sur le compte de chaque client que vous enregistrez (70% reversés dans votre portefeuille de commissions).
             </div>
           </div>
 
@@ -582,6 +583,7 @@ function AgentDashboardTab({ showBanner, onGoCommissions }) {
 
 // Modal d'ajout / modification d'une ligne de collecte du jour (Paiement en argent réel)
 function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
+  const inlineCheckout = useInlineCheckout()
   const [clientId, setClientId] = useState(item?.client || (clients[0]?._id || ''))
   const [amount, setAmount] = useState(item?.amount ?? (clients[0]?.dailyTarget || 1000))
   const [neighborhood, setNeighborhood] = useState(item?.neighborhood || '')
@@ -646,6 +648,30 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
       }
     }
 
+    // PAIEMENT VIA MOBILE MONEY PAR L'AGENT : VALIDATION STRICTE SUR LE TÉLÉPHONE
+    if (status === 'paye' && (paymentMethod === 'mtn' || paymentMethod === 'orange' || paymentMethod === 'momo')) {
+      inlineCheckout.start(
+        (momoData) => collectApi.addDailyCollection({
+          clientId,
+          amount: amt,
+          neighborhood,
+          status,
+          paymentMethod: momoData.operator === 'orange' ? 'orange' : 'mtn',
+          momoPhone: momoData.phone || momoPhone.trim(),
+          momoOperator: momoData.operator || (paymentMethod === 'orange' ? 'orange' : 'mtn'),
+          otp: momoData.otp || otp,
+          notes,
+          date: defaultDate,
+        }),
+        async (reference, st) => {
+          onSuccess()
+          onClose()
+        },
+        { amount: amt, title: 'Collecte journalière — ' + (selectedClient?.fullName || '') + ' (' + fmt(amt) + ' FCFA)' }
+      )
+      return
+    }
+
     setSaving(true)
     setErr('')
     try {
@@ -667,14 +693,12 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
           neighborhood,
           status,
           paymentMethod,
-          momoPhone: momoPhone.trim(),
-          momoOperator: paymentMethod === 'orange' ? 'orange' : 'mtn',
-          otp,
           notes,
           date: defaultDate,
         })
       }
       onSuccess()
+      onClose()
     } catch (e) {
       setErr(e.message || "Erreur lors de l'enregistrement.")
     } finally {
@@ -910,6 +934,7 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
             </button>
           </div>
         </form>
+        {inlineCheckout.element}
       </div>
     </div>
   )
@@ -1175,14 +1200,14 @@ function AddClientModal({ onClose, onSuccess }) {
         setTermsText(res.termsAndConditions)
       } else {
         setTermsText(`1. Objet du Service : Le service de collecte journalière et d'épargne permet aux clients de confier un montant quotidien à un agent certifié KATD SCHULE pour constitution d'une épargne sécurisée.
-2. Déduction mensuelle : Des frais de tenue de compte de 1 100 FCFA sont prélevés mensuellement sur le compte de collecte du client.
+2. Déduction mensuelle : Des frais de tenue de compte de 1 000 FCFA sont prélevés mensuellement sur le compte de collecte du client (si solde >= 2 000 FCFA).
 3. Disponibilité des fonds : Le client et le super administrateur peuvent ordonner le retrait des fonds vers les numéros Mobile Money enregistrés.
 4. Immuabilité et Transparence : Chaque versement quotidien enregistré donne lieu à une traçabilité inviolable sur la plateforme.`)
       }
     } catch {
       setTermsText(`Termes et Conditions de Collecte Journalière KATD SCHULE :
 1. Dépôts quotidiens sécurisés et enregistrés en temps réel.
-2. Frais mensuels de gestion de 1 100 FCFA déduits chaque mois du solde client.
+2. Frais mensuels de gestion de 1 000 FCFA déduits chaque mois du solde client.
 3. Retraits disponibles via Mobile Money (MTN / Orange Money).`)
     } finally {
       setLoadingTerms(false)
@@ -1398,7 +1423,7 @@ function AddClientModal({ onClose, onSuccess }) {
             </div>
 
             <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500">
-              💡 Frais mensuels de gestion : 1 100 FCFA déduits chaque mois du solde de ce client.
+              💡 Frais mensuels de gestion : 1 000 FCFA déduits chaque mois du solde de ce client (70% reversés dans votre portefeuille de commissions).
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
@@ -1836,43 +1861,102 @@ function ClientHistoryModal({ client, onClose }) {
       .finally(() => setLoading(false))
   }, [client._id])
 
+  const monthlySummary = data?.monthlySummary || []
+  const collections = data?.collections || []
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
-      <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-gray-100 space-y-4 max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+      <div className="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl border border-gray-100 space-y-4 max-h-[88vh] flex flex-col">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
           <div>
-            <h3 className="font-bold text-gray-900 text-base">Historique des collectes</h3>
-            <p className="text-xs text-gray-500">{client.fullName} • Solde actuel : <b>{fmt(client.balance)} XAF</b></p>
+            <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+              <Users size={18} className="text-emerald-600" />
+              <span>Suivi & Historique personnalisé — {client.fullName}</span>
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Compte N° <span className="font-mono font-bold text-gray-700">{client.accountNumber}</span> • Quartier : <b>{client.neighborhood}</b> • Solde actuel : <b className="text-emerald-700">{fmt(client.balance)} XAF</b>
+            </p>
           </div>
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg">
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
           {loading ? (
-            <div className="py-12 text-center text-gray-400"><Loader2 size={22} className="animate-spin mx-auto" /></div>
-          ) : (data?.collections || []).length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-xs">Aucun versement enregistré pour ce client.</div>
+            <div className="py-16 text-center text-gray-400"><Loader2 size={24} className="animate-spin mx-auto text-emerald-600" /></div>
           ) : (
-            <div className="space-y-2">
-              {data.collections.map((col) => (
-                <div key={col._id} className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-gray-800">{fmtDate(col.date)}</span>
-                    <span className="text-[11px] text-gray-400 block">{col.paymentMethod} • {col.neighborhood}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-black text-sm text-gray-900">{fmt(col.amount)} XAF</div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      col.status === 'paye' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                    }`}>
-                      {col.status === 'paye' ? 'Payé' : 'Non payé'}
-                    </span>
+            <>
+              {/* Cumul des collectes journalières par mois */}
+              {monthlySummary.length > 0 && (
+                <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 rounded-2xl border border-emerald-100 space-y-2">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-emerald-900 block flex items-center gap-1.5">
+                    <Calendar size={13} /> Cumul des collectes par mois (Supervision)
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {monthlySummary.map((m) => (
+                      <div key={m._id} className="p-2.5 bg-white rounded-xl border border-emerald-200/60 shadow-2xs">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-gray-800 font-mono">{m._id}</span>
+                          <span className="text-[10px] text-gray-400">{m.daysCount} jour(s)</span>
+                        </div>
+                        <div className="text-base font-black text-emerald-800 mt-0.5">
+                          {fmt(m.totalAmount)} <span className="text-[10px] font-normal text-gray-500">XAF</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {/* Détail de chaque versement journalier */}
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+                  Historique journalier détaillé ({collections.length} versement(s))
+                </h4>
+                {collections.length === 0 ? (
+                  <div className="py-8 text-center text-gray-400 text-xs bg-gray-50 rounded-2xl">
+                    Aucun versement enregistré pour ce client.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {collections.map((col) => {
+                      const isClientSelf = col.notes?.toLowerCase().includes('client') || col.notes?.toLowerCase().includes('espace') || col.notes?.toLowerCase().includes('ligne')
+                      return (
+                        <div key={col._id} className="p-3 bg-gray-50 hover:bg-gray-100/70 transition-colors rounded-2xl border border-gray-150 flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-gray-900">{fmtDate(col.date)}</span>
+                              {isClientSelf ? (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                                  👤 Payé par le client (en ligne)
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  🧑‍💼 Collecté par l'agent
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-gray-500 block">
+                              Mode : <b>{col.paymentMethod === 'wallet' ? 'Portefeuille KATD' : (col.paymentMethod === 'momo' || col.paymentMethod === 'mtn' || col.paymentMethod === 'orange' ? 'Mobile Money' : col.paymentMethod)}</b>
+                              {col.notes ? ` • ${col.notes}` : ''}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-black text-sm text-gray-900">+{fmt(col.amount)} XAF</div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              col.status === 'paye' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {col.status === 'paye' ? 'Collecté' : 'Non collecté'}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
 
@@ -2076,7 +2160,7 @@ function AgentSettingsTab({ agent, onUpdate, showBanner }) {
           <div className="p-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs text-gray-600 space-y-1">
             <div className="font-bold text-gray-900">Mentions légales & Sécurité</div>
             <p>• Date d'adhésion aux termes : {fmtDate(agent?.termsAcceptedAt)}</p>
-            <p>• Frais mensuels de service : 1 100 FCFA déduits par client chaque mois.</p>
+            <p>• Frais mensuels de service : 1 000 FCFA déduits par client chaque mois (70% pour l'agent, 30% pour la plateforme).</p>
             <p>• Interdiction formelle de retrait des fonds clients par l'agent ou l'administration.</p>
           </div>
 

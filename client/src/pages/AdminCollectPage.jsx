@@ -70,7 +70,7 @@ export default function AdminCollectPage() {
   }
 
   const handleTriggerMonthlyFees = async () => {
-    if (!window.confirm('Voulez-vous synchroniser et déduire les frais mensuels de 1 100 FCFA sur tous les comptes clients actifs ?')) return
+    if (!window.confirm('Voulez-vous synchroniser et déduire les frais mensuels de 1 000 FCFA sur tous les comptes clients actifs ?')) return
     try {
       setLoading(true)
       const res = await collectApi.adminTriggerMonthlyFees()
@@ -166,7 +166,7 @@ export default function AdminCollectPage() {
           <div className="text-xl sm:text-2xl font-black text-amber-700 mt-1">
             {fmt(overview?.totalFeesCollected)} <span className="text-xs font-normal text-gray-400">XAF</span>
           </div>
-          <span className="text-[11px] text-amber-800 font-semibold mt-0.5 block">1 100 FCFA / client / mois</span>
+          <span className="text-[11px] text-amber-800 font-semibold mt-0.5 block">1 000 FCFA / client / mois</span>
         </div>
       </div>
 
@@ -286,9 +286,9 @@ export default function AdminCollectPage() {
         <div className="card p-5 sm:p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-gray-100">
             <div>
-              <h2 className="text-base font-bold text-gray-900">Frais de Collecte par Agence (1 100 FCFA / client)</h2>
+              <h2 className="text-base font-bold text-gray-900">Frais de Collecte par Agence (1 000 FCFA / client)</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Déduits si solde client ≥ 2 000 FCFA : 100 F maintenance + 300 F plateforme (total 400 F) / 700 F commission agent.
+                Déduits si solde client ≥ 2 000 FCFA : 700 F commission agent (70%) / 300 F plateforme (30%).
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -825,7 +825,7 @@ function AdminClientWithdrawModal({ client, onClose, onSuccess }) {
 // Onglet Termes & Conditions côté admin
 function AdminTermsTab({ showBanner }) {
   const [terms, setTerms] = useState('')
-  const [monthlyFee, setMonthlyFee] = useState(1100)
+  const [monthlyFee, setMonthlyFee] = useState(1000)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -833,7 +833,7 @@ function AdminTermsTab({ showBanner }) {
     collectApi.getConfig()
       .then((res) => {
         setTerms(res.termsAndConditions || '')
-        setMonthlyFee(res.monthlyFee ?? 1100)
+        setMonthlyFee(res.monthlyFee ?? 1000)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -877,7 +877,7 @@ function AdminTermsTab({ showBanner }) {
             onChange={(e) => setMonthlyFee(e.target.value)}
             className="input text-xs w-48 font-bold"
           />
-          <span className="text-[11px] text-gray-400 mt-0.5 block">Défaut recommandé : 1 100 FCFA</span>
+          <span className="text-[11px] text-gray-400 mt-0.5 block">Défaut recommandé : 1 000 FCFA</span>
         </div>
 
         <div>

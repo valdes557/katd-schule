@@ -38,21 +38,20 @@ function adminOnly(req, res, next) {
 
 // ── Fonction utilitaire : Déduction mensuelle des frais de tenue de compte (1 100 FCFA / client) ──
 // RÈGLE STRICTE : Déduction effectuée UNIQUEMENT si le client dispose d'un solde >= 2 000 FCFA.
-// Prélèvement total : 1 100 FCFA.
-// Répartition : 100 FCFA de maintenance (plateforme / gestion des collectes catégorie Frais),
-//               70% des 1 000 FCFA restants = 700 FCFA pour l'agent (portefeuille de commissions séparé),
-//               30% des 1 000 FCFA restants = 300 FCFA pour le super administrateur (gestion des collectes catégorie Frais).
-// Total pour l'admin plateforme : 100 F + 300 F = 400 FCFA.
+// Prélèvement total : 1 000 FCFA.
+// Répartition : 70% de 1 000 FCFA = 700 FCFA pour l'agent (portefeuille de commissions séparé),
+//               30% de 1 000 FCFA = 300 FCFA pour le super administrateur (gestion des collectes catégorie Frais).
+// Total pour l'admin plateforme : 300 FCFA.
 // Total pour l'agent : 700 FCFA.
 async function checkAndApplyMonthlyFeeForClient(client, agent) {
   try {
     if (!client) return false
     const currentMonth = getCurrentMonthStr()
-    const fee = 1100
-    const maintenanceFee = 100
+    const fee = 1000
+    const maintenanceFee = 0
     const commissionBase = 1000
     const agentShare = 700
-    const platformShare = 400
+    const platformShare = 300
 
     // Déduit UNIQUEMENT si le mois en cours n'a pas encore été prélevé ET que le solde client est >= 2 000 FCFA
     if (client.lastMonthlyFeeMonth === currentMonth || (Number(client.balance) || 0) < 2000) {
@@ -91,7 +90,7 @@ async function checkAndApplyMonthlyFeeForClient(client, agent) {
         type: 'fee_collected',
         balanceAfter: adminWallet.balance,
         counterparty: agentDoc?.user?._id || agentDoc?.user || null,
-        description: 'Frais de collecte (100 F maintenance + 300 F gestion) — Client ' + client.fullName + ' (' + client.accountNumber + ')',
+        description: 'Frais de collecte mensuels (30% de 1 000 F) — Client ' + client.fullName + ' (' + client.accountNumber + ')',
         meta: {
           feeType: 'collect_monthly_fees',
           agentId: agentDoc ? String(agentDoc._id) : null,
@@ -453,8 +452,15 @@ router.get('/agent/dashboard', protect, async (req, res) => {
     const totalClients = clients.length
     const activeClientsCount = clients.filter((c) => c.status === 'active').length
 
-    // 2. Collectes du jour
-    const todayCollections = await DailyCollection.find({ agent: agent._id, date: today })
+    const clientIds = clients.map((cl) => cl._id)
+
+    // 2. Collectes du jour (y compris collectes effectuées directement par les clients en ligne)
+    const todayCollections = await DailyCollection.find({
+      $or: [
+        { agent: agent._id, date: today },
+        { client: { $in: clientIds }, date: today },
+      ],
+    })
     const paidCollectionsToday = todayCollections.filter((c) => c.status === 'paye')
     const unpaidCollectionsToday = todayCollections.filter((c) => c.status === 'non_paye')
 
@@ -468,8 +474,10 @@ router.get('/agent/dashboard', protect, async (req, res) => {
     // 3. Total collecté ce mois-ci
     const monthRegex = new RegExp('^' + currentMonth)
     const monthCollections = await DailyCollection.find({
-      agent: agent._id,
-      date: monthRegex,
+      $or: [
+        { agent: agent._id, date: monthRegex },
+        { client: { $in: clientIds }, date: monthRegex },
+      ],
       status: 'paye',
     })
     const totalCollectedMonth = monthCollections.reduce((sum, c) => sum + (c.amount || 0), 0)
@@ -528,7 +536,6 @@ router.get('/agent/daily', protect, async (req, res) => {
     }
 
     const date = req.query.date || getTodayStr()
-    const collections = await DailyCollection.find({ agent: agent._id, date }).sort({ createdAt: -1 })
 
     // Clients actifs de cet agent ou de sa zone
     const agentNeighborhood = String(agent.neighborhood || '').trim()
@@ -540,6 +547,15 @@ router.get('/agent/daily', protect, async (req, res) => {
       $or: conds,
       status: 'active',
     }).sort({ fullName: 1 })
+
+    const clientIds = clients.map((cl) => cl._id)
+    // Récupère les collectes de l'agent ET celles réglées directement par les clients
+    const collections = await DailyCollection.find({
+      $or: [
+        { agent: agent._id, date },
+        { client: { $in: clientIds }, date },
+      ],
+    }).sort({ createdAt: -1 })
 
     // Identifier les clients sans collecte aujourd'hui -> automatiquement marqués 'non_collecte'
     const collectedClientIds = new Set(collections.map((c) => String(c.client)))
@@ -600,68 +616,6 @@ router.post('/agent/daily', protect, async (req, res) => {
       return res.status(400).json({ message: 'Le montant de la collecte doit être supérieur à 0' })
     }
 
-    // SI LE STATUT EST 'PAYE' : PAIEMENT EN ARGENT RÉEL EXIGÉ
-    if (status === 'paye') {
-      if (paymentMethod === 'wallet') {
-        // Débit en argent réel du portefeuille de l'agent
-        try {
-          await wallet.debit(req.user._id, {
-            amount: amt,
-            type: 'transfer_sent',
-            description: "Collecte journalière client : " + client.fullName + " (" + client.accountNumber + ")",
-            meta: {
-              reason: 'agent_collect_pay',
-              clientId: String(client._id),
-              agentId: String(agent._id),
-            },
-          })
-        } catch (walletErr) {
-          return res.status(400).json({
-            message: "Solde insuffisant dans votre portefeuille pour régler cette collecte (" + amt.toLocaleString('fr-FR') + " FCFA). Veuillez recharger votre portefeuille ou choisir Mobile Money.",
-          })
-        }
-      } else if (paymentMethod === 'momo' || paymentMethod === 'mtn' || paymentMethod === 'orange') {
-        const phoneToUse = momoPhone || agent.phone
-        const opToUse = momoOperator || (paymentMethod === 'orange' ? 'orange' : 'mtn')
-        if (!phoneToUse) {
-          return res.status(400).json({ message: 'Numéro de téléphone Mobile Money requis pour le paiement' })
-        }
-
-        const PaymentIntent = require('../models/PaymentIntent')
-        const providerRef = "col_agent_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6)
-        const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
-
-        const pi = await PaymentIntent.create({
-          reference: providerRef,
-          purpose: 'collect_deposit',
-          amount: amt,
-          currency: country === 'CM' ? 'XAF' : 'XOF',
-          initiatedBy: req.user._id,
-          payerPhone: phoneToUse,
-          payerOperator: opToUse,
-          status: 'pending',
-          meta: { agentId: String(agent._id), clientId: String(client._id), clientName: client.fullName, source: 'agent_daily' },
-        })
-
-        const directRes = await ikeepay.createCollection({
-          amount: amt,
-          phone: phoneToUse,
-          operator: opToUse,
-          country,
-          currency: country === 'CM' ? 'XAF' : 'XOF',
-          reference: providerRef,
-          otp,
-          callbackUrl: base + "/api/payments/webhook",
-        })
-
-        if (directRes.status === 'approved' || directRes.status === 'success') {
-          pi.status = 'approved'
-          pi.fulfilled = true
-          await pi.save()
-        }
-      }
-    }
-
     const finalNeighborhood = String(neighborhood || client.neighborhood || '').trim()
 
     // Vérifie s'il existe déjà une saisie pour ce client à cette date : RÈGLE STRICTE, IMMUABLE
@@ -670,6 +624,100 @@ router.post('/agent/daily', protect, async (req, res) => {
       return res.status(400).json({
         message: "La collecte pour ce client a déjà été enregistrée pour cette date (" + collectionDate + ") avec le statut " + (existingCol.status === 'paye' ? 'Collecté' : 'Non payé') + ". Elle ne peut plus être modifiée.",
       })
+    }
+
+    // SI LE PAIEMENT EST PAR MOBILE MONEY : DÉBIT STRICT AVANT VALIDATION
+    if (status === 'paye' && (paymentMethod === 'momo' || paymentMethod === 'mtn' || paymentMethod === 'orange')) {
+      const phoneToUse = momoPhone || agent.phone
+      const opToUse = momoOperator || (paymentMethod === 'orange' ? 'orange' : 'mtn')
+      if (!phoneToUse) {
+        return res.status(400).json({ message: 'Numéro de téléphone Mobile Money requis pour le paiement' })
+      }
+
+      const PaymentIntent = require('../models/PaymentIntent')
+      const providerRef = "col_agent_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6)
+      const base = (process.env.SERVER_URL || '').replace(/\/$/, '')
+
+      const pi = await PaymentIntent.create({
+        reference: providerRef,
+        purpose: 'collect_deposit',
+        amount: amt,
+        currency: country === 'CM' ? 'XAF' : 'XOF',
+        initiatedBy: req.user._id,
+        payerPhone: phoneToUse,
+        payerOperator: opToUse,
+        status: 'pending',
+        meta: {
+          agentId: String(agent._id),
+          clientId: String(client._id),
+          clientName: client.fullName,
+          source: 'agent_daily',
+          date: collectionDate,
+          neighborhood: finalNeighborhood,
+          notes: notes || '',
+        },
+      })
+
+      const directRes = await ikeepay.createCollection({
+        amount: amt,
+        phone: phoneToUse,
+        operator: opToUse,
+        country,
+        currency: country === 'CM' ? 'XAF' : 'XOF',
+        reference: providerRef,
+        otp,
+        callbackUrl: base + "/api/payments/webhook",
+      })
+
+      if (directRes.transaction_id || directRes.id) {
+        pi.providerTransactionId = directRes.transaction_id || directRes.id
+        await pi.save()
+      }
+
+      if (directRes.status === 'approved' || directRes.status === 'success') {
+        const { applyOutcome } = require('./payments')
+        await applyOutcome(pi, 'approved', directRes)
+        const updatedClient = await CollectClient.findById(client._id)
+        const col = await DailyCollection.findOne({ client: client._id, date: collectionDate })
+        return res.json({
+          success: true,
+          status: 'approved',
+          message: "Collecte de " + amt.toLocaleString('fr-FR') + " FCFA réglée et créditée avec succès.",
+          collection: col,
+          newClientBalance: updatedClient ? updatedClient.balance : client.balance,
+        })
+      }
+
+      // Si le paiement nécessite une validation PIN sur le téléphone :
+      // On ne crée pas DailyCollection et on ne crédite pas le compte client maintenant.
+      return res.json({
+        success: true,
+        pending: true,
+        reference: providerRef,
+        amount: amt,
+        payment_link: directRes.payment_link || directRes.redirect_url || null,
+        message: 'Demande de débit Mobile Money envoyée sur votre téléphone. Veuillez valider avec votre code PIN pour finaliser la collecte.',
+      })
+    }
+
+    // SI LE PAIEMENT EST PAR PORTEFEUILLE KATD
+    if (status === 'paye' && paymentMethod === 'wallet') {
+      try {
+        await wallet.debit(req.user._id, {
+          amount: amt,
+          type: 'transfer_sent',
+          description: "Collecte journalière client : " + client.fullName + " (" + client.accountNumber + ")",
+          meta: {
+            reason: 'agent_collect_pay',
+            clientId: String(client._id),
+            agentId: String(agent._id),
+          },
+        })
+      } catch (walletErr) {
+        return res.status(400).json({
+          message: "Solde insuffisant dans votre portefeuille pour régler cette collecte (" + amt.toLocaleString('fr-FR') + " FCFA). Veuillez recharger votre portefeuille ou choisir Mobile Money.",
+        })
+      }
     }
 
     const col = await DailyCollection.create({
@@ -682,8 +730,8 @@ router.post('/agent/daily', protect, async (req, res) => {
       date: collectionDate,
       amount: amt,
       status,
-      paymentMethod,
-      notes: notes || '',
+      paymentMethod: paymentMethod === 'mtn' || paymentMethod === 'orange' ? 'momo' : paymentMethod,
+      notes: notes || 'Collecté par agent',
       datetime: new Date(),
     })
 
@@ -697,6 +745,7 @@ router.post('/agent/daily', protect, async (req, res) => {
 
     res.json({
       success: true,
+      status: 'approved',
       message: status === 'paye'
         ? "Collecte de " + amt.toLocaleString('fr-FR') + " FCFA réglée et créditée avec succès."
         : 'Statut non payé enregistré pour ce jour.',
@@ -978,10 +1027,27 @@ router.get('/agent/clients/:id', protect, async (req, res) => {
       return res.status(403).json({ message: "Vous n'avez pas l'autorisation d'approvisionner un client hors de votre zone" })
     }
 
-    const collections = await DailyCollection.find({ client: client._id }).sort({ date: -1 }).limit(100)
+    const collections = await DailyCollection.find({ client: client._id }).sort({ date: -1, datetime: -1 }).limit(300)
     const fees = await CollectFeeRecord.find({ client: client._id }).sort({ month: -1 })
 
-    res.json({ success: true, client, collections, fees })
+    // Agrégation du cumul des collectes par mois pour ce client
+    const monthlySummary = await DailyCollection.aggregate([
+      { $match: { client: client._id, status: 'paye' } },
+      {
+        $group: {
+          _id: { $substr: ['$date', 0, 7] }, // 'YYYY-MM'
+          totalAmount: { $sum: '$amount' },
+          daysCount: { $sum: 1 },
+          lastPaymentDate: { $max: '$date' },
+        },
+      },
+      { $sort: { _id: -1 } },
+    ])
+
+    const currentMonth = getCurrentMonthStr()
+    const currentMonthTotal = monthlySummary.find((m) => m._id === currentMonth)?.totalAmount || 0
+
+    res.json({ success: true, client, collections, monthlySummary, currentMonthTotal, fees })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -1396,7 +1462,7 @@ router.get('/admin/fees-summary', protect, adminOnly, async (req, res) => {
           totalClientsCount: { $sum: 1 },
           totalAmount: { $sum: '$amount' },
           totalAgentShare: { $sum: { $ifNull: ['$agentShare', 700] } },
-          totalPlatformShare: { $sum: { $ifNull: ['$platformShare', 400] } },
+          totalPlatformShare: { $sum: { $ifNull: ['$platformShare', 300] } },
           totalMaintenanceFees: { $sum: { $ifNull: ['$maintenanceFee', 100] } },
           lastDeductedAt: { $max: '$deductedAt' },
         },
@@ -1641,8 +1707,25 @@ router.get('/client/dashboard', protect, async (req, res) => {
     const daysRemaining = Math.max(0, daysInMonth - currentDay)
     const progressPercent = monthlyTarget > 0 ? Math.min(100, Math.round((client.balance / monthlyTarget) * 100)) : 0
 
-    // Historique récent des opérations (dépôts et retraits)
-    const recentHistory = await DailyCollection.find({ client: client._id }).sort({ date: -1, datetime: -1 }).limit(30)
+    // Historique complet des collectes par mois (supervision et suivi mensuel)
+    const monthlyHistory = await DailyCollection.aggregate([
+      { $match: { client: client._id, status: 'paye' } },
+      {
+        $group: {
+          _id: { $substr: ['$date', 0, 7] }, // 'YYYY-MM'
+          totalAmount: { $sum: '$amount' },
+          daysCount: { $sum: 1 },
+          lastPaymentDate: { $max: '$date' },
+        },
+      },
+      { $sort: { _id: -1 } },
+    ])
+
+    const monthPaidCollections = monthCollections.filter((c) => c.status === 'paye')
+    const currentMonthTotal = monthPaidCollections.reduce((sum, c) => sum + (c.amount || 0), 0)
+
+    // Historique récent des opérations
+    const recentHistory = await DailyCollection.find({ client: client._id }).sort({ date: -1, datetime: -1 }).limit(50)
 
     res.json({
       success: true,
@@ -1654,10 +1737,11 @@ router.get('/client/dashboard', protect, async (req, res) => {
         year,
         daysInMonth,
         currentDay,
-        firstDayOfWeek, // pour alignement sur Lu-Di
+        firstDayOfWeek,
       },
       stats: {
-        totalBalance: client.balance || 0,
+        totalBalance: client.balance || currentMonthTotal,
+        currentMonthTotal,
         monthlyTarget,
         dailyTarget,
         paidDaysCount,
@@ -1668,6 +1752,7 @@ router.get('/client/dashboard', protect, async (req, res) => {
         todayStatus,
       },
       calendar: calendarDays,
+      monthlyHistory,
       history: recentHistory,
     })
   } catch (err) {
@@ -1692,14 +1777,68 @@ router.post('/client/pay', protect, async (req, res) => {
     const agent = await CollectAgent.findById(client.agent).populate('user', 'name email phone')
 
     if (paymentMethod === 'wallet') {
-      await wallet.debit(req.user._id, {
-        amount: amt,
-        type: 'transfer_sent',
-        description: `Paiement collecte journalière — ${client.fullName} (${client.accountNumber})`,
-        meta: { reason: 'client_collect_pay', clientId: String(client._id) },
+      try {
+        await wallet.debit(req.user._id, {
+          amount: amt,
+          type: 'transfer_sent',
+          description: `Paiement collecte journalière — ${client.fullName} (${client.accountNumber})`,
+          meta: { reason: 'client_collect_pay', clientId: String(client._id) },
+        })
+      } catch (wErr) {
+        return res.status(400).json({
+          message: 'Solde insuffisant dans votre portefeuille KATD. Veuillez approvisionner votre portefeuille ou choisir Mobile Money.',
+        })
+      }
+
+      // Mise à jour du solde client
+      client.balance += amt
+      await client.save()
+
+      // Vérifie et applique les frais mensuels si solde >= 2 000 FCFA
+      await checkAndApplyMonthlyFeeForClient(client, agent)
+
+      // Enregistrement dans DailyCollection pour aujourd'hui
+      const today = getTodayStr()
+      let col = await DailyCollection.findOne({ client: client._id, date: today })
+      if (col) {
+        col.amount = (col.amount || 0) + amt
+        col.status = 'paye'
+        col.paymentMethod = 'wallet'
+        col.notes = 'Payé par le client depuis son portefeuille KATD'
+        col.datetime = new Date()
+        await col.save()
+      } else {
+        col = await DailyCollection.create({
+          agent: client.agent,
+          agentUser: agent?.user?._id || client.agentUser,
+          client: client._id,
+          clientName: client.fullName,
+          clientPhone: client.phone,
+          neighborhood: client.neighborhood,
+          date: today,
+          amount: amt,
+          status: 'paye',
+          paymentMethod: 'wallet',
+          notes: 'Payé par le client depuis son portefeuille KATD',
+          datetime: new Date(),
+        })
+      }
+
+      return res.json({
+        success: true,
+        status: 'approved',
+        message: 'Paiement de ' + amt.toLocaleString('fr-FR') + ' FCFA validé avec succès depuis votre portefeuille !',
+        client,
+        collection: col,
+        newBalance: client.balance,
       })
-    } else if (paymentMethod === 'momo') {
-      if (!phone || !operator) {
+    }
+
+    // PAIEMENT VIA MOBILE MONEY (MTN / ORANGE)
+    if (paymentMethod === 'momo' || paymentMethod === 'mtn' || paymentMethod === 'orange') {
+      const phoneToUse = phone || client.momoMtn || client.momoOrange || client.phone
+      const opToUse = operator || (paymentMethod === 'orange' ? 'orange' : 'mtn')
+      if (!phoneToUse) {
         return res.status(400).json({ message: 'Numéro et opérateur Mobile Money requis' })
       }
       const PaymentIntent = require('../models/PaymentIntent')
@@ -1712,16 +1851,22 @@ router.post('/client/pay', protect, async (req, res) => {
         amount: amt,
         currency: country === 'CM' ? 'XAF' : 'XOF',
         initiatedBy: req.user._id,
-        payerPhone: phone,
-        payerOperator: operator,
+        payerPhone: phoneToUse,
+        payerOperator: opToUse,
         status: 'pending',
-        meta: { clientId: String(client._id), clientName: client.fullName, source: 'client_pay' },
+        meta: {
+          clientId: String(client._id),
+          clientName: client.fullName,
+          source: 'client_pay',
+          date: getTodayStr(),
+          neighborhood: client.neighborhood,
+        },
       })
 
       const directRes = await ikeepay.createCollection({
         amount: amt,
-        phone,
-        operator,
+        phone: phoneToUse,
+        operator: opToUse,
         country,
         currency: country === 'CM' ? 'XAF' : 'XOF',
         reference: providerRef,
@@ -1729,43 +1874,32 @@ router.post('/client/pay', protect, async (req, res) => {
         callbackUrl: `${base}/api/payments/webhook`,
       })
 
-      if (directRes.status === 'approved' || directRes.status === 'success') {
-        pi.status = 'approved'
-        pi.fulfilled = true
+      if (directRes.transaction_id || directRes.id) {
+        pi.providerTransactionId = directRes.transaction_id || directRes.id
         await pi.save()
       }
-    }
 
-    // Mise à jour du solde client
-    client.balance += amt
-    await client.save()
+      if (directRes.status === 'approved' || directRes.status === 'success') {
+        const { applyOutcome } = require('./payments')
+        await applyOutcome(pi, 'approved', directRes)
+        const updated = await CollectClient.findById(client._id)
+        return res.json({
+          success: true,
+          status: 'approved',
+          message: 'Collecte payée et créditée avec succès !',
+          newBalance: updated ? updated.balance : client.balance,
+        })
+      }
 
-    // Vérifie et applique les frais mensuels si solde >= 1100 FCFA
-    await checkAndApplyMonthlyFeeForClient(client, agent)
-
-    // Enregistrement dans DailyCollection pour aujourd'hui
-    const today = getTodayStr()
-    let col = await DailyCollection.findOne({ client: client._id, date: today })
-    if (col) {
-      col.amount = (col.amount || 0) + amt
-      col.status = 'paye'
-      col.paymentMethod = paymentMethod
-      col.datetime = new Date()
-      await col.save()
-    } else {
-      col = await DailyCollection.create({
-        agent: client.agent,
-        agentUser: agent?.user?._id || client.agentUser,
-        client: client._id,
-        clientName: client.fullName,
-        clientPhone: client.phone,
-        neighborhood: client.neighborhood,
-        date: today,
+      // Si le paiement nécessite une validation PIN sur le téléphone :
+      // On ne crédite pas le solde et on ne crée pas la collecte maintenant.
+      return res.json({
+        success: true,
+        pending: true,
+        reference: providerRef,
         amount: amt,
-        status: 'paye',
-        paymentMethod,
-        notes: 'Payé par le client depuis son espace',
-        datetime: new Date(),
+        payment_link: directRes.payment_link || directRes.redirect_url || null,
+        message: 'Demande de débit Mobile Money envoyée sur votre téléphone. Veuillez valider avec votre code PIN pour confirmer le paiement.',
       })
     }
 

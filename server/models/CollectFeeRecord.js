@@ -1,6 +1,6 @@
-// models/CollectFeeRecord.js — Enregistrement des frais mensuels (1 100 FCFA) déduits par client.
-// Répartition : 100 FCFA de maintenance (plateforme) + 1 000 FCFA de commission (700 F pour l'agent, 300 F pour la plateforme).
-// Total : 700 FCFA pour l'agent, 400 FCFA pour l'admin plateforme. Déduction uniquement si solde >= 2 000 FCFA.
+// models/CollectFeeRecord.js — Enregistrement des frais mensuels (1 000 FCFA) déduits par client.
+// Répartition : 70% pour l'agent (700 FCFA) dans son portefeuille de commissions séparé,
+// 30% pour l'administrateur / plateforme (300 FCFA). Déduction uniquement si solde >= 2 000 FCFA.
 const mongoose = require('mongoose')
 
 const collectFeeRecordSchema = new mongoose.Schema(
@@ -12,11 +12,11 @@ const collectFeeRecordSchema = new mongoose.Schema(
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectClient', required: true, index: true },
     clientName: { type: String, required: true },
     month: { type: String, required: true, index: true }, // Format 'YYYY-MM'
-    amount: { type: Number, default: 1100 },
-    maintenanceFee: { type: Number, default: 100 },   // 100 F frais de maintenance plateforme
-    commissionBase: { type: Number, default: 1000 },  // 1 000 F base commissions
+    amount: { type: Number, default: 1000 },
+    maintenanceFee: { type: Number, default: 0 },
+    commissionBase: { type: Number, default: 1000 },
     agentShare: { type: Number, default: 700 },       // 70% de 1 000 = 700 FCFA (portefeuille commission agent)
-    platformShare: { type: Number, default: 400 },    // 100 F maintenance + 300 F (30% de 1 000) = 400 FCFA
+    platformShare: { type: Number, default: 300 },    // 30% de 1 000 = 300 FCFA (gestion des collectes admin)
     deductedAt: { type: Date, default: Date.now },
     walletTransaction: { type: mongoose.Schema.Types.ObjectId, ref: 'WalletTransaction', default: null },
   },

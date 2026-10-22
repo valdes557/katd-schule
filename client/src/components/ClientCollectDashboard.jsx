@@ -8,11 +8,13 @@ import {
   X, ShieldCheck, PiggyBank,
 } from 'lucide-react'
 import { collectApi, walletApi } from '../lib/api'
+import { useInlineCheckout } from './payments/useInlineCheckout'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
 
 export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwitchToAgent }) {
+  const inlineCheckout = useInlineCheckout()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null)
@@ -88,23 +90,41 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
       return
     }
 
-    try {
-      setSubmitting(true)
-      const res = await collectApi.clientPay({
-        amount: amt,
-        paymentMethod: payMethod,
-        phone: momoPhone,
-        operator: momoOperator,
-        country: 'CM',
-      })
-      showToast(res.message || 'Paiement effectué avec succès ! Votre agent a été notifié par email.')
-      setPayModal(false)
-      await loadData()
-    } catch (err) {
-      showToast(err.message || 'Erreur lors du paiement.', 'error')
-    } finally {
-      setSubmitting(false)
+    if (payMethod === 'wallet') {
+      try {
+        setSubmitting(true)
+        const res = await collectApi.clientPay({
+          amount: amt,
+          paymentMethod: 'wallet',
+        })
+        showToast(res.message || 'Paiement effectué avec succès depuis votre portefeuille !', 'success')
+        setPayModal(false)
+        await loadData()
+      } catch (err) {
+        showToast(err.message || 'Erreur lors du paiement.', 'error')
+      } finally {
+        setSubmitting(false)
+      }
+      return
     }
+
+    // PAIEMENT VIA MOBILE MONEY DIRECT (H2H AVEC VALIDATION SUR TÉLÉPHONE)
+    inlineCheckout.start(
+      (momoData) => collectApi.clientPay({
+        amount: amt,
+        paymentMethod: 'momo',
+        phone: momoData.phone || momoPhone,
+        operator: momoData.operator || momoOperator,
+        otp: momoData.otp,
+        country: momoData.country || 'CM',
+      }),
+      async (reference, status) => {
+        setPayModal(false)
+        await loadData()
+        showToast('Collecte validée avec succès via Mobile Money ! Votre compte a été crédité.', 'success')
+      },
+      { amount: amt, title: 'Paiement collecte journalière — ' + fmt(amt) + ' FCFA' }
+    )
   }
 
   const handleWithdraw = async (e) => {
@@ -463,6 +483,30 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
       {/* ONGLET 3 : HISTORIQUE DES TRANSACTIONS */}
       {navTab === 'history' && (
         <div className="px-4 space-y-3 animate-fade-in">
+          {/* Cumul des collectes journalières par mois (Supervision & Suivi) */}
+          {(data?.monthlyHistory || []).length > 0 && (
+            <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-150/80">
+              <h2 className="text-base font-black text-gray-900 mb-1 flex items-center gap-2">
+                <Calendar className="text-[#0f9755]" size={18} />
+                <span>Cumul des collectes par mois</span>
+              </h2>
+              <p className="text-xs text-gray-400 mb-3">Supervision et suivi mensuel de votre cagnotte.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {data.monthlyHistory.map((mh) => (
+                  <div key={mh._id} className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-gray-900 block font-mono">{mh._id}</span>
+                      <span className="text-[11px] text-emerald-800 font-semibold">{mh.daysCount} jour(s) collecté(s)</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-black text-emerald-950 block">{fmt(mh.totalAmount)} F</span>
+                      <span className="text-[10px] text-gray-400">Dernier versement : {fmtDate(mh.lastPaymentDate)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-150/80">
             <h2 className="text-base font-black text-gray-900 mb-3 flex items-center gap-2">
               <History className="text-[#0f9755]" size={20} />
@@ -942,6 +986,7 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
           </div>
         </div>
       )}
+      {inlineCheckout.element}
     </div>
   )
 }

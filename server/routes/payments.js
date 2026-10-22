@@ -808,7 +808,11 @@ async function applyOutcome(intent, status, raw) {
             await collectModule.checkAndApplyMonthlyFeeForClient(client, agent)
           }
 
-          const today = new Date().toISOString().slice(0, 10)
+              const today = (m && m.date) || new Date().toISOString().slice(0, 10)
+          const agentId = (m && m.agentId) || client.agent
+          const notes = intent.purpose === 'collect_payment'
+            ? 'Payé par le client lui-même (Mobile Money)'
+            : ('Collecté par agent (Mobile Money)' + (m.notes ? ' — ' + m.notes : ''))
           let col = await DailyCollection.findOne({ client: client._id, date: today })
           if (col) {
             col.amount = (col.amount || 0) + intent.amount
@@ -818,7 +822,7 @@ async function applyOutcome(intent, status, raw) {
             await col.save()
           } else {
             await DailyCollection.create({
-              agent: client.agent,
+              agent: agentId,
               agentUser: agent?.user?._id || client.agentUser,
               client: client._id,
               clientName: client.fullName,
@@ -828,7 +832,7 @@ async function applyOutcome(intent, status, raw) {
               amount: intent.amount,
               status: 'paye',
               paymentMethod: 'momo',
-              notes: intent.purpose === 'collect_payment' ? 'Payé par le client (Mobile Money)' : 'Dépôt collecte Mobile Money',
+              notes,
               datetime: new Date(),
             })
           }

@@ -25,7 +25,7 @@ const dailyCollectionSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ['especes', 'momo', 'wallet'],
+      enum: ['especes', 'momo', 'wallet', 'mtn', 'orange', 'moov', 'airtel', 'wave', 'carte'],
       default: 'especes',
     },
     notes: { type: String, default: '' },
