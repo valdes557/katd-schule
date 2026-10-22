@@ -2140,7 +2140,7 @@ function AgentCommissionWalletTab({ showBanner, agent }) {
               {fmt(data?.balance)} <span className="text-lg font-bold text-emerald-200">XAF</span>
             </h2>
             <p className="text-xs sm:text-sm text-emerald-100 max-w-md">
-              Vous percevez automatiquement <b>70% des 1 100 FCFA</b> de frais de collecte mensuels déduits sur chaque client actif de votre agence (soit <b>770 FCFA / client</b>).
+              Vous percevez automatiquement <b>70% de commission (700 FCFA / client)</b> sur les frais mensuels prélevés dès que le solde du client atteint au moins 2 000 FCFA.
             </p>
           </div>
 

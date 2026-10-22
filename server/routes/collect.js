@@ -37,23 +37,27 @@ function adminOnly(req, res, next) {
 }
 
 // ── Fonction utilitaire : Déduction mensuelle des frais de tenue de compte (1 100 FCFA / client) ──
-// RÈGLE STRICTE : Déduction effectuée UNIQUEMENT si le client dispose d'un solde >= 1 100 FCFA.
-// Répartition : 70% pour l'agent (770 FCFA) sur son portefeuille de commissions séparé,
-//               30% pour l'administration (330 FCFA) versé sur la plateforme / gestion des collectes.
+// RÈGLE STRICTE : Déduction effectuée UNIQUEMENT si le client dispose d'un solde >= 2 000 FCFA.
+// Prélèvement total : 1 100 FCFA.
+// Répartition : 100 FCFA de maintenance (plateforme / gestion des collectes catégorie Frais),
+//               70% des 1 000 FCFA restants = 700 FCFA pour l'agent (portefeuille de commissions séparé),
+//               30% des 1 000 FCFA restants = 300 FCFA pour le super administrateur (gestion des collectes catégorie Frais).
+// Total pour l'admin plateforme : 100 F + 300 F = 400 FCFA.
+// Total pour l'agent : 700 FCFA.
 async function checkAndApplyMonthlyFeeForClient(client, agent) {
   try {
     if (!client) return false
     const currentMonth = getCurrentMonthStr()
-    const cfg = await CollectConfig.getOrCreate()
-    const fee = Number(cfg.monthlyFee) || 1100
+    const fee = 1100
+    const maintenanceFee = 100
+    const commissionBase = 1000
+    const agentShare = 700
+    const platformShare = 400
 
-    // Déduit UNIQUEMENT si le mois en cours n'a pas encore été prélevé ET que le solde client est >= 1 100 FCFA
-    if (client.lastMonthlyFeeMonth === currentMonth || (Number(client.balance) || 0) < fee) {
+    // Déduit UNIQUEMENT si le mois en cours n'a pas encore été prélevé ET que le solde client est >= 2 000 FCFA
+    if (client.lastMonthlyFeeMonth === currentMonth || (Number(client.balance) || 0) < 2000) {
       return false
     }
-
-    const agentShare = Math.round(fee * 0.70) // 770 FCFA
-    const platformShare = fee - agentShare    // 330 FCFA
 
     client.balance -= fee
     client.lastMonthlyFeeMonth = currentMonth
@@ -87,14 +91,16 @@ async function checkAndApplyMonthlyFeeForClient(client, agent) {
         type: 'fee_collected',
         balanceAfter: adminWallet.balance,
         counterparty: agentDoc?.user?._id || agentDoc?.user || null,
-        description: 'Frais de gestion collecte (30%) — Client ' + client.fullName + ' (' + client.accountNumber + ')',
+        description: 'Frais de collecte (100 F maintenance + 300 F gestion) — Client ' + client.fullName + ' (' + client.accountNumber + ')',
         meta: {
-          feeType: 'collect_platform_share',
+          feeType: 'collect_monthly_fees',
           agentId: agentDoc ? String(agentDoc._id) : null,
           clientId: String(client._id),
           clientName: client.fullName,
           month: currentMonth,
           baseAmount: fee,
+          maintenanceFee,
+          commissionBase,
           agentShare,
           platformShare,
         },
@@ -110,6 +116,8 @@ async function checkAndApplyMonthlyFeeForClient(client, agent) {
       clientName: client.fullName,
       month: currentMonth,
       amount: fee,
+      maintenanceFee,
+      commissionBase,
       agentShare,
       platformShare,
       walletTransaction: tx?._id || null,
@@ -132,12 +140,9 @@ async function applyMonthlyFeesForAgent(agentId) {
     const clients = await CollectClient.find({ agent: agentId, status: 'active' })
     if (clients.length === 0) return
 
-    const cfg = await CollectConfig.getOrCreate()
-    const feePerClient = Number(cfg.monthlyFee) || 1100
-
     for (const client of clients) {
-      // Conditionné strictement au solde >= 1 100 FCFA
-      if (client.lastMonthlyFeeMonth !== currentMonth && (Number(client.balance) || 0) >= feePerClient) {
+      // Conditionné strictement au solde >= 2 000 FCFA
+      if (client.lastMonthlyFeeMonth !== currentMonth && (Number(client.balance) || 0) >= 2000) {
         await checkAndApplyMonthlyFeeForClient(client, agent)
       }
     }
@@ -638,7 +643,7 @@ router.post('/agent/daily', protect, async (req, res) => {
           meta: { agentId: String(agent._id), clientId: String(client._id), clientName: client.fullName, source: 'agent_daily' },
         })
 
-        const directRes = await ikeepay.createDirectCharge({
+        const directRes = await ikeepay.createCollection({
           amount: amt,
           phone: phoneToUse,
           operator: opToUse,
@@ -1125,7 +1130,7 @@ router.post('/agent/clients/:id/deposit-momo', protect, async (req, res) => {
       },
     })
 
-    const directRes = await ikeepay.createDirectCharge({
+    const directRes = await ikeepay.createCollection({
       amount: amt,
       phone,
       operator,
@@ -1390,8 +1395,9 @@ router.get('/admin/fees-summary', protect, adminOnly, async (req, res) => {
           agentUser: { $first: '$agentUser' },
           totalClientsCount: { $sum: 1 },
           totalAmount: { $sum: '$amount' },
-          totalAgentShare: { $sum: { $ifNull: ['$agentShare', 770] } },
-          totalPlatformShare: { $sum: { $ifNull: ['$platformShare', 330] } },
+          totalAgentShare: { $sum: { $ifNull: ['$agentShare', 700] } },
+          totalPlatformShare: { $sum: { $ifNull: ['$platformShare', 400] } },
+          totalMaintenanceFees: { $sum: { $ifNull: ['$maintenanceFee', 100] } },
           lastDeductedAt: { $max: '$deductedAt' },
         },
       },
@@ -1712,7 +1718,7 @@ router.post('/client/pay', protect, async (req, res) => {
         meta: { clientId: String(client._id), clientName: client.fullName, source: 'client_pay' },
       })
 
-      const directRes = await ikeepay.createDirectCharge({
+      const directRes = await ikeepay.createCollection({
         amount: amt,
         phone,
         operator,

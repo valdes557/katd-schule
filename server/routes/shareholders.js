@@ -212,6 +212,14 @@ router.post('/subscribe', protect, async (req, res) => {
       currency: targetCurrency, customerEmail: req.user.email || '', otp
     })
     if (result.transaction_id || result.id) { intent.providerTransactionId = result.transaction_id || result.id; await intent.save() }
+    if (result.status === 'approved' || result.status === 'success') {
+      try {
+        const { applyOutcome } = require('./payments')
+        await applyOutcome(intent, 'approved', result)
+      } catch (e) {
+        console.error('[shareholders:subscribe] auto-apply error:', e.message)
+      }
+    }
     const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
     res.json({
       success: true, reference, amount: finalPrice, mode, currency: targetCurrency,
@@ -347,6 +355,15 @@ router.put('/admin/config', protect, superAdminOnly, async (req, res) => {
     await cfg.save()
     const promo = await getPromoStats()
     res.json({ success: true, config: cfg, promo })
+  } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/shareholders/admin/reset-promo — réinitialise les souscriptions pour remettre le quota promo à 10%
+router.post('/admin/reset-promo', protect, superAdminOnly, async (req, res) => {
+  try {
+    const deleted = await Shareholding.deleteMany({})
+    const promo = await getPromoStats()
+    res.json({ success: true, message: 'Quota promotionnel réinitialisé à 10% avec succès.', deletedCount: deleted.deletedCount, promo })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 

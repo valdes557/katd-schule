@@ -366,7 +366,7 @@ async function webhookHandler(req, res) {
 
     // Si la clé n'est pas standard, extrait le pattern de nos références
     if (!reference) {
-      const match = JSON.stringify(payload).match(/\b(dep|sub|enr|boost|merch|share|wd|ais)_[a-zA-Z0-9_]+\b/)
+      const match = JSON.stringify(payload).match(/\b(dep|sub|enr|boost|merch|share|shr|col|wd|ais)_[a-zA-Z0-9_]+\b/)
       if (match) reference = match[0]
     }
     const providerId = payload.transaction_id || payload.id || payload.provider_reference || payload.ikeepay_ref || d.transaction_id || d.id || d.provider_reference || d.ikeepay_ref

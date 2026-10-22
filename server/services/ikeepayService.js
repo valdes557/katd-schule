@@ -153,6 +153,10 @@ function buildMomoBody({ amount, phone, operator, reference, callbackUrl, countr
   if (otp) {
     body.otp = String(otp).trim()
   }
+  if (callbackUrl) {
+    body.callback_url = callbackUrl
+    body.callbackUrl = callbackUrl
+  }
   return body
 }
 
@@ -257,7 +261,7 @@ async function verifyWebhookSignature(rawBody, signature) {
 }
 
 module.exports = {
-  resolveConfig, createCollection, createPayout, listOperators, getTransactionStatus,
+  resolveConfig, createCollection, createDirectCharge: createCollection, createPayout, listOperators, getTransactionStatus,
   verifyWebhookSignature, mapProvider, normalizePhone,
   BASE_URL, PAYOUT_PATH, STATUS_PATH, SIGNATURE_HEADER, DEFAULT_COUNTRY, DEFAULT_CURRENCY,
   getCountryCurrency, COUNTRY_CURRENCIES,

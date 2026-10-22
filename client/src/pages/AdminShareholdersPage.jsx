@@ -77,6 +77,17 @@ function ConfigPanel() {
   const setPlan = (i, patch) =>
     setCfg({ ...cfg, plans: cfg.plans.map((p, idx) => (idx === i ? { ...p, ...patch } : p)) })
 
+  const handleResetPromo = async () => {
+    if (!window.confirm('Voulez-vous réinitialiser le quota promotionnel à 10% ? Les souscriptions de test seront nettoyées.')) return
+    try {
+      const res = await shareholdersApi.adminResetPromo()
+      setPromo(res.promo)
+      setMsg('Quota promotionnel remis à 10% avec succès (0% souscrits, 10% disponibles).')
+    } catch (e) {
+      setErr(e.message)
+    }
+  }
+
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-indigo-600" /></div>
   if (!cfg) return <div className="text-sm text-red-600">{err || 'Configuration introuvable'}</div>
 
@@ -109,6 +120,20 @@ function ConfigPanel() {
               className={`h-full rounded-full transition-all duration-500 ${isSoldOut ? 'bg-red-600' : 'bg-amber-500'}`}
               style={{ width: `${Math.min(100, Math.max(3, (promo.totalSubscribed / promo.maxPercent) * 100))}%` }}
             />
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-amber-200/70">
+            <span className="text-xs text-gray-600">
+              {promo.totalSubscribed > 0
+                ? `${promo.totalSubscribed}% souscrit(s). Consultez l’onglet « Associés » pour gérer les souscriptions.`
+                : 'Aucun associé n’a souscrit pour le moment (10% d’actions disponibles).'}
+            </span>
+            <button
+              type="button"
+              onClick={handleResetPromo}
+              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white text-gray-700 hover:text-amber-900 border border-amber-300 shadow-2xs flex items-center gap-1.5 transition-colors"
+            >
+              <RefreshCw size={12} /> Remettre le quota à 10%
+            </button>
           </div>
         </div>
       )}

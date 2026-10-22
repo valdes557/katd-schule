@@ -288,7 +288,7 @@ export default function AdminCollectPage() {
             <div>
               <h2 className="text-base font-bold text-gray-900">Frais de Collecte par Agence (1 100 FCFA / client)</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Les frais sont additionnés et attribués au nom de chaque agence. L'administrateur peut ensuite les retirer.
+                Déduits si solde client ≥ 2 000 FCFA : 100 F maintenance + 300 F plateforme (total 400 F) / 700 F commission agent.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -318,8 +318,8 @@ export default function AdminCollectPage() {
                     <th className="py-3 px-3">Agence & Responsable</th>
                     <th className="py-3 px-3 text-center">Clients</th>
                     <th className="py-3 px-3 text-right">Total Prélevé</th>
-                    <th className="py-3 px-3 text-right">Part Agent (70%)</th>
-                    <th className="py-3 px-3 text-right">Part Plateforme (30%)</th>
+                    <th className="py-3 px-3 text-right">Commission Agent (700 F)</th>
+                    <th className="py-3 px-3 text-right">Part Plateforme (400 F)</th>
                     <th className="py-3 px-3 text-right">Dernier Prélèvement</th>
                   </tr>
                 </thead>
@@ -335,10 +335,10 @@ export default function AdminCollectPage() {
                         {fmt(f.totalAmount)} <span className="text-[10px] font-normal text-gray-400">XAF</span>
                       </td>
                       <td className="py-3 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
-                        {fmt(f.totalAgentShare || Math.round(f.totalAmount * 0.70))} <span className="text-[10px] font-normal text-gray-400">XAF</span>
+                        {fmt(f.totalAgentShare || ((f.totalClientsCount || 0) * 700))} <span className="text-[10px] font-normal text-gray-400">XAF</span>
                       </td>
                       <td className="py-3 px-3 text-right font-bold text-amber-700 whitespace-nowrap">
-                        {fmt(f.totalPlatformShare || (f.totalAmount - Math.round(f.totalAmount * 0.70)))} <span className="text-[10px] font-normal text-gray-400">XAF</span>
+                        {fmt(f.totalPlatformShare || ((f.totalClientsCount || 0) * 400))} <span className="text-[10px] font-normal text-gray-400">XAF</span>
                       </td>
                       <td className="py-3 px-3 text-right text-gray-500 whitespace-nowrap">
                         {fmtDate(f.lastDeductedAt)}

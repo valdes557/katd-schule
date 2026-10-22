@@ -1325,6 +1325,7 @@ export const shareholdersApi = {
   // Souscription payée directement depuis le solde du portefeuille { planKey, zone, pin }
   subscribeWallet: (payload) => api.post('/shareholders/subscribe-wallet', payload),
   adminConfig: () => api.get('/shareholders/admin/config'),
+  adminResetPromo: () => api.post('/shareholders/admin/reset-promo', {}),
   adminUpdateConfig: (payload) => api.put('/shareholders/admin/config', payload),
   adminList: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
