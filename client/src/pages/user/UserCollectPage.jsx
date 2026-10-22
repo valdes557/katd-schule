@@ -1692,6 +1692,7 @@ function ActivateByEmailModal({ onClose, onSuccess }) {
 
 // Modal d'approvisionnement (Momo ou Wallet)
 function DepositModal({ client, onClose, onSuccess }) {
+  const inlineCheckout = useInlineCheckout()
   const [method, setMethod] = useState('wallet') // wallet | momo
   const [amount, setAmount] = useState(1000)
   const [operator, setOperator] = useState('mtn')
@@ -1725,14 +1726,23 @@ function DepositModal({ client, onClose, onSuccess }) {
         }
         await collectApi.depositWallet(client._id, { amount: amt })
         onSuccess()
+        onClose()
       } else {
-        await collectApi.depositMomo(client._id, {
-          amount: amt,
-          phone,
-          operator,
-          country: 'CM',
-        })
-        onSuccess()
+        // Validation stricte Mobile Money H2H avec code PIN sur le téléphone
+        inlineCheckout.start(
+          (momoData) => collectApi.depositMomo(client._id, {
+            amount: amt,
+            phone: momoData.phone || phone,
+            operator: momoData.operator || operator,
+            otp: momoData.otp,
+            country: momoData.country || 'CM',
+          }),
+          async () => {
+            onSuccess()
+            onClose()
+          },
+          { amount: amt, title: `Approvisionnement — ${client.fullName} (${fmt(amt)} FCFA)` }
+        )
       }
     } catch (e) {
       setErr(e.message || "Erreur lors de l'approvisionnement.")
@@ -1844,6 +1854,7 @@ function DepositModal({ client, onClose, onSuccess }) {
             </button>
           </div>
         </form>
+        {inlineCheckout.element}
       </div>
     </div>
   )

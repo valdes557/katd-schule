@@ -268,22 +268,12 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
               </div>
             </div>
 
-            <div className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight my-2">
-              {fmt(stats.totalBalance)}F / {fmt(stats.monthlyTarget)}F
+            <div className="text-3xl font-black text-gray-900 tracking-tight my-2">
+              {fmt(stats.currentMonthTotal || (stats.totalBalance > 0 ? stats.totalBalance : 0))} FCFA
             </div>
 
-            {/* Barre de progression */}
-            <div className="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden my-3">
-              <div
-                className="h-full bg-[#0f9755] rounded-full transition-all duration-700"
-                style={{ width: `${Math.min(100, Math.max(0, stats.progressPercent))}%` }}
-              />
-            </div>
-
-            {/* Sous-indicateurs */}
-            <div className="flex items-center justify-between text-xs text-gray-500 font-semibold px-0.5">
-              <span>{stats.paidDaysCount} jours sur {stats.daysInMonth}</span>
-              <span>{stats.progressPercent}% • {stats.daysRemaining} jours restants</span>
+            <div className="text-xs text-gray-500 font-medium mt-1">
+              Cumul des cotisations journalières du mois ({stats.paidDaysCount || 0} jour{(stats.paidDaysCount || 0) > 1 ? 's' : ''} cotisé{(stats.paidDaysCount || 0) > 1 ? 's' : ''})
             </div>
           </div>
 
@@ -296,23 +286,23 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                 </div>
                 <span>Solde du jour</span>
               </div>
-              {stats.todayStatus === 'paye' ? (
+              {(stats.todayStatus === 'paye' || stats.todayPaid > 0) ? (
                 <span className="px-3 py-1 rounded-xl text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-700">
                   Collecté
                 </span>
               ) : (
                 <span className="px-3 py-1 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-700">
-                  En attente
+                  Non collecté
                 </span>
               )}
             </div>
 
             <div className="text-3xl font-black text-gray-900 tracking-tight mt-2 mb-1">
-              {fmt(stats.todayPaid)}F / {fmt(stats.dailyTarget)}F
+              {fmt(stats.todayPaid || 0)} FCFA
             </div>
 
             <div className="text-xs text-gray-500 font-medium mb-4">
-              Objectif quotidien • Aujourd'hui, {todayFormatted}
+              Aujourd'hui, {todayFormatted}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

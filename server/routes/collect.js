@@ -674,22 +674,10 @@ router.post('/agent/daily', protect, async (req, res) => {
         await pi.save()
       }
 
-      if (directRes.status === 'approved' || directRes.status === 'success') {
-        const { applyOutcome } = require('./payments')
-        await applyOutcome(pi, 'approved', directRes)
-        const updatedClient = await CollectClient.findById(client._id)
-        const col = await DailyCollection.findOne({ client: client._id, date: collectionDate })
-        return res.json({
-          success: true,
-          status: 'approved',
-          message: "Collecte de " + amt.toLocaleString('fr-FR') + " FCFA réglée et créditée avec succès.",
-          collection: col,
-          newClientBalance: updatedClient ? updatedClient.balance : client.balance,
-        })
-      }
-
-      // Si le paiement nécessite une validation PIN sur le téléphone :
+      // En mode Mobile Money direct H2H (MTN / Orange), l'initialisation du débit
+      // nécessite IMPÉRATIVEMENT la saisie du code PIN secret sur le téléphone portable.
       // On ne crée pas DailyCollection et on ne crédite pas le compte client maintenant.
+      // La validation et le crédit seront appliqués UNIQUEMENT après confirmation réseau effective (polling /status ou webhook).
       return res.json({
         success: true,
         pending: true,
@@ -1207,44 +1195,20 @@ router.post('/agent/clients/:id/deposit-momo', protect, async (req, res) => {
       callbackUrl: `${base}/api/payments/webhook`,
     })
 
-    if (directRes.status === 'approved' || directRes.status === 'success') {
-      pi.status = 'approved'
-      pi.fulfilled = true
+    if (directRes.transaction_id || directRes.id) {
+      pi.providerTransactionId = directRes.transaction_id || directRes.id
       await pi.save()
-
-      client.balance += amt
-      await client.save()
-      await checkAndApplyMonthlyFeeForClient(client, agent)
-
-      const today = getTodayStr()
-      await DailyCollection.create({
-        agent: agent._id,
-        agentUser: req.user._id,
-        client: client._id,
-        clientName: client.fullName,
-        clientPhone: client.phone,
-        neighborhood: client.neighborhood,
-        date: today,
-        amount: amt,
-        status: 'paye',
-        paymentMethod: 'momo',
-        notes: 'Approvisionnement Mobile Money direct',
-        datetime: new Date(),
-      })
-
-      return res.json({
-        success: true,
-        status: 'approved',
-        message: 'Approvisionnement validé avec succès !',
-        newClientBalance: client.balance,
-      })
     }
 
-    res.json({
+    // Le débit Mobile Money direct nécessite impérativement la validation par code PIN sur le téléphone.
+    // Le crédit effectif sera appliqué automatiquement par applyOutcome dès confirmation du réseau.
+    return res.json({
       success: true,
       reference: providerRef,
       status: 'pending',
-      message: 'Demande de débit Mobile Money initiée. Validez sur votre téléphone.',
+      amount: amt,
+      payment_link: directRes.payment_link || directRes.redirect_url || null,
+      message: 'Demande de débit Mobile Money initiée. Validez sur votre téléphone avec votre code PIN pour créditer le compte.',
       newClientBalance: client.balance,
     })
   } catch (err) {
@@ -1740,8 +1704,8 @@ router.get('/client/dashboard', protect, async (req, res) => {
         firstDayOfWeek,
       },
       stats: {
-        totalBalance: client.balance || currentMonthTotal,
-        currentMonthTotal,
+        totalBalance: Math.max(0, (typeof client.balance === 'number' ? client.balance : currentMonthTotal) || 0),
+        currentMonthTotal: Math.max(0, currentMonthTotal || 0),
         monthlyTarget,
         dailyTarget,
         paidDaysCount,
@@ -1879,20 +1843,8 @@ router.post('/client/pay', protect, async (req, res) => {
         await pi.save()
       }
 
-      if (directRes.status === 'approved' || directRes.status === 'success') {
-        const { applyOutcome } = require('./payments')
-        await applyOutcome(pi, 'approved', directRes)
-        const updated = await CollectClient.findById(client._id)
-        return res.json({
-          success: true,
-          status: 'approved',
-          message: 'Collecte payée et créditée avec succès !',
-          newBalance: updated ? updated.balance : client.balance,
-        })
-      }
-
-      // Si le paiement nécessite une validation PIN sur le téléphone :
-      // On ne crédite pas le solde et on ne crée pas la collecte maintenant.
+      // Le paiement Mobile Money nécessite impérativement la saisie du code PIN par le client sur son téléphone.
+      // Le compte client ne sera crédité qu'après confirmation effective par l'opérateur (webhook ou polling /status).
       return res.json({
         success: true,
         pending: true,

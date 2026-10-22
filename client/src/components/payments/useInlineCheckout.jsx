@@ -56,13 +56,7 @@ export function useInlineCheckout() {
     }
     if (ok) return ok
 
-    // Tentative de confirmation de secours
-    try {
-      const fb = await paymentsApi.confirmInline(reference)
-      if (fb && (fb.status === 'approved' || fb.fulfilled)) return fb
-    } catch (_) {}
-
-    throw new Error("Paiement non confirmé à temps. Si vous avez validé le code secret sur votre téléphone, votre compte sera crédité sous peu.")
+    throw new Error("Paiement non confirmé ou annulé sur votre téléphone. Aucune somme n'a été débitée.")
   }
 
   const element = checkout ? (
