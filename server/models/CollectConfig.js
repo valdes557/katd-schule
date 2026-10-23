@@ -30,6 +30,7 @@ const collectConfigSchema = new mongoose.Schema(
     termsAndConditions: { type: String, default: DEFAULT_TERMS },
     monthlyFee: { type: Number, default: 1100, min: 0 },
     defaultDailyTarget: { type: Number, default: 1000 },
+    agentSubscriptionFee: { type: Number, default: 4800, min: 0 },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }

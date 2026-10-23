@@ -826,6 +826,7 @@ function AdminClientWithdrawModal({ client, onClose, onSuccess }) {
 function AdminTermsTab({ showBanner }) {
   const [terms, setTerms] = useState('')
   const [monthlyFee, setMonthlyFee] = useState(1000)
+  const [agentSubscriptionFee, setAgentSubscriptionFee] = useState(4800)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -834,6 +835,7 @@ function AdminTermsTab({ showBanner }) {
       .then((res) => {
         setTerms(res.termsAndConditions || '')
         setMonthlyFee(res.monthlyFee ?? 1000)
+        setAgentSubscriptionFee(res.agentSubscriptionFee ?? 4800)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -846,6 +848,7 @@ function AdminTermsTab({ showBanner }) {
       await collectApi.adminUpdateTerms({
         termsAndConditions: terms,
         monthlyFee: Number(monthlyFee),
+        agentSubscriptionFee: Number(agentSubscriptionFee),
       })
       showBanner('Termes, conditions et frais mis à jour avec succès !')
     } catch (e) {
@@ -867,17 +870,32 @@ function AdminTermsTab({ showBanner }) {
       </div>
 
       <form onSubmit={handleSave} className="space-y-4">
-        <div>
-          <label className="text-xs font-bold text-gray-700 block mb-1">Frais mensuels par client (XAF)</label>
-          <input
-            type="number"
-            min="0"
-            step="100"
-            value={monthlyFee}
-            onChange={(e) => setMonthlyFee(e.target.value)}
-            className="input text-xs w-48 font-bold"
-          />
-          <span className="text-[11px] text-gray-400 mt-0.5 block">Défaut recommandé : 1 000 FCFA</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Frais mensuels par client (XAF)</label>
+            <input
+              type="number"
+              min="0"
+              step="100"
+              value={monthlyFee}
+              onChange={(e) => setMonthlyFee(e.target.value)}
+              className="input text-xs w-full font-bold"
+            />
+            <span className="text-[11px] text-gray-400 mt-0.5 block">Défaut recommandé : 1 000 FCFA</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Frais de souscription Agent (XAF)</label>
+            <input
+              type="number"
+              min="0"
+              step="100"
+              value={agentSubscriptionFee}
+              onChange={(e) => setAgentSubscriptionFee(e.target.value)}
+              className="input text-xs w-full font-bold text-indigo-700"
+            />
+            <span className="text-[11px] text-gray-400 mt-0.5 block">Frais d'ouverture compte agent (défaut : 4 800 F)</span>
+          </div>
         </div>
 
         <div>

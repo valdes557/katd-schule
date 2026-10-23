@@ -172,6 +172,7 @@ const AdminTransactionFeesPage = lazyPage(() => import('./pages/AdminTransaction
 const AdminUsersPage = lazyPage(() => import('./pages/AdminUsersPage'))
 const AdminMerchantsPage = lazyPage(() => import('./pages/AdminMerchantsPage'))
 const AdminShareholdersPage = lazyPage(() => import('./pages/AdminShareholdersPage'))
+const AdminCoAccountsPage = lazyPage(() => import('./pages/AdminCoAccountsPage'))
 const AdminCollectPage = lazyPage(() => import('./pages/AdminCollectPage'))
 const AdminBoostsPage = lazyPage(() => import('./pages/AdminBoostsPage'))
 const UserMerchantPage = lazyPage(() => import('./pages/user/UserMerchantPage'))
@@ -414,6 +415,7 @@ export default function App() {
         <Route path="marchands-admin" element={<AdminMerchantsPage />} />
         <Route path="actionnaires-admin" element={<AdminShareholdersPage />} />
         <Route path="associes-admin" element={<AdminShareholdersPage />} />
+        <Route path="comptes-admin" element={<AdminCoAccountsPage />} />
         <Route path="collectes-admin" element={<AdminCollectPage />} />
         <Route path="collecte" element={<UserCollectPage />} />
         <Route path="page-ecole" element={<ManageSchoolPage />} />

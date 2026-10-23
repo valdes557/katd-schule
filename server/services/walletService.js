@@ -191,6 +191,11 @@ function computeMerchantCommission(amount) {
 // Crédite l'admin plateforme des frais encaissés (best-effort : ne bloque pas l'opération
 // si l'admin est introuvable ou si le crédit échoue). meta.feeType = 'transfer' | 'withdrawal'.
 async function collectFee({ fee, fromUserId, description, meta = {} }) {
+  const { recordPlatformFee } = require('./adminCoAccountsService');
+  setTimeout(() => {
+    const fCat = meta?.feeType === 'maintenance' ? 'maintenance_fee' : meta?.feeType === 'withdrawal' ? 'withdrawal_fee' : 'transfer_fee';
+    recordPlatformFee({ category: fCat, amount: fee, description, meta }).catch(() => {});
+  }, 0);
   const f = Number(fee)
   if (!f || f <= 0) return
   try {

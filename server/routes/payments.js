@@ -13,6 +13,7 @@ const School = require('../models/School')
 const User = require('../models/User')
 const SubscriptionPlan = require('../models/SubscriptionPlan')
 const { sendEmail } = require('../utils/emailService')
+const adminCoAccountsService = require('../services/adminCoAccountsService')
 
 const SUBSCRIPTION_FEE_DIRECTOR = Number(process.env.SUBSCRIPTION_FEE_DIRECTOR || 40000)
 
@@ -225,6 +226,68 @@ router.post('/enrollment/initiate', async (req, res) => {
   }
 })
 
+// POST /api/payments/agent-subscription/initiate — souscription agent de collecte
+router.post('/agent-subscription/initiate', async (req, res) => {
+  try {
+    const { phone, operator, agentId, userId, country = 'CM', otp } = req.body
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur requis pour le débit direct.' })
+    }
+
+    const CollectConfig = require('../models/CollectConfig')
+    const config = await CollectConfig.getOrCreate()
+    const fee = Number(config.agentSubscriptionFee) || 4800
+
+    const reference = genRef('agsub')
+    const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+
+    const intent = await PaymentIntent.create({
+      reference,
+      purpose: 'agent_signup',
+      amount: fee,
+      currency: targetCurrency,
+      payerPhone: rawPhone,
+      payerOperator: operator,
+      initiatedBy: userId || null,
+      mode,
+      meta: { agentId, userId, purpose: 'agent_signup' },
+    })
+
+    const result = await ikeepay.createCollection({
+      amount: fee,
+      phone: rawPhone,
+      operator,
+      reference,
+      callbackUrl: callbackUrl(),
+      country: normCountry,
+      currency: targetCurrency,
+      otp,
+    })
+
+    if (result.transaction_id || result.id) {
+      intent.providerTransactionId = result.transaction_id || result.id
+      await intent.save()
+    }
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+    return res.json({
+      success: true,
+      reference,
+      amount: fee,
+      mode,
+      currency: targetCurrency,
+      transaction: result,
+      payment_link: paymentLink,
+      message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money.',
+    })
+  } catch (err) {
+    console.error('initiate agent subscription error:', err.message, err.data ? JSON.stringify(err.data) : '')
+    return res.status(err.status || 500).json({ message: err.message, data: err.data })
+  }
+})
+
 // GET /api/payments/status/:reference — le frontend interroge l'état
 router.get('/status/:reference', async (req, res) => {
   try {
@@ -366,7 +429,7 @@ async function webhookHandler(req, res) {
 
     // Si la clé n'est pas standard, extrait le pattern de nos références
     if (!reference) {
-      const match = JSON.stringify(payload).match(/\b(dep|sub|enr|boost|merch|share|shr|col|wd|ais)_[a-zA-Z0-9_]+\b/)
+      const match = JSON.stringify(payload).match(/\b(dep|sub|enr|boost|merch|share|shr|col|wd|ais|agsub)_[a-zA-Z0-9_]+\b/)
       if (match) reference = match[0]
     }
     const providerId = payload.transaction_id || payload.id || payload.provider_reference || payload.ikeepay_ref || d.transaction_id || d.id || d.provider_reference || d.ikeepay_ref
@@ -457,6 +520,16 @@ async function applyOutcome(intent, status, raw) {
         // Conserve les identifiants pour les afficher au souscripteur via /status (chantier 1)
         intent.meta = { ...m, credentials: { email: m.email, password: prov.rawPassword, matricule: prov.matricule, whatsapp: m.whatsapp || '' } }
         intent.markModified('meta')
+      }
+      try {
+        await adminCoAccountsService.recordPlatformFee({
+          category: 'subscription',
+          amount: intent.amount,
+          description: `Frais de souscription d'école : ${m.schoolName || m.plan || 'Établissement'}`,
+          reference: intent.reference,
+        })
+      } catch (coErr) {
+        console.error('[AdminCoAccounts] subscription error:', coErr.message)
       }
     }
     else if (intent.purpose === 'enrollment') {
@@ -581,6 +654,16 @@ async function applyOutcome(intent, status, raw) {
             })
           }
         } catch (e) { /* activation faite même si le crédit admin échoue */ }
+        try {
+          await adminCoAccountsService.recordPlatformFee({
+            category: 'merchant_signup',
+            amount: intent.amount,
+            description: "Frais d'ouverture compte Marchand",
+            reference: intent.reference,
+          })
+        } catch (coErr) {
+          console.error('[AdminCoAccounts] merchant_signup error:', coErr.message)
+        }
       }
     } else if (intent.purpose === 'shareholder') {
       // Souscription actionnaire : crée la part (1% / zone / durée) + encaisse la somme (admin).
@@ -704,6 +787,16 @@ async function applyOutcome(intent, status, raw) {
         }
 
         console.log(`[payment:ai_subscription] Souscription IA activée avec succès [${intent.reference}] pour école ${sid}`)
+        try {
+          await adminCoAccountsService.recordPlatformFee({
+            category: 'ai_subscription',
+            amount: intent.amount,
+            description: `Frais de souscription IA : ${pkgName}`,
+            reference: intent.reference,
+          })
+        } catch (coErr) {
+          console.error('[AdminCoAccounts] ai_subscription fee error:', coErr.message)
+        }
       } catch (subErr) {
         console.error('[payment:ai_subscription] ' + intent.reference + ' :', subErr.message)
       }
@@ -776,6 +869,16 @@ async function applyOutcome(intent, status, raw) {
         }
 
         console.log(`[payment:user_ai_subscription] Quota IA crédité avec succès (+${questions} requêtes) pour utilisateur ${userId}`)
+        try {
+          await adminCoAccountsService.recordPlatformFee({
+            category: 'ai_subscription',
+            amount: intent.amount,
+            description: `Frais de souscription IA Utilisateur : ${pkgName}`,
+            reference: intent.reference,
+          })
+        } catch (coErr) {
+          console.error('[AdminCoAccounts] user_ai_subscription fee error:', coErr.message)
+        }
       } catch (err) {
         console.error('[payment:user_ai_subscription] ' + intent.reference + ' :', err.message)
       }
@@ -840,6 +943,36 @@ async function applyOutcome(intent, status, raw) {
         }
       } catch (colErr) {
         console.error('[payment:collect] error:', colErr.message)
+      }
+    } else if (intent.purpose === 'agent_signup') {
+      try {
+        const CollectAgent = require('../models/CollectAgent')
+        const m = intent.meta || {}
+        let agent = null
+        if (m.agentId) {
+          agent = await CollectAgent.findById(m.agentId)
+        }
+        if (!agent && intent.initiatedBy) {
+          agent = await CollectAgent.findOne({ user: intent.initiatedBy })
+        }
+        if (agent) {
+          agent.subscriptionPaid = true
+          agent.subscriptionPaidAt = new Date()
+          agent.subscriptionAmount = intent.amount
+          agent.subscriptionPaymentMethod = 'momo'
+          agent.subscriptionReference = intent.reference
+          await agent.save()
+          console.log(`[payment:agent_signup] Souscription agent validée pour ${agent.agencyName || agent.phone || agent._id}`)
+        }
+
+        await adminCoAccountsService.recordPlatformFee({
+          category: 'agent_signup',
+          amount: intent.amount,
+          description: `Frais d'ouverture compte agent de collecte (${agent?.agencyName || agent?.phone || ''})`,
+          reference: intent.reference,
+        })
+      } catch (err) {
+        console.error('[payment:agent_signup] error:', err.message)
       }
     }
     intent.fulfilled = true

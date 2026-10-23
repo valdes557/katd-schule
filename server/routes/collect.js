@@ -18,6 +18,7 @@ const WalletTransaction = require('../models/WalletTransaction')
 const User = require('../models/User')
 const wallet = require('../services/walletService')
 const ikeepay = require('../services/ikeepayService')
+const adminCoAccountsService = require('../services/adminCoAccountsService')
 
 function getTodayStr() {
   const d = new Date()
@@ -123,6 +124,18 @@ async function checkAndApplyMonthlyFeeForClient(client, agent) {
       deductedAt: new Date(),
     })
 
+    // Répartition automatique 60% Compte 1 / 40% Compte 2 (Frais de fonctionnement mensuel)
+    try {
+      await adminCoAccountsService.recordPlatformFee({
+        category: 'collect_fee',
+        amount: platformShare,
+        description: 'Frais de fonctionnement mensuel (collecte journalière) — Client ' + client.fullName + ' (' + client.accountNumber + ')',
+        reference: 'colfee_' + currentMonth + '_' + client._id,
+      })
+    } catch (coErr) {
+      console.error('[AdminCoAccounts] collect_fee error:', coErr.message)
+    }
+
     return true
   } catch (err) {
     console.error('[checkAndApplyMonthlyFeeForClient error]:', err.message)
@@ -187,6 +200,7 @@ router.get('/config', protect, async (req, res) => {
       success: true,
       termsAndConditions: cfg.termsAndConditions,
       monthlyFee: cfg.monthlyFee,
+      agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4800,
       defaultDailyTarget: cfg.defaultDailyTarget,
     })
   } catch (err) {
@@ -230,6 +244,9 @@ router.get('/my-agent-status', protect, async (req, res) => {
       isAgent: !!agent,
       agent,
       termsAccepted: !!agent?.termsAccepted,
+      subscriptionPaid: !!agent?.subscriptionPaid,
+      subscriptionAmount: agent?.subscriptionAmount || 0,
+      agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4800,
       status: agent ? agent.status : null,
       isClient: !!clientDoc,
       client: clientDoc,
@@ -287,6 +304,66 @@ router.post('/opt-in', protect, async (req, res) => {
     })
   } catch (err) {
     res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/collect/agent/pay-subscription-wallet — Paiement des frais d'ouverture compte agent (4 800 FCFA) par portefeuille
+router.post('/agent/pay-subscription-wallet', protect, async (req, res) => {
+  try {
+    const agent = await CollectAgent.findOne({ user: req.user._id })
+    if (!agent) {
+      return res.status(404).json({ message: "Compte d'agent introuvable" })
+    }
+    if (agent.subscriptionPaid) {
+      return res.json({ success: true, message: 'Souscription déjà réglée.', agent })
+    }
+
+    const cfg = await CollectConfig.getOrCreate()
+    const fee = Number(cfg.agentSubscriptionFee) || 4800
+
+    const userWallet = await wallet.getOrCreateWallet(req.user._id)
+    if (userWallet.balance < fee) {
+      return res.status(400).json({
+        message: `Solde portefeuille insuffisant (${userWallet.balance.toLocaleString('fr-FR')} FCFA). Requis : ${fee.toLocaleString('fr-FR')} FCFA.`,
+      })
+    }
+
+    // Débit du portefeuille de l'agent
+    await wallet.debit(req.user._id, {
+      amount: fee,
+      type: 'agent_subscription',
+      description: "Frais d'ouverture compte agent de collecte (4 800 FCFA)",
+      meta: { agentId: String(agent._id) },
+    })
+
+    // Marquer l'agent comme souscrit
+    agent.subscriptionPaid = true
+    agent.subscriptionPaidAt = new Date()
+    agent.subscriptionAmount = fee
+    agent.subscriptionPaymentMethod = 'wallet'
+    agent.subscriptionReference = `agsub_w_${Date.now()}`
+    await agent.save()
+
+    // Répartir dans les comptes administrateurs associés (60% Compte 1 / 40% Compte 2)
+    try {
+      await adminCoAccountsService.recordPlatformFee({
+        category: 'agent_signup',
+        amount: fee,
+        description: `Frais d'ouverture compte agent de collecte — ${agent.agencyName || agent.phone}`,
+        reference: agent.subscriptionReference,
+      })
+    } catch (coErr) {
+      console.error('[AdminCoAccounts] recordPlatformFee agent_signup error:', coErr.message)
+    }
+
+    res.json({
+      success: true,
+      message: 'Félicitations ! Votre souscription agent a été payée avec succès.',
+      agent,
+    })
+  } catch (err) {
+    console.error('[pay-subscription-wallet error]:', err)
+    res.status(500).json({ message: err.message || 'Erreur lors du paiement de la souscription' })
   }
 })
 
@@ -1562,10 +1639,11 @@ router.get('/admin/withdrawals-history', protect, adminOnly, async (req, res) =>
 // PUT /api/collect/admin/terms — Modification des termes et conditions par l'administrateur
 router.put('/admin/terms', protect, adminOnly, async (req, res) => {
   try {
-    const { termsAndConditions, monthlyFee } = req.body
+    const { termsAndConditions, monthlyFee, agentSubscriptionFee } = req.body
     const cfg = await CollectConfig.getOrCreate()
     if (termsAndConditions !== undefined) cfg.termsAndConditions = termsAndConditions
     if (monthlyFee !== undefined) cfg.monthlyFee = Number(monthlyFee)
+    if (agentSubscriptionFee !== undefined) cfg.agentSubscriptionFee = Math.max(0, Number(agentSubscriptionFee) || 0)
     cfg.updatedBy = req.user._id
     await cfg.save()
 

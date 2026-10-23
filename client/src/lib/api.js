@@ -1400,8 +1400,20 @@ export const collectApi = {
   // Portefeuille commissions agent (70%)
   getCommissionWallet: () => api.get('/collect/agent/commission-wallet'),
   withdrawCommissions: (data) => api.post('/collect/agent/commission-withdraw', data),
+  // Souscription Agent de Collecte (frais d'ouverture 4 800 FCFA)
+  payAgentSubscriptionWallet: () => api.post('/collect/agent/pay-subscription-wallet'),
+  initiateAgentSubscriptionMomo: (data) => api.post('/payments/agent-subscription/initiate', data),
   // Historique des retraits administrateur
   adminWithdrawalsHistory: () => api.get('/collect/admin/withdrawals-history'),
+}
+
+// Gestion des comptes administrateurs associés (60% / 40%)
+export const adminCoAccountsApi = {
+  getSummary: () => api.get('/admin/co-accounts/summary'),
+  requestOtp: (accountKey) => api.post('/admin/co-accounts/request-otp', { accountKey }),
+  verifyOtp: (accountKey, code) => api.post('/admin/co-accounts/verify-otp', { accountKey, code }),
+  getDetails: (accountKey) => api.get(`/admin/co-accounts/details/${accountKey}`),
+  withdraw: (data) => api.post('/admin/co-accounts/withdraw', data),
 }
 
 export default api

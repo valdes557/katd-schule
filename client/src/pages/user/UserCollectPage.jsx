@@ -71,7 +71,20 @@ export default function UserCollectPage() {
       <OptInScreen
         config={agentStatus}
         onSuccess={() => {
-          showBanner('Votre compte Agent de Collecte a été activé avec succès !')
+          showBanner('Votre profil Agent de Collecte a été créé avec succès !')
+          loadStatus()
+        }}
+      />
+    )
+  }
+
+  // 1bis. Si la souscription obligatoire (4 800 FCFA) n'a pas encore été payée
+  if (agentStatus?.isAgent && !agentStatus?.subscriptionPaid) {
+    return (
+      <AgentSubscriptionPaywall
+        config={agentStatus}
+        onSuccess={() => {
+          showBanner('Félicitations ! Votre souscription agent a été validée avec succès. Bienvenue sur votre tableau de bord !')
           loadStatus()
         }}
       />
@@ -337,6 +350,260 @@ function OptInScreen({ config, onSuccess }) {
             <span>Activer mon compte Agent de Collecte</span>
           </button>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1bis. ÉCRAN DE SOUSCRIPTION OBLIGATOIRE (FRAIS D'OUVERTURE 4 800 FCFA)
+// ─────────────────────────────────────────────────────────────────────────────
+function AgentSubscriptionPaywall({ config, onSuccess }) {
+  const [method, setMethod] = useState('wallet') // 'wallet' | 'momo'
+  const [userWallet, setUserWallet] = useState(null)
+  const [loadingWallet, setLoadingWallet] = useState(true)
+  const [phone, setPhone] = useState('')
+  const [operator, setOperator] = useState('mtn')
+  const [submitting, setSubmitting] = useState(false)
+  const [pollRef, setPollRef] = useState(null)
+  const [pollMsg, setPollMsg] = useState('')
+  const [error, setError] = useState('')
+
+  const fee = Number(config?.agentSubscriptionFee) || 4800
+
+  useEffect(() => {
+    walletApi.getWallet()
+      .then((res) => setUserWallet(res.wallet || res))
+      .catch(() => {})
+      .finally(() => setLoadingWallet(false))
+  }, [])
+
+  // Surveillance active de l'état du paiement Mobile Money
+  useEffect(() => {
+    if (!pollRef) return
+    let cancelled = false
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payments/status/${pollRef}`).then((r) => r.json())
+        if (cancelled) return
+        if (res.status === 'approved' || res.fulfilled) {
+          clearInterval(interval)
+          setPollRef(null)
+          onSuccess()
+        } else if (res.status === 'rejected') {
+          clearInterval(interval)
+          setPollRef(null)
+          setSubmitting(false)
+          setError(res.reason || 'Le paiement Mobile Money a été rejeté ou annulé.')
+        }
+      } catch (_) {}
+    }, 3000)
+
+    const timer = setTimeout(() => {
+      clearInterval(interval)
+      if (!cancelled && pollRef) {
+        setPollRef(null)
+        setSubmitting(false)
+        setError('Délai d’attente dépassé. Si votre compte a été débité, veuillez rafraîchir la page.')
+      }
+    }, 180000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      clearTimeout(timer)
+    }
+  }, [pollRef, onSuccess])
+
+  const handlePayWallet = async () => {
+    setError('')
+    setSubmitting(true)
+    try {
+      await collectApi.payAgentSubscriptionWallet()
+      onSuccess()
+    } catch (e) {
+      setError(e.message || 'Erreur lors du paiement par portefeuille.')
+      setSubmitting(false)
+    }
+  }
+
+  const handlePayMomo = async (e) => {
+    e.preventDefault()
+    setError('')
+    const cleanPh = phone.replace(/[^0-9]/g, '')
+    if (!cleanPh) {
+      setError('Veuillez renseigner votre numéro Mobile Money.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await collectApi.initiateAgentSubscriptionMomo({
+        phone: cleanPh,
+        operator,
+        agentId: config?.agent?._id,
+      })
+      if (res.reference) {
+        setPollRef(res.reference)
+        setPollMsg(res.message || 'Demande envoyée. Composez votre code secret sur votre téléphone pour valider.')
+      }
+    } catch (e) {
+      setError(e.message || 'Erreur lors de l’initiation du paiement Mobile Money.')
+      setSubmitting(false)
+    }
+  }
+
+  const walletBalance = Number(userWallet?.balance) || 0
+  const canPayWallet = walletBalance >= fee
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6 pb-12 animate-fade-in">
+      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+        <div className="text-center space-y-2">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center mx-auto shadow-md">
+            <Coins size={32} />
+          </div>
+          <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            Frais d'ouverture de compte Agent
+          </span>
+          <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+            Finalisez votre activation d'Agent de Collecte
+          </h2>
+          <p className="text-xs sm:text-sm text-gray-500 max-w-md mx-auto">
+            Vos termes et conditions ont été acceptés avec succès. Pour débloquer l'accès complet au service, veuillez régler les frais d'ouverture de compte.
+          </p>
+        </div>
+
+        {/* Bloc tarifaire */}
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border border-indigo-100 flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-900 block">Montant de la souscription</span>
+            <span className="text-2xl font-black text-indigo-700">{fee.toLocaleString('fr-FR')} <span className="text-xs font-bold">FCFA</span></span>
+          </div>
+          <div className="text-right text-[11px] text-gray-600 space-y-0.5">
+            <p className="font-semibold text-emerald-700 flex items-center gap-1 justify-end"><Check size={13} /> Accès illimité à vie</p>
+            <p className="font-semibold text-indigo-700 flex items-center gap-1 justify-end"><Check size={13} /> 70% de commissions (700 F/client)</p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {pollMsg && (
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-3">
+            <Loader2 size={18} className="animate-spin text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold">Attente de validation sur votre téléphone...</p>
+              <p>{pollMsg}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Choix du mode de paiement */}
+        <div className="space-y-4 pt-2">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => { setMethod('wallet'); setError('') }}
+              className={`p-3.5 rounded-2xl border text-left transition-all ${
+                method === 'wallet'
+                  ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Wallet size={16} className={method === 'wallet' ? 'text-indigo-600' : 'text-gray-400'} />
+                <span className="text-xs font-bold text-gray-900">Mon Portefeuille KATD</span>
+              </div>
+              <span className="text-[11px] text-gray-500 block">
+                {loadingWallet ? 'Chargement solde...' : `Solde : ${walletBalance.toLocaleString('fr-FR')} FCFA`}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setMethod('momo'); setError('') }}
+              className={`p-3.5 rounded-2xl border text-left transition-all ${
+                method === 'momo'
+                  ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Smartphone size={16} className={method === 'momo' ? 'text-indigo-600' : 'text-gray-400'} />
+                <span className="text-xs font-bold text-gray-900">Mobile Money</span>
+              </div>
+              <span className="text-[11px] text-gray-500 block">MTN ou Orange Money</span>
+            </button>
+          </div>
+
+          {/* Formulaire Portefeuille */}
+          {method === 'wallet' && (
+            <div className="space-y-3 pt-2">
+              <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-600 space-y-1">
+                <p>Le montant de <b>{fee.toLocaleString('fr-FR')} FCFA</b> sera débité instantanément de votre solde portefeuille KATD.</p>
+                {!canPayWallet && (
+                  <p className="text-red-600 font-bold">
+                    Solde insuffisant ({walletBalance.toLocaleString('fr-FR')} FCFA disponible). Veuillez approvisionner votre portefeuille ou choisir le paiement par Mobile Money direct.
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={submitting || !canPayWallet}
+                onClick={handlePayWallet}
+                className="w-full py-3.5 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {submitting ? <Loader2 size={18} className="animate-spin" /> : <Wallet size={18} />}
+                <span>Payer {fee.toLocaleString('fr-FR')} FCFA avec mon Portefeuille</span>
+              </button>
+            </div>
+          )}
+
+          {/* Formulaire Mobile Money */}
+          {method === 'momo' && (
+            <form onSubmit={handlePayMomo} className="space-y-3 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur</label>
+                  <select
+                    value={operator}
+                    onChange={(e) => setOperator(e.target.value)}
+                    className="input text-xs w-full font-bold"
+                  >
+                    <option value="mtn">MTN Mobile Money</option>
+                    <option value="orange">Orange Money</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Numéro Mobile Money *</label>
+                  <input
+                    type="tel"
+                    placeholder="6XXXXXXXX"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="input text-xs w-full font-bold"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting || !!pollRef}
+                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {submitting ? <Loader2 size={18} className="animate-spin" /> : <Smartphone size={18} />}
+                <span>{pollRef ? 'En attente de votre validation mobile...' : `Payer ${fee.toLocaleString('fr-FR')} FCFA via Mobile Money`}</span>
+              </button>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   )

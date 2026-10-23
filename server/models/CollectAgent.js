@@ -23,6 +23,11 @@ const collectAgentSchema = new mongoose.Schema(
     neighborhood: { type: String, default: '', trim: true },
     termsAccepted: { type: Boolean, default: true },
     termsAcceptedAt: { type: Date, default: Date.now },
+    subscriptionPaid: { type: Boolean, default: false },
+    subscriptionPaidAt: { type: Date, default: null },
+    subscriptionAmount: { type: Number, default: 4800 },
+    subscriptionPaymentMethod: { type: String, default: '' },
+    subscriptionReference: { type: String, default: '' },
     status: {
       type: String,
       enum: ['active', 'suspended', 'revoked'],
