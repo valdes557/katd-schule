@@ -224,7 +224,7 @@ router.get('/config', protect, async (req, res) => {
       success: true,
       termsAndConditions: cfg.termsAndConditions,
       monthlyFee: cfg.monthlyFee,
-      agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4800,
+      agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4995,
       clientSubscriptionFee: cfg.clientSubscriptionFee ?? 4995,
       clientSubscriptionInterval: cfg.clientSubscriptionInterval ?? 'annual',
       defaultDailyTarget: cfg.defaultDailyTarget,
@@ -238,10 +238,39 @@ router.get('/config', protect, async (req, res) => {
 // 2. STATUT DE L'AGENT & ADHÉSION (Opt-in)
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// RÈGLE : Si l'agent a déjà créé des clients ou avait déjà un compte agent existant,
+// sa souscription est automatiquement validée (dispense de paywall rétroactif)
+async function ensureAgentSubscriptionGrandfathered(agent) {
+  if (!agent) return agent
+  if (agent.subscriptionPaid) return agent
+
+  const clientCount = await CollectClient.countDocuments({ agent: agent._id })
+  if (clientCount > 0) {
+    agent.subscriptionPaid = true
+    agent.subscriptionPaidAt = agent.subscriptionPaidAt || agent.createdAt || new Date()
+    agent.subscriptionPaymentMethod = 'grandfathered'
+    agent.subscriptionAmount = 0
+    if (!agent.subscriptionHistory) agent.subscriptionHistory = []
+    agent.subscriptionHistory.push({
+      action: 'grandfathered',
+      performerName: 'Système',
+      notes: `Compte agent existant avec ${clientCount} client(s) : souscription validée automatiquement sans frais rétroactifs.`,
+      date: new Date(),
+    })
+    await agent.save()
+    console.log(`[CollectAgent] Souscription validée automatiquement pour l'agent existant ${agent.agencyName} (${clientCount} clients)`)
+  }
+  return agent
+}
+
 // GET /api/collect/my-agent-status — Vérifie si l'utilisateur connecté est un agent de collecte ou un client enregistré
 router.get('/my-agent-status', protect, async (req, res) => {
   try {
-    const agent = await CollectAgent.findOne({ user: req.user._id })
+    let agent = await CollectAgent.findOne({ user: req.user._id })
+    if (agent && !agent.subscriptionPaid) {
+      agent = await ensureAgentSubscriptionGrandfathered(agent)
+    }
     const cfg = await CollectConfig.getOrCreate()
 
     // Résolution robuste du client
@@ -257,7 +286,7 @@ router.get('/my-agent-status', protect, async (req, res) => {
       termsAccepted: !!agent?.termsAccepted,
       subscriptionPaid: !!agent?.subscriptionPaid,
       subscriptionAmount: agent?.subscriptionAmount || 0,
-      agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4800,
+      agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4995,
       clientSubscriptionFee: cfg.clientSubscriptionFee ?? 4995,
       clientSubscriptionInterval: cfg.clientSubscriptionInterval ?? 'annual',
       status: agent ? agent.status : null,
@@ -320,7 +349,7 @@ router.post('/opt-in', protect, async (req, res) => {
   }
 })
 
-// POST /api/collect/agent/pay-subscription-wallet — Paiement des frais d'ouverture compte agent (4 800 FCFA) par portefeuille
+// POST /api/collect/agent/pay-subscription-wallet — Paiement des frais d'ouverture compte agent (4 995 FCFA) par portefeuille
 router.post('/agent/pay-subscription-wallet', protect, async (req, res) => {
   try {
     const agent = await CollectAgent.findOne({ user: req.user._id })
@@ -332,7 +361,7 @@ router.post('/agent/pay-subscription-wallet', protect, async (req, res) => {
     }
 
     const cfg = await CollectConfig.getOrCreate()
-    const fee = Number(cfg.agentSubscriptionFee) || 4800
+    const fee = Number(cfg.agentSubscriptionFee) || 4995
 
     const userWallet = await wallet.getOrCreateWallet(req.user._id)
     if (userWallet.balance < fee) {
@@ -345,7 +374,7 @@ router.post('/agent/pay-subscription-wallet', protect, async (req, res) => {
     await wallet.debit(req.user._id, {
       amount: fee,
       type: 'agent_subscription',
-      description: "Frais d'ouverture compte agent de collecte (4 800 FCFA)",
+      description: "Frais d'ouverture compte agent de collecte (4 995 FCFA)",
       meta: { agentId: String(agent._id) },
     })
 
@@ -521,7 +550,10 @@ router.post('/agent/commission-withdraw', protect, async (req, res) => {
 // GET /api/collect/agent/dashboard — Statistiques journalières & mensuelles
 router.get('/agent/dashboard', protect, async (req, res) => {
   try {
-    const agent = await CollectAgent.findOne({ user: req.user._id })
+    let agent = await CollectAgent.findOne({ user: req.user._id })
+    if (agent && !agent.subscriptionPaid) {
+      agent = await ensureAgentSubscriptionGrandfathered(agent)
+    }
     if (!agent) {
       return res.status(403).json({ message: "Vous n'avez pas encore activé votre compte d'agent de collecte." })
     }
@@ -1425,6 +1457,22 @@ router.get('/admin/agents', protect, adminOnly, async (req, res) => {
     const enriched = await Promise.all(
       agents.map(async (ag) => {
         const clientCount = await CollectClient.countDocuments({ agent: ag._id })
+
+        // RÈGLE GRANDFATHERING : Si l'agent a déjà créé des clients, sa souscription est automatiquement validée
+        if (clientCount > 0 && !ag.subscriptionPaid) {
+          ag.subscriptionPaid = true
+          ag.subscriptionPaidAt = ag.subscriptionPaidAt || ag.createdAt || new Date()
+          ag.subscriptionPaymentMethod = 'grandfathered'
+          if (!ag.subscriptionHistory) ag.subscriptionHistory = []
+          ag.subscriptionHistory.push({
+            action: 'grandfathered',
+            performedBy: ag.user?._id || ag._id,
+            performerName: 'Système (Compte existant avec clients)',
+            date: new Date(),
+            notes: `Souscription validée automatiquement : compte agent existant ayant déjà ${clientCount} client(s).`,
+          })
+          await ag.save()
+        }
         const todayCols = await DailyCollection.find({ agent: ag._id, date: today, status: 'paye' })
         const todayAmount = todayCols.reduce((s, c) => s + (c.amount || 0), 0)
 
@@ -1498,6 +1546,110 @@ router.post('/admin/agents/:id/status', protect, adminOnly, async (req, res) => 
 
     const label = status === 'active' ? 'réactivé' : status === 'suspended' ? 'suspendu' : 'retiré de ses fonctions'
     res.json({ success: true, message: `Agent ${label} avec succès.`, agent })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+
+// POST /api/collect/admin/agents/:id/subscription — L'administrateur active/valide ou révoque la souscription d'un agent
+router.post('/admin/agents/:id/subscription', protect, adminOnly, async (req, res) => {
+  try {
+    const agent = await CollectAgent.findById(req.params.id).populate('user', 'name email phone')
+    if (!agent) return res.status(404).json({ message: 'Agent introuvable' })
+
+    const { active = true, notes = '' } = req.body
+
+    agent.subscriptionPaid = !!active
+    if (active) {
+      agent.subscriptionPaidAt = new Date()
+      agent.subscriptionPaymentMethod = 'admin_override'
+      agent.subscriptionActivatedBy = req.user._id
+      if (!agent.subscriptionHistory) agent.subscriptionHistory = []
+      agent.subscriptionHistory.push({
+        action: 'admin_activated',
+        performedBy: req.user._id,
+        performerName: req.user.name || req.user.email || 'Administrateur',
+        date: new Date(),
+        notes: notes || `Souscription validée et activée manuellement par l'administrateur (${req.user.name || req.user.email}).`,
+      })
+    } else {
+      if (!agent.subscriptionHistory) agent.subscriptionHistory = []
+      agent.subscriptionHistory.push({
+        action: 'admin_deactivated',
+        performedBy: req.user._id,
+        performerName: req.user.name || req.user.email || 'Administrateur',
+        date: new Date(),
+        notes: notes || `Souscription désactivée par l'administrateur.`,
+      })
+    }
+
+    await agent.save()
+
+    res.json({
+      success: true,
+      message: active
+        ? `La souscription de l'agent ${agent.agencyName || agent.user?.name} a été validée avec succès par l'administrateur.`
+        : `La souscription de l'agent a été désactivée.`,
+      agent,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/collect/admin/subscription-history — Historique des validations de souscription
+router.get('/admin/subscription-history', protect, adminOnly, async (req, res) => {
+  try {
+    const agents = await CollectAgent.find({}).populate('user', 'name email phone')
+    const events = []
+
+    for (const ag of agents) {
+      for (const h of ag.subscriptionHistory || []) {
+        events.push({
+          type: 'agent',
+          agentId: ag._id,
+          agentName: ag.agencyName || ag.user?.name || 'Agent',
+          userPhone: ag.phone || ag.user?.phone || '—',
+          action: h.action,
+          performerName: h.performerName || 'Administrateur',
+          date: h.date,
+          notes: h.notes,
+        })
+      }
+      if (ag.subscriptionPaid && (!ag.subscriptionHistory || ag.subscriptionHistory.length === 0)) {
+        events.push({
+          type: 'agent',
+          agentId: ag._id,
+          agentName: ag.agencyName || ag.user?.name || 'Agent',
+          userPhone: ag.phone || ag.user?.phone || '—',
+          action: ag.subscriptionPaymentMethod || 'active',
+          performerName: ag.subscriptionPaymentMethod === 'admin_override' ? 'Administrateur' : (ag.subscriptionPaymentMethod === 'grandfathered' ? 'Système (compte existant)' : 'Paiement agent'),
+          date: ag.subscriptionPaidAt || ag.createdAt,
+          notes: ag.subscriptionPaymentMethod === 'admin_override' ? "Validé manuellement par l'administrateur" : `Souscription active (${ag.subscriptionPaymentMethod || 'payé'})`,
+        })
+      }
+    }
+
+    // Clients souscrits
+    const subscribedClients = await CollectClient.find({ subscriptionPaid: true }).populate('user', 'name email phone')
+    for (const cl of subscribedClients) {
+      events.push({
+        type: 'client',
+        clientId: cl._id,
+        clientName: cl.fullName,
+        accountNumber: cl.accountNumber,
+        userPhone: cl.phone,
+        action: 'client_subscribed',
+        performerName: cl.subscriptionPaymentMethod === 'wallet' ? 'Portefeuille KATD' : 'Mobile Money Direct',
+        date: cl.subscriptionPaidAt || cl.createdAt,
+        notes: `Souscription client ${cl.subscriptionInterval === 'monthly' ? 'mensuelle' : 'annuelle'} (${(cl.subscriptionAmount || 4995).toLocaleString('fr-FR')} FCFA)`,
+      })
+    }
+
+    events.sort((a, b) => new Date(b.date) - new Date(a.date))
+
+    res.json({ success: true, history: events })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

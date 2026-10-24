@@ -22,6 +22,9 @@ export default function AdminCollectPage() {
   const [statusModalAgent, setStatusModalAgent] = useState(null)
   const [statusReason, setStatusReason] = useState('')
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [subscriptionModalAgent, setSubscriptionModalAgent] = useState(null)
+  const [subscriptionNotes, setSubscriptionNotes] = useState('')
+  const [updatingSubscription, setUpdatingSubscription] = useState(false)
   const [banner, setBanner] = useState({ type: '', text: '' })
 
   const loadData = async () => {
@@ -66,6 +69,28 @@ export default function AdminCollectPage() {
       showBanner(e.message, 'error')
     } finally {
       setUpdatingStatus(false)
+    }
+  }
+
+  const handleToggleAgentSubscription = async (agent, active = true, notes = '') => {
+    setUpdatingSubscription(true)
+    try {
+      await collectApi.adminToggleAgentSubscription(agent._id, {
+        active,
+        notes: notes || `Souscription validée manuellement par l'administrateur.`,
+      })
+      showBanner(
+        active
+          ? `La souscription de l'agent ${agent.agencyName || agent.user?.name} a été validée avec succès par l'administrateur !`
+          : `La souscription de l'agent a été désactivée.`
+      )
+      setSubscriptionModalAgent(null)
+      setSubscriptionNotes('')
+      loadData()
+    } catch (e) {
+      showBanner(e.message, 'error')
+    } finally {
+      setUpdatingSubscription(false)
     }
   }
 
@@ -175,6 +200,7 @@ export default function AdminCollectPage() {
         {[
           { key: 'agents', label: 'Agents & Clients enregistrés', icon: Users },
           { key: 'fees', label: 'Frais de Collecte par Agence (30% Plateforme / 70% Agent)', icon: Coins },
+          { key: 'subscriptions', label: 'Historique des Validations & Souscriptions', icon: Shield },
           { key: 'withdrawals', label: 'Historique des retraits Administrateur', icon: ArrowDownCircle },
           { key: 'terms', label: "Termes & Conditions d'adhésion", icon: FileText },
         ].map((t) => (
@@ -218,7 +244,8 @@ export default function AdminCollectPage() {
                     <th className="py-3 px-3 text-right">Clients</th>
                     <th className="py-3 px-3 text-right">Collecte Jour</th>
                     <th className="py-3 px-3 text-right">Collecte Mois</th>
-                    <th className="py-3 px-3 text-center">Statut</th>
+                    <th className="py-3 px-3 text-center">Statut Agent</th>
+                    <th className="py-3 px-3 text-center">Souscription (4 995 F)</th>
                     <th className="py-3 px-3 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -251,6 +278,41 @@ export default function AdminCollectPage() {
                           </span>
                         )}
                       </td>
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        {ag.subscriptionPaid ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                              <CheckCircle2 size={12} /> Validée
+                            </span>
+                            <div className="text-[10px] text-gray-500 mt-0.5">
+                              {ag.subscriptionPaymentMethod === 'admin_override'
+                                ? 'Par administrateur'
+                                : ag.subscriptionPaymentMethod === 'grandfathered'
+                                ? 'Compte existant'
+                                : ag.subscriptionPaymentMethod === 'wallet'
+                                ? 'Portefeuille'
+                                : 'Mobile Money'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                              <AlertTriangle size={11} /> En attente
+                            </span>
+                            <div className="mt-1">
+                              <button
+                                onClick={() => {
+                                  setSubscriptionModalAgent(ag)
+                                  setSubscriptionNotes(`Activation manuelle validée par l'administrateur`)
+                                }}
+                                className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold transition-all"
+                              >
+                                Valider
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
@@ -258,6 +320,20 @@ export default function AdminCollectPage() {
                             className="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-semibold flex items-center gap-1"
                           >
                             <Eye size={13} /> Voir clients
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSubscriptionModalAgent(ag)
+                              setSubscriptionNotes(ag.subscriptionPaid ? "Désactivation par l'administrateur" : "Validation administrative du compte agent")
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 ${
+                              ag.subscriptionPaid
+                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 'bg-amber-500 text-white hover:bg-amber-600'
+                            }`}
+                            title="Gérer la souscription de l'agent"
+                          >
+                            <Shield size={13} /> {ag.subscriptionPaid ? 'Souscription' : 'Activer compte'}
                           </button>
                           <button
                             onClick={() => { setStatusModalAgent(ag); setStatusReason(ag.statusReason || '') }}
@@ -352,6 +428,9 @@ export default function AdminCollectPage() {
         </div>
       )}
 
+      {/* ONGLET NOUVEAU : HISTORIQUE DES VALIDATIONS & SOUSCRIPTIONS */}
+      {tab === 'subscriptions' && <AdminSubscriptionHistoryTab showBanner={showBanner} />}
+
       {/* ONGLET NOUVEAU : HISTORIQUE DES RETRAITS ADMINISTRATEUR */}
       {tab === 'withdrawals' && <AdminWithdrawalsHistoryTab showBanner={showBanner} />}
 
@@ -411,6 +490,80 @@ export default function AdminCollectPage() {
                 {updatingStatus ? <Loader2 size={14} className="animate-spin" /> : null}
                 <span>{statusModalAgent.status === 'active' ? 'Confirmer la suspension' : 'Confirmer la réactivation'}</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Validation Administrative de la Souscription Agent */}
+      {subscriptionModalAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-100 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+              <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                <Shield size={18} className="text-emerald-600" />
+                Validation Souscription Agent
+              </h3>
+              <button onClick={() => setSubscriptionModalAgent(null)} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-gray-50 rounded-2xl space-y-1.5 text-xs border border-gray-100">
+              <div><b className="text-gray-700">Agence :</b> <span className="font-bold text-gray-900">{subscriptionModalAgent.agencyName}</span></div>
+              <div><b className="text-gray-700">Responsable :</b> {subscriptionModalAgent.user?.name || '—'} ({subscriptionModalAgent.phone})</div>
+              <div><b className="text-gray-700">Clients enregistrés :</b> <span className="font-bold">{subscriptionModalAgent.clientCount || 0}</span></div>
+              <div>
+                <b className="text-gray-700">Statut souscription :</b>{' '}
+                {subscriptionModalAgent.subscriptionPaid ? (
+                  <span className="text-emerald-700 font-bold">Validée (4 995 FCFA)</span>
+                ) : (
+                  <span className="text-amber-700 font-bold">En attente de validation (4 995 FCFA)</span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700 block">Note d'audit (attestant la validation administrative) :</label>
+              <textarea
+                rows={2}
+                value={subscriptionNotes}
+                onChange={(e) => setSubscriptionNotes(e.target.value)}
+                placeholder="Ex: Validation administrative effectuée par l'administrateur..."
+                className="input text-xs w-full resize-none p-2.5 border rounded-xl"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSubscriptionModalAgent(null)}
+                className="btn-secondary text-xs"
+                disabled={updatingSubscription}
+              >
+                Annuler
+              </button>
+              {subscriptionModalAgent.subscriptionPaid ? (
+                <button
+                  type="button"
+                  disabled={updatingSubscription}
+                  onClick={() => handleToggleAgentSubscription(subscriptionModalAgent, false, subscriptionNotes)}
+                  className="btn-primary text-xs flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white"
+                >
+                  {updatingSubscription ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
+                  <span>Désactiver souscription</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={updatingSubscription}
+                  onClick={() => handleToggleAgentSubscription(subscriptionModalAgent, true, subscriptionNotes)}
+                  className="btn-primary text-xs flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {updatingSubscription ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  <span>Valider et activer le compte</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -826,7 +979,7 @@ function AdminClientWithdrawModal({ client, onClose, onSuccess }) {
 function AdminTermsTab({ showBanner }) {
   const [terms, setTerms] = useState('')
   const [monthlyFee, setMonthlyFee] = useState(1000)
-  const [agentSubscriptionFee, setAgentSubscriptionFee] = useState(4800)
+  const [agentSubscriptionFee, setAgentSubscriptionFee] = useState(4995)
   const [clientSubscriptionFee, setClientSubscriptionFee] = useState(4995)
   const [clientSubscriptionInterval, setClientSubscriptionInterval] = useState('annual')
   const [loading, setLoading] = useState(true)
@@ -837,7 +990,7 @@ function AdminTermsTab({ showBanner }) {
       .then((res) => {
         setTerms(res.termsAndConditions || '')
         setMonthlyFee(res.monthlyFee ?? 1000)
-        setAgentSubscriptionFee(res.agentSubscriptionFee ?? 4800)
+        setAgentSubscriptionFee(res.agentSubscriptionFee ?? 4995)
         setClientSubscriptionFee(res.clientSubscriptionFee ?? 4995)
         setClientSubscriptionInterval(res.clientSubscriptionInterval ?? 'annual')
       })
@@ -1049,6 +1202,205 @@ function AdminWithdrawalsHistoryTab({ showBanner }) {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Onglet Historique des Validations & Souscriptions
+function AdminSubscriptionHistoryTab({ showBanner }) {
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filterType, setFilterType] = useState('all') // all | agent | client
+
+  const loadHistory = async () => {
+    try {
+      setLoading(true)
+      const res = await collectApi.adminSubscriptionHistory()
+      setHistory(res.events || [])
+    } catch (e) {
+      showBanner(e.message || "Erreur lors du chargement de l'historique des souscriptions", 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadHistory()
+  }, [])
+
+  const filtered = history.filter((ev) => {
+    if (filterType === 'all') return true
+    return ev.type === filterType
+  })
+
+  const agentCount = history.filter((ev) => ev.type === 'agent').length
+  const clientCount = history.filter((ev) => ev.type === 'client').length
+
+  return (
+    <div className="card p-5 sm:p-6 space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100">
+        <div>
+          <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <CheckCircle2 size={18} className="text-emerald-600" />
+            Historique des Validations & Souscriptions
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Registre d'audit officiel attestant des activations manuelles par l'administrateur et des souscriptions enregistrées (4 995 FCFA).
+          </p>
+        </div>
+        <button
+          onClick={loadHistory}
+          disabled={loading}
+          className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 rounded-xl self-start sm:self-auto"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          <span>Actualiser</span>
+        </button>
+      </div>
+
+      {/* Cartes résumé */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-2xl">
+          <div className="text-[11px] font-bold uppercase text-gray-400">Total Enregistrements</div>
+          <div className="text-xl font-black text-gray-900 mt-0.5">{history.length}</div>
+          <div className="text-[11px] text-gray-500 mt-0.5">Événements tracés dans le journal</div>
+        </div>
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl">
+          <div className="text-[11px] font-bold uppercase text-emerald-800">Souscriptions Agents</div>
+          <div className="text-xl font-black text-emerald-700 mt-0.5">{agentCount}</div>
+          <div className="text-[11px] text-emerald-700 mt-0.5">Validations manuelles & paiements</div>
+        </div>
+        <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-2xl">
+          <div className="text-[11px] font-bold uppercase text-indigo-800">Souscriptions Clients</div>
+          <div className="text-xl font-black text-indigo-700 mt-0.5">{clientCount}</div>
+          <div className="text-[11px] text-indigo-700 mt-0.5">Adhésions clients enregistrées</div>
+        </div>
+      </div>
+
+      {/* Filtres */}
+      <div className="flex gap-2">
+        {[
+          { key: 'all', label: `Tous (${history.length})` },
+          { key: 'agent', label: `Agents (${agentCount})` },
+          { key: 'client', label: `Clients (${clientCount})` },
+        ].map((btn) => (
+          <button
+            key={btn.key}
+            onClick={() => setFilterType(btn.key)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              filterType === btn.key
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {btn.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tableau d'historique */}
+      {loading ? (
+        <div className="py-16 text-center text-gray-400">
+          <Loader2 size={24} className="animate-spin text-emerald-600 mx-auto" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="py-16 text-center text-gray-400 text-xs">
+          Aucun enregistrement de souscription ou d'activation trouvé.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                <th className="py-3 px-3">Date & Heure</th>
+                <th className="py-3 px-3">Type</th>
+                <th className="py-3 px-3">Bénéficiaire / Agence</th>
+                <th className="py-3 px-3">Action / Statut</th>
+                <th className="py-3 px-3">Attestation & Auteur</th>
+                <th className="py-3 px-3">Détails & Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.map((item, idx) => {
+                const isAdminAction = item.action === 'admin_activated' || item.action === 'admin_override'
+                return (
+                  <tr key={idx} className="hover:bg-gray-50/70 transition-colors">
+                    <td className="py-3 px-3 whitespace-nowrap text-gray-600">
+                      <div className="font-bold text-gray-800">
+                        {item.date ? new Date(item.date).toLocaleDateString('fr-FR') : '—'}
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        {item.date ? new Date(item.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      {item.type === 'agent' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          Agent
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          Client
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className="font-bold text-gray-900">
+                        {item.type === 'agent' ? item.agentName : item.clientName}
+                      </div>
+                      <div className="text-[11px] text-gray-500 font-mono">
+                        {item.accountNumber ? `Compte : ${item.accountNumber}` : `Tél : ${item.userPhone || '—'}`}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      {isAdminAction ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                          <Shield size={12} /> Activé par Admin
+                        </span>
+                      ) : item.action === 'grandfathered' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
+                          <CheckCircle2 size={12} /> Compte Existant
+                        </span>
+                      ) : item.action === 'admin_deactivated' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-900 border border-rose-200">
+                          <Ban size={12} /> Désactivé par Admin
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                          <CheckCircle2 size={12} /> Souscription Payée
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3">
+                      {isAdminAction ? (
+                        <div>
+                          <div className="font-bold text-emerald-800 text-xs flex items-center gap-1">
+                            <CheckCircle2 size={13} className="text-emerald-600" />
+                            <span>L'administrateur a activé le compte agent</span>
+                          </div>
+                          <div className="text-[11px] text-gray-600">
+                            Par : <b>{item.performerName}</b>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="font-semibold text-gray-800 text-xs">
+                            {item.performerName || 'Système'}
+                          </div>
+                          <div className="text-[11px] text-gray-400">Opération enregistrée</div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-xs text-gray-600 max-w-xs">
+                      {item.notes || '—'}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

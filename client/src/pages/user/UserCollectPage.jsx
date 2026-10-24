@@ -80,7 +80,7 @@ export default function UserCollectPage() {
     )
   }
 
-  // 3. Si l'utilisateur est agent mais n'a pas encore payé sa souscription agent (4 800 FCFA)
+  // 3. Si l'utilisateur est agent mais n'a pas encore payé sa souscription agent (4 995 FCFA)
   if (isAgent && !agentStatus?.subscriptionPaid) {
     return (
       <AgentSubscriptionPaywall
@@ -386,7 +386,7 @@ function OptInScreen({ config, onSuccess, onCancel }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1bis. ÉCRAN DE SOUSCRIPTION OBLIGATOIRE (FRAIS D'OUVERTURE 4 800 FCFA)
+// 1bis. ÉCRAN DE SOUSCRIPTION OBLIGATOIRE (FRAIS D'OUVERTURE 4 995 FCFA)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1TER. SOUSCRIPTION CLIENT COLLECTE JOURNALIÈRE (4 995 FCFA / AN OU MOIS)
@@ -733,7 +733,7 @@ function AgentSubscriptionPaywall({ config, onSuccess, isClient, onBackToClient 
   const [pollMsg, setPollMsg] = useState('')
   const [error, setError] = useState('')
 
-  const fee = Number(config?.agentSubscriptionFee) || 4800
+  const fee = Number(config?.agentSubscriptionFee) || 4995
 
   useEffect(() => {
     (walletApi.me ? walletApi.me() : Promise.resolve({ wallet: { balance: 0 } }))

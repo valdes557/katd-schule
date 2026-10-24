@@ -25,9 +25,19 @@ const collectAgentSchema = new mongoose.Schema(
     termsAcceptedAt: { type: Date, default: Date.now },
     subscriptionPaid: { type: Boolean, default: false },
     subscriptionPaidAt: { type: Date, default: null },
-    subscriptionAmount: { type: Number, default: 4800 },
+    subscriptionAmount: { type: Number, default: 4995 },
     subscriptionPaymentMethod: { type: String, default: '' },
     subscriptionReference: { type: String, default: '' },
+    subscriptionActivatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    subscriptionHistory: [
+      {
+        action: { type: String, default: '' },
+        performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        performerName: { type: String, default: '' },
+        date: { type: Date, default: Date.now },
+        notes: { type: String, default: '' },
+      },
+    ],
     status: {
       type: String,
       enum: ['active', 'suspended', 'revoked'],

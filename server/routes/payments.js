@@ -237,7 +237,7 @@ router.post('/agent-subscription/initiate', async (req, res) => {
 
     const CollectConfig = require('../models/CollectConfig')
     const config = await CollectConfig.getOrCreate()
-    const fee = Number(config.agentSubscriptionFee) || 4800
+    const fee = Number(config.agentSubscriptionFee) || 4995
 
     const reference = genRef('agsub')
     const { mode } = await ikeepay.resolveConfig()
