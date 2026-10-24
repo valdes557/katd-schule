@@ -13,7 +13,7 @@ import { useInlineCheckout } from './payments/useInlineCheckout'
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
 
-export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwitchToAgent }) {
+export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwitchToAgent, onOpenAgentOptIn }) {
   const inlineCheckout = useInlineCheckout()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
@@ -243,18 +243,31 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
         </button>
       </div>
 
-      {/* Switcher Espace Agent si l'utilisateur possède les deux rôles */}
-      {isAlsoAgent && (
-        <div className="mx-4 mb-3 p-2 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between shadow-2xs">
+      {/* Switcher Espace Agent si l'utilisateur possède les deux rôles ou proposition de devenir agent */}
+      {isAlsoAgent ? (
+        <div className="mx-4 mb-3 p-2.5 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between shadow-2xs">
           <span className="text-[11px] font-bold text-indigo-900">Mode Épargnant Client</span>
           <button
             onClick={onSwitchToAgent}
-            className="text-[11px] font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded-xl shadow-2xs transition-all"
+            className="text-[11px] font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-xl shadow-2xs transition-all"
           >
             Accéder à l'Espace Agent ➔
           </button>
         </div>
-      )}
+      ) : onOpenAgentOptIn ? (
+        <div className="mx-4 mb-3 p-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl flex items-center justify-between shadow-2xs">
+          <div className="text-[11px] font-bold text-emerald-950">
+            <span>Devenir également Agent de Collecte</span>
+            <span className="block text-[10px] font-medium text-emerald-700">Percevez 70% de commissions</span>
+          </div>
+          <button
+            onClick={onOpenAgentOptIn}
+            className="text-[11px] font-black text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 px-3 py-1.5 rounded-xl shadow-2xs transition-all"
+          >
+            Devenir Agent ➔
+          </button>
+        </div>
+      ) : null}
 
       {/* ONGLET 1 : ACCUEIL (CAPTURE EXACTE) */}
       {navTab === 'home' && (
@@ -593,6 +606,38 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
             <div className="mt-3 pt-3 border-t border-gray-150 text-[11px] text-gray-500 leading-relaxed">
               <b>Garantie de protection :</b> Conformément aux règles strictes de la plateforme, ni l'agent ni l'administrateur n'ont l'autorisation de retirer votre argent. Vos fonds sont sanctuarisés et retirables uniquement par vous-même.
             </div>
+          </div>
+
+          {/* Rôle Agent de collecte */}
+          <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-150/80 space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+              <Coins size={16} className="text-amber-600" />
+              <span>Rôle Agent de Collecte</span>
+            </h3>
+            {isAlsoAgent ? (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-600">Vous êtes également enregistré comme Agent de Collecte.</p>
+                <button
+                  onClick={onSwitchToAgent}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all"
+                >
+                  Basculer sur mon Tableau de bord Agent
+                </button>
+              </div>
+            ) : onOpenAgentOptIn ? (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-600">
+                  Vous souhaitez collecter l'épargne d'autres clients et percevoir <b>70% de commissions</b> mensuelles ?
+                </p>
+                <button
+                  onClick={onOpenAgentOptIn}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Coins size={15} />
+                  <span>Devenir également Agent de Collecte</span>
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

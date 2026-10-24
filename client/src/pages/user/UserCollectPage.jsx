@@ -52,24 +52,26 @@ export default function UserCollectPage() {
 
   const isClient = !!agentStatus?.isClient
   const isAgent = !!agentStatus?.isAgent
-  const currentView = viewMode === 'auto' ? (isClient ? 'client' : 'agent') : viewMode
 
-  // Si le mode est client et que l'utilisateur est client, afficher le dashboard client ("Épargnez au Quotidien")
-  if (currentView === 'client' && isClient) {
+  // 1. Si l'utilisateur est client (créé par agent ou souscrit en ligne)
+  // Il accède DIRECTEMENT à son dashboard client sans blocage par le profil agent
+  if (isClient && viewMode !== 'agent' && viewMode !== 'agent-optin') {
     return (
       <ClientCollectDashboard
         clientInfo={agentStatus.client}
         isAlsoAgent={isAgent}
         onSwitchToAgent={() => setViewMode('agent')}
+        onOpenAgentOptIn={() => setViewMode('agent-optin')}
       />
     )
   }
 
-  // 1. Si l'utilisateur n'est pas encore agent ou n'a pas accepté les termes
-  if (!agentStatus?.isAgent || !agentStatus?.termsAccepted) {
+  // 2. Si le client souhaite devenir agent (ou si un visiteur a cliqué sur Devenir Agent)
+  if (viewMode === 'agent-optin' || (!isClient && viewMode === 'agent-signup')) {
     return (
       <OptInScreen
         config={agentStatus}
+        onCancel={() => setViewMode(isClient ? 'client' : 'auto')}
         onSuccess={() => {
           showBanner('Votre profil Agent de Collecte a été créé avec succès !')
           loadStatus()
@@ -78,15 +80,32 @@ export default function UserCollectPage() {
     )
   }
 
-  // 1bis. Si la souscription obligatoire (4 800 FCFA) n'a pas encore été payée
-  if (agentStatus?.isAgent && !agentStatus?.subscriptionPaid) {
+  // 3. Si l'utilisateur est agent mais n'a pas encore payé sa souscription agent (4 800 FCFA)
+  if (isAgent && !agentStatus?.subscriptionPaid) {
     return (
       <AgentSubscriptionPaywall
         config={agentStatus}
+        isClient={isClient}
+        onBackToClient={isClient ? () => setViewMode('client') : null}
         onSuccess={() => {
           showBanner('Félicitations ! Votre souscription agent a été validée avec succès. Bienvenue sur votre tableau de bord !')
           loadStatus()
         }}
+      />
+    )
+  }
+
+  // 4. Si l'utilisateur n'est NI client NI agent (nouveau visiteur)
+  // On lui propose d'ouvrir son compte client d'épargne (4 995 FCFA / an ou mois)
+  if (!isClient && !isAgent && viewMode !== 'agent') {
+    return (
+      <ClientSubscriptionPaywall
+        config={agentStatus}
+        onSuccess={() => {
+          showBanner('Félicitations ! Votre compte de collecte journalière a été activé avec succès.')
+          loadStatus()
+        }}
+        onWantAgent={() => setViewMode('agent-signup')}
       />
     )
   }
@@ -208,7 +227,7 @@ export default function UserCollectPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. ÉCRAN D'ADHÉSION & ACCEPTATION DES CONDITIONS (OPT-IN)
 // ─────────────────────────────────────────────────────────────────────────────
-function OptInScreen({ config, onSuccess }) {
+function OptInScreen({ config, onSuccess, onCancel }) {
   const [accepted, setAccepted] = useState(false)
   const [agencyName, setAgencyName] = useState('')
   const [phone, setPhone] = useState('')
@@ -248,14 +267,25 @@ function OptInScreen({ config, onSuccess }) {
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-12 animate-fade-in">
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center shrink-0 shadow-md">
-            <Coins size={28} />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center shrink-0 shadow-md">
+              <Coins size={28} />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Devenir Agent de Collecte</h1>
+              <p className="text-xs text-gray-500 mt-0.5">Collecte journalière, gestion d'épargne locale & approvisionnement sécurisé</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Devenir Agent de Collecte</h1>
-            <p className="text-xs text-gray-500 mt-0.5">Collecte journalière, gestion d'épargne locale & approvisionnement sécurisé</p>
-          </div>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="text-xs font-bold text-gray-500 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-xl transition"
+            >
+              Annuler
+            </button>
+          )}
         </div>
 
         {error && (
@@ -357,8 +387,342 @@ function OptInScreen({ config, onSuccess }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1bis. ÉCRAN DE SOUSCRIPTION OBLIGATOIRE (FRAIS D'OUVERTURE 4 800 FCFA)
+
 // ─────────────────────────────────────────────────────────────────────────────
-function AgentSubscriptionPaywall({ config, onSuccess }) {
+// 1TER. SOUSCRIPTION CLIENT COLLECTE JOURNALIÈRE (4 995 FCFA / AN OU MOIS)
+// ─────────────────────────────────────────────────────────────────────────────
+function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
+  const [method, setMethod] = useState('wallet') // 'wallet' | 'momo'
+  const [userWallet, setUserWallet] = useState(null)
+  const [loadingWallet, setLoadingWallet] = useState(true)
+  const [phone, setPhone] = useState('')
+  const [operator, setOperator] = useState('mtn')
+  const [neighborhood, setNeighborhood] = useState('')
+  const [city, setCity] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [pollRef, setPollRef] = useState(null)
+  const [pollMsg, setPollMsg] = useState('')
+  const [error, setError] = useState('')
+
+  const fee = Number(config?.clientSubscriptionFee) || 4995
+  const interval = config?.clientSubscriptionInterval || 'annual'
+  const intervalLabel = interval === 'monthly' ? 'mois' : 'an'
+
+  useEffect(() => {
+    (walletApi.me ? walletApi.me() : Promise.resolve({ wallet: { balance: 0 } }))
+      .then((res) => setUserWallet(res.wallet || res))
+      .catch(() => setUserWallet({ balance: 0 }))
+      .finally(() => setLoadingWallet(false))
+  }, [])
+
+  // Surveillance active de l'état du paiement Mobile Money
+  useEffect(() => {
+    if (!pollRef) return
+    let cancelled = false
+    const intervalId = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payments/status/${pollRef}`).then((r) => r.json())
+        if (cancelled) return
+        if (res.status === 'approved' || res.fulfilled) {
+          clearInterval(intervalId)
+          setPollRef(null)
+          onSuccess()
+        } else if (res.status === 'rejected') {
+          clearInterval(intervalId)
+          setPollRef(null)
+          setSubmitting(false)
+          setError(res.reason || 'Le paiement Mobile Money a été rejeté ou annulé.')
+        }
+      } catch (_) {}
+    }, 3000)
+
+    const timer = setTimeout(() => {
+      clearInterval(intervalId)
+      if (!cancelled && pollRef) {
+        setPollRef(null)
+        setSubmitting(false)
+        setError('Délai d’attente dépassé. Si votre compte a été débité, veuillez rafraîchir la page.')
+      }
+    }, 180000)
+
+    return () => {
+      cancelled = true
+      clearInterval(intervalId)
+      clearTimeout(timer)
+    }
+  }, [pollRef, onSuccess])
+
+  const handlePayWallet = async () => {
+    setError('')
+    setSubmitting(true)
+    try {
+      await collectApi.subscribeClientWallet({
+        neighborhood: neighborhood.trim() || 'Quartier principal',
+        city: city.trim(),
+      })
+      onSuccess()
+    } catch (e) {
+      setError(e.message || 'Erreur lors du paiement par portefeuille.')
+      setSubmitting(false)
+    }
+  }
+
+  const handlePayMomo = async (e) => {
+    e.preventDefault()
+    setError('')
+    const cleanPh = phone.replace(/[^0-9]/g, '')
+    if (!cleanPh) {
+      setError('Veuillez renseigner votre numéro Mobile Money.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await collectApi.initiateClientSubscriptionMomo({
+        phone: cleanPh,
+        operator,
+        neighborhood: neighborhood.trim() || 'Quartier principal',
+        city: city.trim(),
+      })
+      if (res.reference) {
+        setPollRef(res.reference)
+        setPollMsg(res.message || 'Demande envoyée. Composez votre code secret sur votre téléphone pour valider.')
+      }
+    } catch (e) {
+      setError(e.message || "Erreur lors de l'initiation du paiement Mobile Money.")
+      setSubmitting(false)
+    }
+  }
+
+  const walletBalance = Number(userWallet?.balance) || 0
+  const canPayWallet = walletBalance >= fee
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6 pb-12 animate-fade-in">
+      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+        <div className="text-center space-y-2">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center mx-auto shadow-md">
+            <Coins size={32} />
+          </div>
+          <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            Épargnez au Quotidien
+          </span>
+          <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+            Souscription au Service Collecte Journalière
+          </h2>
+          <p className="text-xs sm:text-sm text-gray-500 max-w-md mx-auto">
+            Activez votre compte personnel d'épargne journalière. Collectez à votre rythme, visualisez votre cagnotte en temps réel et retirez librement vos fonds.
+          </p>
+        </div>
+
+        {/* Bloc tarifaire */}
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-green-50 border border-emerald-200 flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 block">Frais d'ouverture / souscription</span>
+            <span className="text-2xl font-black text-emerald-700">
+              {fee.toLocaleString('fr-FR')} <span className="text-xs font-bold">FCFA / {intervalLabel}</span>
+            </span>
+          </div>
+          <div className="text-right text-[11px] text-gray-600 space-y-0.5">
+            <p className="font-semibold text-emerald-800 flex items-center gap-1 justify-end"><Check size={13} /> Fonds 100% sanctuarisés</p>
+            <p className="font-semibold text-teal-800 flex items-center gap-1 justify-end"><Check size={13} /> Retrait libre Mobile Money & Wallet</p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {pollMsg && (
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-3">
+            <Loader2 size={18} className="animate-spin text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold">Attente de validation sur votre téléphone...</p>
+              <p>{pollMsg}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Coordonnées géographiques */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Votre Quartier</label>
+            <input
+              type="text"
+              placeholder="Ex : Bonapriso, Bastos, Ndogpassi..."
+              value={neighborhood}
+              onChange={(e) => setNeighborhood(e.target.value)}
+              className="input text-xs w-full"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Ville</label>
+            <input
+              type="text"
+              placeholder="Ex : Douala, Yaoundé..."
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className="input text-xs w-full"
+            />
+          </div>
+        </div>
+
+        {/* Choix du mode de paiement */}
+        <div className="space-y-4 pt-2 border-t border-gray-100">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => { setMethod('wallet'); setError('') }}
+              className={`p-3.5 rounded-2xl border text-left transition-all ${
+                method === 'wallet'
+                  ? 'border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-500/20'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Wallet size={16} className={method === 'wallet' ? 'text-emerald-700' : 'text-gray-400'} />
+                <span className="text-xs font-bold text-gray-900">Portefeuille KATD</span>
+              </div>
+              <span className="text-[11px] text-gray-500 block">
+                {loadingWallet ? 'Chargement solde...' : `Solde : ${walletBalance.toLocaleString('fr-FR')} FCFA`}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setMethod('momo'); setError('') }}
+              className={`p-3.5 rounded-2xl border text-left transition-all ${
+                method === 'momo'
+                  ? 'border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-500/20'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Smartphone size={16} className={method === 'momo' ? 'text-emerald-700' : 'text-gray-400'} />
+                <span className="text-xs font-bold text-gray-900">Mobile Money</span>
+              </div>
+              <span className="text-[11px] text-gray-500 block">MTN ou Orange Money</span>
+            </button>
+          </div>
+
+          {/* Formulaire Portefeuille */}
+          {method === 'wallet' && (
+            <div className="space-y-3 pt-2">
+              <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-600 space-y-1">
+                <p>Le montant de <b>{fee.toLocaleString('fr-FR')} FCFA</b> sera débité de votre solde Portefeuille KATD.</p>
+                {!canPayWallet && (
+                  <p className="text-red-600 font-bold">
+                    Solde insuffisant ({walletBalance.toLocaleString('fr-FR')} FCFA disponible). Veuillez approvisionner votre portefeuille ou choisir Mobile Money ci-dessus.
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={submitting || !canPayWallet}
+                onClick={handlePayWallet}
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white font-bold text-sm rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Traitement du paiement en cours...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} />
+                    <span>Payer {fee.toLocaleString('fr-FR')} FCFA par Portefeuille</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Formulaire Mobile Money */}
+          {method === 'momo' && (
+            <form onSubmit={handlePayMomo} className="space-y-3 pt-2">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOperator('mtn')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                      operator === 'mtn' ? 'border-yellow-500 bg-yellow-50 text-yellow-900 ring-2 ring-yellow-400/30' : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    MTN Mobile Money
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOperator('orange')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                      operator === 'orange' ? 'border-orange-500 bg-orange-50 text-orange-900 ring-2 ring-orange-400/30' : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    Orange Money
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Numéro Mobile Money (Cameroun)</label>
+                <input
+                  type="tel"
+                  placeholder="6XXXXXXXX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="input text-xs w-full font-mono"
+                  required
+                />
+                <span className="text-[11px] text-gray-400 mt-1 block">
+                  Un prompt USSD apparaîtra sur ce téléphone pour saisir votre code secret et autoriser le débit direct.
+                </span>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting || !phone.trim() || !!pollRef}
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white font-bold text-sm rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Initialisation du paiement...</span>
+                  </>
+                ) : (
+                  <>
+                    <Smartphone size={16} />
+                    <span>Débiter {fee.toLocaleString('fr-FR')} FCFA via Mobile Money</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+        </div>
+
+        {/* Bascule vers compte Agent si l'utilisateur le souhaite */}
+        {onWantAgent && (
+          <div className="pt-4 border-t border-gray-150 text-center">
+            <button
+              type="button"
+              onClick={onWantAgent}
+              className="text-xs text-indigo-700 hover:text-indigo-900 font-bold hover:underline transition"
+            >
+              Vous souhaitez plutôt devenir Agent de Collecte et percevoir 70% de commissions ? Cliquez ici ➔
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+function AgentSubscriptionPaywall({ config, onSuccess, isClient, onBackToClient }) {
   const [method, setMethod] = useState('wallet') // 'wallet' | 'momo'
   const [userWallet, setUserWallet] = useState(null)
   const [loadingWallet, setLoadingWallet] = useState(true)
@@ -372,9 +736,9 @@ function AgentSubscriptionPaywall({ config, onSuccess }) {
   const fee = Number(config?.agentSubscriptionFee) || 4800
 
   useEffect(() => {
-    walletApi.getWallet()
+    (walletApi.me ? walletApi.me() : Promise.resolve({ wallet: { balance: 0 } }))
       .then((res) => setUserWallet(res.wallet || res))
-      .catch(() => {})
+      .catch(() => setUserWallet({ balance: 0 }))
       .finally(() => setLoadingWallet(false))
   }, [])
 
@@ -500,6 +864,19 @@ function AgentSubscriptionPaywall({ config, onSuccess }) {
               <p className="font-bold">Attente de validation sur votre téléphone...</p>
               <p>{pollMsg}</p>
             </div>
+          </div>
+        )}
+
+        {onBackToClient && (
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-2xl flex items-center justify-between">
+            <span className="text-xs text-gray-600">Vous avez déjà un compte Épargne Client actif.</span>
+            <button
+              type="button"
+              onClick={onBackToClient}
+              className="text-xs font-bold text-emerald-700 bg-white hover:bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-300 transition"
+            >
+              ← Retourner à mon Espace Client
+            </button>
           </div>
         )}
 

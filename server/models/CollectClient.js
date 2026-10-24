@@ -6,8 +6,8 @@ const crypto = require('crypto')
 
 const collectClientSchema = new mongoose.Schema(
   {
-    agent: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectAgent', required: true, index: true },
-    agentUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    agent: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectAgent', default: null, index: true },
+    agentUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     accountNumber: { type: String, unique: true, index: true },
     fullName: { type: String, required: true, trim: true },
@@ -24,6 +24,16 @@ const collectClientSchema = new mongoose.Schema(
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     lastMonthlyFeeMonth: { type: String, default: '' },         // ex: '2026-10' pour déduction mensuelle 1100 FCFA
     notes: { type: String, default: '' },
+
+    // Souscription Client (4 995 FCFA / an ou mois)
+    isSelfSubscribed: { type: Boolean, default: false },
+    subscriptionPaid: { type: Boolean, default: false },
+    subscriptionPaidAt: { type: Date, default: null },
+    subscriptionExpiresAt: { type: Date, default: null },
+    subscriptionAmount: { type: Number, default: 0 },
+    subscriptionInterval: { type: String, enum: ['annual', 'monthly'], default: 'annual' },
+    subscriptionPaymentMethod: { type: String, default: '' },
+    subscriptionReference: { type: String, default: '' },
 
     // Signature numérique & Termes et Conditions signés par l'agent et le client
     termsAccepted: { type: Boolean, default: false },

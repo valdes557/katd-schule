@@ -827,6 +827,8 @@ function AdminTermsTab({ showBanner }) {
   const [terms, setTerms] = useState('')
   const [monthlyFee, setMonthlyFee] = useState(1000)
   const [agentSubscriptionFee, setAgentSubscriptionFee] = useState(4800)
+  const [clientSubscriptionFee, setClientSubscriptionFee] = useState(4995)
+  const [clientSubscriptionInterval, setClientSubscriptionInterval] = useState('annual')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -836,6 +838,8 @@ function AdminTermsTab({ showBanner }) {
         setTerms(res.termsAndConditions || '')
         setMonthlyFee(res.monthlyFee ?? 1000)
         setAgentSubscriptionFee(res.agentSubscriptionFee ?? 4800)
+        setClientSubscriptionFee(res.clientSubscriptionFee ?? 4995)
+        setClientSubscriptionInterval(res.clientSubscriptionInterval ?? 'annual')
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -849,6 +853,8 @@ function AdminTermsTab({ showBanner }) {
         termsAndConditions: terms,
         monthlyFee: Number(monthlyFee),
         agentSubscriptionFee: Number(agentSubscriptionFee),
+        clientSubscriptionFee: Number(clientSubscriptionFee),
+        clientSubscriptionInterval,
       })
       showBanner('Termes, conditions et frais mis à jour avec succès !')
     } catch (e) {
@@ -895,6 +901,32 @@ function AdminTermsTab({ showBanner }) {
               className="input text-xs w-full font-bold text-indigo-700"
             />
             <span className="text-[11px] text-gray-400 mt-0.5 block">Frais d'ouverture compte agent (défaut : 4 800 F)</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Frais de souscription Client (XAF)</label>
+            <input
+              type="number"
+              min="0"
+              step="100"
+              value={clientSubscriptionFee}
+              onChange={(e) => setClientSubscriptionFee(e.target.value)}
+              className="input text-xs w-full font-bold text-emerald-700"
+            />
+            <span className="text-[11px] text-gray-400 mt-0.5 block">Souscription client (défaut : 4 995 FCFA)</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Périodicité de la souscription Client</label>
+            <select
+              value={clientSubscriptionInterval}
+              onChange={(e) => setClientSubscriptionInterval(e.target.value)}
+              className="input text-xs w-full font-bold text-emerald-800"
+            >
+              <option value="annual">Annuelle (1 an par défaut)</option>
+              <option value="monthly">Mensuelle (1 mois)</option>
+            </select>
+            <span className="text-[11px] text-gray-400 mt-0.5 block">Fréquence de paiement pour les nouveaux clients</span>
           </div>
         </div>
 

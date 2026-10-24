@@ -288,6 +288,78 @@ router.post('/agent-subscription/initiate', async (req, res) => {
   }
 })
 
+// POST /api/payments/client-subscription/initiate - souscription client collecte journalière
+router.post('/client-subscription/initiate', async (req, res) => {
+  try {
+    const { phone, operator, userId, clientId, neighborhood, city, cni, country = 'CM', otp } = req.body
+    const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
+    if (!rawPhone || !operator) {
+      return res.status(400).json({ message: 'Numéro de téléphone et opérateur requis pour le débit direct.' })
+    }
+
+    const CollectConfig = require('../models/CollectConfig')
+    const config = await CollectConfig.getOrCreate()
+    const fee = Number(config.clientSubscriptionFee) || 4995
+    const interval = config.clientSubscriptionInterval || 'annual'
+
+    const reference = genRef('clsub')
+    const { mode } = await ikeepay.resolveConfig()
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : (normCountry === 'CM' ? 'XAF' : 'XOF')
+
+    const intent = await PaymentIntent.create({
+      reference,
+      purpose: 'client_collect_signup',
+      amount: fee,
+      currency: targetCurrency,
+      payerPhone: rawPhone,
+      payerOperator: operator,
+      initiatedBy: userId || null,
+      mode,
+      meta: {
+        userId,
+        clientId,
+        neighborhood: neighborhood || '',
+        city: city || '',
+        cni: cni || '',
+        fee,
+        interval,
+        purpose: 'client_collect_signup',
+      },
+    })
+
+    const result = await ikeepay.createCollection({
+      amount: fee,
+      phone: rawPhone,
+      operator,
+      reference,
+      callbackUrl: callbackUrl(),
+      country: normCountry,
+      currency: targetCurrency,
+      otp,
+    })
+
+    if (result.transaction_id || result.id) {
+      intent.providerTransactionId = result.transaction_id || result.id
+      await intent.save()
+    }
+    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+    return res.json({
+      success: true,
+      reference,
+      amount: fee,
+      mode,
+      currency: targetCurrency,
+      transaction: result,
+      payment_link: paymentLink,
+      message: 'Demande de paiement envoyée. Validez sur votre téléphone Mobile Money avec votre code secret.',
+    })
+  } catch (err) {
+    console.error('initiate client subscription error:', err.message, err.data ? JSON.stringify(err.data) : '')
+    return res.status(err.status || 500).json({ message: err.message, data: err.data })
+  }
+})
+
 // GET /api/payments/status/:reference — le frontend interroge l'état
 router.get('/status/:reference', async (req, res) => {
   try {
@@ -943,6 +1015,73 @@ async function applyOutcome(intent, status, raw) {
         }
       } catch (colErr) {
         console.error('[payment:collect] error:', colErr.message)
+      }
+    } else if (intent.purpose === 'client_collect_signup') {
+      try {
+        const CollectClient = require('../models/CollectClient')
+        const User = require('../models/User')
+        const m = intent.meta || {}
+        let client = null
+        if (m.clientId) {
+          client = await CollectClient.findById(m.clientId)
+        }
+        if (!client && intent.initiatedBy) {
+          client = await CollectClient.findOne({ user: intent.initiatedBy })
+        }
+        const interval = m.interval || 'annual'
+        const expires = new Date()
+        if (interval === 'monthly') {
+          expires.setMonth(expires.getMonth() + 1)
+        } else {
+          expires.setFullYear(expires.getFullYear() + 1)
+        }
+
+        if (client) {
+          client.subscriptionPaid = true
+          client.subscriptionPaidAt = new Date()
+          client.subscriptionExpiresAt = expires
+          client.subscriptionAmount = intent.amount
+          client.subscriptionInterval = interval
+          client.subscriptionPaymentMethod = 'momo'
+          client.subscriptionReference = intent.reference
+          client.isSelfSubscribed = true
+          await client.save()
+          console.log(`[payment:client_collect_signup] Souscription client renouvelée/activée pour ${client.fullName} (${client.accountNumber})`)
+        } else if (intent.initiatedBy) {
+          const u = await User.findById(intent.initiatedBy)
+          client = await CollectClient.create({
+            user: intent.initiatedBy,
+            fullName: u?.name || 'Client Épargne',
+            phone: u?.phone || intent.payerPhone || '',
+            email: u?.email || '',
+            momoMtn: intent.payerOperator === 'mtn' ? intent.payerPhone : '',
+            momoOrange: intent.payerOperator === 'orange' ? intent.payerPhone : '',
+            neighborhood: m.neighborhood || 'Quartier principal',
+            city: m.city || '',
+            cni: m.cni || '',
+            isSelfSubscribed: true,
+            subscriptionPaid: true,
+            subscriptionPaidAt: new Date(),
+            subscriptionExpiresAt: expires,
+            subscriptionAmount: intent.amount,
+            subscriptionInterval: interval,
+            subscriptionPaymentMethod: 'momo',
+            subscriptionReference: intent.reference,
+            status: 'active',
+            termsAccepted: true,
+            termsSignedAt: new Date(),
+          })
+          console.log(`[payment:client_collect_signup] Nouveau compte client créé et souscrit pour ${client.fullName} (${client.accountNumber})`)
+        }
+
+        await adminCoAccountsService.recordPlatformFee({
+          category: 'client_signup',
+          amount: intent.amount,
+          description: `Frais de souscription client collecte journalière (${client?.fullName || client?.phone || ''})`,
+          reference: intent.reference,
+        })
+      } catch (err) {
+        console.error('[payment:client_collect_signup] error:', err.message)
       }
     } else if (intent.purpose === 'agent_signup') {
       try {

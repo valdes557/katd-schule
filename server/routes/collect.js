@@ -172,20 +172,44 @@ async function resolveClientForUser(user) {
   const cleanPh = String(user.phone || '').replace(/[^0-9]/g, '')
   const userEmail = String(user.email || '').trim().toLowerCase()
   const orConds = []
-  if (userEmail) orConds.push({ email: userEmail })
-  if (cleanPh) {
+  if (userEmail) {
+    orConds.push({ email: userEmail })
+  }
+  if (cleanPh && cleanPh.length >= 8) {
     const phEnd = cleanPh.slice(-9)
-    const phReg = new RegExp(phEnd + '$')
+    const flexiblePattern = phEnd.split('').join('\\D*')
+    const phReg = new RegExp(flexiblePattern)
     orConds.push({ phone: phReg }, { momoMtn: phReg }, { momoOrange: phReg })
   }
   if (orConds.length > 0) {
     client = await CollectClient.findOne({ $or: orConds })
-    if (client && !client.user) {
-      client.user = user._id
-      await client.save()
+    if (client) {
+      if (!client.user) {
+        client.user = user._id
+        await client.save()
+      }
+      return client
     }
   }
-  return client
+
+  // Fallback : parcourir les clients non encore liés et comparer les numéros nettoyés
+  if (cleanPh && cleanPh.length >= 8) {
+    const unlinked = await CollectClient.find({ user: null })
+    const targetDigits = cleanPh.slice(-9)
+    const found = unlinked.find((c) => {
+      const cPh = String(c.phone || '').replace(/[^0-9]/g, '').slice(-9)
+      const cMtn = String(c.momoMtn || '').replace(/[^0-9]/g, '').slice(-9)
+      const cOra = String(c.momoOrange || '').replace(/[^0-9]/g, '').slice(-9)
+      return (cPh && cPh === targetDigits) || (cMtn && cMtn === targetDigits) || (cOra && cOra === targetDigits)
+    })
+    if (found) {
+      found.user = user._id
+      await found.save()
+      return found
+    }
+  }
+
+  return null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,6 +225,8 @@ router.get('/config', protect, async (req, res) => {
       termsAndConditions: cfg.termsAndConditions,
       monthlyFee: cfg.monthlyFee,
       agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4800,
+      clientSubscriptionFee: cfg.clientSubscriptionFee ?? 4995,
+      clientSubscriptionInterval: cfg.clientSubscriptionInterval ?? 'annual',
       defaultDailyTarget: cfg.defaultDailyTarget,
     })
   } catch (err) {
@@ -218,25 +244,10 @@ router.get('/my-agent-status', protect, async (req, res) => {
     const agent = await CollectAgent.findOne({ user: req.user._id })
     const cfg = await CollectConfig.getOrCreate()
 
-    // Vérifie si l'utilisateur est un client enregistré par un agent (par user._id, email ou téléphone)
-    const cleanPh = String(req.user.phone || '').replace(/[^0-9]/g, '')
-    const userEmail = String(req.user.email || '').trim().toLowerCase()
-    let clientDoc = await CollectClient.findOne({ user: req.user._id }).populate('agent')
-    if (!clientDoc) {
-      const orConds = []
-      if (userEmail) orConds.push({ email: userEmail })
-      if (cleanPh) {
-        const phEnd = cleanPh.slice(-9)
-        const phReg = new RegExp(phEnd + '$')
-        orConds.push({ phone: phReg }, { momoMtn: phReg }, { momoOrange: phReg })
-      }
-      if (orConds.length > 0) {
-        clientDoc = await CollectClient.findOne({ $or: orConds }).populate('agent')
-        if (clientDoc && !clientDoc.user) {
-          clientDoc.user = req.user._id
-          await clientDoc.save()
-        }
-      }
+    // Résolution robuste du client
+    let clientDoc = await resolveClientForUser(req.user)
+    if (clientDoc && clientDoc.populate) {
+      await clientDoc.populate('agent')
     }
 
     res.json({
@@ -247,6 +258,8 @@ router.get('/my-agent-status', protect, async (req, res) => {
       subscriptionPaid: !!agent?.subscriptionPaid,
       subscriptionAmount: agent?.subscriptionAmount || 0,
       agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4800,
+      clientSubscriptionFee: cfg.clientSubscriptionFee ?? 4995,
+      clientSubscriptionInterval: cfg.clientSubscriptionInterval ?? 'annual',
       status: agent ? agent.status : null,
       isClient: !!clientDoc,
       client: clientDoc,
@@ -1639,11 +1652,15 @@ router.get('/admin/withdrawals-history', protect, adminOnly, async (req, res) =>
 // PUT /api/collect/admin/terms — Modification des termes et conditions par l'administrateur
 router.put('/admin/terms', protect, adminOnly, async (req, res) => {
   try {
-    const { termsAndConditions, monthlyFee, agentSubscriptionFee } = req.body
+    const { termsAndConditions, monthlyFee, agentSubscriptionFee, clientSubscriptionFee, clientSubscriptionInterval } = req.body
     const cfg = await CollectConfig.getOrCreate()
     if (termsAndConditions !== undefined) cfg.termsAndConditions = termsAndConditions
     if (monthlyFee !== undefined) cfg.monthlyFee = Number(monthlyFee)
     if (agentSubscriptionFee !== undefined) cfg.agentSubscriptionFee = Math.max(0, Number(agentSubscriptionFee) || 0)
+    if (clientSubscriptionFee !== undefined) cfg.clientSubscriptionFee = Math.max(0, Number(clientSubscriptionFee) || 0)
+    if (clientSubscriptionInterval !== undefined && ['annual', 'monthly'].includes(clientSubscriptionInterval)) {
+      cfg.clientSubscriptionInterval = clientSubscriptionInterval
+    }
     cfg.updatedBy = req.user._id
     await cfg.save()
 
@@ -1656,6 +1673,95 @@ router.put('/admin/terms', protect, adminOnly, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 9. ESPACE CLIENT ("ÉPARGNEZ AU QUOTIDIEN")
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+// POST /api/collect/client/subscribe-wallet — Souscription client par Portefeuille utilisateur (4 995 FCFA)
+router.post('/client/subscribe-wallet', protect, async (req, res) => {
+  try {
+    const cfg = await CollectConfig.getOrCreate()
+    const fee = Number(cfg.clientSubscriptionFee) || 4995
+    const interval = cfg.clientSubscriptionInterval || 'annual'
+
+    // 1. Débit du portefeuille personnel de l'utilisateur
+    try {
+      await wallet.debit(req.user._id, {
+        amount: fee,
+        type: 'transfer_sent',
+        description: `Souscription Client Collecte Journalière (${interval === 'monthly' ? 'Mensuelle' : 'Annuelle'})`,
+        meta: { reason: 'client_collect_signup', fee, interval },
+      })
+    } catch (wErr) {
+      return res.status(400).json({
+        message: `Solde insuffisant dans votre portefeuille KATD pour payer la souscription (${fee.toLocaleString('fr-FR')} FCFA). Veuillez approvisionner votre portefeuille ou choisir Mobile Money.`,
+      })
+    }
+
+    // 2. Recherche ou création du compte client
+    let client = await resolveClientForUser(req.user)
+    const expires = new Date()
+    if (interval === 'monthly') {
+      expires.setMonth(expires.getMonth() + 1)
+    } else {
+      expires.setFullYear(expires.getFullYear() + 1)
+    }
+
+    const { neighborhood, city, cni, momoMtn, momoOrange } = req.body
+
+    if (client) {
+      client.subscriptionPaid = true
+      client.subscriptionPaidAt = new Date()
+      client.subscriptionExpiresAt = expires
+      client.subscriptionAmount = fee
+      client.subscriptionInterval = interval
+      client.subscriptionPaymentMethod = 'wallet'
+      client.isSelfSubscribed = true
+      if (neighborhood) client.neighborhood = neighborhood
+      if (city) client.city = city
+      if (cni) client.cni = cni
+      if (momoMtn) client.momoMtn = momoMtn
+      if (momoOrange) client.momoOrange = momoOrange
+      await client.save()
+    } else {
+      client = await CollectClient.create({
+        user: req.user._id,
+        fullName: req.user.name || 'Client Épargne',
+        phone: req.user.phone || momoMtn || momoOrange || '',
+        email: req.user.email || '',
+        momoMtn: momoMtn || '',
+        momoOrange: momoOrange || '',
+        neighborhood: neighborhood || 'Quartier principal',
+        city: city || '',
+        cni: cni || '',
+        isSelfSubscribed: true,
+        subscriptionPaid: true,
+        subscriptionPaidAt: new Date(),
+        subscriptionExpiresAt: expires,
+        subscriptionAmount: fee,
+        subscriptionInterval: interval,
+        subscriptionPaymentMethod: 'wallet',
+        status: 'active',
+        termsAccepted: true,
+        termsSignedAt: new Date(),
+      })
+    }
+
+    // 3. Répartition 60% Compte 1 / 40% Compte 2
+    await adminCoAccountsService.recordPlatformFee({
+      category: 'client_signup',
+      amount: fee,
+      description: `Frais de souscription client collecte journalière (${client.fullName})`,
+      reference: 'wal_sub_' + Date.now(),
+    })
+
+    return res.json({
+      success: true,
+      message: 'Félicitations ! Votre souscription au service Collecte Journalière a été validée avec succès.',
+      client,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
 
 // GET /api/collect/client/dashboard — Dashboard du client exactement comme sur la capture
 router.get('/client/dashboard', protect, async (req, res) => {

@@ -13,6 +13,7 @@ const CATEGORY_LABELS = {
   collect_fee: 'Frais de fonctionnement mensuel (collecte journalière)',
   merchant_signup: "Frais d'ouverture compte Marchand",
   agent_signup: "Frais d'ouverture compte agent de collecte",
+  client_signup: "Frais de souscription client collecte journalière",
 }
 
 /**

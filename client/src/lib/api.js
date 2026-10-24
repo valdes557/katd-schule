@@ -1223,6 +1223,7 @@ export const paymentsApi = {
 export const walletApi = {
   me: () => api.get('/wallet/me'),
   getBalance: () => api.get('/wallet/me'),
+  getWallet: () => api.get('/wallet/me'),
   withdrawals: () => api.get('/wallet/withdrawals'),
   teachers: () => api.get('/wallet/teachers'),
   initiateDeposit: (payload) => api.post('/wallet/deposit/initiate', payload),
@@ -1403,6 +1404,9 @@ export const collectApi = {
   // Souscription Agent de Collecte (frais d'ouverture 4 800 FCFA)
   payAgentSubscriptionWallet: () => api.post('/collect/agent/pay-subscription-wallet'),
   initiateAgentSubscriptionMomo: (data) => api.post('/payments/agent-subscription/initiate', data),
+  // Souscription Client Collecte Journalière (4 995 FCFA)
+  subscribeClientWallet: (data) => api.post('/collect/client/subscribe-wallet', data),
+  initiateClientSubscriptionMomo: (data) => api.post('/payments/client-subscription/initiate', data),
   // Historique des retraits administrateur
   adminWithdrawalsHistory: () => api.get('/collect/admin/withdrawals-history'),
 }

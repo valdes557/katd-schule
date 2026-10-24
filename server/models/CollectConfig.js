@@ -31,6 +31,8 @@ const collectConfigSchema = new mongoose.Schema(
     monthlyFee: { type: Number, default: 1100, min: 0 },
     defaultDailyTarget: { type: Number, default: 1000 },
     agentSubscriptionFee: { type: Number, default: 4800, min: 0 },
+    clientSubscriptionFee: { type: Number, default: 4995, min: 0 },
+    clientSubscriptionInterval: { type: String, enum: ['annual', 'monthly'], default: 'annual' },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
