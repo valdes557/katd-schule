@@ -83,13 +83,23 @@ async function credit(userId, { amount, type, description = '', counterparty = n
   wallet.balance += amt
   wallet.totalIn += amt
   await wallet.save()
-  const txReason = reason || meta?.reason || ''
-  const tx = await WalletTransaction.create({
-    wallet: wallet._id, owner: userId, direction: 'credit', amount: amt,
-    currency: wallet.currency, type, balanceAfter: wallet.balance,
-    counterparty, paymentIntent, providerTransactionId, description,
-    reason: txReason, meta: { ...meta, reason: txReason || undefined },
-  })
+
+  let tx
+  try {
+    const txReason = reason || meta?.reason || ''
+    tx = await WalletTransaction.create({
+      wallet: wallet._id, owner: userId, direction: 'credit', amount: amt,
+      currency: wallet.currency, type, balanceAfter: wallet.balance,
+      counterparty, paymentIntent, providerTransactionId, description,
+      reason: txReason, meta: { ...meta, reason: txReason || undefined },
+    })
+  } catch (txErr) {
+    console.error('[walletService.credit] Erreur création WalletTransaction, rollback immédiat du crédit:', txErr.message)
+    wallet.balance = Math.max(0, wallet.balance - amt)
+    wallet.totalIn = Math.max(0, wallet.totalIn - amt)
+    await wallet.save()
+    throw txErr
+  }
   // Frais de maintenance : la première somme reçue d'un particulier (transfert, salaire,
   // pension, inscription) règle l'arriéré, exactement comme un dépôt fait par soi-même.
   // Best-effort + require paresseux (scheduler dépend déjà de ce service).
@@ -112,14 +122,24 @@ async function debit(userId, { amount, type, description = '', counterparty = nu
   wallet.balance -= amt
   wallet.totalOut += amt
   await wallet.save()
-  const txReason = reason || meta?.reason || ''
-  const tx = await WalletTransaction.create({
-    wallet: wallet._id, owner: userId, direction: 'debit', amount: amt,
-    currency: wallet.currency, type, balanceAfter: wallet.balance,
-    counterparty, withdrawal, description,
-    reason: txReason, meta: { ...meta, reason: txReason || undefined },
-  })
-  return { wallet, tx }
+
+  try {
+    const txReason = reason || meta?.reason || ''
+    const tx = await WalletTransaction.create({
+      wallet: wallet._id, owner: userId, direction: 'debit', amount: amt,
+      currency: wallet.currency, type, balanceAfter: wallet.balance,
+      counterparty, withdrawal, description,
+      reason: txReason, meta: { ...meta, reason: txReason || undefined },
+    })
+    return { wallet, tx }
+  } catch (txErr) {
+    // SÉCURITÉ ABSOLUE : Rollback immédiat du solde pour éviter tout prélèvement silencieux
+    console.error('[walletService.debit] Erreur création WalletTransaction, rollback immédiat du débit:', txErr.message)
+    wallet.balance += amt
+    wallet.totalOut = Math.max(0, wallet.totalOut - amt)
+    await wallet.save()
+    throw txErr
+  }
 }
 
 // Bloque un montant (retrait demandé) : sort du solde dispo -> locked

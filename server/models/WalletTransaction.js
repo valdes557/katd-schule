@@ -40,6 +40,10 @@ const txSchema = new mongoose.Schema(
         'boost_refund',      // remboursement d'un boost au propriétaire (crédit)
         'ai_subscription',   // paiement souscription IA établissement depuis le solde (débit)
         'ai_subscription_revenue', // revenu souscription IA encaissé par l'admin plateforme (crédit)
+        'agent_subscription', // souscription / frais d'ouverture compte agent de collecte (débit agent)
+        'client_subscription', // souscription client collecte journalière (débit client)
+        'collect_deposit',     // approvisionnement compte collecte client depuis le portefeuille
+        'collect_fee',         // commission ou frais de fonctionnement collecte journalière
       ],
       required: true,
       index: true,
