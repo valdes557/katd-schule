@@ -187,11 +187,11 @@ async function transfer(fromUserId, toUserId, { amount, description = '', reason
   return { from: d.wallet, to: c.wallet, debitTx: d.tx, creditTx: c.tx }
 }
 
-// Calcule les frais de transfert (0,25%, arrondi à l'entier) — payés EN PLUS par l'envoyeur.
+// Calcule les frais de transfert (0,25%, minimum 1 FCFA pour les petits montants) — payés EN PLUS par l'envoyeur.
 function computeTransferFee(amount) {
   const amt = Number(amount)
   if (!amt || amt <= 0) return 0
-  return Math.round(amt * TRANSFER_FEE_RATE)
+  return Math.max(1, Math.round(amt * TRANSFER_FEE_RATE))
 }
 
 // Calcule les frais de retrait (1%, arrondi à l'entier) — DÉDUITS du montant reçu.
@@ -208,16 +208,28 @@ function computeMerchantCommission(amount) {
   return Math.round(amt * MERCHANT_COMMISSION_RATE)
 }
 
-// Crédite l'admin plateforme des frais encaissés (best-effort : ne bloque pas l'opération
-// si l'admin est introuvable ou si le crédit échoue). meta.feeType = 'transfer' | 'withdrawal'.
+// Crédite l'admin plateforme des frais encaissés (répartition 60/40 automatique + grand livre).
+// meta.feeType = 'transfer' | 'withdrawal' | 'maintenance'.
 async function collectFee({ fee, fromUserId, description, meta = {} }) {
-  const { recordPlatformFee } = require('./adminCoAccountsService');
-  setTimeout(() => {
-    const fCat = meta?.feeType === 'maintenance' ? 'maintenance_fee' : meta?.feeType === 'withdrawal' ? 'withdrawal_fee' : 'transfer_fee';
-    recordPlatformFee({ category: fCat, amount: fee, description, meta }).catch(() => {});
-  }, 0);
-  const f = Number(fee)
+  const f = Math.round(Number(fee) || 0)
   if (!f || f <= 0) return
+
+  // 1. Répartition automatique 60% Compte 1 / 40% Compte 2
+  try {
+    const { recordPlatformFee } = require('./adminCoAccountsService')
+    const fCat = meta?.feeType === 'maintenance' ? 'maintenance_fee' : meta?.feeType === 'withdrawal' ? 'withdrawal_fee' : 'transfer_fee'
+    await recordPlatformFee({
+      category: fCat,
+      amount: f,
+      description,
+      reference: meta?.reference || meta?.withdrawal || '',
+      meta,
+    })
+  } catch (err) {
+    console.error('[walletService.collectFee] Erreur recordPlatformFee:', err.message)
+  }
+
+  // 2. Crédit utilisateur super_admin pour traçabilité portefeuille plateforme
   try {
     const admin = await getPlatformAdmin()
     if (admin) {

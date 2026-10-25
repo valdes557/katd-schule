@@ -1,6 +1,7 @@
 // services/adminCoAccountsService.js — Moteur de répartition 60% / 40% et gestion sécurisée
 const AdminCoAccount = require('../models/AdminCoAccount')
 const Shareholding = require('../models/Shareholding')
+const User = require('../models/User')
 const { sendEmail } = require('../utils/emailService')
 
 // Noms conviviaux des 8 catégories de frais
@@ -101,7 +102,7 @@ async function recordPlatformFee({ category, amount, description = '', reference
 /**
  * Génère et expédie un code OTP par email pour déverrouiller un compte
  */
-async function sendAccountOtp(accountKey) {
+async function sendAccountOtp(accountKey, requesterUser = null) {
   const { acc1, acc2 } = await AdminCoAccount.ensureAccounts()
   const account = accountKey === 'account_1' ? acc1 : acc2
 
@@ -129,14 +130,35 @@ async function sendAccountOtp(accountKey) {
     </div>
   `
 
-  await sendEmail({
-    to: account.email,
-    subject: `Code de sécurité d'accès au ${accountTitle} : ${code}`,
-    html,
-  })
+  let emailSent = false
+  let emailError = null
 
-  console.log(`[AdminCoAccounts] Code OTP généré pour ${account.email} (${accountKey}) : ${code}`)
-  return { success: true, email: account.email, devCode: process.env.NODE_ENV !== 'production' ? code : undefined }
+  try {
+    await sendEmail({
+      to: account.email,
+      subject: `Code de sécurité d'accès au ${accountTitle} : ${code}`,
+      html,
+    })
+    emailSent = true
+  } catch (err) {
+    emailError = err.message
+    console.error(`[AdminCoAccounts] Échec d'envoi SMTP du code OTP à ${account.email}:`, err.message)
+  }
+
+  const requesterEmail = (requesterUser?.email || '').toLowerCase().trim()
+  const targetEmail = (account.email || '').toLowerCase().trim()
+  const isOwnerOrSuper = requesterEmail === targetEmail || requesterUser?.role === 'super_admin'
+
+  console.log(`[AdminCoAccounts] Code OTP généré pour ${account.email} (${accountKey}) : ${code} (emailSent=${emailSent})`)
+
+  return {
+    success: true,
+    email: account.email,
+    emailSent,
+    emailError,
+    // Toujours renvoyer le code si l'email n'a pas pu être délivré ou si le demandeur est titulaire / super_admin
+    code: (!emailSent || isOwnerOrSuper || process.env.NODE_ENV !== 'production') ? code : undefined,
+  }
 }
 
 /**
@@ -252,11 +274,53 @@ async function performAccountWithdrawal(accountKey, { amount, method = 'momo', p
     performedBy: performedBy || account.email,
   }
 
+  // Si le retrait est vers le portefeuille KATD, créditer immédiatement l'utilisateur
+  let targetWalletAccountNo = ''
+  if (method === 'wallet') {
+    const walletService = require('./walletService')
+    const targetEmail = (account.email || '').toLowerCase().trim()
+    let targetUser = await User.findOne({ email: new RegExp('^' + targetEmail + '$', 'i') })
+    if (!targetUser && performedBy) {
+      targetUser = await User.findOne({ email: new RegExp('^' + performedBy.trim() + '$', 'i') })
+    }
+    if (!targetUser) {
+      account.balance += amt
+      account.totalWithdrawn -= amt
+      throw new Error(`Aucun utilisateur trouvé avec l'email ${account.email} pour créditer le portefeuille.`)
+    }
+
+    try {
+      await walletService.credit(targetUser._id, {
+        amount: amt,
+        type: 'transfer_received',
+        description: `Retrait depuis mon compte administrateur 60/40 (${account.name})`,
+        meta: {
+          fromCoAccount: accountKey,
+          performedBy: performedBy || account.email,
+          reason: notes || 'Retrait administrateur vers portefeuille',
+        },
+        reason: notes || 'Retrait administrateur vers portefeuille',
+      })
+      targetWalletAccountNo = targetUser.walletAccountNo || ''
+      withdrawalRecord.targetWalletAccountNo = targetWalletAccountNo
+      withdrawalRecord.targetUserId = targetUser._id
+      withdrawalRecord.targetUserName = targetUser.name || ''
+    } catch (wErr) {
+      account.balance += amt
+      account.totalWithdrawn -= amt
+      throw new Error(`Échec du crédit portefeuille : ${wErr.message}`)
+    }
+  }
+
   account.withdrawals.push(withdrawalRecord)
   await account.save()
 
   // Notification par email du retrait
   try {
+    const destInfo = method === 'wallet'
+      ? `Portefeuille KATD (${targetWalletAccountNo || account.email})`
+      : `Mobile Money (${operator.toUpperCase()} ${phone})`
+
     await sendEmail({
       to: account.email,
       subject: `Confirmation de retrait : ${amt.toLocaleString('fr-FR')} FCFA`,
@@ -264,7 +328,7 @@ async function performAccountWithdrawal(accountKey, { amount, method = 'momo', p
         <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 500px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
           <h3 style="color: #16a34a; margin-top: 0;">Retrait validé avec succès</h3>
           <p>Un retrait de <b>${amt.toLocaleString('fr-FR')} FCFA</b> vient d'être effectué depuis votre compte administrateur (${account.name}).</p>
-          <p><b>Mode :</b> ${method === 'momo' ? `Mobile Money (${operator.toUpperCase()} ${phone})` : 'Portefeuille'}</p>
+          <p><b>Mode de versement :</b> ${destInfo}</p>
           <p><b>Nouveau solde restant :</b> ${account.balance.toLocaleString('fr-FR')} FCFA</p>
         </div>
       `,

@@ -1418,6 +1418,7 @@ export const adminCoAccountsApi = {
   getSummary: () => api.get('/admin/co-accounts/summary'),
   requestOtp: (accountKey) => api.post('/admin/co-accounts/request-otp', { accountKey }),
   verifyOtp: (accountKey, code) => api.post('/admin/co-accounts/verify-otp', { accountKey, code }),
+  directUnlock: (accountKey) => api.post('/admin/co-accounts/direct-unlock', { accountKey }),
   getDetails: (accountKey) => api.get(`/admin/co-accounts/details/${accountKey}`),
   withdraw: (data) => api.post('/admin/co-accounts/withdraw', data),
 }

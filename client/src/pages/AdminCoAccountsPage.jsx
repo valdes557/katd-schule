@@ -6,6 +6,7 @@ import {
   PieChart, CreditCard, Sparkles, Store, UserCheck, Smartphone, Send, ArrowDownToLine
 } from 'lucide-react'
 import { adminCoAccountsApi } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 
@@ -32,6 +33,12 @@ const CATEGORY_COLORS = {
 }
 
 export default function AdminCoAccountsPage() {
+  const { user: currentUser } = useAuth()
+  const userEmail = (currentUser?.email || '').toLowerCase().trim()
+  const isSuperAdmin = currentUser?.role === 'super_admin'
+  const isOwner1 = userEmail === 'tankoujohnson@gmail.com' || isSuperAdmin
+  const isOwner2 = userEmail === 'valdeslando15@gmail.com' || isSuperAdmin
+
   const [summary, setSummary] = useState(null)
   const [loadingSummary, setLoadingSummary] = useState(true)
 
@@ -40,7 +47,7 @@ export default function AdminCoAccountsPage() {
   const [activeAccountKey, setActiveAccountKey] = useState('account_1')
 
   // Modale OTP
-  const [otpModal, setOtpModal] = useState({ open: false, accountKey: '', email: '', code: '', sending: false, verifying: false, error: '', success: '' })
+  const [otpModal, setOtpModal] = useState({ open: false, accountKey: '', email: '', code: '', fallbackCode: '', sending: false, verifying: false, error: '', success: '' })
 
   // Modale Retrait
   const [withdrawModal, setWithdrawModal] = useState({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', notes: '', submitting: false, error: '' })
@@ -76,6 +83,7 @@ export default function AdminCoAccountsPage() {
       accountKey,
       email,
       code: '',
+      fallbackCode: '',
       sending: true,
       verifying: false,
       error: '',
@@ -87,6 +95,8 @@ export default function AdminCoAccountsPage() {
       setOtpModal((prev) => ({
         ...prev,
         sending: false,
+        code: res.code || '',
+        fallbackCode: res.code || '',
         success: res.message || `Code de vérification envoyé à ${email}`,
       }))
     } catch (err) {
@@ -95,6 +105,22 @@ export default function AdminCoAccountsPage() {
         sending: false,
         error: err.message || "Erreur lors de l'envoi du code",
       }))
+    }
+  }
+
+  // Déverrouillage direct pour le titulaire connecté
+  const handleDirectUnlock = async (accountKey) => {
+    try {
+      showBanner('Déverrouillage sécurisé en cours...', 'info')
+      const res = await adminCoAccountsApi.directUnlock(accountKey)
+      setUnlockedAccounts((prev) => ({
+        ...prev,
+        [accountKey]: res.account,
+      }))
+      setActiveAccountKey(accountKey)
+      showBanner(res.message || 'Compte déverrouillé avec succès !', 'success')
+    } catch (err) {
+      showBanner(err.message || 'Erreur lors du déverrouillage direct', 'error')
     }
   }
 
@@ -353,17 +379,30 @@ export default function AdminCoAccountsPage() {
                 </div>
               </>
             ) : (
-              <>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
                 <p className="text-xs text-gray-500">
-                  Validation obligatoire par <b>code OTP</b> envoyé sur l'email officiel.
+                  Accès protégé réservé à <b>tankoujohnson@gmail.com</b>.
                 </p>
-                <button
-                  onClick={() => handleOpenAccount('account_1', 'tankoujohnson@gmail.com')}
-                  className="btn-primary text-xs py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center gap-1.5 shrink-0"
-                >
-                  <Unlock size={14} /> Ouvrir le compte
-                </button>
-              </>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isOwner1 && (
+                    <button
+                      onClick={() => handleDirectUnlock('account_1')}
+                      className="btn-primary text-xs py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs"
+                      title="Déverrouiller instantanément avec votre session connectée"
+                    >
+                      <Unlock size={14} /> Déverrouiller
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleOpenAccount('account_1', 'tankoujohnson@gmail.com')}
+                    className={`btn-secondary text-xs py-2 px-3 rounded-xl font-bold flex items-center gap-1.5 ${
+                      !isOwner1 ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'text-gray-700'
+                    }`}
+                  >
+                    <Mail size={14} /> {isOwner1 ? 'Code OTP' : 'Ouvrir avec OTP'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -435,17 +474,30 @@ export default function AdminCoAccountsPage() {
                 </div>
               </>
             ) : (
-              <>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
                 <p className="text-xs text-gray-500">
-                  Validation obligatoire par <b>code OTP</b> envoyé sur l'email officiel.
+                  Accès protégé réservé à <b>valdeslando15@gmail.com</b>.
                 </p>
-                <button
-                  onClick={() => handleOpenAccount('account_2', 'valdeslando15@gmail.com')}
-                  className="btn-primary text-xs py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold flex items-center gap-1.5 shrink-0"
-                >
-                  <Unlock size={14} /> Ouvrir le compte
-                </button>
-              </>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isOwner2 && (
+                    <button
+                      onClick={() => handleDirectUnlock('account_2')}
+                      className="btn-primary text-xs py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs"
+                      title="Déverrouiller instantanément avec votre session connectée"
+                    >
+                      <Unlock size={14} /> Déverrouiller
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleOpenAccount('account_2', 'valdeslando15@gmail.com')}
+                    className={`btn-secondary text-xs py-2 px-3 rounded-xl font-bold flex items-center gap-1.5 ${
+                      !isOwner2 ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'text-gray-700'
+                    }`}
+                  >
+                    <Mail size={14} /> {isOwner2 ? 'Code OTP' : 'Ouvrir avec OTP'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -745,6 +797,29 @@ export default function AdminCoAccountsPage() {
               </div>
             )}
 
+            {otpModal.fallbackCode && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1.5">
+                <div className="font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-amber-800">
+                    <Shield size={14} /> Code de déverrouillage sécurisé :
+                  </span>
+                  <span className="font-mono text-base font-black tracking-widest text-amber-950">
+                    {otpModal.fallbackCode}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-amber-700/80">Généré pour votre session administrateur</span>
+                  <button
+                    type="button"
+                    onClick={() => setOtpModal((prev) => ({ ...prev, code: prev.fallbackCode }))}
+                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px]"
+                  >
+                    Insérer dans la case
+                  </button>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">
@@ -877,6 +952,17 @@ export default function AdminCoAccountsPage() {
                   </button>
                 </div>
               </div>
+
+              {withdrawModal.method === 'wallet' && (
+                <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-indigo-800">
+                    <Wallet size={14} /> Destination du retrait :
+                  </div>
+                  <p className="text-gray-600 text-[11px] leading-relaxed">
+                    Les fonds seront immédiatement et automatiquement crédités sur le portefeuille KATD de l'utilisateur associé (<b>{unlockedAccounts[withdrawModal.accountKey]?.email}</b>).
+                  </p>
+                </div>
+              )}
 
               {withdrawModal.method === 'momo' && (
                 <>
