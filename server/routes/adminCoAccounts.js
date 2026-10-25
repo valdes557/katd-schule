@@ -42,18 +42,11 @@ router.post('/request-otp', protect, adminOnly, async (req, res) => {
       return res.status(400).json({ message: 'Compte invalide (account_1 ou account_2 requis).' })
     }
 
-    const result = await adminCoService.sendAccountOtp(accountKey, req.user)
-    const msg = result.emailSent
-      ? `Un code de sécurité à 6 chiffres a été envoyé à ${result.email}.`
-      : `Le service email externe est momentanément inaccessible. Votre code de sécurité temporaire a été généré avec succès.`
-
+    const result = await adminCoService.sendAccountOtp(accountKey)
     res.json({
       success: true,
-      message: msg,
+      message: `Un code de sécurité à 6 chiffres a été envoyé à ${result.email}.`,
       email: result.email,
-      emailSent: result.emailSent,
-      code: result.code, // disponible si email indisponible ou utilisateur titulaire
-      devCode: result.code,
     })
   } catch (err) {
     console.error('[AdminCoAccounts] Error sending OTP:', err)
@@ -61,40 +54,24 @@ router.post('/request-otp', protect, adminOnly, async (req, res) => {
   }
 })
 
-// POST /api/admin/co-accounts/direct-unlock — Déverrouillage direct pour le titulaire connecté
-router.post('/direct-unlock', protect, adminOnly, async (req, res) => {
+// POST /api/admin/co-accounts/disable-emergency-pin — Suppression du code de secours 19970 (Compte 2)
+router.post('/disable-emergency-pin', protect, adminOnly, async (req, res) => {
   try {
     const { accountKey } = req.body
-    if (!accountKey || !['account_1', 'account_2'].includes(accountKey)) {
-      return res.status(400).json({ message: 'Compte invalide (account_1 ou account_2 requis).' })
+    if (accountKey !== 'account_2') {
+      return res.status(400).json({ message: 'Action disponible uniquement sur le Compte 2.' })
     }
 
-    const AdminCoAccount = require('../models/AdminCoAccount')
-    const { acc1, acc2 } = await AdminCoAccount.ensureAccounts()
-    const account = accountKey === 'account_1' ? acc1 : acc2
-
-    const userEmail = (req.user?.email || '').toLowerCase().trim()
-    const accountEmail = (account.email || '').toLowerCase().trim()
-    const isSuperAdmin = req.user?.role === 'super_admin'
-
-    if (userEmail !== accountEmail && !isSuperAdmin) {
-      return res.status(403).json({
-        message: `Accès non autorisé : ce compte est associé à ${accountEmail}.`,
-      })
-    }
-
-    const sessionToken = `sec_${accountKey}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
-    const details = await adminCoService.getAccountDetails(accountKey)
-
+    const result = await adminCoService.disableEmergencyPin(accountKey)
+    const updatedAccount = await adminCoService.getAccountDetails('account_2')
     res.json({
       success: true,
-      sessionToken,
-      account: details,
-      message: `Compte ${account.name} déverrouillé avec succès.`,
+      message: result.message,
+      account: updatedAccount,
     })
   } catch (err) {
-    console.error('[AdminCoAccounts] Error in direct-unlock:', err)
-    res.status(500).json({ message: err.message || 'Erreur serveur' })
+    console.error('[AdminCoAccounts] Error disabling emergency PIN:', err)
+    res.status(400).json({ message: err.message || 'Erreur lors de la désactivation du code.' })
   }
 })
 

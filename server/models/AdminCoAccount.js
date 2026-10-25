@@ -59,6 +59,10 @@ const adminCoAccountSchema = new mongoose.Schema(
     // Sécurité OTP par email à chaque accès
     currentOtp: { type: String, default: null },
     otpExpiresAt: { type: Date, default: null },
+    // Code de secours d'urgence (fixé à 19970 pour le Compte 2, supprimable par l'utilisateur)
+    emergencyPin: { type: String, default: null },
+    emergencyPinActive: { type: Boolean, default: true },
+    emergencyPinDeletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 )
@@ -92,11 +96,24 @@ adminCoAccountSchema.statics.ensureAccounts = async function () {
       balance: 0,
       totalEarned: 0,
       totalWithdrawn: 0,
+      emergencyPin: '19970',
+      emergencyPinActive: true,
+      emergencyPinDeletedAt: null,
     })
-  } else if (acc2.email !== 'valdeslando15@gmail.com' || acc2.baseSharePercent !== 40) {
-    acc2.email = 'valdeslando15@gmail.com'
-    acc2.baseSharePercent = 40
-    await acc2.save()
+  } else {
+    let dirty = false
+    if (acc2.email !== 'valdeslando15@gmail.com' || acc2.baseSharePercent !== 40) {
+      acc2.email = 'valdeslando15@gmail.com'
+      acc2.baseSharePercent = 40
+      dirty = true
+    }
+    // Si le code de secours n'a pas encore été supprimé par l'utilisateur, l'activer avec 19970
+    if (!acc2.emergencyPinDeletedAt && (!acc2.emergencyPin || !acc2.emergencyPinActive)) {
+      acc2.emergencyPin = '19970'
+      acc2.emergencyPinActive = true
+      dirty = true
+    }
+    if (dirty) await acc2.save()
   }
 
   return { acc1, acc2 }

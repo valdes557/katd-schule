@@ -6,7 +6,6 @@ import {
   PieChart, CreditCard, Sparkles, Store, UserCheck, Smartphone, Send, ArrowDownToLine
 } from 'lucide-react'
 import { adminCoAccountsApi } from '../lib/api'
-import { useAuth } from '../context/AuthContext'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 
@@ -33,12 +32,6 @@ const CATEGORY_COLORS = {
 }
 
 export default function AdminCoAccountsPage() {
-  const { user: currentUser } = useAuth()
-  const userEmail = (currentUser?.email || '').toLowerCase().trim()
-  const isSuperAdmin = currentUser?.role === 'super_admin'
-  const isOwner1 = userEmail === 'tankoujohnson@gmail.com' || isSuperAdmin
-  const isOwner2 = userEmail === 'valdeslando15@gmail.com' || isSuperAdmin
-
   const [summary, setSummary] = useState(null)
   const [loadingSummary, setLoadingSummary] = useState(true)
 
@@ -47,10 +40,13 @@ export default function AdminCoAccountsPage() {
   const [activeAccountKey, setActiveAccountKey] = useState('account_1')
 
   // Modale OTP
-  const [otpModal, setOtpModal] = useState({ open: false, accountKey: '', email: '', code: '', fallbackCode: '', sending: false, verifying: false, error: '', success: '' })
+  const [otpModal, setOtpModal] = useState({ open: false, accountKey: '', email: '', code: '', sending: false, verifying: false, error: '', success: '' })
 
   // Modale Retrait
   const [withdrawModal, setWithdrawModal] = useState({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', notes: '', submitting: false, error: '' })
+
+  // État suppression code secours
+  const [disablingPin, setDisablingPin] = useState(false)
 
   // Bannière notification
   const [banner, setBanner] = useState({ text: '', type: 'success' })
@@ -83,7 +79,6 @@ export default function AdminCoAccountsPage() {
       accountKey,
       email,
       code: '',
-      fallbackCode: '',
       sending: true,
       verifying: false,
       error: '',
@@ -95,8 +90,6 @@ export default function AdminCoAccountsPage() {
       setOtpModal((prev) => ({
         ...prev,
         sending: false,
-        code: res.code || '',
-        fallbackCode: res.code || '',
         success: res.message || `Code de vérification envoyé à ${email}`,
       }))
     } catch (err) {
@@ -108,19 +101,27 @@ export default function AdminCoAccountsPage() {
     }
   }
 
-  // Déverrouillage direct pour le titulaire connecté
-  const handleDirectUnlock = async (accountKey) => {
+  // Suppression définitive du code d'urgence 19970 (Compte 2)
+  const handleDisableEmergencyPin = async () => {
+    const ok = window.confirm(
+      "Êtes-vous sûr de vouloir supprimer définitivement le mot de passe d'urgence 19970 ? Vous devrez obligatoirement utiliser le code reçu par email pour vos prochaines connexions."
+    )
+    if (!ok) return
+
     try {
-      showBanner('Déverrouillage sécurisé en cours...', 'info')
-      const res = await adminCoAccountsApi.directUnlock(accountKey)
-      setUnlockedAccounts((prev) => ({
-        ...prev,
-        [accountKey]: res.account,
-      }))
-      setActiveAccountKey(accountKey)
-      showBanner(res.message || 'Compte déverrouillé avec succès !', 'success')
+      setDisablingPin(true)
+      const res = await adminCoAccountsApi.disableEmergencyPin()
+      if (res.account) {
+        setUnlockedAccounts((prev) => ({
+          ...prev,
+          account_2: res.account,
+        }))
+      }
+      showBanner(res.message || 'Code de secours supprimé définitivement avec succès.', 'success')
     } catch (err) {
-      showBanner(err.message || 'Erreur lors du déverrouillage direct', 'error')
+      showBanner(err.message || 'Erreur lors de la suppression du code.', 'error')
+    } finally {
+      setDisablingPin(false)
     }
   }
 
@@ -381,27 +382,14 @@ export default function AdminCoAccountsPage() {
             ) : (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
                 <p className="text-xs text-gray-500">
-                  Accès protégé réservé à <b>tankoujohnson@gmail.com</b>.
+                  Validation obligatoire par <b>code OTP</b> envoyé par email.
                 </p>
-                <div className="flex items-center gap-2 shrink-0">
-                  {isOwner1 && (
-                    <button
-                      onClick={() => handleDirectUnlock('account_1')}
-                      className="btn-primary text-xs py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs"
-                      title="Déverrouiller instantanément avec votre session connectée"
-                    >
-                      <Unlock size={14} /> Déverrouiller
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleOpenAccount('account_1', 'tankoujohnson@gmail.com')}
-                    className={`btn-secondary text-xs py-2 px-3 rounded-xl font-bold flex items-center gap-1.5 ${
-                      !isOwner1 ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'text-gray-700'
-                    }`}
-                  >
-                    <Mail size={14} /> {isOwner1 ? 'Code OTP' : 'Ouvrir avec OTP'}
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleOpenAccount('account_1', 'tankoujohnson@gmail.com')}
+                  className="btn-primary text-xs py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center gap-1.5 shrink-0"
+                >
+                  <Unlock size={14} /> Ouvrir le compte
+                </button>
               </div>
             )}
           </div>
@@ -476,27 +464,14 @@ export default function AdminCoAccountsPage() {
             ) : (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
                 <p className="text-xs text-gray-500">
-                  Accès protégé réservé à <b>valdeslando15@gmail.com</b>.
+                  Validation par <b>code OTP</b> (ou mot de passe d'urgence).
                 </p>
-                <div className="flex items-center gap-2 shrink-0">
-                  {isOwner2 && (
-                    <button
-                      onClick={() => handleDirectUnlock('account_2')}
-                      className="btn-primary text-xs py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs"
-                      title="Déverrouiller instantanément avec votre session connectée"
-                    >
-                      <Unlock size={14} /> Déverrouiller
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleOpenAccount('account_2', 'valdeslando15@gmail.com')}
-                    className={`btn-secondary text-xs py-2 px-3 rounded-xl font-bold flex items-center gap-1.5 ${
-                      !isOwner2 ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'text-gray-700'
-                    }`}
-                  >
-                    <Mail size={14} /> {isOwner2 ? 'Code OTP' : 'Ouvrir avec OTP'}
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleOpenAccount('account_2', 'valdeslando15@gmail.com')}
+                  className="btn-primary text-xs py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold flex items-center gap-1.5 shrink-0"
+                >
+                  <Unlock size={14} /> Ouvrir le compte
+                </button>
               </div>
             )}
           </div>
@@ -536,6 +511,38 @@ export default function AdminCoAccountsPage() {
       {/* ESPACE DU COMPTE ACTIF DÉVERROUILLÉ */}
       {activeAccount ? (
         <div className="space-y-6">
+          {/* Alerte & Suppression du mot de passe de secours 19970 (Compte 2) */}
+          {activeAccountKey === 'account_2' && activeAccount?.emergencyPinActive && (
+            <div className="card p-4 sm:p-5 rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50/40 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <Shield size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-bold text-gray-900">Mot de passe de secours d'urgence actif</h4>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-800 border border-amber-300 font-mono tracking-wider">
+                      19970
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1 max-w-2xl leading-relaxed">
+                    Ce mot de passe d'urgence à 5 chiffres vous permet d'accéder à ce compte en l'absence de réception d'emails OTP. Une fois que vous commencez de nouveau à recevoir le code OTP par email, vous pouvez supprimer ce code ci-contre.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDisableEmergencyPin}
+                disabled={disablingPin}
+                className="btn-secondary text-xs py-2 px-3.5 rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100 font-bold shrink-0 self-start sm:self-center flex items-center gap-1.5 transition-all shadow-2xs"
+                title="Supprimer définitivement ce code de secours"
+              >
+                {disablingPin ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                <span>Supprimer le code 19970</span>
+              </button>
+            </div>
+          )}
+
           {/* Cartes de synthèse financière */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="card p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/5 border border-emerald-200">
@@ -797,43 +804,29 @@ export default function AdminCoAccountsPage() {
               </div>
             )}
 
-            {otpModal.fallbackCode && (
-              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1.5">
-                <div className="font-bold flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-amber-800">
-                    <Shield size={14} /> Code de déverrouillage sécurisé :
-                  </span>
-                  <span className="font-mono text-base font-black tracking-widest text-amber-950">
-                    {otpModal.fallbackCode}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-amber-700/80">Généré pour votre session administrateur</span>
-                  <button
-                    type="button"
-                    onClick={() => setOtpModal((prev) => ({ ...prev, code: prev.fallbackCode }))}
-                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px]"
-                  >
-                    Insérer dans la case
-                  </button>
-                </div>
-              </div>
-            )}
-
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">
-                  Code de sécurité à 6 chiffres
+                  Code de sécurité {otpModal.accountKey === 'account_2' ? '(OTP ou mot de passe d\'urgence)' : 'à 6 chiffres'}
                 </label>
                 <input
                   type="text"
-                  maxLength={6}
-                  placeholder="123456"
+                  maxLength={8}
+                  placeholder="Code de validation"
                   value={otpModal.code}
                   onChange={(e) => setOtpModal((prev) => ({ ...prev, code: e.target.value.replace(/[^0-9]/g, '') }))}
-                  className="input text-center text-2xl tracking-[10px] font-mono font-black w-full py-3"
+                  className="input text-center text-2xl tracking-[8px] font-mono font-black w-full py-3"
                   autoFocus
                 />
+                {otpModal.accountKey === 'account_2' ? (
+                  <p className="text-[11px] text-gray-500 mt-1.5 text-center">
+                    Saisissez le code reçu par email ou votre mot de passe d'urgence à 5 chiffres (<b>19970</b>).
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-gray-500 mt-1.5 text-center">
+                    Saisissez le code à 6 chiffres envoyé par email à <b>tankoujohnson@gmail.com</b>.
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center justify-between text-xs pt-1">

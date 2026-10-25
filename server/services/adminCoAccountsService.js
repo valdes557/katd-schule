@@ -102,7 +102,7 @@ async function recordPlatformFee({ category, amount, description = '', reference
 /**
  * Génère et expédie un code OTP par email pour déverrouiller un compte
  */
-async function sendAccountOtp(accountKey, requesterUser = null) {
+async function sendAccountOtp(accountKey) {
   const { acc1, acc2 } = await AdminCoAccount.ensureAccounts()
   const account = accountKey === 'account_1' ? acc1 : acc2
 
@@ -131,8 +131,6 @@ async function sendAccountOtp(accountKey, requesterUser = null) {
   `
 
   let emailSent = false
-  let emailError = null
-
   try {
     await sendEmail({
       to: account.email,
@@ -141,42 +139,50 @@ async function sendAccountOtp(accountKey, requesterUser = null) {
     })
     emailSent = true
   } catch (err) {
-    emailError = err.message
-    console.error(`[AdminCoAccounts] Échec d'envoi SMTP du code OTP à ${account.email}:`, err.message)
+    console.error(`[AdminCoAccounts] Échec d'envoi SMTP à ${account.email}:`, err.message)
   }
 
-  const requesterEmail = (requesterUser?.email || '').toLowerCase().trim()
-  const targetEmail = (account.email || '').toLowerCase().trim()
-  const isOwnerOrSuper = requesterEmail === targetEmail || requesterUser?.role === 'super_admin'
-
-  console.log(`[AdminCoAccounts] Code OTP généré pour ${account.email} (${accountKey}) : ${code} (emailSent=${emailSent})`)
+  console.log(`[AdminCoAccounts] Code OTP expédié pour ${account.email} (${accountKey}) : ${code} (emailSent=${emailSent})`)
 
   return {
     success: true,
     email: account.email,
     emailSent,
-    emailError,
-    // Toujours renvoyer le code si l'email n'a pas pu être délivré ou si le demandeur est titulaire / super_admin
-    code: (!emailSent || isOwnerOrSuper || process.env.NODE_ENV !== 'production') ? code : undefined,
   }
 }
 
 /**
  * Valide l'OTP saisi et retourne les données complètes du compte
+ * Prend en charge le mot de passe d'urgence 19970 pour le Compte 2 si actif
  */
 async function verifyAccountOtp(accountKey, code) {
   const { acc1, acc2 } = await AdminCoAccount.ensureAccounts()
   const account = accountKey === 'account_1' ? acc1 : acc2
+  const cleanCode = String(code || '').trim()
 
+  // 1. Vérification spéciale du mot de passe de secours 19970 (UNIQUEMENT pour le Compte 2)
+  if (accountKey === 'account_2' && account.emergencyPinActive && account.emergencyPin) {
+    if (cleanCode === String(account.emergencyPin).trim()) {
+      const sessionToken = `sec_${accountKey}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      return {
+        success: true,
+        sessionToken,
+        account: await getAccountDetails(accountKey),
+        usedEmergencyPin: true,
+      }
+    }
+  }
+
+  // 2. Vérification normale par code OTP envoyé par email
   if (!account.currentOtp || !account.otpExpiresAt) {
-    throw new Error('Aucun code de vérification actif. Veuillez demander un nouveau code.')
+    throw new Error('Aucun code de vérification actif. Veuillez cliquer sur "Renvoyer un code".')
   }
 
   if (new Date() > new Date(account.otpExpiresAt)) {
     throw new Error('Le code de vérification a expiré. Veuillez en demander un nouveau.')
   }
 
-  if (String(account.currentOtp).trim() !== String(code).trim()) {
+  if (String(account.currentOtp).trim() !== cleanCode) {
     throw new Error('Code de vérification incorrect.')
   }
 
@@ -242,6 +248,26 @@ async function getAccountDetails(accountKey) {
     categories: Object.values(categoriesBreakdown),
     recentLedger,
     withdrawals: recentWithdrawals,
+    emergencyPinActive: accountKey === 'account_2' ? !!account.emergencyPinActive : false,
+  }
+}
+
+/**
+ * Supprime définitivement le mot de passe de secours 19970 pour le Compte 2
+ */
+async function disableEmergencyPin(accountKey) {
+  if (accountKey !== 'account_2') {
+    throw new Error('Action réservée au Compte 2.')
+  }
+  const { acc2 } = await AdminCoAccount.ensureAccounts()
+  acc2.emergencyPinActive = false
+  acc2.emergencyPin = null
+  acc2.emergencyPinDeletedAt = new Date()
+  await acc2.save()
+  console.log('[AdminCoAccounts] Mot de passe de secours 19970 supprimé définitivement par l\'utilisateur.')
+  return {
+    success: true,
+    message: 'Le code de secours 19970 a été supprimé définitivement de votre compte avec succès.',
   }
 }
 
@@ -382,5 +408,6 @@ module.exports = {
   getAccountsSummary,
   getDynamicShareholdingStats,
   performAccountWithdrawal,
+  disableEmergencyPin,
   CATEGORY_LABELS,
 }
