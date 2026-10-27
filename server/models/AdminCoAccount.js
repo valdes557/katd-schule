@@ -12,6 +12,11 @@ const adminWithdrawalSchema = new mongoose.Schema(
     accountName: { type: String, default: '' },
     notes: { type: String, default: '' },
     status: { type: String, enum: ['completed', 'pending', 'rejected'], default: 'completed' },
+    providerPayoutId: { type: String, default: '' },
+    providerRef: { type: String, default: '' },
+    targetWalletAccountNo: { type: String, default: '' },
+    targetUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    targetUserName: { type: String, default: '' },
     withdrawnAt: { type: Date, default: Date.now },
     performedBy: { type: String, default: '' },
   },
@@ -23,14 +28,16 @@ const adminRevenueLedgerSchema = new mongoose.Schema(
     category: {
       type: String,
       enum: [
-        'withdrawal_fee',       // 1. Frais de retrait
-        'transfer_fee',         // 2. Frais de transfert
-        'maintenance_fee',      // 3. Frais de maintenance
-        'subscription',         // 4. Frais de souscription d'école
-        'ai_subscription',      // 5. Frais de souscription IA
-        'collect_fee',          // 6. Frais de fonctionnement mensuel (collecte journalière)
-        'merchant_signup',      // 7. Frais d'ouverture compte Marchand
-        'agent_signup',         // 8. Frais d'ouverture compte agent de collecte
+        'withdrawal_fee',          // 1. Frais de retrait
+        'transfer_fee',            // 2. Frais de transfert
+        'maintenance_fee',         // 3. Frais de maintenance
+        'subscription',            // 4. Frais de souscription d'école
+        'ai_subscription',         // 5. Frais de souscription IA
+        'collect_fee',             // 6. Frais de fonctionnement mensuel (collecte journalière)
+        'merchant_signup',         // 7. Frais d'ouverture compte Marchand
+        'agent_signup',            // 8. Frais d'ouverture compte agent de collecte
+        'client_signup',           // 9. Frais de souscription client collecte journalière
+        'shareholder_subscription',// 10. Frais de souscription des associés (actions)
       ],
       required: true,
       index: true,

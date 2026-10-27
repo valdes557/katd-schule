@@ -764,6 +764,18 @@ async function applyOutcome(intent, status, raw) {
             })
           }
         } catch (e) { /* part créée même si le crédit admin échoue */ }
+        try {
+          const adminCoAccountsService = require('../services/adminCoAccountsService')
+          await adminCoAccountsService.recordPlatformFee({
+            category: 'shareholder_subscription',
+            amount: intent.amount,
+            description: 'Souscription actionnaire associé (' + (m.percent || 1) + '%) — ' + (m.planLabel || m.planKey || ''),
+            reference: String(intent._id || ''),
+            meta: { planKey: m.planKey, zone: m.zone || '', percent: m.percent, method: 'momo' },
+          })
+        } catch (coErr) {
+          console.error('[AdminCoAccounts] shareholder_subscription error:', coErr.message)
+        }
       }
     } else if (intent.purpose === 'boost') {
       // Boost payé par Mobile Money : encaisse le revenu (admin) puis active la campagne.

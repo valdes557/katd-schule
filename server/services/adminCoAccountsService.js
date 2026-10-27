@@ -4,7 +4,7 @@ const Shareholding = require('../models/Shareholding')
 const User = require('../models/User')
 const { sendEmail } = require('../utils/emailService')
 
-// Noms conviviaux des 8 catégories de frais
+// Noms conviviaux des catégories de frais
 const CATEGORY_LABELS = {
   withdrawal_fee: 'Frais de retrait',
   transfer_fee: 'Frais de transfert',
@@ -15,6 +15,7 @@ const CATEGORY_LABELS = {
   merchant_signup: "Frais d'ouverture compte Marchand",
   agent_signup: "Frais d'ouverture compte agent de collecte",
   client_signup: "Frais de souscription client collecte journalière",
+  shareholder_subscription: "Frais de souscription des associés (actions)",
 }
 
 /**
@@ -272,9 +273,9 @@ async function disableEmergencyPin(accountKey) {
 }
 
 /**
- * Enregistre un retrait pour l'un des comptes
+ * Enregistre un retrait pour l'un des comptes (Mobile Money ou Portefeuille utilisateur)
  */
-async function performAccountWithdrawal(accountKey, { amount, method = 'momo', phone = '', operator = '', accountName = '', notes = '', performedBy = '' }) {
+async function performAccountWithdrawal(accountKey, { amount, method = 'momo', phone = '', operator = '', accountName = '', notes = '', performedBy = '', targetWalletAccountNo = '' }) {
   const amt = Math.round(Number(amount) || 0)
   if (!amt || amt <= 0) throw new Error('Montant de retrait invalide.')
 
@@ -300,41 +301,103 @@ async function performAccountWithdrawal(accountKey, { amount, method = 'momo', p
     performedBy: performedBy || account.email,
   }
 
-  // Si le retrait est vers le portefeuille KATD, créditer immédiatement l'utilisateur
-  let targetWalletAccountNo = ''
+  // ─────────────────────────────────────────────────────────────
+  // 1. RETRAIT VERS PORTEFEUILLE KATD
+  // ─────────────────────────────────────────────────────────────
+  let creditedWalletNo = ''
+  let creditedUserName = ''
   if (method === 'wallet') {
     const walletService = require('./walletService')
-    const targetEmail = (account.email || '').toLowerCase().trim()
-    let targetUser = await User.findOne({ email: new RegExp('^' + targetEmail + '$', 'i') })
-    if (!targetUser && performedBy) {
-      targetUser = await User.findOne({ email: new RegExp('^' + performedBy.trim() + '$', 'i') })
-    }
-    if (!targetUser) {
-      account.balance += amt
-      account.totalWithdrawn -= amt
-      throw new Error(`Aucun utilisateur trouvé avec l'email ${account.email} pour créditer le portefeuille.`)
+    let targetUser = null
+
+    const inputTarget = String(targetWalletAccountNo || '').trim()
+    if (inputTarget) {
+      targetUser = await User.findOne({
+        $or: [
+          { walletAccountNo: new RegExp('^' + inputTarget + '$', 'i') },
+          { email: new RegExp('^' + inputTarget + '$', 'i') },
+          { phone: inputTarget },
+        ],
+      })
+      if (!targetUser) {
+        account.balance += amt
+        account.totalWithdrawn -= amt
+        throw new Error(`Aucun utilisateur trouvé avec le compte portefeuille ou email "${inputTarget}".`)
+      }
+    } else {
+      const targetEmail = (account.email || '').toLowerCase().trim()
+      targetUser = await User.findOne({ email: new RegExp('^' + targetEmail + '$', 'i') })
+      if (!targetUser && performedBy) {
+        targetUser = await User.findOne({ email: new RegExp('^' + performedBy.trim() + '$', 'i') })
+      }
+      if (!targetUser) {
+        account.balance += amt
+        account.totalWithdrawn -= amt
+        throw new Error(`Aucun utilisateur trouvé avec l'email ${account.email} pour créditer le portefeuille.`)
+      }
     }
 
     try {
       await walletService.credit(targetUser._id, {
         amount: amt,
         type: 'transfer_received',
-        description: `Retrait depuis mon compte administrateur 60/40 (${account.name})`,
+        description: `Retrait depuis compte administrateur 60/40 (${account.name}) vers ${targetUser.walletAccountNo || targetUser.name}`,
         meta: {
           fromCoAccount: accountKey,
+          targetWalletAccountNo: targetUser.walletAccountNo,
           performedBy: performedBy || account.email,
           reason: notes || 'Retrait administrateur vers portefeuille',
         },
         reason: notes || 'Retrait administrateur vers portefeuille',
       })
-      targetWalletAccountNo = targetUser.walletAccountNo || ''
-      withdrawalRecord.targetWalletAccountNo = targetWalletAccountNo
+      creditedWalletNo = targetUser.walletAccountNo || ''
+      creditedUserName = targetUser.name || ''
+      withdrawalRecord.targetWalletAccountNo = creditedWalletNo
       withdrawalRecord.targetUserId = targetUser._id
-      withdrawalRecord.targetUserName = targetUser.name || ''
+      withdrawalRecord.targetUserName = creditedUserName
     } catch (wErr) {
       account.balance += amt
       account.totalWithdrawn -= amt
       throw new Error(`Échec du crédit portefeuille : ${wErr.message}`)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 2. RETRAIT VERS MOBILE MONEY (DÉCAISSEMENT DIRECT IKEEPAY)
+  // ─────────────────────────────────────────────────────────────
+  if (method === 'momo') {
+    if (!phone || !phone.trim()) {
+      account.balance += amt
+      account.totalWithdrawn -= amt
+      throw new Error('Numéro de téléphone requis pour le retrait Mobile Money.')
+    }
+
+    const cleanPhone = String(phone).trim().replace(/\s+/g, '')
+    const ikeepay = require('./ikeepayService')
+    const providerRef = `co_payout_${accountKey}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    const normCountry = 'CM'
+    const targetCurrency = ikeepay.getCountryCurrency ? ikeepay.getCountryCurrency(normCountry) : 'XAF'
+
+    try {
+      const payoutRes = await ikeepay.createPayout({
+        amount: amt,
+        phone: cleanPhone,
+        operator: (operator || 'mtn').toLowerCase(),
+        accountName: accountName || account.name || 'Administrateur',
+        country: normCountry,
+        currency: targetCurrency,
+        reference: providerRef,
+      })
+      const payoutId = payoutRes?.transaction_id || payoutRes?.id || providerRef
+      withdrawalRecord.providerPayoutId = payoutId
+      withdrawalRecord.providerRef = providerRef
+      withdrawalRecord.status = 'completed'
+      console.log(`[AdminCoAccounts] Payout Mobile Money initié avec succès via Ikeepay (Ref: ${providerRef}, ID: ${payoutId})`)
+    } catch (ikeepayErr) {
+      console.error('[AdminCoAccounts] Payout Ikeepay direct échoué :', ikeepayErr.message, ikeepayErr.data || '')
+      account.balance += amt
+      account.totalWithdrawn -= amt
+      throw new Error(`Échec du transfert Mobile Money : ${ikeepayErr.message}`)
     }
   }
 
@@ -344,7 +407,7 @@ async function performAccountWithdrawal(accountKey, { amount, method = 'momo', p
   // Notification par email du retrait
   try {
     const destInfo = method === 'wallet'
-      ? `Portefeuille KATD (${targetWalletAccountNo || account.email})`
+      ? `Portefeuille KATD (${creditedWalletNo || targetWalletAccountNo || account.email} - ${creditedUserName})`
       : `Mobile Money (${operator.toUpperCase()} ${phone})`
 
     await sendEmail({

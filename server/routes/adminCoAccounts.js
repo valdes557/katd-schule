@@ -113,7 +113,7 @@ router.get('/details/:accountKey', protect, adminOnly, async (req, res) => {
 // POST /api/admin/co-accounts/withdraw — Retrait sur le solde d'un compte
 router.post('/withdraw', protect, adminOnly, async (req, res) => {
   try {
-    const { accountKey, amount, method, phone, operator, accountName, notes } = req.body
+    const { accountKey, amount, method, phone, operator, accountName, notes, targetWalletAccountNo } = req.body
     if (!accountKey || !['account_1', 'account_2'].includes(accountKey)) {
       return res.status(400).json({ message: 'Compte invalide.' })
     }
@@ -130,6 +130,7 @@ router.post('/withdraw', protect, adminOnly, async (req, res) => {
       operator,
       accountName,
       notes,
+      targetWalletAccountNo,
       performedBy: req.user?.email || 'admin',
     })
 

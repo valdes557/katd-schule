@@ -315,6 +315,19 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
       }
     } catch (e) {}
 
+    try {
+      const adminCoAccountsService = require('../services/adminCoAccountsService')
+      await adminCoAccountsService.recordPlatformFee({
+        category: 'shareholder_subscription',
+        amount: price,
+        description: 'Souscription actionnaire associé (' + requestedPercent + '%) — ' + (plan.label || plan.key),
+        reference: String(shareholding._id || ''),
+        meta: { planKey: plan.key, zone: z, percent: requestedPercent, method: 'wallet' },
+      })
+    } catch (coErr) {
+      console.error('[AdminCoAccounts] shareholder_subscription error:', coErr.message)
+    }
+
     res.json({ success: true, message: 'Souscription confirmée. Bienvenue parmi les associés !', shareholding, balance: w.balance - price })
   } catch (err) { res.status(err.status || 400).json({ message: err.message }) }
 })

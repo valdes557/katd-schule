@@ -18,6 +18,8 @@ const CATEGORY_ICONS = {
   collect_fee: Coins,
   merchant_signup: Store,
   agent_signup: UserCheck,
+  client_signup: UserCheck,
+  shareholder_subscription: PieChart,
 }
 
 const CATEGORY_COLORS = {
@@ -29,6 +31,8 @@ const CATEGORY_COLORS = {
   collect_fee: 'from-teal-500/10 to-teal-600/5 text-teal-700 border-teal-200',
   merchant_signup: 'from-indigo-500/10 to-indigo-600/5 text-indigo-700 border-indigo-200',
   agent_signup: 'from-rose-500/10 to-rose-600/5 text-rose-700 border-rose-200',
+  client_signup: 'from-cyan-500/10 to-cyan-600/5 text-cyan-700 border-cyan-200',
+  shareholder_subscription: 'from-amber-500/10 to-yellow-600/5 text-amber-800 border-amber-300',
 }
 
 export default function AdminCoAccountsPage() {
@@ -43,7 +47,19 @@ export default function AdminCoAccountsPage() {
   const [otpModal, setOtpModal] = useState({ open: false, accountKey: '', email: '', code: '', sending: false, verifying: false, error: '', success: '' })
 
   // Modale Retrait
-  const [withdrawModal, setWithdrawModal] = useState({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', notes: '', submitting: false, error: '' })
+  const [withdrawModal, setWithdrawModal] = useState({
+    open: false,
+    accountKey: '',
+    amount: '',
+    method: 'momo',
+    phone: '',
+    operator: 'mtn',
+    accountName: '',
+    targetWalletAccountNo: '',
+    notes: '',
+    submitting: false,
+    error: '',
+  })
 
   // État suppression code secours
   const [disablingPin, setDisablingPin] = useState(false)
@@ -170,6 +186,7 @@ export default function AdminCoAccountsPage() {
       phone: '',
       operator: 'mtn',
       accountName: '',
+      targetWalletAccountNo: '',
       notes: '',
       submitting: false,
       error: '',
@@ -203,6 +220,7 @@ export default function AdminCoAccountsPage() {
         phone: withdrawModal.phone.trim(),
         operator: withdrawModal.operator,
         accountName: withdrawModal.accountName.trim(),
+        targetWalletAccountNo: withdrawModal.targetWalletAccountNo.trim(),
         notes: withdrawModal.notes.trim(),
       })
 
@@ -213,7 +231,7 @@ export default function AdminCoAccountsPage() {
           [withdrawModal.accountKey]: res.account,
         }))
       }
-      setWithdrawModal({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', notes: '', submitting: false, error: '' })
+      setWithdrawModal({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', targetWalletAccountNo: '', notes: '', submitting: false, error: '' })
       showBanner(res.message || `Retrait de ${fmt(amt)} FCFA effectué avec succès !`, 'success')
       loadSummary()
     } catch (err) {
@@ -582,12 +600,12 @@ export default function AdminCoAccountsPage() {
             </div>
           </div>
 
-          {/* CLASSIFICATION DES 8 CATÉGORIES DE FRAIS */}
+          {/* CLASSIFICATION DES 10 CATÉGORIES DE FRAIS */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-gray-900">
-                  Ventilation des 8 flux de frais plateforme ({activeAccount.baseSharePercent}%)
+                  Ventilation des 10 flux de frais plateforme ({activeAccount.baseSharePercent}%)
                 </h3>
                 <p className="text-xs text-gray-500">
                   Tous les flux de frais prélevés sur la plateforme sont classés et répartis automatiquement.
@@ -709,7 +727,7 @@ export default function AdminCoAccountsPage() {
                     <tr>
                       <th className="py-2.5 px-3">Date</th>
                       <th className="py-2.5 px-3">Mode</th>
-                      <th className="py-2.5 px-3">Bénéficiaire / Téléphone</th>
+                      <th className="py-2.5 px-3">Bénéficiaire / Compte</th>
                       <th className="py-2.5 px-3 text-right">Montant</th>
                     </tr>
                   </thead>
@@ -732,7 +750,20 @@ export default function AdminCoAccountsPage() {
                             </span>
                           </td>
                           <td className="py-2.5 px-3 text-gray-700">
-                            {w.phone ? `${w.phone} (${w.accountName || 'Sans nom'})` : 'Portefeuille'}
+                            {w.method === 'momo' ? (
+                              <div>
+                                <span className="font-semibold">{w.phone}</span>
+                                {w.accountName && <span className="text-gray-400 text-[11px] block">{w.accountName}</span>}
+                                {w.providerRef && <span className="text-[10px] font-mono text-emerald-600 block">Réf : {w.providerRef}</span>}
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="font-semibold">
+                                  {w.targetWalletAccountNo ? `Compte ${w.targetWalletAccountNo}` : 'Portefeuille Admin'}
+                                </span>
+                                {w.targetUserName && <span className="text-gray-400 text-[11px] block">{w.targetUserName}</span>}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-right font-black text-rose-600 whitespace-nowrap">
                             -{fmt(w.amount)} FCFA
@@ -882,7 +913,7 @@ export default function AdminCoAccountsPage() {
                 </div>
               </div>
               <button
-                onClick={() => setWithdrawModal({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', notes: '', submitting: false, error: '' })}
+                onClick={() => setWithdrawModal({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', targetWalletAccountNo: '', notes: '', submitting: false, error: '' })}
                 className="text-gray-400 hover:text-gray-600 p-1"
               >
                 <X size={18} />
@@ -947,18 +978,43 @@ export default function AdminCoAccountsPage() {
               </div>
 
               {withdrawModal.method === 'wallet' && (
-                <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 space-y-1">
-                  <div className="font-bold flex items-center gap-1.5 text-indigo-800">
-                    <Wallet size={14} /> Destination du retrait :
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">
+                      Numéro de compte portefeuille destinataire (optionnel)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex : KS616522 ou email/téléphone de l'utilisateur"
+                      value={withdrawModal.targetWalletAccountNo}
+                      onChange={(e) => setWithdrawModal((prev) => ({ ...prev, targetWalletAccountNo: e.target.value }))}
+                      className="input text-xs w-full font-mono"
+                    />
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Laissez vide pour créditer automatiquement le compte administrateur (<b>{unlockedAccounts[withdrawModal.accountKey]?.email}</b>).
+                    </p>
                   </div>
-                  <p className="text-gray-600 text-[11px] leading-relaxed">
-                    Les fonds seront immédiatement et automatiquement crédités sur le portefeuille KATD de l'utilisateur associé (<b>{unlockedAccounts[withdrawModal.accountKey]?.email}</b>).
-                  </p>
+
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-indigo-800">
+                      <Wallet size={14} /> Destination du virement :
+                    </div>
+                    <p className="text-gray-600 text-[11px] leading-relaxed">
+                      {withdrawModal.targetWalletAccountNo.trim()
+                        ? `Les fonds seront immédiatement virés sur le portefeuille du compte « ${withdrawModal.targetWalletAccountNo.trim()} ».`
+                        : `Les fonds seront crédités directement sur le portefeuille KATD de l'administrateur (${unlockedAccounts[withdrawModal.accountKey]?.email}).`}
+                    </p>
+                  </div>
                 </div>
               )}
 
               {withdrawModal.method === 'momo' && (
                 <>
+                  <div className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-100 text-[11px] text-emerald-900 flex items-center gap-2">
+                    <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+                    <span>Décaissement direct connecté à la passerelle Mobile Money (MTN / Orange Money).</span>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur</label>
@@ -1011,7 +1067,7 @@ export default function AdminCoAccountsPage() {
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setWithdrawModal({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', notes: '', submitting: false, error: '' })}
+                  onClick={() => setWithdrawModal({ open: false, accountKey: '', amount: '', method: 'momo', phone: '', operator: 'mtn', accountName: '', targetWalletAccountNo: '', notes: '', submitting: false, error: '' })}
                   className="btn-secondary text-xs flex-1 py-2.5 rounded-xl font-bold"
                 >
                   Annuler
