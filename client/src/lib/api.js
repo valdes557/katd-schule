@@ -273,6 +273,9 @@ export const messagesApi = {
   addGroupMembers: (groupId, memberIds) => api.post(`/messages/groups/${groupId}/members`, { memberIds }),
   // scope: 'me' (supprimer pour moi) | 'everyone' (supprimer pour tout le monde)
   remove: (id, scope = 'me') => api.del(`/messages/${id}?scope=${scope}`),
+  getAdminAgents: () => api.get('/messages/admin-agents'),
+  broadcastAgents: (data) => api.post('/messages/broadcast-agents', data),
+  getAgentClients: () => api.get('/messages/agent-clients'),
 }
 
 export const mediaApi = {
@@ -1238,6 +1241,10 @@ export const walletApi = {
   // Transfert entre utilisateurs (frais 0,25%) / vérification compte dépôt
   lookup: (accountNo, allowSelf = false) => api.get('/wallet/lookup/' + encodeURIComponent(accountNo) + (allowSelf ? '?allowSelf=1' : '')),
   transferUser: (payload) => api.post('/wallet/transfer-user', payload),
+  getSavedMomoAccounts: () => api.get('/wallet/saved-momo-accounts'),
+  addSavedMomoAccount: (data) => api.post('/wallet/saved-momo-accounts', data),
+  updateSavedMomoAccount: (id, data) => api.put('/wallet/saved-momo-accounts/' + id, data),
+  deleteSavedMomoAccount: (id) => api.del('/wallet/saved-momo-accounts/' + id),
 }
 
 export const walletAdminApi = {
@@ -1411,6 +1418,10 @@ export const collectApi = {
   initiateClientSubscriptionMomo: (data) => api.post('/payments/client-subscription/initiate', data),
   // Historique des retraits administrateur
   adminWithdrawalsHistory: () => api.get('/collect/admin/withdrawals-history'),
+  fundCollectWallet: (amount) => api.post('/collect/agent/fund-collect-wallet', { amount }),
+  lockCagnotte: (data) => api.post('/collect/client/lock-cagnotte', data),
+  transferCagnotteToWallet: () => api.post('/collect/client/transfer-to-wallet'),
+  getAdminLockedContracts: () => api.get('/collect/admin/locked-contracts'),
 }
 
 // Gestion des comptes administrateurs associés (60% / 40%)

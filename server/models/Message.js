@@ -9,7 +9,7 @@ const messageSchema = new mongoose.Schema(
     subject: { type: String, trim: true },
     body: { type: String, default: '' },
     // Type de message : texte, vocal, image, vidéo ou sticker
-    type: { type: String, enum: ['text', 'voice', 'image', 'video', 'sticker'], default: 'text' },
+    type: { type: String, enum: ['text', 'voice', 'image', 'video', 'sticker', 'file', 'document'], default: 'text' },
     mediaUrl: { type: String, default: '' },
     mediaDuration: { type: Number, default: 0 }, // durée d'un vocal en secondes
     read: { type: Boolean, default: false },

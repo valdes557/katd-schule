@@ -5,6 +5,8 @@ const User = require('../models/User')
 const Student = require('../models/Student')
 const Teacher = require('../models/Teacher')
 const MessageGroup = require('../models/MessageGroup')
+const CollectAgent = require('../models/CollectAgent')
+const CollectClient = require('../models/CollectClient')
 const { protect, authorize } = require('../middleware/auth')
 const { upload, cloudinary } = require('../config/cloudinary')
 const pushService = require('../services/pushService')
@@ -21,8 +23,85 @@ function messagePreview(type, body) {
 
 // Helper: compute allowed contacts for the current user based on role & school
 async function getAllowedContacts(user) {
-  const schoolId = user.school?._id || user.school
-  if (!schoolId) return []
+  // Support Collecte : Agents, Clients et Super Admin
+  const map = new Map();
+
+  // 1. Si Super Admin : joignable par tout le monde, et a accès à tous les agents de collecte
+  if (user.role === 'super_admin') {
+    const agents = await CollectAgent.find({ status: 'active' }).populate('user', 'name email role phone avatar').lean();
+    for (const ag of agents) {
+      if (ag.user && ag.user._id) {
+        map.set(ag.user._id.toString(), {
+          ...ag.user,
+          agencyName: ag.agencyName,
+          isCollectAgent: true,
+          collectRole: 'Agent de Collecte',
+        });
+      }
+    }
+  }
+
+  // 2. Si l'utilisateur est un Agent de Collecte : peut contacter le Super Admin et ses clients
+  const agentProfile = await CollectAgent.findOne({ user: user._id, status: 'active' }).lean();
+  if (agentProfile) {
+    const admins = await User.find({ role: 'super_admin', isActive: true }).select('name email role phone avatar').lean();
+    for (const adm of admins) {
+      map.set(adm._id.toString(), {
+        ...adm,
+        isSuperAdmin: true,
+        collectRole: 'Super Administrateur Direction',
+      });
+    }
+
+    // Clients enregistrés par cet agent ayant un compte utilisateur KATD
+    const clients = await CollectClient.find({ agentUser: user._id }).select('user fullName phone email accountNumber').lean();
+    for (const cl of clients) {
+      if (cl.user) {
+        const u = await User.findById(cl.user).select('name email role phone avatar').lean();
+        if (u) {
+          map.set(u._id.toString(), {
+            ...u,
+            name: cl.fullName || u.name,
+            accountNumber: cl.accountNumber,
+            isCollectClient: true,
+            collectRole: 'Client Collecte (' + cl.accountNumber + ')',
+          });
+        }
+      } else if (cl.email) {
+        const u = await User.findOne({ email: cl.email.toLowerCase() }).select('name email role phone avatar').lean();
+        if (u) {
+          map.set(u._id.toString(), {
+            ...u,
+            name: cl.fullName || u.name,
+            accountNumber: cl.accountNumber,
+            isCollectClient: true,
+            collectRole: 'Client Collecte (' + cl.accountNumber + ')',
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Si l'utilisateur est un Client de Collecte : peut contacter son Agent de collecte attitré
+  const clientProfile = await CollectClient.findOne({
+    $or: [{ user: user._id }, { email: (user.email || '').toLowerCase() }],
+  }).populate('agent').lean();
+  if (clientProfile && clientProfile.agentUser) {
+    const agUser = await User.findById(clientProfile.agentUser).select('name email role phone avatar').lean();
+    if (agUser) {
+      map.set(agUser._id.toString(), {
+        ...agUser,
+        agencyName: clientProfile.agent?.agencyName || 'Mon Agent de Collecte',
+        isCollectAgent: true,
+        collectRole: 'Mon Agent de Collecte (' + (clientProfile.agent?.agencyName || '') + ')',
+      });
+    }
+  }
+
+  const schoolId = user.school?._id || user.school;
+  if (!schoolId) {
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   const baseUserQuery = { school: schoolId, _id: { $ne: user._id }, isActive: true }
   // Membres administratifs du Secondaire — joignables par le principal et les professeurs
@@ -40,7 +119,6 @@ async function getAllowedContacts(user) {
       ? await User.find({ _id: { $in: parentIds }, role: 'parent', isActive: true })
       : []
 
-    const map = new Map()
     for (const u of [...teachers, ...adminMembers, ...parents]) {
       map.set(u._id.toString(), u)
     }
@@ -67,7 +145,6 @@ async function getAllowedContacts(user) {
       }
     }
 
-    const map = new Map()
     for (const u of [...directors, ...parents]) {
       map.set(u._id.toString(), u)
     }
@@ -93,7 +170,6 @@ async function getAllowedContacts(user) {
       ? await User.find({ _id: { $in: teacherUserIds }, isActive: true })
       : []
 
-    const map = new Map()
     for (const u of [...directors, ...teachers]) {
       map.set(u._id.toString(), u)
     }
@@ -101,7 +177,9 @@ async function getAllowedContacts(user) {
   }
 
   // Fallback: same school, all active users except self (for super_admin and others)
-  return User.find(baseUserQuery).select('name email role').sort({ name: 1 })
+  const fallbackUsers = await User.find(baseUserQuery).select('name email role').sort({ name: 1 }).lean();
+  for (const u of fallbackUsers) { map.set(u._id.toString(), u); }
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // GET /api/messages/conversations — list conversations (grouped)
@@ -233,7 +311,7 @@ router.get('/conversation/:conversationId', protect, async (req, res) => {
 // POST /api/messages — direct (1-1) messages only
 router.post('/', protect, async (req, res) => {
   try {
-    const { recipientId, subject, body, type, mediaUrl, mediaDuration } = req.body
+    const { recipientId, subject, body, type, mediaUrl, mediaDuration, attachments } = req.body
     const senderId = req.user._id
 
     const msgType = type || 'text'
@@ -650,6 +728,153 @@ router.get('/all-users', protect, async (req, res) => {
       return { _id: u._id, name: u.name, email: u.email, role: u.role, avatar: u.avatar || '', online, lastActivity: u.lastActivity }
     })
     res.json({ success: true, data })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MESSAGERIE COLLECTE : AGENTS <-> SUPER ADMIN & CLIENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/messages/admin-agents — Liste des agents joignables pour le Super Admin
+router.get('/admin-agents', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Accès réservé au super administrateur' })
+    }
+    const agents = await CollectAgent.find({ status: 'active' })
+      .populate('user', 'name email role phone avatar isOnline lastActivity')
+      .sort({ createdAt: -1 })
+      .lean()
+
+    const list = agents
+      .filter((a) => a.user && a.user._id)
+      .map((a) => ({
+        _id: a.user._id,
+        agentId: a._id,
+        agencyName: a.agencyName,
+        name: a.user.name,
+        email: a.user.email,
+        phone: a.phone || a.user.phone,
+        city: a.city,
+        neighborhood: a.neighborhood,
+        avatar: a.user.avatar || null,
+        isOnline: !!a.user.isOnline,
+        lastActivity: a.user.lastActivity,
+      }))
+
+    res.json({ success: true, agents: list })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/messages/broadcast-agents — Envoi groupé à TOUS les agents avec fichiers (PDF, Word, etc.)
+router.post('/broadcast-agents', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Accès réservé au super administrateur' })
+    }
+    const { subject, body, attachments = [], type = 'text', mediaUrl } = req.body
+    if (!body && (!attachments || attachments.length === 0) && !mediaUrl) {
+      return res.status(400).json({ message: 'Veuillez saisir un message ou joindre un document.' })
+    }
+
+    const agents = await CollectAgent.find({ status: 'active' }).populate('user', '_id name email').lean()
+    const activeAgents = agents.filter((a) => a.user && a.user._id)
+    if (activeAgents.length === 0) {
+      return res.status(400).json({ message: 'Aucun agent actif trouvé sur la plateforme.' })
+    }
+
+    const broadcastKey = 'bcast_agents_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+    const senderId = req.user._id
+
+    const createdMessages = []
+    for (const ag of activeAgents) {
+      const recipientId = ag.user._id
+      const ids = [senderId.toString(), recipientId.toString()].sort()
+      const conversationId = 'conv_' + ids[0] + '_' + ids[1]
+
+      const msg = await Message.create({
+        conversationId,
+        sender: senderId,
+        recipient: recipientId,
+        subject: subject || 'Message de la Direction aux Agents',
+        body: body || '',
+        type: (attachments && attachments.length > 0) ? 'document' : (type || 'text'),
+        mediaUrl: mediaUrl || '',
+        attachments: Array.isArray(attachments) ? attachments : [],
+        broadcastKey,
+        isGroup: false,
+      })
+      createdMessages.push(msg)
+
+      // Notification push individuelle
+      pushService.sendToUser(recipientId, {
+        title: 'Direction KATD — Message groupé',
+        body: (body || 'Nouveau document officiel reçu').slice(0, 80),
+        url: '/collect',
+        tag: 'msg_bcast_agents',
+      })
+    }
+
+    res.status(201).json({
+      success: true,
+      count: createdMessages.length,
+      message: 'Message et documents transmis avec succès à ' + createdMessages.length + ' agents de collecte.',
+      broadcastKey,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/messages/agent-clients — Liste des clients joignables pour un agent
+router.get('/agent-clients', protect, async (req, res) => {
+  try {
+    const agent = await CollectAgent.findOne({ user: req.user._id, status: 'active' })
+    if (!agent) {
+      return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
+    }
+
+    // Récupérer tous les clients de cet agent
+    const clients = await CollectClient.find({ agentUser: req.user._id }).sort({ fullName: 1 }).lean()
+
+    const list = []
+    for (const cl of clients) {
+      let u = null
+      if (cl.user) {
+        u = await User.findById(cl.user).select('name email phone avatar isOnline lastActivity').lean()
+      } else if (cl.email) {
+        u = await User.findOne({ email: cl.email.toLowerCase() }).select('name email phone avatar isOnline lastActivity').lean()
+      }
+
+      list.push({
+        clientId: cl._id,
+        accountNumber: cl.accountNumber,
+        fullName: cl.fullName,
+        phone: cl.phone,
+        email: cl.email,
+        neighborhood: cl.neighborhood,
+        balance: cl.balance,
+        userId: u ? u._id : null,
+        avatar: u?.avatar || null,
+        isOnline: !!u?.isOnline,
+        lastActivity: u?.lastActivity || null,
+        hasUserAccount: !!u,
+      })
+    }
+
+    // Ajouter aussi le super_admin en tête de liste pour discuter avec la direction
+    const admins = await User.find({ role: 'super_admin', isActive: true }).select('name email phone avatar isOnline').lean()
+
+    res.json({
+      success: true,
+      admins: admins.map((a) => ({ ...a, role: 'super_admin', agencyName: 'Super Administrateur Direction' })),
+      clients: list,
+    })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

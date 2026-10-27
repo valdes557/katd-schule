@@ -42,6 +42,25 @@ const collectClientSchema = new mongoose.Schema(
     clientSignature: { type: String, default: '' },             // Image Base64 de la signature du client
     termsContent: { type: String, default: '' },                // Contenu des termes et conditions au moment de la signature
     contractNumber: { type: String, default: '' },              // N° de contrat officiel (ex: CTR-2026-8910)
+    // ── Cagnotte mensuelle, cycle et blocage personnalisé ──
+    cagnotteCycleStart: { type: Date, default: Date.now },
+    cagnotteCycleEnd: { type: Date, default: null },
+    cagnotteLockStatus: {
+      type: String,
+      enum: ['standard_month', 'custom_locked', 'unlocked'],
+      default: 'standard_month',
+    },
+    cagnotteLockUntil: { type: Date, default: null },
+    cagnotteLockContract: {
+      contractNumber: { type: String, default: '' },
+      lockDurationMonths: { type: Number, default: 1 },
+      lockUntil: { type: Date, default: null },
+      termsContent: { type: String, default: '' },
+      clientSignature: { type: String, default: '' },
+      signedAt: { type: Date, default: null },
+    },
+    cagnotteNotifiedAt: { type: Date, default: null },
+    cagnotteAutoTransferredAt: { type: Date, default: null },
   },
   { timestamps: true }
 )
@@ -51,6 +70,12 @@ collectClientSchema.pre('save', async function (next) {
   if (!this.accountNumber) {
     const rnd = crypto.randomInt(100000, 999999)
     this.accountNumber = `CL-${rnd}`
+  }
+  if (!this.cagnotteCycleEnd) {
+    const start = this.cagnotteCycleStart || new Date()
+    const end = new Date(start)
+    end.setMonth(end.getMonth() + 1)
+    this.cagnotteCycleEnd = end
   }
   if (!this.contractNumber) {
     const year = new Date().getFullYear()

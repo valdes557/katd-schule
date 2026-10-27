@@ -6,6 +6,7 @@ import {
   PieChart, CreditCard, Sparkles, Store, UserCheck, Smartphone, Send, ArrowDownToLine
 } from 'lucide-react'
 import { adminCoAccountsApi } from '../lib/api'
+import SavedMomoSelector from '../components/SavedMomoSelector'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 
@@ -1010,6 +1011,18 @@ export default function AdminCoAccountsPage() {
 
               {withdrawModal.method === 'momo' && (
                 <>
+                  <SavedMomoSelector
+                    selectedPhone={withdrawModal.phone}
+                    onSelectAccount={(acc) => {
+                      setWithdrawModal((prev) => ({
+                        ...prev,
+                        operator: acc.operator || 'mtn',
+                        phone: acc.phone || '',
+                        accountName: acc.accountName || prev.accountName || '',
+                      }))
+                    }}
+                  />
+
                   <div className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-100 text-[11px] text-emerald-900 flex items-center gap-2">
                     <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
                     <span>Décaissement direct connecté à la passerelle Mobile Money (MTN / Orange Money).</span>

@@ -3,6 +3,7 @@ import { Wallet, Lock, ArrowDownToLine, ArrowUpFromLine, Send, KeyRound, Refresh
 import { useAuth } from '../context/AuthContext'
 import { walletApi, paymentsApi } from '../lib/api'
 import { cn } from '../lib/utils'
+import SavedMomoSelector from '../components/SavedMomoSelector'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 import { COUNTRIES } from '../constants/countries'
@@ -501,6 +502,19 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {type === 'withdraw' && (<>
+          <div className="mb-2">
+            <SavedMomoSelector
+              selectedPhone={f.momoNumber}
+              onSelectAccount={(acc) => {
+                setF((prev) => ({
+                  ...prev,
+                  momoOperator: acc.operator || 'mtn',
+                  momoNumber: acc.phone || '',
+                  accountName: acc.accountName || prev.accountName || '',
+                }))
+              }}
+            />
+          </div>
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">Pays de retrait</label>
             <select

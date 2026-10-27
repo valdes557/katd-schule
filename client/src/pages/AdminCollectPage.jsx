@@ -3,11 +3,13 @@ import { useState, useEffect } from 'react'
 import {
   Coins, Loader2, Users, CheckCircle2, AlertCircle, X, Shield,
   TrendingUp, Calendar, AlertTriangle, ArrowUpRight, FileText, Ban,
-  Eye, RefreshCw, Save, MapPin, Edit3, Lock, ArrowDownCircle, Smartphone, Wallet,
+  Eye, RefreshCw, Save, MapPin, Edit3, Lock, ArrowDownCircle, Smartphone, Wallet, MessageSquare,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { collectApi } from '../lib/api'
 import ClientContractModal from '../components/ClientContractModal'
+import AdminAgentMessagingTab from '../components/AdminAgentMessagingTab'
+import CagnotteLockProofModal from '../components/CagnotteLockProofModal'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
@@ -200,6 +202,8 @@ export default function AdminCollectPage() {
         {[
           { key: 'agents', label: 'Agents & Clients enregistrés', icon: Users },
           { key: 'fees', label: 'Frais de Collecte par Agence (30% Plateforme / 70% Agent)', icon: Coins },
+          { key: 'messaging', label: 'Messagerie Agents & Diffusion Groupée', icon: MessageSquare },
+          { key: 'locked_contracts', label: 'Contrats Cagnotte Bloquée', icon: Lock },
           { key: 'subscriptions', label: 'Historique des Validations & Souscriptions', icon: Shield },
           { key: 'withdrawals', label: 'Historique des retraits Administrateur', icon: ArrowDownCircle },
           { key: 'terms', label: "Termes & Conditions d'adhésion", icon: FileText },
@@ -427,6 +431,12 @@ export default function AdminCollectPage() {
           )}
         </div>
       )}
+
+      {/* ONGLET MESSAGERIE AGENTS & DIFFUSION GROUPÉE */}
+      {tab === 'messaging' && <AdminAgentMessagingTab showBanner={showBanner} />}
+
+      {/* ONGLET CONTRATS CAGNOTTE BLOQUÉE */}
+      {tab === 'locked_contracts' && <AdminLockedContractsTab showBanner={showBanner} />}
 
       {/* ONGLET NOUVEAU : HISTORIQUE DES VALIDATIONS & SOUSCRIPTIONS */}
       {tab === 'subscriptions' && <AdminSubscriptionHistoryTab showBanner={showBanner} />}
@@ -978,6 +988,7 @@ function AdminClientWithdrawModal({ client, onClose, onSuccess }) {
 // Onglet Termes & Conditions côté admin
 function AdminTermsTab({ showBanner }) {
   const [terms, setTerms] = useState('')
+  const [cagnotteLockTerms, setCagnotteLockTerms] = useState('')
   const [monthlyFee, setMonthlyFee] = useState(1000)
   const [agentSubscriptionFee, setAgentSubscriptionFee] = useState(4995)
   const [clientSubscriptionFee, setClientSubscriptionFee] = useState(4995)
@@ -989,6 +1000,7 @@ function AdminTermsTab({ showBanner }) {
     collectApi.getConfig()
       .then((res) => {
         setTerms(res.termsAndConditions || '')
+        setCagnotteLockTerms(res.cagnotteLockTerms || '')
         setMonthlyFee(res.monthlyFee ?? 1000)
         setAgentSubscriptionFee(res.agentSubscriptionFee ?? 4995)
         setClientSubscriptionFee(res.clientSubscriptionFee ?? 4995)
@@ -1004,6 +1016,7 @@ function AdminTermsTab({ showBanner }) {
     try {
       await collectApi.adminUpdateTerms({
         termsAndConditions: terms,
+        cagnotteLockTerms,
         monthlyFee: Number(monthlyFee),
         agentSubscriptionFee: Number(agentSubscriptionFee),
         clientSubscriptionFee: Number(clientSubscriptionFee),
@@ -1084,11 +1097,25 @@ function AdminTermsTab({ showBanner }) {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-gray-700 block mb-1">Contenu des Termes et Conditions d'Adhésion</label>
+          <label className="text-xs font-bold text-gray-700 block mb-1">Contenu des Termes et Conditions d'Adhésion (Agents de Collecte)</label>
           <textarea
-            rows={14}
+            rows={10}
             value={terms}
             onChange={(e) => setTerms(e.target.value)}
+            className="input text-xs w-full resize-y font-mono leading-relaxed"
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-bold text-gray-700">Termes et Conditions de Blocage de la Cagnotte Client</label>
+            <span className="text-[11px] text-indigo-700 font-semibold">Lus et signés numériquement par les clients</span>
+          </div>
+          <textarea
+            rows={10}
+            value={cagnotteLockTerms}
+            onChange={(e) => setCagnotteLockTerms(e.target.value)}
+            placeholder="Rédigez les conditions générales et engagements de blocage d'épargne présentés aux clients..."
             className="input text-xs w-full resize-y font-mono leading-relaxed"
           />
         </div>
@@ -1106,6 +1133,194 @@ function AdminTermsTab({ showBanner }) {
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPOSANT : REGISTRE DES CONTRATS DE CAGNOTTE BLOQUÉE & SIGNATURES CLIENTS
+// ─────────────────────────────────────────────────────────────────────────────
+function AdminLockedContractsTab({ showBanner }) {
+  const [contracts, setContracts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [activeContractProof, setActiveContractProof] = useState(null)
+
+  const loadContracts = async () => {
+    try {
+      setLoading(true)
+      const res = await collectApi.getAdminLockedContracts()
+      setContracts(res.contracts || [])
+    } catch (e) {
+      if (showBanner) showBanner(e.message || 'Erreur lors du chargement des contrats', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadContracts()
+  }, [])
+
+  const filtered = contracts.filter((c) => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return (
+      (c.clientName && c.clientName.toLowerCase().includes(q)) ||
+      (c.accountNumber && c.accountNumber.toLowerCase().includes(q)) ||
+      (c.clientPhone && c.clientPhone.includes(q)) ||
+      (c.contract?.contractNumber && c.contract.contractNumber.toLowerCase().includes(q)) ||
+      (c.agentAgencyName && c.agentAgencyName.toLowerCase().includes(q))
+    )
+  })
+
+  const totalLockedAmount = contracts.reduce((sum, c) => sum + (c.contract?.initialBalance || c.balance || 0), 0)
+
+  return (
+    <div className="space-y-4">
+      {/* En-tête et statistiques */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="card p-4 border-l-4 border-indigo-600">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">Total Contrats Signés</span>
+          <div className="text-xl sm:text-2xl font-black text-gray-900 mt-1">{contracts.length}</div>
+          <span className="text-[11px] text-indigo-600 font-semibold mt-0.5 block">Avec signature électronique tactile</span>
+        </div>
+        <div className="card p-4 border-l-4 border-emerald-600">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">Fonds Cagnotte Sanctuarisés</span>
+          <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-1">
+            {fmt(totalLockedAmount)} <span className="text-xs font-normal text-gray-400">XAF</span>
+          </div>
+          <span className="text-[11px] text-emerald-600 font-semibold mt-0.5 block">Épargne sécurisée sous contrat</span>
+        </div>
+        <div className="card p-4 border-l-4 border-amber-500">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">En cours de blocage</span>
+          <div className="text-xl sm:text-2xl font-black text-amber-700 mt-1">
+            {contracts.filter((c) => c.isCurrentlyLocked).length} <span className="text-xs font-normal text-gray-400">/ {contracts.length}</span>
+          </div>
+          <span className="text-[11px] text-gray-500 mt-0.5 block">Retraits anticipés soumis à 3% de frais</span>
+        </div>
+      </div>
+
+      <div className="card p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <Lock size={18} className="text-indigo-600" /> Contrats de Blocage de Cagnotte Signés
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Registre officiel des engagements d'épargne avec preuve de signature numérique tactile des clients.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Rechercher (client, n° compte, contrat)..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input text-xs py-1.5 px-3 rounded-xl w-64"
+            />
+            <button
+              onClick={loadContracts}
+              className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs transition-colors"
+              title="Actualiser"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="py-16 text-center text-gray-400">
+            <Loader2 size={24} className="animate-spin text-indigo-600 mx-auto" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-16 text-center text-gray-400 text-xs">
+            Aucun contrat de blocage signé trouvé.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                  <th className="py-3 px-3">Réf. Contrat & Date</th>
+                  <th className="py-3 px-3">Client & Compte</th>
+                  <th className="py-3 px-3">Agence de rattachement</th>
+                  <th className="py-3 px-3 text-right">Montant Cagnotte</th>
+                  <th className="py-3 px-3 text-center">Durée</th>
+                  <th className="py-3 px-3 text-center">Statut</th>
+                  <th className="py-3 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map((item) => {
+                  const ct = item.contract || {}
+                  return (
+                    <tr key={item.clientId} className="hover:bg-gray-50/70 transition-colors">
+                      <td className="py-3 px-3">
+                        <div className="font-mono font-bold text-indigo-700">{ct.contractNumber || '—'}</div>
+                        <div className="text-[11px] text-gray-400">{fmtDate(ct.signedAt)}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="font-bold text-gray-900">{item.clientName}</div>
+                        <div className="text-[11px] text-gray-500 font-mono">{item.accountNumber} • {item.clientPhone}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="font-semibold text-gray-800">{item.agentAgencyName}</div>
+                        <div className="text-[11px] text-gray-400">{item.neighborhood || 'Zone standard'}</div>
+                      </td>
+                      <td className="py-3 px-3 text-right font-black text-gray-900">
+                        {fmt(ct.initialBalance || item.balance)} <span className="text-[11px] font-normal text-gray-400">XAF</span>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                          {ct.lockDurationMonths || 1} mois
+                        </span>
+                        <div className="text-[10px] text-gray-400 mt-0.5">Jusqu'au {fmtDate(item.lockUntil)}</div>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {item.isCurrentlyLocked ? (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                            🔒 Bloqué
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                            ✅ Échu / Ouvert
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <button
+                          onClick={() => setActiveContractProof({
+                            contract: ct,
+                            client: {
+                              fullName: item.clientName,
+                              accountNumber: item.accountNumber,
+                              phone: item.clientPhone,
+                              neighborhood: item.neighborhood,
+                              balance: item.balance,
+                            },
+                          })}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold transition-colors inline-flex items-center gap-1.5 border border-indigo-200 cursor-pointer"
+                        >
+                          <FileText size={13} />
+                          <span>Voir Contrat & Preuve</span>
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {activeContractProof && (
+        <CagnotteLockProofModal
+          contract={activeContractProof.contract}
+          client={activeContractProof.client}
+          onClose={() => setActiveContractProof(null)}
+        />
+      )}
+    </div>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPOSANT : HISTORIQUE COMPLET DES RETRAITS PAR L'ADMINISTRATEUR

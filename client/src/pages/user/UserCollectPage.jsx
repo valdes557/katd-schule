@@ -3,12 +3,14 @@ import { useState, useEffect } from 'react'
 import {
   Coins, Loader2, Users, CheckCircle2, AlertCircle, X, Plus, Calendar,
   TrendingUp, Clock, AlertTriangle, ArrowUpRight, Wallet, Smartphone,
-  FileText, Send, ShieldCheck, Edit2, Trash2, MapPin, RefreshCw, ChevronRight, Mail, Lock, PlusCircle, ArrowDownCircle, Check,
+  FileText, Send, ShieldCheck, Edit2, Trash2, MapPin, RefreshCw, ChevronRight, Mail, Lock, PlusCircle, ArrowDownCircle, Check, MessageSquare,
 } from 'lucide-react'
 import { collectApi, walletApi } from '../../lib/api'
 import ClientCollectDashboard from '../../components/ClientCollectDashboard'
 import SignaturePad from '../../components/SignaturePad'
 import ClientContractModal from '../../components/ClientContractModal'
+import AgentMessagingTab from '../../components/AgentMessagingTab'
+import SavedMomoSelector from '../../components/SavedMomoSelector'
 import { useInlineCheckout } from '../../components/payments/useInlineCheckout'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
@@ -196,6 +198,7 @@ export default function UserCollectPage() {
         {[
           { key: 'dashboard', label: 'Tableau de bord', icon: TrendingUp },
           { key: 'commissions', label: 'Portefeuille Commissions (70%)', icon: Wallet },
+          { key: 'messaging', label: 'Messagerie (Direction & Clients)', icon: MessageSquare },
           { key: 'clients', label: 'Clients & Comptes', icon: Users },
           { key: 'reports', label: 'Rapports journaliers', icon: FileText },
           { key: 'settings', label: 'Paramètres Agence', icon: ShieldCheck },
@@ -217,6 +220,7 @@ export default function UserCollectPage() {
 
       {tab === 'dashboard' && <AgentDashboardTab showBanner={showBanner} agent={agentStatus.agent} onGoCommissions={() => setTab('commissions')} />}
       {tab === 'commissions' && <AgentCommissionWalletTab showBanner={showBanner} agent={agentStatus.agent} />}
+      {tab === 'messaging' && <AgentMessagingTab showBanner={showBanner} />}
       {tab === 'clients' && <AgentClientsTab showBanner={showBanner} agent={agentStatus.agent} />}
       {tab === 'reports' && <AgentReportsTab showBanner={showBanner} agent={agentStatus.agent} />}
       {tab === 'settings' && <AgentSettingsTab showBanner={showBanner} agent={agentStatus.agent} onUpdate={loadStatus} />}
@@ -996,6 +1000,7 @@ function AgentDashboardTab({ showBanner, onGoCommissions }) {
   const [collections, setCollections] = useState([])
   const [clients, setClients] = useState([])
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showFundModal, setShowFundModal] = useState(false)
   const [editItem, setEditItem] = useState(null)
 
   const loadDashboard = async (date) => {
@@ -1072,30 +1077,61 @@ function AgentDashboardTab({ showBanner, onGoCommissions }) {
         </div>
       </div>
 
-      {/* Carte Portefeuille Commissions (70%) */}
-      <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white rounded-3xl p-5 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Wallet size={16} className="text-emerald-200" />
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">
-              Portefeuille Commissions Dédié (70%)
-            </span>
+      {/* Cartes Portefeuilles : Collecte (Encaissements) & Commissions (70%) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Portefeuille Collecte Dédié */}
+        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-indigo-900 text-white rounded-3xl p-5 shadow-md flex flex-col justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Wallet size={16} className="text-blue-200" />
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-100">
+                Portefeuille Collecte Agent (Encaissements)
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black">
+              {fmt(data?.agent?.collectWalletBalance || 0)} <span className="text-sm font-semibold text-blue-200">XAF</span>
+            </div>
+            <p className="text-xs text-blue-100">
+              Total approvisionné : {fmt(data?.agent?.collectWalletTotalFunded || 0)} F · Dépensé : {fmt(data?.agent?.collectWalletTotalSpent || 0)} F
+            </p>
           </div>
-          <div className="text-2xl sm:text-3xl font-black">
-            {fmt(data?.commissionWallet?.balance || 0)} <span className="text-sm font-semibold text-emerald-200">XAF</span>
+          <div>
+            <button
+              onClick={() => setShowFundModal(true)}
+              className="bg-white text-indigo-900 hover:bg-blue-50 text-xs font-bold py-2.5 px-4 rounded-xl shadow-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <PlusCircle size={15} /> Approvisionner le portefeuille
+            </button>
           </div>
-          <p className="text-xs text-emerald-100">
-            70% des frais de collecte mensuels déduits · {data?.commissionWallet?.canWithdraw ? '✅ Retrait disponible' : ('⏳ Prochain retrait dans ' + (data?.commissionWallet?.daysRemaining || 0) + ' jour(s)')}
-          </p>
         </div>
-        {onGoCommissions && (
-          <button
-            onClick={onGoCommissions}
-            className="bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-bold py-2.5 px-4 rounded-xl shadow-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <ArrowUpRight size={15} /> Gérer mon portefeuille
-          </button>
-        )}
+
+        {/* Portefeuille Commissions (70%) */}
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white rounded-3xl p-5 shadow-md flex flex-col justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Wallet size={16} className="text-emerald-200" />
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">
+                Portefeuille Commissions Dédié (70%)
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black">
+              {fmt(data?.commissionWallet?.balance || 0)} <span className="text-sm font-semibold text-emerald-200">XAF</span>
+            </div>
+            <p className="text-xs text-emerald-100">
+              70% des frais de collecte mensuels déduits · {data?.commissionWallet?.canWithdraw ? '✅ Retrait disponible' : ('⏳ Prochain retrait dans ' + (data?.commissionWallet?.daysRemaining || 0) + ' jour(s)')}
+            </p>
+          </div>
+          {onGoCommissions && (
+            <div>
+              <button
+                onClick={onGoCommissions}
+                className="bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-bold py-2.5 px-4 rounded-xl shadow-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <ArrowUpRight size={15} /> Gérer mes commissions
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Section Tableau de la collecte du jour */}
@@ -1213,6 +1249,7 @@ function AgentDashboardTab({ showBanner, onGoCommissions }) {
           item={editItem}
           clients={clients}
           defaultDate={selectedDate}
+          collectWalletBalance={data?.agent?.collectWalletBalance || 0}
           onClose={() => setShowAddModal(false)}
           onSuccess={() => {
             setShowAddModal(false)
@@ -1221,12 +1258,192 @@ function AgentDashboardTab({ showBanner, onGoCommissions }) {
           }}
         />
       )}
+
+      {showFundModal && (
+        <FundCollectWalletModal
+          currentBalance={data?.agent?.collectWalletBalance || 0}
+          onClose={() => setShowFundModal(false)}
+          onSuccess={(msg) => {
+            setShowFundModal(false)
+            showBanner(msg)
+            loadDashboard(selectedDate)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Modal d'approvisionnement du portefeuille collecte depuis le portefeuille utilisateur
+function FundCollectWalletModal({ currentBalance = 0, onClose, onSuccess }) {
+  const [amount, setAmount] = useState('')
+  const [userWalletBalance, setUserWalletBalance] = useState(0)
+  const [loadingWallet, setLoadingWallet] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    walletApi.me()
+      .then((res) => setUserWalletBalance(res?.balance ?? res?.wallet?.balance ?? 0))
+      .catch(() => {})
+      .finally(() => setLoadingWallet(false))
+  }, [])
+
+  const handleFund = async (e) => {
+    e.preventDefault()
+    setError('')
+    const amt = Math.round(Number(amount) || 0)
+    if (!amt || amt <= 0) {
+      setError('Veuillez saisir un montant valide (minimum 100 FCFA).')
+      return
+    }
+    if (amt > userWalletBalance) {
+      setError(`Solde insuffisant dans votre portefeuille utilisateur (${fmt(userWalletBalance)} FCFA disponibles). Veuillez recharger votre portefeuille KATD d'abord.`)
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await collectApi.fundCollectWallet({ amount: amt })
+      onSuccess(res.message || `Portefeuille collecte approvisionné de ${fmt(amt)} FCFA avec succès !`)
+    } catch (err) {
+      setError(err.message || "Erreur lors de l'approvisionnement.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const presets = [5000, 10000, 25000, 50000, 100000]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
+      <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-100 space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+          <div>
+            <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+              <Wallet size={18} className="text-blue-600" /> Approvisionner le Portefeuille Collecte
+            </h3>
+            <p className="text-xs text-gray-500">Transfert de votre solde utilisateur vers le solde de collecte</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg">
+            <X size={18} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-3 bg-red-50 text-red-800 text-xs rounded-xl flex items-start gap-2 border border-red-200">
+            <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-600" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Soldes actuels */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-2xl">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 block">
+              Portefeuille Collecte actuel
+            </span>
+            <div className="text-base font-black text-blue-900 mt-0.5">
+              {fmt(currentBalance)} <span className="text-xs font-semibold">XAF</span>
+            </div>
+          </div>
+          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+              Portefeuille Utilisateur dispo
+            </span>
+            <div className="text-base font-black text-emerald-900 mt-0.5">
+              {loadingWallet ? '...' : fmt(userWalletBalance)} <span className="text-xs font-semibold">XAF</span>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleFund} className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-gray-700">Montant à transférer (FCFA) *</label>
+              {userWalletBalance > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAmount(userWalletBalance)}
+                  className="text-[11px] font-bold text-emerald-700 hover:underline"
+                >
+                  Tout transférer ({fmt(userWalletBalance)} F)
+                </button>
+              )}
+            </div>
+            <input
+              type="number"
+              min="100"
+              step="100"
+              placeholder="Ex : 25 000"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="input text-xs w-full font-bold"
+              required
+            />
+          </div>
+
+          {/* Raccourcis montants */}
+          <div className="flex flex-wrap gap-1.5">
+            {presets.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setAmount(p)}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold border transition-colors ${
+                  Number(amount) === p
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                +{fmt(p)} F
+              </button>
+            ))}
+          </div>
+
+          {userWalletBalance < Number(amount || 0) && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+              <AlertTriangle size={15} className="shrink-0 text-amber-600 mt-0.5" />
+              <div>
+                <span>Votre solde utilisateur est insuffisant. Vous devez d'abord recharger votre portefeuille personnel.</span>
+                <a
+                  href="/portefeuille"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-blue-700 underline block mt-1"
+                >
+                  Recharger mon portefeuille utilisateur ➔
+                </a>
+              </div>
+            </div>
+          )}
+
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="btn-secondary text-xs py-2 px-4 rounded-xl"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !amount || Number(amount) <= 0 || Number(amount) > userWalletBalance}
+              className="btn-primary text-xs py-2 px-4 rounded-xl flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
+            >
+              {submitting ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpRight size={14} />}
+              <span>Valider le transfert de {amount ? fmt(amount) : '0'} F</span>
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
 
 // Modal d'ajout / modification d'une ligne de collecte du jour (Paiement en argent réel)
-function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
+function DailyCollectModal({ item, clients, defaultDate, collectWalletBalance = 0, onClose, onSuccess }) {
   const inlineCheckout = useInlineCheckout()
   const [clientId, setClientId] = useState(item?.client || (clients[0]?._id || ''))
   const [amount, setAmount] = useState(item?.amount ?? (clients[0]?.dailyTarget || 1000))
@@ -1282,8 +1499,8 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
         setErr('Veuillez saisir un montant de collecte supérieur à 0.')
         return
       }
-      if (paymentMethod === 'wallet' && amt > walletBalance) {
-        setErr(`Solde de votre portefeuille insuffisant (${fmt(walletBalance)} FCFA). Veuillez recharger votre portefeuille ou régler par Mobile Money.`)
+      if (paymentMethod === 'wallet' && amt > collectWalletBalance) {
+        setErr(`Solde de votre portefeuille collecte insuffisant (${fmt(collectWalletBalance)} FCFA). Veuillez d'abord approvisionner votre portefeuille collecte depuis votre portefeuille utilisateur ou régler par Mobile Money.`)
         return
       }
       if ((paymentMethod === 'mtn' || paymentMethod === 'orange') && !momoPhone.trim()) {
@@ -1443,15 +1660,15 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
                   onClick={() => setPaymentMethod('wallet')}
                   className={`p-2.5 rounded-xl border text-left transition-all ${
                     paymentMethod === 'wallet'
-                      ? 'border-emerald-500 bg-white ring-2 ring-emerald-500/20'
+                      ? 'border-blue-500 bg-white ring-2 ring-blue-500/20'
                       : 'border-gray-200 bg-white hover:bg-gray-50'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 mb-1 text-emerald-700 font-bold text-xs">
-                    <Wallet size={14} /> Portefeuille
+                  <div className="flex items-center gap-1.5 mb-1 text-blue-700 font-bold text-xs">
+                    <Wallet size={14} /> Portefeuille Collecte
                   </div>
                   <div className="text-[10px] text-gray-500 truncate">
-                    Solde: {loadingWallet ? '...' : fmt(walletBalance)} F
+                    Solde: {fmt(collectWalletBalance)} F
                   </div>
                 </button>
 
@@ -1494,19 +1711,19 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
 
               {paymentMethod === 'wallet' && (
                 <div className={`p-2.5 rounded-xl text-xs ${
-                  Number(amount) > walletBalance
+                  Number(amount) > collectWalletBalance
                     ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-blue-50 text-blue-800 border border-blue-200'
                 }`}>
-                  {Number(amount) > walletBalance ? (
+                  {Number(amount) > collectWalletBalance ? (
                     <div className="flex items-center gap-1.5">
                       <AlertTriangle size={14} className="shrink-0 text-rose-600" />
-                      <span>Solde portefeuille insuffisant ({fmt(walletBalance)} FCFA). Veuillez recharger votre portefeuille ou choisir Mobile Money.</span>
+                      <span>Solde portefeuille collecte insuffisant ({fmt(collectWalletBalance)} FCFA). Veuillez d'abord approvisionner votre portefeuille collecte depuis votre portefeuille utilisateur ou choisir Mobile Money.</span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5">
-                      <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
-                      <span>La somme de <strong>{fmt(amount)} FCFA</strong> sera déduite immédiatement de votre portefeuille. Solde restant estimé : {fmt(walletBalance - Number(amount))} FCFA.</span>
+                      <CheckCircle2 size={14} className="shrink-0 text-blue-600" />
+                      <span>La somme de <strong>{fmt(amount)} FCFA</strong> sera déduite immédiatement de votre portefeuille collecte. Solde restant estimé : {fmt(collectWalletBalance - Number(amount))} FCFA.</span>
                     </div>
                   )}
                 </div>
@@ -1570,7 +1787,7 @@ function DailyCollectModal({ item, clients, defaultDate, onClose, onSuccess }) {
             </button>
             <button
               type="submit"
-              disabled={saving || (status === 'paye' && paymentMethod === 'wallet' && Number(amount) > walletBalance)}
+              disabled={saving || (status === 'paye' && paymentMethod === 'wallet' && Number(amount) > collectWalletBalance)}
               className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 font-bold disabled:opacity-50"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
@@ -3131,6 +3348,13 @@ function AgentCommissionWithdrawModal({ maxAmount, agentPhone, agentName, onClos
 
           {destination === 'momo' && (
             <div className="space-y-3 p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
+              <SavedMomoSelector
+                selectedPhone={phone}
+                onSelectAccount={(acc) => {
+                  setOperator(acc.operator || 'mtn')
+                  setPhone(acc.phone || '')
+                }}
+              />
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur Mobile Money *</label>
                 <div className="grid grid-cols-2 gap-2">

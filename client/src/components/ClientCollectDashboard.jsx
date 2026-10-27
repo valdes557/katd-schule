@@ -8,6 +8,10 @@ import {
   X, ShieldCheck, PiggyBank,
 } from 'lucide-react'
 import { collectApi, walletApi } from '../lib/api'
+import SavedMomoSelector from './SavedMomoSelector'
+import CagnotteLockModal from './CagnotteLockModal'
+import CagnotteLockProofModal from './CagnotteLockProofModal'
+import { Lock, Unlock, MessageSquare, FileText } from 'lucide-react'
 import { useInlineCheckout } from './payments/useInlineCheckout'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
@@ -24,6 +28,9 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
   const [userWalletBalance, setUserWalletBalance] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState({ text: '', type: '' })
+  const [lockModalOpen, setLockModalOpen] = useState(false)
+  const [proofModalOpen, setProofModalOpen] = useState(false)
+  const [transferringWallet, setTransferringWallet] = useState(false)
 
   // Formulaire de versement / paiement
   const [payAmount, setPayAmount] = useState('')
@@ -125,6 +132,26 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
       },
       { amount: amt, title: 'Paiement collecte journalière — ' + fmt(amt) + ' FCFA' }
     )
+  }
+
+  
+  const handleTransferToWallet = async () => {
+    const isEarly = data?.cagnotte?.isLocked
+    const msg = isEarly
+      ? `Attention : Votre cagnotte est dans sa période d'épargne. Le transfert anticipé déduira 3% de frais. Confirmez-vous le transfert vers votre portefeuille ?`
+      : `Confirmez-vous le transfert de votre cagnotte (${fmt(stats.totalBalance)} FCFA) vers votre portefeuille KATD (0% frais) ?`
+    if (!window.confirm(msg)) return
+
+    try {
+      setTransferringWallet(true)
+      const res = await collectApi.transferCagnotteToWallet()
+      showToast(res.message || 'Cagnotte transférée avec succès vers votre portefeuille !')
+      await loadData()
+    } catch (err) {
+      showToast(err.message || 'Erreur lors du transfert.', 'error')
+    } finally {
+      setTransferringWallet(false)
+    }
   }
 
   const handleWithdraw = async (e) => {
@@ -273,20 +300,112 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
       {navTab === 'home' && (
         <div className="px-4 space-y-3.5 animate-fade-in">
           {/* CARTE 1 : CAGNOTTE TOTALE */}
-          <div className="bg-white rounded-[26px] p-5 shadow-[0_2px_14px_rgba(0,0,0,0.03)] border border-gray-150/70 text-center">
-            <div className="flex justify-center mb-1.5">
+          <div className="bg-white rounded-[26px] p-5 shadow-[0_2px_14px_rgba(0,0,0,0.03)] border border-gray-150/70 text-center space-y-3">
+            <div className="flex items-center justify-between">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold border border-emerald-100">
                 <PiggyBank size={14} className="text-emerald-600" />
                 <span>Cagnotte Totale</span>
               </div>
+
+              {/* Badge de statut cagnotte */}
+              {data?.cagnotte?.isLocked ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 text-[10px] font-black uppercase border border-amber-200">
+                  <Lock size={10} /> Bloquée jusqu'au {fmtDate(data.cagnotte.lockUntil)}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase border border-emerald-300">
+                  <Unlock size={10} /> Débloquée (0% frais)
+                </span>
+              )}
             </div>
 
-            <div className="text-3xl font-black text-gray-900 tracking-tight my-2">
-              {fmt(stats.currentMonthTotal || (stats.totalBalance > 0 ? stats.totalBalance : 0))} FCFA
+            <div className="text-3xl font-black text-gray-900 tracking-tight my-1">
+              {fmt(stats.totalBalance || stats.currentMonthTotal || 0)} FCFA
             </div>
 
-            <div className="text-xs text-gray-500 font-medium mt-1">
-              Cumul des cotisations journalières du mois ({stats.paidDaysCount || 0} jour{(stats.paidDaysCount || 0) > 1 ? 's' : ''} cotisé{(stats.paidDaysCount || 0) > 1 ? 's' : ''})
+            <div className="text-xs text-gray-500 font-medium">
+              Cumul des cotisations journalières ({stats.paidDaysCount || 0} jour{(stats.paidDaysCount || 0) > 1 ? 's' : ''} cotisé{(stats.paidDaysCount || 0) > 1 ? 's' : ''})
+            </div>
+
+            {/* Note d'information cycle et frais */}
+            <div className={`p-2.5 rounded-2xl text-[11px] text-left leading-relaxed border ${
+              data?.cagnotte?.isLocked
+                ? 'bg-amber-50/70 border-amber-200/80 text-amber-950'
+                : 'bg-emerald-50/70 border-emerald-200/80 text-emerald-950'
+            }`}>
+              {data?.cagnotte?.isLocked ? (
+                <div>
+                  <span className="font-bold flex items-center gap-1 text-amber-900">
+                    <Lock size={12} /> Cycle d'épargne en cours (Échéance : {fmtDate(data.cagnotte.lockUntil)})
+                  </span>
+                  <p className="text-[10px] text-amber-800/90 mt-0.5">
+                    Retrait à échéance à <b>0% de frais</b>. Retrait anticipé avant échéance : <b>3% de frais réglementaires</b>.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <span className="font-bold flex items-center gap-1 text-emerald-900">
+                    <CheckCircle2 size={12} /> Échéance atteinte — Retrait 0% de frais
+                  </span>
+                  <p className="text-[10px] text-emerald-800/90 mt-0.5">
+                    Votre cagnotte est disponible au retrait sans frais. Vous pouvez également la transférer vers votre portefeuille.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Boutons d'action sur la cagnotte */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                onClick={() => setWithdrawModal(true)}
+                className="bg-[#e24438] hover:bg-[#c9362b] active:scale-95 text-white font-black py-3 px-2 rounded-2xl flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-tight shadow-sm transition-all"
+              >
+                <ArrowDownCircle size={14} />
+                <span>RETIRER MA CAGNOTTE</span>
+              </button>
+
+              <button
+                onClick={() => setLockModalOpen(true)}
+                className="bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-black py-3 px-2 rounded-2xl flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-tight shadow-sm transition-all"
+              >
+                <Lock size={14} />
+                <span>BLOQUER MA CAGNOTTE</span>
+              </button>
+            </div>
+
+            {/* Liens secondaires : Preuve contrat, virement portefeuille & messagerie */}
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1 border-t border-gray-100">
+              {data?.cagnotte?.lockContract?.contractNumber && (
+                <button
+                  type="button"
+                  onClick={() => setProofModalOpen(true)}
+                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 py-1 px-2.5 rounded-xl hover:bg-indigo-50 transition-colors"
+                >
+                  <FileText size={13} />
+                  <span>Preuve de blocage ({data.cagnotte.lockContract.contractNumber})</span>
+                </button>
+              )}
+
+              {stats.totalBalance > 0 && (
+                <button
+                  type="button"
+                  disabled={transferringWallet}
+                  onClick={handleTransferToWallet}
+                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 py-1 px-2.5 rounded-xl hover:bg-emerald-50 transition-colors"
+                >
+                  {transferringWallet ? <Loader2 size={13} className="animate-spin" /> : <Wallet size={13} />}
+                  <span>Virer vers mon portefeuille</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => navigate('/u/messages')}
+                className="text-[11px] font-bold text-gray-600 hover:text-gray-900 flex items-center gap-1 py-1 px-2.5 rounded-xl hover:bg-gray-100 transition-colors"
+              >
+                <MessageSquare size={13} className="text-indigo-500" />
+                <span>Contacter mon agent ({agent?.agencyName || 'Messagerie'})</span>
+              </button>
             </div>
           </div>
 
@@ -318,20 +437,13 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
               Aujourd'hui, {todayFormatted}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div>
               <button
                 onClick={() => setPayModal(true)}
-                className="bg-[#0f9755] hover:bg-[#0c7c45] active:scale-95 text-white font-black py-3.5 px-3 rounded-2xl flex items-center justify-center gap-1.5 text-[11px] sm:text-xs uppercase tracking-tight shadow-sm transition-all"
+                className="w-full bg-[#0f9755] hover:bg-[#0c7c45] active:scale-95 text-white font-black py-3.5 px-4 rounded-2xl flex items-center justify-center gap-2 text-xs uppercase tracking-tight shadow-sm transition-all"
               >
-                <Wallet size={15} />
-                <span>PAYER MA COLLECTE</span>
-              </button>
-              <button
-                onClick={() => setWithdrawModal(true)}
-                className="bg-[#e24438] hover:bg-[#c9362b] active:scale-95 text-white font-black py-3.5 px-3 rounded-2xl flex items-center justify-center gap-1.5 text-[11px] sm:text-xs uppercase tracking-tight shadow-sm transition-all"
-              >
-                <ArrowDownCircle size={15} />
-                <span>RETIRER MON ARGENT</span>
+                <Wallet size={16} />
+                <span>PAYER MA COLLECTE DU JOUR</span>
               </button>
             </div>
           </div>
@@ -827,6 +939,26 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
         </div>
       )}
 
+      
+      {/* MODALE DE BLOCAGE DE CAGNOTTE AVEC TERMES ET SIGNATURE NUMÉRIQUE */}
+      <CagnotteLockModal
+        client={client}
+        currentBalance={stats.totalBalance}
+        isOpen={lockModalOpen}
+        onClose={() => setLockModalOpen(false)}
+        onSuccess={(res) => {
+          showToast(res.message || 'Cagnotte bloquée avec succès !')
+          loadData()
+        }}
+      />
+
+      {/* MODALE DE VISUALISATION DU CONTRAT / PREUVE DE BLOCAGE */}
+      <CagnotteLockProofModal
+        contract={data?.cagnotte?.lockContract}
+        client={client}
+        onClose={() => setProofModalOpen(false)}
+      />
+
       {/* MODAL 2 : RETIRER MON ARGENT */}
       {withdrawModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
@@ -925,7 +1057,18 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
 
               {/* Paramètres Momo avec sélection automatique du numéro enregistré */}
               {withdrawMethod === 'momo' && (
-                <div className="space-y-3 p-3.5 bg-red-50/40 border border-red-200 rounded-2xl animate-fade-in">
+                <div className="space-y-3.5 p-3.5 bg-red-50/40 border border-red-200 rounded-2xl animate-fade-in">
+                  <SavedMomoSelector
+                    selectedOperator={withdrawOperator}
+                    selectedPhone={withdrawPhone}
+                    selectedName={withdrawName}
+                    onSelect={({ operator, phone, accountName }) => {
+                      setWithdrawOperator(operator)
+                      setWithdrawPhone(phone)
+                      setWithdrawName(accountName)
+                    }}
+                  />
+
                   <div>
                     <label className="font-bold text-gray-700 block mb-1.5">Opérateur Mobile Money *</label>
                     <div className="grid grid-cols-2 gap-2">
@@ -1009,6 +1152,18 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                 <b>Sanctuarisation des fonds :</b> En tant que client, vous disposez de la pleine propriété de votre épargne et pouvez la débloquer à tout moment.
               </div>
 
+              {data?.cagnotte?.isLocked && Number(withdrawAmount) > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-900 space-y-1">
+                  <div className="flex justify-between font-bold">
+                    <span>Frais de retrait anticipé (3%) :</span>
+                    <span className="text-amber-800">-{fmt(Math.round(Number(withdrawAmount) * 0.03))} FCFA</span>
+                  </div>
+                  <div className="flex justify-between font-black text-xs text-gray-900 pt-1 border-t border-amber-200/60">
+                    <span>Montant net que vous recevrez :</span>
+                    <span className="text-emerald-700">{fmt(Number(withdrawAmount) - Math.round(Number(withdrawAmount) * 0.03))} FCFA</span>
+                  </div>
+                </div>
+              )}
               <button
                 type="submit"
                 disabled={submitting}

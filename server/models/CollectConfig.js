@@ -3,6 +3,23 @@
 // ainsi que le montant des frais de tenue mensuelle (1 100 FCFA).
 const mongoose = require('mongoose')
 
+const DEFAULT_CAGNOTTE_LOCK_TERMS = `CONDITIONS GÉNÉRALES DE BLOCAGE ET DE SANCTUARISATION DE LA CAGNOTTE CLIENT
+
+1. ENGAGEMENT VOLONTAIRE D\'ÉPARGNE BLOQUÉE
+Le client titulaire choisit volontairement de bloquer le solde de sa cagnotte cumulée pour une durée déterminée afin de sanctuariser son capital et de maximiser la régularité de son épargne.
+
+2. DURÉE DE BLOCAGE ET ÉCHÉANCE
+Pendant toute la durée de blocage choisie, les fonds de la cagnotte demeurent strictement sécurisés sur la plateforme KATD-SCHULE et réservés au client titulaire. À l\'échéance de la période, les retraits sont totalement ouverts sans aucun frais.
+
+3. RETRAIT ANTICIPÉ EXCEPTIONNEL ET FRAIS (3%)
+En cas de force majeure, si le client décide d\'interrompre le blocage ou d\'effectuer un retrait avant l\'échéance convenue, des frais de rupture de 3% sont automatiquement prélevés sur le montant retiré au titre des frais administratifs et de gestion de plateforme.
+
+4. TRANSFERT AUTOMATIQUE VERS LE PORTEFEUILLE EN CAS DE NON-RETRAIT
+À la fin de la période de blocage convenue, une notification est expédiée au client pour l\'inviter à effectuer son retrait. Si aucun retrait n\'est initié, le solde disponible est transféré automatiquement dans son portefeuille utilisateur pour sa sécurité.
+
+5. SIGNATURE NUMÉRIQUE ET PREUVE JURIDIQUE
+La présente convention signée numériquement au doigt ou au stylet par le client fait foi entre les parties et engage la plateforme dans la préservation rigoureuse de ses avoirs.`
+
 const DEFAULT_TERMS = `CONDITIONS GÉNÉRALES D'ADHÉSION ET D'ENGAGEMENT DES AGENTS DE COLLECTE JOURNALIÈRE
 
 1. OBJET ET STATUT DE L'AGENT
@@ -28,6 +45,7 @@ const collectConfigSchema = new mongoose.Schema(
   {
     key: { type: String, default: 'main', unique: true },
     termsAndConditions: { type: String, default: DEFAULT_TERMS },
+    cagnotteLockTerms: { type: String, default: DEFAULT_CAGNOTTE_LOCK_TERMS },
     monthlyFee: { type: Number, default: 1100, min: 0 },
     defaultDailyTarget: { type: Number, default: 1000 },
     agentSubscriptionFee: { type: Number, default: 4995, min: 0 },

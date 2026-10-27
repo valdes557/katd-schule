@@ -31,6 +31,16 @@ const userSchema = new mongoose.Schema(
       number: { type: String, default: '' },
       name: { type: String, default: '' },
     },
+    // Numéros Mobile Money enregistrés pour pré-remplissage rapide des retraits
+    savedMomoAccounts: [
+      {
+        operator: { type: String, enum: ['mtn', 'orange'], required: true },
+        phone: { type: String, required: true, trim: true },
+        accountName: { type: String, required: true, trim: true },
+        isDefault: { type: Boolean, default: false },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
     // Suivi de présence (statut en ligne)

@@ -228,6 +228,7 @@ router.get('/config', protect, async (req, res) => {
       clientSubscriptionFee: cfg.clientSubscriptionFee ?? 4995,
       clientSubscriptionInterval: cfg.clientSubscriptionInterval ?? 'annual',
       defaultDailyTarget: cfg.defaultDailyTarget,
+      cagnotteLockTerms: cfg.cagnotteLockTerms,
     })
   } catch (err) {
     res.status(500).json({ message: err.message })
@@ -282,6 +283,9 @@ router.get('/my-agent-status', protect, async (req, res) => {
     res.json({
       success: true,
       isAgent: !!agent,
+      collectWalletBalance: agent?.collectWalletBalance || 0,
+      collectWalletTotalFunded: agent?.collectWalletTotalFunded || 0,
+      collectWalletTotalSpent: agent?.collectWalletTotalSpent || 0,
       agent,
       termsAccepted: !!agent?.termsAccepted,
       subscriptionPaid: !!agent?.subscriptionPaid,
@@ -810,24 +814,17 @@ router.post('/agent/daily', protect, async (req, res) => {
       })
     }
 
-    // SI LE PAIEMENT EST PAR PORTEFEUILLE KATD
-    if (status === 'paye' && paymentMethod === 'wallet') {
-      try {
-        await wallet.debit(req.user._id, {
-          amount: amt,
-          type: 'transfer_sent',
-          description: "Collecte journalière client : " + client.fullName + " (" + client.accountNumber + ")",
-          meta: {
-            reason: 'agent_collect_pay',
-            clientId: String(client._id),
-            agentId: String(agent._id),
-          },
-        })
-      } catch (walletErr) {
+    // SI LE PAIEMENT EST PAR PORTEFEUILLE COLLECTE AGENT OU WALLET
+    if (status === 'paye' && (paymentMethod === 'wallet' || paymentMethod === 'collect_wallet')) {
+      const cBal = Number(agent.collectWalletBalance || 0)
+      if (cBal < amt) {
         return res.status(400).json({
-          message: "Solde insuffisant dans votre portefeuille pour régler cette collecte (" + amt.toLocaleString('fr-FR') + " FCFA). Veuillez recharger votre portefeuille ou choisir Mobile Money.",
+          message: `Solde insuffisant dans votre Portefeuille Collecte (${cBal.toLocaleString('fr-FR')} FCFA disponibles). Veuillez approvisionner votre Portefeuille Collecte depuis votre portefeuille utilisateur avant de collecter ce client.`,
         })
       }
+      agent.collectWalletBalance = Math.max(0, cBal - amt)
+      agent.collectWalletTotalSpent = (agent.collectWalletTotalSpent || 0) + amt
+      await agent.save()
     }
 
     const col = await DailyCollection.create({
@@ -1804,9 +1801,10 @@ router.get('/admin/withdrawals-history', protect, adminOnly, async (req, res) =>
 // PUT /api/collect/admin/terms — Modification des termes et conditions par l'administrateur
 router.put('/admin/terms', protect, adminOnly, async (req, res) => {
   try {
-    const { termsAndConditions, monthlyFee, agentSubscriptionFee, clientSubscriptionFee, clientSubscriptionInterval } = req.body
+    const { termsAndConditions, monthlyFee, agentSubscriptionFee, clientSubscriptionFee, clientSubscriptionInterval, cagnotteLockTerms } = req.body
     const cfg = await CollectConfig.getOrCreate()
     if (termsAndConditions !== undefined) cfg.termsAndConditions = termsAndConditions
+    if (cagnotteLockTerms !== undefined) cfg.cagnotteLockTerms = cagnotteLockTerms
     if (monthlyFee !== undefined) cfg.monthlyFee = Number(monthlyFee)
     if (agentSubscriptionFee !== undefined) cfg.agentSubscriptionFee = Math.max(0, Number(agentSubscriptionFee) || 0)
     if (clientSubscriptionFee !== undefined) cfg.clientSubscriptionFee = Math.max(0, Number(clientSubscriptionFee) || 0)
@@ -2054,7 +2052,33 @@ router.get('/client/dashboard', protect, async (req, res) => {
       calendar: calendarDays,
       monthlyHistory,
       history: recentHistory,
+      cagnotte: {
+        cycleStart: client.cagnotteCycleStart,
+        cycleEnd: client.cagnotteCycleEnd,
+        lockStatus: client.cagnotteLockStatus || 'standard_month',
+        lockUntil: client.cagnotteLockUntil || client.cagnotteCycleEnd,
+        isLocked: (client.cagnotteLockUntil || client.cagnotteCycleEnd) ? (new Date() < new Date(client.cagnotteLockUntil || client.cagnotteCycleEnd)) : false,
+        isCycleEnded: (client.cagnotteLockUntil || client.cagnotteCycleEnd) ? (new Date() >= new Date(client.cagnotteLockUntil || client.cagnotteCycleEnd)) : true,
+        lockContract: client.cagnotteLockContract || null,
+        earlyWithdrawFeeRate: 0.03,
+      },
     })
+
+    // Vérification de notification d'échéance cagnotte
+    if (client.balance > 0 && (client.cagnotteLockUntil || client.cagnotteCycleEnd) && new Date() >= new Date(client.cagnotteLockUntil || client.cagnotteCycleEnd)) {
+      if (!client.cagnotteNotifiedAt) {
+        try {
+          const sendEmail = require('../utils/sendEmail')
+          await sendEmail({
+            to: client.email || req.user.email,
+            subject: `Échéance de votre cagnotte de collecte (${client.balance.toLocaleString('fr-FR')} FCFA sans frais) — KATD-SCHÜLE`,
+            html: `<p>Bonjour <b>${client.fullName}</b>,</p><p>Votre cycle de cagnotte de collecte journalière est arrivé à échéance ! Votre solde de <b>${client.balance.toLocaleString('fr-FR')} FCFA</b> est disponible au retrait sans aucun frais (0%).</p><p>Connectez-vous dès maintenant à votre espace pour effectuer votre retrait ou transférer vos fonds vers votre portefeuille.</p>`,
+          })
+          client.cagnotteNotifiedAt = new Date()
+          await client.save()
+        } catch (_) {}
+      }
+    }
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -2232,7 +2256,7 @@ router.post('/client/pay', protect, async (req, res) => {
   }
 })
 
-// POST /api/collect/client/withdraw — Le client retire lui-même le montant qu'il veut
+// POST /api/collect/client/withdraw — Retrait de la cagnotte cumulée (sans frais à échéance, ou 3% si anticipé)
 router.post('/client/withdraw', protect, async (req, res) => {
   try {
     const { amount, payoutMethod = 'wallet', momoNumber, momoOperator, accountName, country = 'CM' } = req.body
@@ -2254,12 +2278,40 @@ router.post('/client/withdraw', protect, async (req, res) => {
 
     const agent = await CollectAgent.findById(client.agent).populate('user', 'name email phone')
 
+    // Calcul des frais de retrait anticipé (3%) si le retrait a lieu avant l'échéance de 1 mois ou de blocage
+    const now = new Date()
+    const lockDeadline = client.cagnotteLockUntil || client.cagnotteCycleEnd
+    const isEarly = lockDeadline ? (now < new Date(lockDeadline)) : false
+
+    let feeAmount = 0
+    let netAmount = amt
+
+    if (isEarly) {
+      feeAmount = Math.round(amt * 0.03)
+      netAmount = amt - feeAmount
+
+      // Enregistrement des frais de retrait (3%) répartis dans les comptes administrateurs (60% Compte 1, 40% Compte 2)
+      try {
+        const adminCoAccountsService = require('../services/adminCoAccountsService')
+        await adminCoAccountsService.recordPlatformFee({
+          category: 'withdrawal_fee',
+          amount: feeAmount,
+          description: `Frais de retrait anticipé cagnotte client (3%) - ${client.fullName} (${client.accountNumber})`,
+          performedBy: req.user?.email || 'system',
+        })
+      } catch (feeErr) {
+        console.error('[Collect] Erreur enregistrement frais admin 3%:', feeErr.message)
+      }
+    }
+
     if (payoutMethod === 'wallet') {
       await wallet.credit(req.user._id, {
-        amount: amt,
+        amount: netAmount,
         type: 'transfer_received',
-        description: `Retrait depuis mon compte de collecte journalière (${client.accountNumber})`,
-        meta: { reason: 'client_collect_withdraw', clientId: String(client._id) },
+        description: isEarly
+          ? `Retrait anticipé cagnotte collecte (${client.accountNumber}) — Net reçu : ${netAmount.toLocaleString('fr-FR')} FCFA (Frais 3% : ${feeAmount.toLocaleString('fr-FR')} F)`
+          : `Retrait à échéance cagnotte collecte (${client.accountNumber}) — Montant : ${netAmount.toLocaleString('fr-FR')} FCFA (0% frais)`,
+        meta: { reason: 'client_collect_withdraw', clientId: String(client._id), baseAmount: amt, fee: feeAmount, isEarly },
       })
     } else if (payoutMethod === 'momo') {
       if (!momoNumber || !momoOperator) {
@@ -2267,7 +2319,7 @@ router.post('/client/withdraw', protect, async (req, res) => {
       }
       try {
         await ikeepay.createPayout({
-          amount: amt,
+          amount: netAmount,
           phone: momoNumber,
           operator: momoOperator,
           accountName: accountName || client.fullName,
@@ -2282,6 +2334,17 @@ router.post('/client/withdraw', protect, async (req, res) => {
 
     // Déduction du solde client
     client.balance -= amt
+    // Si la totalité du solde a été retirée, relancer un nouveau cycle mensuel
+    if (client.balance <= 0) {
+      const nextStart = new Date()
+      const nextEnd = new Date(nextStart)
+      nextEnd.setMonth(nextEnd.getMonth() + 1)
+      client.cagnotteCycleStart = nextStart
+      client.cagnotteCycleEnd = nextEnd
+      client.cagnotteLockStatus = 'standard_month'
+      client.cagnotteLockUntil = nextEnd
+      client.cagnotteNotifiedAt = null
+    }
     await client.save()
 
     // Enregistrement de l'opération dans DailyCollection
@@ -2298,14 +2361,21 @@ router.post('/client/withdraw', protect, async (req, res) => {
       type: 'retrait',
       status: 'retrait',
       paymentMethod: payoutMethod,
-      notes: `Retrait effectué par le client vers ${payoutMethod === 'wallet' ? 'Portefeuille' : momoNumber}`,
+      notes: isEarly
+        ? `Retrait anticipé vers ${payoutMethod === 'wallet' ? 'Portefeuille' : momoNumber} (Net : ${netAmount} F, Frais 3% : ${feeAmount} F)`
+        : `Retrait à échéance vers ${payoutMethod === 'wallet' ? 'Portefeuille' : momoNumber} (Net : ${netAmount} F, 0% frais)`,
       datetime: new Date(),
     })
 
     res.json({
       success: true,
-      message: `Votre retrait de ${amt.toLocaleString('fr-FR')} FCFA a été effectué avec succès !`,
+      message: isEarly
+        ? `Retrait anticipé de ${amt.toLocaleString('fr-FR')} FCFA validé. Montant net reçu : ${netAmount.toLocaleString('fr-FR')} FCFA (Frais de retrait 3% : ${feeAmount.toLocaleString('fr-FR')} FCFA).`
+        : `Votre retrait de ${amt.toLocaleString('fr-FR')} FCFA a été effectué sans frais avec succès !`,
       newBalance: client.balance,
+      netAmount,
+      feeAmount,
+      isEarly,
       record,
     })
   } catch (err) {
@@ -2315,4 +2385,235 @@ router.post('/client/withdraw', protect, async (req, res) => {
 
 router.checkAndApplyMonthlyFeeForClient = checkAndApplyMonthlyFeeForClient
 router.resolveClientForUser = resolveClientForUser
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOUVEAUX ENDPOINTS : PORTEFEUILLE COLLECTE AGENT & CAGNOTTE BLOQUÉE
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /api/collect/agent/fund-collect-wallet — Approvisionne le Portefeuille Collecte depuis le portefeuille utilisateur
+router.post('/agent/fund-collect-wallet', protect, async (req, res) => {
+  try {
+    const agent = await CollectAgent.findOne({ user: req.user._id })
+    if (!agent || agent.status !== 'active') {
+      return res.status(403).json({ message: 'Accès réservé aux agents de collecte actifs' })
+    }
+
+    const { amount } = req.body
+    const amt = Math.round(Number(amount) || 0)
+    if (!amt || amt <= 0) {
+      return res.status(400).json({ message: 'Veuillez saisir un montant valide (minimum 100 FCFA).' })
+    }
+
+    const userWallet = await wallet.getOrCreateWallet(req.user._id)
+    if (userWallet.balance < amt) {
+      return res.status(400).json({
+        message: `Solde insuffisant dans votre portefeuille utilisateur (${userWallet.balance.toLocaleString('fr-FR')} FCFA disponibles). Veuillez d'abord effectuer un dépôt dans votre portefeuille.`,
+      })
+    }
+
+    // Débit du portefeuille utilisateur
+    await wallet.debit(req.user._id, {
+      amount: amt,
+      type: 'transfer_sent',
+      description: `Approvisionnement Portefeuille Collecte Agent (${agent.agencyName})`,
+      meta: {
+        reason: 'agent_fund_collect_wallet',
+        agentId: String(agent._id),
+      },
+    })
+
+    // Crédit du portefeuille collecte de l'agent
+    agent.collectWalletBalance = (agent.collectWalletBalance || 0) + amt
+    agent.collectWalletTotalFunded = (agent.collectWalletTotalFunded || 0) + amt
+    await agent.save()
+
+    const freshUserWallet = await wallet.getOrCreateWallet(req.user._id)
+
+    res.json({
+      success: true,
+      message: `Votre Portefeuille Collecte a été approvisionné de ${amt.toLocaleString('fr-FR')} FCFA avec succès !`,
+      collectWalletBalance: agent.collectWalletBalance,
+      userWalletBalance: freshUserWallet.balance,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/collect/client/lock-cagnotte — Le client bloque lui-même sa cagnotte avec signature numérique
+router.post('/client/lock-cagnotte', protect, async (req, res) => {
+  try {
+    const { durationMonths = 1, termsContent, clientSignature } = req.body
+    const months = Math.max(1, Math.min(36, Number(durationMonths) || 1))
+
+    if (!clientSignature) {
+      return res.status(400).json({ message: 'La signature numérique du client est obligatoire pour valider le blocage de la cagnotte.' })
+    }
+
+    const client = await resolveClientForUser(req.user)
+    if (!client) return res.status(404).json({ message: 'Compte client introuvable.' })
+
+    const lockStart = new Date()
+    const lockEnd = new Date(lockStart)
+    lockEnd.setMonth(lockEnd.getMonth() + months)
+
+    const year = lockStart.getFullYear()
+    const crypto = require('crypto')
+    const rnd = crypto.randomInt(1000, 9999)
+    const contractNumber = `CAG-LOCK-${year}-${rnd}`
+
+    const cfg = await CollectConfig.getOrCreate()
+    const finalTerms = termsContent || cfg.cagnotteLockTerms
+
+    client.cagnotteLockStatus = 'custom_locked'
+    client.cagnotteLockUntil = lockEnd
+    client.cagnotteCycleEnd = lockEnd
+    client.cagnotteLockContract = {
+      contractNumber,
+      lockDurationMonths: months,
+      lockUntil: lockEnd,
+      termsContent: finalTerms,
+      clientSignature,
+      signedAt: lockStart,
+    }
+
+    await client.save()
+
+    try {
+      const sendEmail = require('../utils/sendEmail')
+      await sendEmail({
+        to: client.email || req.user.email,
+        subject: `Confirmation de blocage de votre cagnotte (${contractNumber}) — KATD-SCHÜLE`,
+        html: `<p>Bonjour <b>${client.fullName}</b>,</p><p>Nous confirmons la sanctuarisation de votre cagnotte pour une durée de <b>${months} mois</b> jusqu'au <b>${lockEnd.toLocaleDateString('fr-FR')}</b>.</p><p>Votre contrat officiel signé numériquement porte la référence : <b>${contractNumber}</b>. Un exemplaire est consultable à tout moment dans votre espace client.</p>`,
+      })
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `Votre cagnotte a été bloquée pour une durée de ${months} mois (jusqu'au ${lockEnd.toLocaleDateString('fr-FR')}). Contrat ${contractNumber} certifié avec succès.`,
+      contract: client.cagnotteLockContract,
+      lockUntil: lockEnd,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/collect/client/transfer-to-wallet — Virement immédiat du solde cagnotte vers le portefeuille utilisateur
+router.post('/client/transfer-to-wallet', protect, async (req, res) => {
+  try {
+    const client = await resolveClientForUser(req.user)
+    if (!client) return res.status(404).json({ message: 'Compte client introuvable.' })
+
+    const amt = Number(client.balance) || 0
+    if (amt <= 0) {
+      return res.status(400).json({ message: 'Votre solde de cagnotte est vide.' })
+    }
+
+    const now = new Date()
+    const lockDeadline = client.cagnotteLockUntil || client.cagnotteCycleEnd
+    const isEarly = lockDeadline ? (now < new Date(lockDeadline)) : false
+
+    let feeAmount = 0
+    let netAmount = amt
+
+    if (isEarly) {
+      feeAmount = Math.round(amt * 0.03)
+      netAmount = amt - feeAmount
+
+      const adminCoAccountsService = require('../services/adminCoAccountsService')
+      try {
+        await adminCoAccountsService.recordPlatformFee({
+          category: 'withdrawal_fee',
+          amount: feeAmount,
+          description: `Frais de retrait anticipé cagnotte client (3%) - ${client.fullName} (${client.accountNumber})`,
+          performedBy: req.user?.email || 'system',
+        })
+      } catch (fErr) {
+        console.error('[Collect] Erreur enregistrement frais 3% admin:', fErr.message)
+      }
+    }
+
+    await wallet.credit(req.user._id, {
+      amount: netAmount,
+      type: 'transfer_received',
+      description: isEarly
+        ? `Transfert anticipé cagnotte vers portefeuille (${client.accountNumber}) — Net reçu : ${netAmount.toLocaleString('fr-FR')} FCFA (Frais 3% : ${feeAmount.toLocaleString('fr-FR')} F)`
+        : `Transfert à échéance cagnotte vers portefeuille (${client.accountNumber}) — Montant : ${netAmount.toLocaleString('fr-FR')} FCFA (0% frais)`,
+      meta: { reason: 'client_cagnotte_to_wallet', clientId: String(client._id), baseAmount: amt, fee: feeAmount, isEarly },
+    })
+
+    client.balance = 0
+    const nextStart = new Date()
+    const nextEnd = new Date(nextStart)
+    nextEnd.setMonth(nextEnd.getMonth() + 1)
+    client.cagnotteCycleStart = nextStart
+    client.cagnotteCycleEnd = nextEnd
+    client.cagnotteLockStatus = 'standard_month'
+    client.cagnotteLockUntil = nextEnd
+    client.cagnotteNotifiedAt = null
+    client.cagnotteAutoTransferredAt = new Date()
+    await client.save()
+
+    const today = getTodayStr()
+    await DailyCollection.create({
+      agent: client.agent,
+      agentUser: client.agentUser,
+      client: client._id,
+      clientName: client.fullName,
+      clientPhone: client.phone,
+      neighborhood: client.neighborhood,
+      date: today,
+      amount: -amt,
+      type: 'retrait',
+      status: 'retrait',
+      paymentMethod: 'wallet',
+      notes: `Transfert total cagnotte vers portefeuille KATD (Net : ${netAmount} F, Frais : ${feeAmount} F)`,
+      datetime: new Date(),
+    })
+
+    res.json({
+      success: true,
+      message: `Votre cagnotte de ${amt.toLocaleString('fr-FR')} FCFA a été transférée vers votre portefeuille avec succès (Montant net reçu : ${netAmount.toLocaleString('fr-FR')} FCFA) !`,
+      newBalance: 0,
+      netAmount,
+      feeAmount,
+      isEarly,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/collect/admin/locked-contracts — Liste des contrats de blocage signés par les clients
+router.get('/admin/locked-contracts', protect, adminOnly, async (req, res) => {
+  try {
+    const clients = await CollectClient.find({
+      'cagnotteLockContract.contractNumber': { $exists: true, $ne: '' },
+    })
+      .populate('agent', 'agencyName phone')
+      .sort({ 'cagnotteLockContract.signedAt': -1 })
+      .lean()
+
+    const contracts = clients.map((cl) => ({
+      clientId: cl._id,
+      accountNumber: cl.accountNumber,
+      clientName: cl.fullName,
+      clientPhone: cl.phone,
+      clientEmail: cl.email,
+      neighborhood: cl.neighborhood,
+      balance: cl.balance,
+      agentAgencyName: cl.agent?.agencyName || 'Non assigné',
+      agentPhone: cl.agent?.phone || '',
+      contract: cl.cagnotteLockContract,
+      lockUntil: cl.cagnotteLockUntil,
+      isCurrentlyLocked: cl.cagnotteLockUntil ? new Date() < new Date(cl.cagnotteLockUntil) : false,
+    }))
+
+    res.json({ success: true, contracts })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router

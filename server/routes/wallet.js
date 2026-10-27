@@ -56,7 +56,7 @@ router.get('/me', protect, async (req, res) => {
     const hasPin = !!(await User.findById(req.user._id).select('+walletPin').then(u => u && u.walletPin))
     // Génère le numéro de compte KS-XXXXXX à la première ouverture (couvre les comptes existants).
     const accountNo = await wallet.ensureAccountNo(req.user._id)
-    res.json({ success: true, balance: w.balance, wallet: { balance: w.balance, locked: w.locked, currency: w.currency }, locked: w.locked, currency: w.currency, totalIn: w.totalIn, totalOut: w.totalOut, hasPin, accountNo, transactions })
+    res.json({ success: true, balance: w.balance, wallet: { balance: w.balance, locked: w.locked, currency: w.currency }, locked: w.locked, currency: w.currency, totalIn: w.totalIn, totalOut: w.totalOut, hasPin, accountNo, transactions, savedMomoAccounts: (await User.findById(req.user._id).select("savedMomoAccounts"))?.savedMomoAccounts || [] })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -386,6 +386,118 @@ router.get('/withdrawals', protect, async (req, res) => {
     const list = await WithdrawalRequest.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(50)
     res.json({ success: true, withdrawals: list })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+
+// ───────────────────────── COMPTES MOBILE MONEY ENREGISTRÉS ─────────────────────────
+// GET /api/wallet/saved-momo-accounts
+router.get('/saved-momo-accounts', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('savedMomoAccounts')
+    res.json({ success: true, savedMomoAccounts: user?.savedMomoAccounts || [] })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/wallet/saved-momo-accounts
+router.post('/saved-momo-accounts', protect, async (req, res) => {
+  try {
+    const { operator, phone, accountName, isDefault } = req.body
+    if (!operator || !['mtn', 'orange'].includes(operator)) {
+      return res.status(400).json({ message: 'Opérateur invalide (mtn ou orange)' })
+    }
+    if (!phone || !String(phone).trim()) {
+      return res.status(400).json({ message: 'Numéro de téléphone requis' })
+    }
+    if (!accountName || !String(accountName).trim()) {
+      return res.status(400).json({ message: 'Nom du titulaire requis' })
+    }
+
+    const user = await User.findById(req.user._id)
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
+
+    const cleanPhone = String(phone).trim().replace(/\s+/g, '')
+    const cleanName = String(accountName).trim()
+
+    if (!user.savedMomoAccounts) user.savedMomoAccounts = []
+
+    if (isDefault) {
+      user.savedMomoAccounts.forEach((acc) => { acc.isDefault = false })
+    }
+
+    const makeDefault = isDefault || (user.savedMomoAccounts.length === 0)
+
+    user.savedMomoAccounts.push({
+      operator,
+      phone: cleanPhone,
+      accountName: cleanName,
+      isDefault: !!makeDefault,
+      createdAt: new Date(),
+    })
+
+    await user.save()
+    res.status(201).json({
+      success: true,
+      message: 'Compte Mobile Money enregistré avec succès',
+      savedMomoAccounts: user.savedMomoAccounts,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// PUT /api/wallet/saved-momo-accounts/:id
+router.put('/saved-momo-accounts/:id', protect, async (req, res) => {
+  try {
+    const { operator, phone, accountName, isDefault } = req.body
+    const user = await User.findById(req.user._id)
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
+
+    const acc = user.savedMomoAccounts.id(req.params.id)
+    if (!acc) return res.status(404).json({ message: 'Compte enregistré introuvable' })
+
+    if (operator && ['mtn', 'orange'].includes(operator)) acc.operator = operator
+    if (phone) acc.phone = String(phone).trim().replace(/\s+/g, '')
+    if (accountName) acc.accountName = String(accountName).trim()
+    if (typeof isDefault === 'boolean') {
+      if (isDefault) {
+        user.savedMomoAccounts.forEach((a) => { if (a._id.toString() !== req.params.id) a.isDefault = false })
+      }
+      acc.isDefault = isDefault
+    }
+
+    await user.save()
+    res.json({
+      success: true,
+      message: 'Compte Mobile Money mis à jour',
+      savedMomoAccounts: user.savedMomoAccounts,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// DELETE /api/wallet/saved-momo-accounts/:id
+router.delete('/saved-momo-accounts/:id', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
+
+    user.savedMomoAccounts = user.savedMomoAccounts.filter((a) => a._id.toString() !== req.params.id)
+    if (user.savedMomoAccounts.length > 0 && !user.savedMomoAccounts.some((a) => a.isDefault)) {
+      user.savedMomoAccounts[0].isDefault = true
+    }
+
+    await user.save()
+    res.json({
+      success: true,
+      message: 'Compte Mobile Money supprimé',
+      savedMomoAccounts: user.savedMomoAccounts,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 module.exports = router

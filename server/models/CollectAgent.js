@@ -55,6 +55,11 @@ const collectAgentSchema = new mongoose.Schema(
     lastCommissionWithdrawal: { type: Date, default: null },
     commissionWithdrawals: [commissionWithdrawalSchema],
 
+    // ── Portefeuille Collecte séparé (sert exclusivement à collecter les clients) ──
+    collectWalletBalance: { type: Number, default: 0, min: 0 },
+    collectWalletTotalFunded: { type: Number, default: 0 },
+    collectWalletTotalSpent: { type: Number, default: 0 },
+
     meta: { type: Object, default: {} },
   },
   { timestamps: true }
