@@ -12,7 +12,7 @@ import {
   TrendingUp, Crown, Megaphone, CalendarClock, Video, Banknote, Receipt, Wallet,
   Lock, Sparkles, AlertCircle, ShieldAlert,
 } from 'lucide-react'
-import { shareholdersApi, paymentsApi, walletApi } from '../../lib/api'
+import { shareholdersApi, paymentsApi, walletApi, zonesApi } from '../../lib/api'
 import { useInlineCheckout } from '../../components/payments/useInlineCheckout'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
@@ -161,17 +161,20 @@ export default function UserShareholdersPage() {
 // ── Portefeuille d'associé ──
 // CONFIDENTIALITÉ : uniquement des agrégats — pas de transferts individuels ni de soldes.
 function ShareholderWallet({ dash }) {
-  const { stats, zone, posts, shareholdings } = dash
+  const { stats = {}, zone = {}, posts = [], shareholdings = [] } = dash || {}
+  const activeHoldings = Array.isArray(shareholdings) ? shareholdings : []
+  const primaryHolding = activeHoldings[0] || {}
+  const currentPercent = primaryHolding.percent || 1
   return (
     <div className="space-y-5">
       {/* Zone d'attribution */}
       <div className="bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl p-5 shadow-lg">
         <div className="flex items-center gap-2 opacity-90"><Crown size={16} /><span className="text-xs font-semibold uppercase">Zone d'attribution</span></div>
-        <p className="text-xl font-bold mt-1">{zone.label || zone.planKey}</p>
-        {zone.zone && <p className="text-sm opacity-85 flex items-center gap-1 mt-0.5"><MapPin size={13} /> {zone.zone}</p>}
+        <p className="text-xl font-bold mt-1">{zone?.label || zone?.planKey || "Zone d'attribution"}</p>
+        {zone?.zone && <p className="text-sm opacity-85 flex items-center gap-1 mt-0.5"><MapPin size={13} /> {zone.zone}</p>}
         <div className="flex flex-wrap gap-2 mt-3">
-          {shareholdings.map((s) => (
-            <span key={s._id} className="text-[10px] font-semibold bg-white/20 rounded-full px-2.5 py-1">
+          {activeHoldings.map((s) => (
+            <span key={s._id || s.planKey} className="text-[10px] font-semibold bg-white/20 rounded-full px-2.5 py-1">
               {s.planLabel || s.planKey} · {s.percent}% · jusqu'au {s.endAt ? new Date(s.endAt).toLocaleDateString('fr-FR') : '—'}
             </span>
           ))}
@@ -180,10 +183,10 @@ function ShareholderWallet({ dash }) {
 
       {/* Statistiques agrégées de la zone */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard icon={Users} color="text-blue-600" border="border-blue-500" label="Utilisateurs de la zone" value={fmt(stats.userCount)} />
-        <StatCard icon={ArrowLeftRight} color="text-indigo-600" border="border-indigo-500" label="Transactions effectuées" value={fmt(stats.txCount)} />
-        <StatCard icon={Wallet} color="text-amber-600" border="border-amber-500" label="Transferts + retraits" value={fmt(stats.movementsTotal) + ' F'} />
-        <StatCard icon={Coins} color="text-emerald-600" border="border-emerald-500" label="Frais de transactions" value={fmt(stats.feesTotal) + ' F'} />
+        <StatCard icon={Users} color="text-blue-600" border="border-blue-500" label="Utilisateurs de la zone" value={fmt(stats?.userCount)} />
+        <StatCard icon={ArrowLeftRight} color="text-indigo-600" border="border-indigo-500" label="Transactions effectuées" value={fmt(stats?.txCount)} />
+        <StatCard icon={Wallet} color="text-amber-600" border="border-amber-500" label="Transferts + retraits" value={fmt(stats?.movementsTotal) + ' F'} />
+        <StatCard icon={Coins} color="text-emerald-600" border="border-emerald-500" label="Frais de transactions" value={fmt(stats?.feesTotal) + ' F'} />
       </div>
 
       {/* Section des droits de perception sur les frais plateforme */}
@@ -197,25 +200,25 @@ function ShareholderWallet({ dash }) {
             </div>
           </div>
           <span className="text-xs font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-xl">
-            Part active : {shareholdings[0]?.percent || 1}%
+            Part active : {currentPercent}%
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-1">
             <span className="text-[10px] text-gray-400 uppercase font-bold block">Revenus plateforme éligibles</span>
-            <span className="text-lg font-black text-gray-900">{fmt(stats.eligiblePlatformFees || 0)} FCFA</span>
+            <span className="text-lg font-black text-gray-900">{fmt(stats?.eligiblePlatformFees || 0)} FCFA</span>
             <p className="text-[10px] text-gray-500">Cumul sur les catégories de frais de votre plan</p>
           </div>
           <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1">
             <span className="text-[10px] text-emerald-700 uppercase font-bold block">Votre quote-part théorique</span>
-            <span className="text-lg font-black text-emerald-800">{fmt(stats.shareholderCalculatedShare || 0)} FCFA</span>
-            <p className="text-[10px] text-emerald-600 font-semibold">{shareholdings[0]?.percent || 1}% de vos frais attribués</p>
+            <span className="text-lg font-black text-emerald-800">{fmt(stats?.shareholderCalculatedShare || 0)} FCFA</span>
+            <p className="text-[10px] text-emerald-600 font-semibold">{currentPercent}% de vos frais attribués</p>
           </div>
         </div>
 
         {/* Détail ventilé par catégorie de frais */}
-        {dash.categoryBreakdown && dash.categoryBreakdown.length > 0 && (
+        {Array.isArray(dash?.categoryBreakdown) && dash.categoryBreakdown.length > 0 && (
           <div className="space-y-2 pt-1">
             <span className="text-xs font-bold text-gray-700 block">Détail des frais par catégorie :</span>
             <div className="overflow-x-auto border border-gray-150 rounded-xl">
@@ -225,7 +228,7 @@ function ShareholderWallet({ dash }) {
                     <th className="py-2 px-3">Type de Frais</th>
                     <th className="py-2 px-3 text-center">Éligibilité</th>
                     <th className="py-2 px-3 text-right">Total Plateforme</th>
-                    <th className="py-2 px-3 text-right">Votre Part ({shareholdings[0]?.percent || 1}%)</th>
+                    <th className="py-2 px-3 text-right">Votre Part ({currentPercent}%)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -263,10 +266,10 @@ function ShareholderWallet({ dash }) {
           <TrendingUp size={18} />
           <div>
             <p className="text-xs font-semibold uppercase text-gray-500">Mes dividendes versés sur portefeuille</p>
-            <p className="text-[11px] text-gray-400">{fmt(stats.gainsCount)} versement{stats.gainsCount > 1 ? 's' : ''} reçu{stats.gainsCount > 1 ? 's' : ''}</p>
+            <p className="text-[11px] text-gray-400">{fmt(stats?.gainsCount)} versement{(stats?.gainsCount || 0) > 1 ? 's' : ''} reçu{(stats?.gainsCount || 0) > 1 ? 's' : ''}</p>
           </div>
         </div>
-        <p className="text-2xl font-bold text-emerald-600">{fmt(stats.gainsTotal)} <span className="text-sm">F</span></p>
+        <p className="text-2xl font-bold text-emerald-600">{fmt(stats?.gainsTotal)} <span className="text-sm">F</span></p>
       </div>
 
       {/* Publications du super admin */}
