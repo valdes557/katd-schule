@@ -750,7 +750,7 @@ async function applyOutcome(intent, status, raw) {
         await Shareholding.create({
           user: intent.initiatedBy, planKey: m.planKey, planLabel: m.planLabel || '',
           percent: Number(m.percent) || 1, amount: intent.amount, durationYears: years,
-          zone: m.zone || '', zoneId: m.zoneId || null, startAt, endAt, status: 'active', paymentIntent: intent._id,
+          zone: m.zone || '', zoneId: m.zoneId || null, allowedFeeCategories: m.allowedFeeCategories || [], startAt, endAt, status: 'active', paymentIntent: intent._id,
         })
         try {
           const admin = await wallet.getPlatformAdmin()

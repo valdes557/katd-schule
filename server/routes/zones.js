@@ -141,6 +141,68 @@ router.post('/admin', protect, superAdminOnly, async (req, res) => {
   }
 })
 
+// PUT /api/zones/admin/assign-user — Attribution ou modification de la zone d'un utilisateur existant
+router.put('/admin/assign-user', protect, superAdminOnly, async (req, res) => {
+  try {
+    const { userId, zoneId } = req.body
+
+    if (!userId) {
+      return res.status(400).json({ message: "L'identifiant de l'utilisateur (userId) est obligatoire." })
+    }
+
+    const user = await User.findById(userId)
+    if (!user) {
+      return res.status(404).json({ message: 'Utilisateur introuvable.' })
+    }
+
+    // Si zoneId est null ou vide -> désassigne
+    if (!zoneId) {
+      user.geographicZone = {
+        zoneId: null,
+        zoneType: null,
+        zoneName: '',
+      }
+      await user.save()
+      return res.json({
+        success: true,
+        message: `Zone géographique retirée pour l'utilisateur ${user.name}.`,
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          geographicZone: user.geographicZone,
+        },
+      })
+    }
+
+    const zone = await GeographicZone.findById(zoneId)
+    if (!zone) {
+      return res.status(404).json({ message: 'Zone géographique sélectionnée introuvable.' })
+    }
+
+    user.geographicZone = {
+      zoneId: zone._id,
+      zoneType: zone.type,
+      zoneName: zone.name,
+    }
+    await user.save()
+
+    res.json({
+      success: true,
+      message: `L'utilisateur ${user.name} a été attribué avec succès à la zone « ${zone.name} » (${zone.type.toUpperCase()}).`,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        geographicZone: user.geographicZone,
+      },
+      zone,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 // PUT /api/zones/admin/:id — Modification d'une zone géographique
 router.put('/admin/:id', protect, superAdminOnly, async (req, res) => {
   try {
@@ -281,66 +343,6 @@ router.get('/admin/users', protect, superAdminOnly, async (req, res) => {
   }
 })
 
-// PUT /api/zones/admin/assign-user — Attribution ou modification de la zone d'un utilisateur existant
-router.put('/admin/assign-user', protect, superAdminOnly, async (req, res) => {
-  try {
-    const { userId, zoneId } = req.body
 
-    if (!userId) {
-      return res.status(400).json({ message: "L'identifiant de l'utilisateur (userId) est obligatoire." })
-    }
-
-    const user = await User.findById(userId)
-    if (!user) {
-      return res.status(404).json({ message: 'Utilisateur introuvable.' })
-    }
-
-    // Si zoneId est null ou vide -> désassigne
-    if (!zoneId) {
-      user.geographicZone = {
-        zoneId: null,
-        zoneType: null,
-        zoneName: '',
-      }
-      await user.save()
-      return res.json({
-        success: true,
-        message: `Zone géographique retirée pour l'utilisateur ${user.name}.`,
-        user: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          geographicZone: user.geographicZone,
-        },
-      })
-    }
-
-    const zone = await GeographicZone.findById(zoneId)
-    if (!zone) {
-      return res.status(404).json({ message: 'Zone géographique sélectionnée introuvable.' })
-    }
-
-    user.geographicZone = {
-      zoneId: zone._id,
-      zoneType: zone.type,
-      zoneName: zone.name,
-    }
-    await user.save()
-
-    res.json({
-      success: true,
-      message: `L'utilisateur ${user.name} a été attribué avec succès à la zone « ${zone.name} » (${zone.type.toUpperCase()}).`,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        geographicZone: user.geographicZone,
-      },
-      zone,
-    })
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
 
 module.exports = router

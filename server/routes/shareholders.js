@@ -23,6 +23,20 @@ function superAdminOnly(req, res, next) {
 
 // Plafond strict de promotion : 10% d'actions au total allouées sur la plateforme.
 // Dès que le cumul des parts actives atteint 10%, la section de souscription est bloquée.
+
+const ALL_FEE_CATEGORIES = [
+  { key: 'subscription', label: "Frais de souscription d'école", desc: "Abonnements et licences annuels/mensuels des établissements scolaires" },
+  { key: 'transfer_fee', label: "Frais de transfert d'argent", desc: "Frais prélevés sur les transferts P2P entre utilisateurs de la plateforme" },
+  { key: 'withdrawal_fee', label: "Frais de retrait Mobile Money", desc: "Frais prélevés lors des retraits vers MTN et Orange Money" },
+  { key: 'collect_fee', label: "Frais de collecte mensuelle", desc: "Frais de tenue de compte de 1 000 FCFA déduits chaque mois sur les collectes" },
+  { key: 'client_signup', label: "Frais de souscription client collecte", desc: "Frais d'adhésion client d'épargne journalière (4 995 FCFA)" },
+  { key: 'agent_signup', label: "Frais d'ouverture compte agent", desc: "Frais d'activation des agences et points de collecte (4 800 FCFA)" },
+  { key: 'merchant_signup', label: "Frais d'ouverture compte Marchand", desc: "Frais d'adhésion et intégration des commerces partenaires" },
+  { key: 'shareholder_subscription', label: "Frais de souscription des associés", desc: "Revenus issus des nouvelles parts d'actions souscrites" },
+  { key: 'ai_subscription', label: "Frais de souscription IA", desc: "Crédits et souscriptions aux fonctionnalités d'intelligence artificielle" },
+  { key: 'maintenance_fee', label: "Frais de maintenance système", desc: "Frais généraux d'infrastructure et de maintenance de la plateforme" },
+]
+
 const MAX_PROMO_PERCENT = 10
 
 async function getPromoStats() {
@@ -125,6 +139,38 @@ router.get('/dashboard', protect, async (req, res) => {
     ])
     const gains = gainRows[0] || { total: 0, count: 0 }
 
+    // Calcul des revenus filtrés selon les catégories de frais attribuées au plan
+    const AdminCoAccount = require('../models/AdminCoAccount')
+    const { acc1 } = await AdminCoAccount.ensureAccounts()
+    const ledger = acc1?.ledger || []
+
+    const allowedCategories = (Array.isArray(main.allowedFeeCategories) && main.allowedFeeCategories.length > 0)
+      ? main.allowedFeeCategories
+      : ALL_FEE_CATEGORIES.map((x) => x.key)
+
+    const categoryBreakdown = ALL_FEE_CATEGORIES.map((fc) => {
+      const isAllowed = allowedCategories.includes(fc.key)
+      const matchingEntries = ledger.filter((l) => l.category === fc.key)
+      const totalRevenue = matchingEntries.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
+      const shareholderShare = isAllowed ? Math.round(totalRevenue * ((Number(main.percent) || 1) / 100)) : 0
+      return {
+        key: fc.key,
+        label: fc.label,
+        desc: fc.desc,
+        isAllowed,
+        totalRevenue,
+        shareholderShare,
+      }
+    })
+
+    const eligiblePlatformFees = categoryBreakdown
+      .filter((c) => c.isAllowed)
+      .reduce((s, c) => s + c.totalRevenue, 0)
+
+    const shareholderCalculatedShare = categoryBreakdown
+      .filter((c) => c.isAllowed)
+      .reduce((s, c) => s + c.shareholderShare, 0)
+
     // 6. Publications du super admin (dépenses, sommes à payer, réunions…)
     const posts = await ShareholderPost.find({ isPublished: true }).sort({ createdAt: -1 }).limit(50)
 
@@ -141,7 +187,11 @@ router.get('/dashboard', protect, async (req, res) => {
         feesTotal: agg.feesTotal,
         gainsTotal: gains.total,
         gainsCount: gains.count,
+        eligiblePlatformFees,
+        shareholderCalculatedShare,
       },
+      allowedFeeCategories: allowedCategories,
+      categoryBreakdown,
       posts,
     })
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -203,6 +253,7 @@ router.post('/subscribe', protect, async (req, res) => {
         planKey: plan.key, planLabel: plan.label, percent: requestedPercent,
         durationYears: plan.durationYears, zone: String(zone || '').trim(),
         zoneId: req.body.zoneId || null,
+        allowedFeeCategories: Array.isArray(plan.allowedFeeCategories) && plan.allowedFeeCategories.length > 0 ? plan.allowedFeeCategories : ALL_FEE_CATEGORIES.map((x) => x.key),
         rawPrice, discountRate,
       },
     })
@@ -297,10 +348,16 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
     })
 
     // Création de l'actionnariat
+    const planFees = Array.isArray(plan.allowedFeeCategories) && plan.allowedFeeCategories.length > 0
+      ? plan.allowedFeeCategories
+      : ALL_FEE_CATEGORIES.map((x) => x.key)
+
     const shareholding = await Shareholding.create({
       user: req.user._id, planKey: plan.key, planLabel: plan.label || '',
       percent: requestedPercent, amount: price, durationYears: years,
-      zone: z, zoneId: req.body.zoneId || null, startAt, endAt, status: 'active', paymentIntent: null,
+      zone: z, zoneId: req.body.zoneId || null,
+      allowedFeeCategories: planFees,
+      startAt, endAt, status: 'active', paymentIntent: null,
     })
 
     // Crédit de l'admin plateforme (best-effort)
@@ -364,6 +421,7 @@ router.put('/admin/config', protect, superAdminOnly, async (req, res) => {
         key: p.key, label: String(p.label || p.key), price: Number(p.price),
         percent: Number(p.percent) || 1, durationYears: Number(p.durationYears) || 35,
         description: String(p.description || ''), isActive: p.isActive !== false,
+        allowedFeeCategories: Array.isArray(p.allowedFeeCategories) ? p.allowedFeeCategories : [],
       }))
     }
     await cfg.save()
@@ -415,7 +473,8 @@ router.put('/admin/:id', protect, superAdminOnly, async (req, res) => {
   try {
     const s = await Shareholding.findById(req.params.id)
     if (!s) return res.status(404).json({ message: 'Souscription introuvable' })
-    const { status, planKey, planLabel, percent, zone, durationYears, amount, startAt } = req.body
+    const { status, planKey, planLabel, percent, zone, durationYears, amount, startAt, allowedFeeCategories } = req.body
+    if (allowedFeeCategories !== undefined) s.allowedFeeCategories = Array.isArray(allowedFeeCategories) ? allowedFeeCategories : []
     if (status !== undefined) {
       if (!['active', 'expired', 'revoked'].includes(status)) return res.status(400).json({ message: 'Statut invalide' })
       s.status = status

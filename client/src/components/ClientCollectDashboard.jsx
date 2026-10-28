@@ -386,17 +386,7 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                 </button>
               )}
 
-              {stats.totalBalance > 0 && (
-                <button
-                  type="button"
-                  disabled={transferringWallet}
-                  onClick={handleTransferToWallet}
-                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 py-1 px-2.5 rounded-xl hover:bg-emerald-50 transition-colors"
-                >
-                  {transferringWallet ? <Loader2 size={13} className="animate-spin" /> : <Wallet size={13} />}
-                  <span>Virer vers mon portefeuille</span>
-                </button>
-              )}
+
 
               <button
                 type="button"

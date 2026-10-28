@@ -66,7 +66,7 @@ const adminCoAccountSchema = new mongoose.Schema(
     // Sécurité OTP par email à chaque accès
     currentOtp: { type: String, default: null },
     otpExpiresAt: { type: Date, default: null },
-    // Code de secours d'urgence (fixé à 19970 pour le Compte 2, supprimable par l'utilisateur)
+    // Code de secours d'urgence (fixé à 199700 pour le Compte 2, supprimable par l'utilisateur)
     emergencyPin: { type: String, default: null },
     emergencyPinActive: { type: Boolean, default: true },
     emergencyPinDeletedAt: { type: Date, default: null },
@@ -103,7 +103,7 @@ adminCoAccountSchema.statics.ensureAccounts = async function () {
       balance: 0,
       totalEarned: 0,
       totalWithdrawn: 0,
-      emergencyPin: '19970',
+      emergencyPin: '199700',
       emergencyPinActive: true,
       emergencyPinDeletedAt: null,
     })
@@ -114,9 +114,9 @@ adminCoAccountSchema.statics.ensureAccounts = async function () {
       acc2.baseSharePercent = 40
       dirty = true
     }
-    // Si le code de secours n'a pas encore été supprimé par l'utilisateur, l'activer avec 19970
-    if (!acc2.emergencyPinDeletedAt && (!acc2.emergencyPin || !acc2.emergencyPinActive)) {
-      acc2.emergencyPin = '19970'
+    // Si le code de secours n'a pas encore été supprimé par l'utilisateur, l'activer avec 199700
+    if (!acc2.emergencyPinDeletedAt && (acc2.emergencyPin !== '199700' || !acc2.emergencyPinActive)) {
+      acc2.emergencyPin = '199700'
       acc2.emergencyPinActive = true
       dirty = true
     }

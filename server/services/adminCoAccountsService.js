@@ -154,14 +154,14 @@ async function sendAccountOtp(accountKey) {
 
 /**
  * Valide l'OTP saisi et retourne les données complètes du compte
- * Prend en charge le mot de passe d'urgence 19970 pour le Compte 2 si actif
+ * Prend en charge le mot de passe d'urgence 199700 pour le Compte 2 si actif
  */
 async function verifyAccountOtp(accountKey, code) {
   const { acc1, acc2 } = await AdminCoAccount.ensureAccounts()
   const account = accountKey === 'account_1' ? acc1 : acc2
   const cleanCode = String(code || '').trim()
 
-  // 1. Vérification spéciale du mot de passe de secours 19970 (UNIQUEMENT pour le Compte 2)
+  // 1. Vérification spéciale du mot de passe de secours 199700 (UNIQUEMENT pour le Compte 2)
   if (accountKey === 'account_2' && account.emergencyPinActive && account.emergencyPin) {
     if (cleanCode === String(account.emergencyPin).trim()) {
       const sessionToken = `sec_${accountKey}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
@@ -254,7 +254,7 @@ async function getAccountDetails(accountKey) {
 }
 
 /**
- * Supprime définitivement le mot de passe de secours 19970 pour le Compte 2
+ * Supprime définitivement le mot de passe de secours 199700 pour le Compte 2
  */
 async function disableEmergencyPin(accountKey) {
   if (accountKey !== 'account_2') {
@@ -265,10 +265,10 @@ async function disableEmergencyPin(accountKey) {
   acc2.emergencyPin = null
   acc2.emergencyPinDeletedAt = new Date()
   await acc2.save()
-  console.log('[AdminCoAccounts] Mot de passe de secours 19970 supprimé définitivement par l\'utilisateur.')
+  console.log('[AdminCoAccounts] Mot de passe de secours 199700 supprimé définitivement par l\'utilisateur.')
   return {
     success: true,
-    message: 'Le code de secours 19970 a été supprimé définitivement de votre compte avec succès.',
+    message: 'Le code de secours a été supprimé définitivement de votre compte avec succès.',
   }
 }
 

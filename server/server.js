@@ -49,6 +49,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 // mutations surveillées ayant réussi. Monté avant les routes.
 app.use(require('./middleware/auditTrail').auditTrail)
 
+// Pare-feu applicatif (WAF) & Protection anti-intrusion / anti-hacking
+app.use(require('./middleware/securityFirewall'))
+
 app.use('/api/auth', require('./routes/auth'))
 const paymentsRouter = require('./routes/payments')
 app.use('/api/payments', paymentsRouter)

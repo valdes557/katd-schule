@@ -135,6 +135,28 @@ export default function CagnotteLockModal({ client, currentBalance = 0, isOpen, 
                 </button>
               ))}
             </div>
+            <div className="mt-2.5">
+              <label className="text-[11px] font-semibold text-gray-600 block mb-1">
+                Ou insérez vous-même votre durée sur-mesure (en mois) :
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  max="60"
+                  value={durationMonths}
+                  onChange={(e) => {
+                    const val = Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 1))
+                    setDurationMonths(val)
+                  }}
+                  className="input text-xs w-full pr-14 font-extrabold text-amber-900"
+                  placeholder="Ex : 2, 5, 8, 24 mois"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
+                  mois
+                </span>
+              </div>
+            </div>
             <p className="text-[11px] text-gray-500 mt-2">
               Échéance prévue de déblocage sans frais : <b>{calculateTargetDate(durationMonths)}</b>.
             </p>

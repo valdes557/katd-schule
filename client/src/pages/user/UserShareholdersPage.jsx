@@ -186,12 +186,83 @@ function ShareholderWallet({ dash }) {
         <StatCard icon={Coins} color="text-emerald-600" border="border-emerald-500" label="Frais de transactions" value={fmt(stats.feesTotal) + ' F'} />
       </div>
 
+      {/* Section des droits de perception sur les frais plateforme */}
+      <div className="bg-white rounded-2xl border border-gray-150 shadow-sm p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-2 text-indigo-700">
+            <Landmark size={20} />
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Droits de Perception & Répartition des Frais</h3>
+              <p className="text-[11px] text-gray-500">Frais de plateforme attribués à votre palier d'associé</p>
+            </div>
+          </div>
+          <span className="text-xs font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-xl">
+            Part active : {shareholdings[0]?.percent || 1}%
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-1">
+            <span className="text-[10px] text-gray-400 uppercase font-bold block">Revenus plateforme éligibles</span>
+            <span className="text-lg font-black text-gray-900">{fmt(stats.eligiblePlatformFees || 0)} FCFA</span>
+            <p className="text-[10px] text-gray-500">Cumul sur les catégories de frais de votre plan</p>
+          </div>
+          <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1">
+            <span className="text-[10px] text-emerald-700 uppercase font-bold block">Votre quote-part théorique</span>
+            <span className="text-lg font-black text-emerald-800">{fmt(stats.shareholderCalculatedShare || 0)} FCFA</span>
+            <p className="text-[10px] text-emerald-600 font-semibold">{shareholdings[0]?.percent || 1}% de vos frais attribués</p>
+          </div>
+        </div>
+
+        {/* Détail ventilé par catégorie de frais */}
+        {dash.categoryBreakdown && dash.categoryBreakdown.length > 0 && (
+          <div className="space-y-2 pt-1">
+            <span className="text-xs font-bold text-gray-700 block">Détail des frais par catégorie :</span>
+            <div className="overflow-x-auto border border-gray-150 rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50 text-gray-500 font-semibold">
+                  <tr>
+                    <th className="py-2 px-3">Type de Frais</th>
+                    <th className="py-2 px-3 text-center">Éligibilité</th>
+                    <th className="py-2 px-3 text-right">Total Plateforme</th>
+                    <th className="py-2 px-3 text-right">Votre Part ({shareholdings[0]?.percent || 1}%)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {dash.categoryBreakdown.map((item) => (
+                    <tr key={item.key} className={item.isAllowed ? 'bg-white' : 'bg-gray-50/50 opacity-60'}>
+                      <td className="py-2 px-3">
+                        <span className="font-bold text-gray-800 block">{item.label}</span>
+                        {item.desc && <span className="text-[10px] text-gray-400 block line-clamp-1">{item.desc}</span>}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          item.isAllowed ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-400 border-gray-200'
+                        }`}>
+                          {item.isAllowed ? 'Bénéficiaire' : 'Exclu du palier'}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right font-medium text-gray-700">
+                        {fmt(item.totalRevenue)} F
+                      </td>
+                      <td className="py-2 px-3 text-right font-extrabold text-emerald-700">
+                        {item.isAllowed ? `${fmt(item.shareholderShare)} F` : '0 F'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Gains accumulés */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center justify-between">
         <div className="flex items-center gap-2 text-emerald-600">
           <TrendingUp size={18} />
           <div>
-            <p className="text-xs font-semibold uppercase text-gray-500">Mes gains d'associé accumulés</p>
+            <p className="text-xs font-semibold uppercase text-gray-500">Mes dividendes versés sur portefeuille</p>
             <p className="text-[11px] text-gray-400">{fmt(stats.gainsCount)} versement{stats.gainsCount > 1 ? 's' : ''} reçu{stats.gainsCount > 1 ? 's' : ''}</p>
           </div>
         </div>

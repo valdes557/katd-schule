@@ -14,6 +14,20 @@ import AdminZonesManagementTab from '../components/AdminZonesManagementTab'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 const PLAN_NAMES = { arrondissement: 'Arrondissement', regional: 'Régional', national: 'National', international: 'International', mondial: 'Mondial' }
+
+const ALL_PLATFORM_FEES = [
+  { key: 'subscription', label: "Souscriptions d'écoles", desc: "Licences et abonnements des établissements" },
+  { key: 'transfer_fee', label: "Transferts d'argent", desc: "Frais de transferts P2P utilisateurs" },
+  { key: 'withdrawal_fee', label: "Retraits Mobile Money", desc: "Frais de retrait MTN & Orange Money" },
+  { key: 'collect_fee', label: "Collecte mensuelle", desc: "1 000 FCFA mensuels de tenue de compte" },
+  { key: 'client_signup', label: "Souscription client collecte", desc: "4 995 FCFA par nouveau client" },
+  { key: 'agent_signup', label: "Ouverture compte agent", desc: "4 800 FCFA par nouvelle agence de collecte" },
+  { key: 'merchant_signup', label: "Ouverture compte Marchand", desc: "Frais d'adhésion commerces partenaires" },
+  { key: 'shareholder_subscription', label: "Souscription associés (actions)", desc: "Revenus des actions vendues" },
+  { key: 'ai_subscription', label: "Souscription IA", desc: "Crédits et outils IA" },
+  { key: 'maintenance_fee', label: "Maintenance système", desc: "Frais généraux plateforme" },
+]
+
 const POST_CATEGORIES = [
   { value: 'depense', label: 'Dépense (à faire ou faite)', icon: Receipt },
   { value: 'paiement', label: 'Somme exigée à payer', icon: Banknote },
@@ -386,6 +400,30 @@ function EditModal({ s, onClose, onSaved }) {
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">Montant (F)</label>
             <input type="number" min="1" value={f.amount} onChange={(e) => setF({ ...f, amount: Number(e.target.value) })} className="input text-sm w-full" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-700 mb-1 block">Frais plateforme attribués à cet associé</label>
+          <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto p-2 bg-gray-50 border border-gray-200 rounded-xl">
+            {ALL_PLATFORM_FEES.map((fee) => {
+              const checked = (f.allowedFeeCategories || []).includes(fee.key)
+              return (
+                <label key={fee.key} className="flex items-center gap-1.5 text-[11px] text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const updated = e.target.checked
+                        ? [...(f.allowedFeeCategories || []), fee.key]
+                        : (f.allowedFeeCategories || []).filter((k) => k !== fee.key)
+                      setF({ ...f, allowedFeeCategories: updated })
+                    }}
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>{fee.label}</span>
+                </label>
+              )
+            })}
           </div>
         </div>
         {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{err}</p>}

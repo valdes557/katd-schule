@@ -19,6 +19,7 @@ const shareholdingSchema = new mongoose.Schema(
     startAt: { type: Date, default: Date.now },
     endAt: { type: Date },                              // startAt + durationYears
     status: { type: String, enum: ['active', 'expired', 'revoked'], default: 'active', index: true },
+    allowedFeeCategories: { type: [String], default: [] },
     paymentIntent: { type: mongoose.Schema.Types.ObjectId, ref: 'PaymentIntent', default: null },
     meta: { type: Object, default: {} },
   },

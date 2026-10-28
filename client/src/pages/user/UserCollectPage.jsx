@@ -299,6 +299,30 @@ function OptInScreen({ config, onSuccess, onCancel }) {
           </div>
         )}
 
+        {/* Résumé du Plan de Souscription Agent */}
+        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 p-4 rounded-2xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase text-emerald-900 tracking-wider">Plan d'Adhésion Agent Agréé</span>
+            <span className="text-sm font-black text-emerald-700 bg-white px-2.5 py-0.5 rounded-lg border border-emerald-200">
+              Frais d'activation : 4 800 FCFA
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs pt-1">
+            <div className="bg-white p-2.5 rounded-xl border border-emerald-100">
+              <span className="text-[10px] text-gray-500 block">Commissions</span>
+              <span className="font-extrabold text-emerald-800">70% des frais mensuels</span>
+            </div>
+            <div className="bg-white p-2.5 rounded-xl border border-emerald-100">
+              <span className="text-[10px] text-gray-500 block">Portefeuille Dédié</span>
+              <span className="font-extrabold text-blue-800">Solde Collecte sécurisé</span>
+            </div>
+            <div className="bg-white p-2.5 rounded-xl border border-emerald-100 col-span-2 sm:col-span-1">
+              <span className="text-[10px] text-gray-500 block">Encaissement</span>
+              <span className="font-extrabold text-purple-800">Versements journaliers réels</span>
+            </div>
+          </div>
+        </div>
+
         {/* Cadre des termes et conditions rédigés par l'admin */}
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-700 block">

@@ -1914,6 +1914,62 @@ router.post('/client/subscribe-wallet', protect, async (req, res) => {
 })
 
 // GET /api/collect/client/dashboard — Dashboard du client exactement comme sur la capture
+
+// Virement automatique du solde de la cagnotte vers le portefeuille utilisateur à échéance
+async function autoSweepExpiredCagnotte(client, userId) {
+  try {
+    if (!client || (Number(client.balance) || 0) <= 0) return null
+    const deadline = client.cagnotteLockUntil || client.cagnotteCycleEnd
+    if (!deadline) return null
+    const isExpired = new Date() >= new Date(deadline)
+    if (!isExpired) return null
+
+    const sweepAmount = Number(client.balance)
+    const targetUserId = client.user || userId
+    if (!targetUserId) return null
+
+    // Virement automatique vers le portefeuille utilisateur
+    await wallet.credit(targetUserId, {
+      amount: sweepAmount,
+      type: 'cagnotte_auto_sweep',
+      description: `Virement automatique fin d'échéance cagnotte (${sweepAmount.toLocaleString('fr-FR')} FCFA sans frais)`,
+      meta: {
+        reason: 'cagnotte_cycle_auto_transfer',
+        clientId: String(client._id),
+      },
+    })
+
+    client.balance = 0
+    const nextStart = new Date()
+    const nextEnd = new Date(nextStart)
+    nextEnd.setMonth(nextEnd.getMonth() + 1)
+    client.cagnotteCycleStart = nextStart
+    client.cagnotteCycleEnd = nextEnd
+    client.cagnotteLockUntil = nextEnd
+    client.cagnotteLockStatus = 'standard_month'
+    client.cagnotteLockContract = null
+    client.cagnotteNotifiedAt = new Date()
+    await client.save()
+
+    try {
+      const sendEmail = require('../utils/sendEmail')
+      await sendEmail({
+        to: client.email || '',
+        subject: `Virement automatique de votre cagnotte (${sweepAmount.toLocaleString('fr-FR')} FCFA) — KATD-SCHÜLE`,
+        html: `<p>Bonjour <b>${client.fullName}</b>,</p><p>Votre période de blocage / cycle de cagnotte étant arrivé à échéance, votre solde de <b>${sweepAmount.toLocaleString('fr-FR')} FCFA</b> a été <b>automatiquement viré à 100% sans aucun frais</b> dans votre portefeuille utilisateur KATD-SCHÜLE.</p><p>Vos fonds sont immédiatement disponibles dans votre portefeuille.</p>`,
+      })
+    } catch (_) {}
+
+    return {
+      transferred: true,
+      amount: sweepAmount,
+    }
+  } catch (err) {
+    console.error('[autoSweepExpiredCagnotte error]:', err.message)
+    return null
+  }
+}
+
 router.get('/client/dashboard', protect, async (req, res) => {
   try {
     const client = await resolveClientForUser(req.user)

@@ -40,6 +40,21 @@ const planSchema = new mongoose.Schema({
   durationYears: { type: Number, default: 35 },
   description: { type: String, default: '' },
   isActive: { type: Boolean, default: true },
+  allowedFeeCategories: {
+    type: [String],
+    default: [
+      'subscription',
+      'transfer_fee',
+      'withdrawal_fee',
+      'collect_fee',
+      'client_signup',
+      'agent_signup',
+      'merchant_signup',
+      'shareholder_subscription',
+      'ai_subscription',
+      'maintenance_fee',
+    ],
+  },
 }, { _id: false })
 
 const shareholderConfigSchema = new mongoose.Schema(

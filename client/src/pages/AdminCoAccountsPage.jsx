@@ -118,10 +118,10 @@ export default function AdminCoAccountsPage() {
     }
   }
 
-  // Suppression définitive du code d'urgence 19970 (Compte 2)
+  // Suppression définitive du code d'urgence (Compte 2)
   const handleDisableEmergencyPin = async () => {
     const ok = window.confirm(
-      "Êtes-vous sûr de vouloir supprimer définitivement le mot de passe d'urgence 19970 ? Vous devrez obligatoirement utiliser le code reçu par email pour vos prochaines connexions."
+      "Êtes-vous sûr de vouloir supprimer définitivement votre code de secours d'urgence ? Vous devrez obligatoirement utiliser le code reçu par email pour vos prochaines connexions."
     )
     if (!ok) return
 
@@ -530,7 +530,7 @@ export default function AdminCoAccountsPage() {
       {/* ESPACE DU COMPTE ACTIF DÉVERROUILLÉ */}
       {activeAccount ? (
         <div className="space-y-6">
-          {/* Alerte & Suppression du mot de passe de secours 19970 (Compte 2) */}
+          {/* Alerte & Suppression du mot de passe de secours (Compte 2) */}
           {activeAccountKey === 'account_2' && activeAccount?.emergencyPinActive && (
             <div className="card p-4 sm:p-5 rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50/40 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3">
@@ -539,13 +539,13 @@ export default function AdminCoAccountsPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-bold text-gray-900">Mot de passe de secours d'urgence actif</h4>
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-800 border border-amber-300 font-mono tracking-wider">
-                      19970
+                    <h4 className="text-sm font-bold text-gray-900">Code de secours d'urgence actif</h4>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono tracking-wider">
+                      Sécurisé
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 mt-1 max-w-2xl leading-relaxed">
-                    Ce mot de passe d'urgence à 5 chiffres vous permet d'accéder à ce compte en l'absence de réception d'emails OTP. Une fois que vous commencez de nouveau à recevoir le code OTP par email, vous pouvez supprimer ce code ci-contre.
+                    Ce code de secours d'urgence vous permet d'accéder à votre compte en l'absence de réception d'emails OTP. Une fois que vous commencez de nouveau à recevoir le code OTP par email, vous pouvez supprimer ce code ci-contre en toute sécurité.
                   </p>
                 </div>
               </div>
@@ -557,7 +557,7 @@ export default function AdminCoAccountsPage() {
                 title="Supprimer définitivement ce code de secours"
               >
                 {disablingPin ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-                <span>Supprimer le code 19970</span>
+                <span>Révoquer le code de secours</span>
               </button>
             </div>
           )}
@@ -852,7 +852,7 @@ export default function AdminCoAccountsPage() {
                 />
                 {otpModal.accountKey === 'account_2' ? (
                   <p className="text-[11px] text-gray-500 mt-1.5 text-center">
-                    Saisissez le code reçu par email ou votre mot de passe d'urgence à 5 chiffres (<b>19970</b>).
+                    Saisissez le code reçu par email ou votre code de secours d'urgence.
                   </p>
                 ) : (
                   <p className="text-[11px] text-gray-500 mt-1.5 text-center">
