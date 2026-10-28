@@ -92,32 +92,82 @@ router.post('/initiate', protect, async (req, res) => {
 const CollectClient = require('../models/CollectClient')
 const DailyCollection = require('../models/DailyCollection')
 
-// GET /api/merchant/collect-client-lookup?accountNumber=CL-XXXXXX
+// GET /api/merchant/collect-client-lookup?accountNumber=CL-XXXXXX ou KSXXXXXX ou Téléphone/Email
 router.get('/collect-client-lookup', protect, async (req, res) => {
   try {
-    const acc = String(req.query.accountNumber || '').trim().toUpperCase()
-    if (!acc) return res.status(400).json({ message: 'Numéro de compte client requis' })
-    const client = await CollectClient.findOne({ accountNumber: acc, status: 'active' }).populate('agent')
-    if (!client) {
-      return res.status(404).json({ message: 'Aucun compte client de collecte trouvé avec ce numéro.' })
+    const raw = String(req.query.accountNumber || '').trim()
+    if (!raw) return res.status(400).json({ message: 'Numéro de compte, téléphone ou email du client requis' })
+
+    const upper = raw.toUpperCase()
+    let clAcc = upper
+    if (!clAcc.startsWith('CL-') && /^\d{6}$/.test(clAcc)) clAcc = 'CL-' + clAcc
+
+    let ksAcc = upper
+    if (/^KS-?[0-9]{6}$/i.test(upper)) ksAcc = 'KS' + upper.replace(/[^0-9]/g, '')
+    else if (/^[0-9]{6}$/.test(upper)) ksAcc = 'KS' + upper
+
+    const phoneClean = raw.replace(/[^0-9]/g, '')
+
+    // 1. Recherche prioritaire dans les comptes clients de collecte (CL-XXXXXX)
+    const collectClient = await CollectClient.findOne({
+      $or: [
+        { accountNumber: clAcc },
+        { accountNumber: upper },
+        ...(phoneClean.length >= 8 ? [{ phone: new RegExp(phoneClean.slice(-9) + '$') }] : []),
+        ...(raw.includes('@') ? [{ email: raw.toLowerCase() }] : []),
+      ],
+      status: 'active',
+    }).populate('agent')
+
+    if (collectClient) {
+      return res.json({
+        success: true,
+        type: 'collect',
+        client: {
+          _id: collectClient._id,
+          accountNumber: collectClient.accountNumber,
+          fullName: collectClient.fullName,
+          neighborhood: collectClient.neighborhood || 'Quartier principal',
+          phone: collectClient.phone,
+          agencyName: collectClient.agent?.agencyName || '',
+          balance: collectClient.balance || 0,
+        },
+      })
     }
-    res.json({
-      success: true,
-      client: {
-        _id: client._id,
-        accountNumber: client.accountNumber,
-        fullName: client.fullName,
-        neighborhood: client.neighborhood,
-        phone: client.phone,
-        agencyName: client.agent?.agencyName || '',
-      },
-    })
+
+    // 2. Recherche secondaire dans les comptes utilisateurs de la plateforme (KSXXXXXX)
+    const destUser = await User.findOne({
+      $or: [
+        { walletAccountNo: ksAcc },
+        ...(phoneClean.length >= 8 ? [{ phone: new RegExp(phoneClean.slice(-9) + '$') }] : []),
+        ...(raw.includes('@') ? [{ email: raw.toLowerCase() }] : []),
+      ],
+    }).select('_id name phone email walletAccountNo isMerchant role')
+
+    if (destUser) {
+      const isSelf = String(destUser._id) === String(req.user._id)
+      if (isSelf) return res.status(400).json({ message: 'Ceci est votre propre compte.' })
+      return res.json({
+        success: true,
+        type: 'user',
+        client: {
+          _id: destUser._id,
+          accountNumber: destUser.walletAccountNo || ('KS' + String(destUser._id).slice(-6).toUpperCase()),
+          fullName: destUser.name,
+          phone: destUser.phone || '',
+          email: destUser.email || '',
+          isMerchant: !!destUser.isMerchant,
+        },
+      })
+    }
+
+    return res.status(404).json({ message: 'Aucun compte client trouvé avec cet identifiant (CL-..., KS-..., téléphone ou email).' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
 })
 
-// POST /api/merchant/transfer-to-collect-client — Transfert depuis le solde marchand vers le compte d'un client collecte
+// POST /api/merchant/transfer-to-collect-client — Transfert depuis le solde marchand vers le compte d'un client (collecte ou standard)
 router.post('/transfer-to-collect-client', protect, async (req, res) => {
   try {
     const u = await User.findById(req.user._id).select('isMerchant name phone role')
@@ -126,20 +176,25 @@ router.post('/transfer-to-collect-client', protect, async (req, res) => {
     }
 
     const { accountNumber, amount, notes } = req.body
-    const amt = Number(amount)
+    const amt = Math.round(Number(amount) || 0)
     if (!amt || amt <= 0) {
-      return res.status(400).json({ message: 'Montant de transfert invalide (doit être supérieur à 0).' })
+      return res.status(400).json({ message: 'Montant de transfert invalide (doit être supérieur à 0 FCFA).' })
     }
 
-    const acc = String(accountNumber || '').trim().toUpperCase()
-    if (!acc) {
-      return res.status(400).json({ message: 'Numéro de compte client requis.' })
+    const raw = String(accountNumber || '').trim()
+    if (!raw) {
+      return res.status(400).json({ message: 'Numéro de compte, téléphone ou email du client requis.' })
     }
 
-    const client = await CollectClient.findOne({ accountNumber: acc, status: 'active' })
-    if (!client) {
-      return res.status(404).json({ message: 'Compte client de collecte introuvable ou inactif.' })
-    }
+    const upper = raw.toUpperCase()
+    let clAcc = upper
+    if (!clAcc.startsWith('CL-') && /^\d{6}$/.test(clAcc)) clAcc = 'CL-' + clAcc
+
+    let ksAcc = upper
+    if (/^KS-?[0-9]{6}$/i.test(upper)) ksAcc = 'KS' + upper.replace(/[^0-9]/g, '')
+    else if (/^[0-9]{6}$/.test(upper)) ksAcc = 'KS' + upper
+
+    const phoneClean = raw.replace(/[^0-9]/g, '')
 
     // Vérifie le solde du portefeuille marchand
     const w = await wallet.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
@@ -149,59 +204,116 @@ router.post('/transfer-to-collect-client', protect, async (req, res) => {
       })
     }
 
-    // Débit du compte marchand
-    await wallet.debit(req.user._id, {
-      amount: amt,
-      type: 'transfer_sent',
-      description: 'Transfert marchand vers compte collecte : ' + client.fullName + ' (' + client.accountNumber + ')',
-      meta: {
-        reason: 'merchant_transfer_to_collect_client',
-        clientId: String(client._id),
-        clientAccountNumber: client.accountNumber,
-        notes: notes || '',
-      },
+    // 1. Recherche si c'est un client de collecte (CL-XXXXXX)
+    const collectClient = await CollectClient.findOne({
+      $or: [
+        { accountNumber: clAcc },
+        { accountNumber: upper },
+        ...(phoneClean.length >= 8 ? [{ phone: new RegExp(phoneClean.slice(-9) + '$') }] : []),
+        ...(raw.includes('@') ? [{ email: raw.toLowerCase() }] : []),
+      ],
+      status: 'active',
     })
 
-    // Crédit du solde de collecte du client
-    client.balance += amt
-    await client.save()
+    if (collectClient) {
+      // Débit du compte marchand
+      await wallet.debit(req.user._id, {
+        amount: amt,
+        type: 'transfer_sent',
+        description: 'Transfert marchand vers compte collecte : ' + collectClient.fullName + ' (' + collectClient.accountNumber + ')',
+        meta: {
+          reason: 'merchant_transfer_to_collect_client',
+          clientId: String(collectClient._id),
+          clientAccountNumber: collectClient.accountNumber,
+          notes: notes || '',
+        },
+      })
 
-    // Vérifie et applique les frais mensuels si solde >= 1100 FCFA
-    try {
-      const collectModule = require('./collect')
-      if (typeof collectModule.checkAndApplyMonthlyFeeForClient === 'function') {
-        await collectModule.checkAndApplyMonthlyFeeForClient(client)
+      // Crédit du solde de collecte du client
+      collectClient.balance = (collectClient.balance || 0) + amt
+      await collectClient.save()
+
+      // Vérifie et applique les frais mensuels si solde >= 1100 FCFA
+      try {
+        const collectModule = require('./collect')
+        if (typeof collectModule.checkAndApplyMonthlyFeeForClient === 'function') {
+          await collectModule.checkAndApplyMonthlyFeeForClient(collectClient)
+        }
+      } catch (_) {}
+
+      // Enregistrement dans DailyCollection (sans bloquer si agentUser/agent est null)
+      try {
+        const today = new Date().toISOString().slice(0, 10)
+        await DailyCollection.create({
+          agent: collectClient.agent || null,
+          agentUser: collectClient.agentUser || req.user._id,
+          client: collectClient._id,
+          clientName: collectClient.fullName,
+          clientPhone: collectClient.phone || '',
+          neighborhood: collectClient.neighborhood || 'Quartier principal',
+          date: today,
+          amount: amt,
+          type: 'depot',
+          status: 'paye',
+          paymentMethod: 'wallet',
+          notes: 'Transfert reçu du marchand ' + (u.name || 'Marchand') + (notes ? ' (' + notes + ')' : ''),
+          datetime: new Date(),
+        })
+      } catch (colErr) {
+        console.warn('DailyCollection log non-fatal error:', colErr.message)
       }
-    } catch (_) {}
 
-    // Enregistrement dans DailyCollection
-    const today = new Date().toISOString().slice(0, 10)
-    await DailyCollection.create({
-      agent: client.agent,
-      agentUser: client.agentUser,
-      client: client._id,
-      clientName: client.fullName,
-      clientPhone: client.phone,
-      neighborhood: client.neighborhood,
-      date: today,
-      amount: amt,
-      type: 'depot',
-      status: 'paye',
-      paymentMethod: 'wallet',
-      notes: 'Transfert reçu du marchand ' + (u.name || 'Marchand') + (notes ? ' (' + notes + ')' : ''),
-      datetime: new Date(),
+      const freshWallet = await wallet.getOrCreateWallet(req.user._id)
+      return res.json({
+        success: true,
+        type: 'collect',
+        message: 'Transfert de ' + amt.toLocaleString('fr-FR') + ' FCFA vers le compte collecte de ' + collectClient.fullName + ' (' + collectClient.accountNumber + ') effectué avec succès !',
+        merchantBalance: freshWallet.balance,
+        client: {
+          _id: collectClient._id,
+          accountNumber: collectClient.accountNumber,
+          fullName: collectClient.fullName,
+          newBalance: collectClient.balance,
+        },
+      })
+    }
+
+    // 2. Recherche si c'est un compte utilisateur standard de la plateforme (KSXXXXXX)
+    const destUser = await User.findOne({
+      $or: [
+        { walletAccountNo: ksAcc },
+        ...(phoneClean.length >= 8 ? [{ phone: new RegExp(phoneClean.slice(-9) + '$') }] : []),
+        ...(raw.includes('@') ? [{ email: raw.toLowerCase() }] : []),
+      ],
     })
 
-    res.json({
-      success: true,
-      message: 'Transfert de ' + amt.toLocaleString('fr-FR') + ' FCFA vers le compte de ' + client.fullName + ' (' + client.accountNumber + ') effectué avec succès !',
-      client: {
-        _id: client._id,
-        accountNumber: client.accountNumber,
-        fullName: client.fullName,
-        newBalance: client.balance,
-      },
-    })
+    if (destUser) {
+      if (String(destUser._id) === String(req.user._id)) {
+        return res.status(400).json({ message: 'Impossible de transférer vers votre propre compte.' })
+      }
+
+      // Transfert inter-utilisateurs standard (exonération frais pour marchand + commission 0,20%)
+      const r = await wallet.transferBetweenUsers(req.user._id, destUser._id, {
+        amount: amt,
+        reason: notes ? String(notes).trim() : 'Transfert marchand vers compte client',
+      })
+
+      const freshWallet = await wallet.getOrCreateWallet(req.user._id)
+      return res.json({
+        success: true,
+        type: 'user',
+        message: 'Transfert de ' + amt.toLocaleString('fr-FR') + ' FCFA vers le compte client de ' + (destUser.name || 'Client') + ' (' + (destUser.walletAccountNo || '') + ') effectué avec succès !' + (r.commission > 0 ? ` (Commission gagnée : +${r.commission} F)` : ''),
+        merchantBalance: freshWallet.balance,
+        commission: r.commission || 0,
+        client: {
+          _id: destUser._id,
+          accountNumber: destUser.walletAccountNo,
+          fullName: destUser.name,
+        },
+      })
+    }
+
+    return res.status(404).json({ message: 'Compte client introuvable ou inactif.' })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

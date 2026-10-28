@@ -1418,7 +1418,10 @@ export const collectApi = {
   initiateClientSubscriptionMomo: (data) => api.post('/payments/client-subscription/initiate', data),
   // Historique des retraits administrateur
   adminWithdrawalsHistory: () => api.get('/collect/admin/withdrawals-history'),
-  fundCollectWallet: (amount) => api.post('/collect/agent/fund-collect-wallet', { amount }),
+  fundCollectWallet: (payload) => {
+    const body = typeof payload === 'object' && payload !== null && 'amount' in payload ? payload : { amount: payload }
+    return api.post('/collect/agent/fund-collect-wallet', body)
+  },
   lockCagnotte: (data) => api.post('/collect/client/lock-cagnotte', data),
   transferCagnotteToWallet: () => api.post('/collect/client/transfer-to-wallet'),
   getAdminLockedContracts: () => api.get('/collect/admin/locked-contracts'),

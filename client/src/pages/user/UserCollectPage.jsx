@@ -1314,14 +1314,14 @@ function FundCollectWalletModal({ currentBalance = 0, onClose, onSuccess }) {
   }, [])
 
   const handleFund = async (e) => {
-    e.preventDefault()
+    if (e && e.preventDefault) e.preventDefault()
     setError('')
     const amt = Math.round(Number(amount) || 0)
     if (!amt || amt <= 0) {
       setError('Veuillez saisir un montant valide (minimum 100 FCFA).')
       return
     }
-    if (amt > userWalletBalance) {
+    if (userWalletBalance > 0 && amt > userWalletBalance) {
       setError(`Solde insuffisant dans votre portefeuille utilisateur (${fmt(userWalletBalance)} FCFA disponibles). Veuillez recharger votre portefeuille KATD d'abord.`)
       return
     }
@@ -1329,7 +1329,7 @@ function FundCollectWalletModal({ currentBalance = 0, onClose, onSuccess }) {
     setSubmitting(true)
     try {
       const res = await collectApi.fundCollectWallet({ amount: amt })
-      onSuccess(res.message || `Portefeuille collecte approvisionné de ${fmt(amt)} FCFA avec succès !`)
+      onSuccess(res?.message || `Portefeuille collecte approvisionné de ${fmt(amt)} FCFA avec succès !`)
     } catch (err) {
       setError(err.message || "Erreur lors de l'approvisionnement.")
     } finally {
@@ -1453,7 +1453,7 @@ function FundCollectWalletModal({ currentBalance = 0, onClose, onSuccess }) {
             </button>
             <button
               type="submit"
-              disabled={submitting || !amount || Number(amount) <= 0 || Number(amount) > userWalletBalance}
+              disabled={submitting || !amount || Number(amount) <= 0}
               className="btn-primary text-xs py-2 px-4 rounded-xl flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
             >
               {submitting ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpRight size={14} />}

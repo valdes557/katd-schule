@@ -63,14 +63,25 @@ router.get('/me', protect, async (req, res) => {
 // GET /api/wallet/lookup/:accountNo — résout un numéro de compte -> nom du destinataire (avant transfert ou dépôt)
 router.get('/lookup/:accountNo', protect, async (req, res) => {
   try {
-    const acc = String(req.params.accountNo || '').trim().toUpperCase()
-    if (!/^KS[0-9]{6}$/.test(acc)) return res.status(400).json({ message: 'Numéro de compte invalide (format KS000000)' })
-    const u = await User.findOne({ walletAccountNo: acc }).select('name role isMerchant')
-    if (!u) return res.status(404).json({ message: 'Aucun utilisateur avec ce numéro de compte' })
+    const raw = String(req.params.accountNo || '').trim()
+    const acc = raw.toUpperCase()
+    let ksAcc = acc
+    if (/^KS-?[0-9]{6}$/i.test(acc)) ksAcc = 'KS' + acc.replace(/[^0-9]/g, '')
+    else if (/^[0-9]{6}$/.test(acc)) ksAcc = 'KS' + acc
+    const phoneClean = raw.replace(/[^0-9]/g, '')
+
+    const u = await User.findOne({
+      $or: [
+        { walletAccountNo: ksAcc },
+        ...(phoneClean.length >= 8 ? [{ phone: new RegExp(phoneClean.slice(-9) + '$') }] : []),
+        ...(raw.includes('@') ? [{ email: raw.toLowerCase() }] : []),
+      ],
+    }).select('name role isMerchant walletAccountNo')
+    if (!u) return res.status(404).json({ message: 'Aucun utilisateur avec ce numéro de compte ou contact' })
     const isSelf = String(u._id) === String(req.user._id)
     const allowSelf = req.query.allowSelf === '1' || req.query.allowSelf === 'true'
     if (!allowSelf && isSelf) return res.status(400).json({ message: 'Ceci est votre propre compte' })
-    res.json({ success: true, id: u._id, name: u.name, role: u.role, isMerchant: !!u.isMerchant, isSelf })
+    res.json({ success: true, id: u._id, name: u.name, role: u.role, isMerchant: !!u.isMerchant, accountNo: u.walletAccountNo, isSelf })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
@@ -87,9 +98,21 @@ router.post('/transfer-user', protect, async (req, res) => {
     if (!u.walletPin) return res.status(400).json({ message: "Veuillez d'abord créer votre code PIN" })
     const pinOk = await bcrypt.compare(String(pin), u.walletPin)
     if (!pinOk) return res.status(401).json({ message: 'Code PIN incorrect' })
-    // Résolution du destinataire
-    const acc = String(accountNo).trim().toUpperCase()
-    const dest = await User.findOne({ walletAccountNo: acc }).select('_id name email')
+    // Résolution du destinataire (supporte KS000000, KS-000000, 6 chiffres, téléphone ou email)
+    const rawAcc = String(accountNo).trim()
+    const upperAcc = rawAcc.toUpperCase()
+    let ksAcc = upperAcc
+    if (/^KS-?[0-9]{6}$/i.test(upperAcc)) ksAcc = 'KS' + upperAcc.replace(/[^0-9]/g, '')
+    else if (/^[0-9]{6}$/.test(upperAcc)) ksAcc = 'KS' + upperAcc
+    const phoneClean = rawAcc.replace(/[^0-9]/g, '')
+
+    const dest = await User.findOne({
+      $or: [
+        { walletAccountNo: ksAcc },
+        ...(phoneClean.length >= 8 ? [{ phone: new RegExp(phoneClean.slice(-9) + '$') }] : []),
+        ...(rawAcc.includes('@') ? [{ email: rawAcc.toLowerCase() }] : []),
+      ],
+    }).select('_id name email walletAccountNo')
     if (!dest) return res.status(404).json({ message: 'Destinataire introuvable' })
     const r = await wallet.transferBetweenUsers(req.user._id, dest._id, {
       amount: amt, reason: reason ? String(reason).trim() : '' })

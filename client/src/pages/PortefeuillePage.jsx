@@ -141,12 +141,16 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
 
   // Résout le numéro de compte du destinataire (KS######) -> nom
   const lookupRecipient = async () => {
-    const acc = String(f.accountNo || '').trim().toUpperCase()
+    const raw = String(f.accountNo || '').trim()
     setRecipient(null)
-    if (!/^KS[0-9]{6}$/i.test(acc)) return
+    if (!raw) return
+    const isKs = /^KS-?[0-9]{6}$/i.test(raw) || /^[0-9]{6}$/.test(raw)
+    const isPhone = raw.replace(/[^0-9]/g, '').length >= 8
+    const isEmail = raw.includes('@')
+    if (!isKs && !isPhone && !isEmail) return
     try {
-      const r = await walletApi.lookup(acc, type === 'deposit')
-      setRecipient({ name: r.name, role: r.role, isMerchant: r.isMerchant, isSelf: r.isSelf })
+      const r = await walletApi.lookup(raw, type === 'deposit')
+      setRecipient({ name: r.name, role: r.role, isMerchant: r.isMerchant, isSelf: r.isSelf, accountNo: r.accountNo })
     } catch (e) {
       setRecipient({ error: e.message })
     }

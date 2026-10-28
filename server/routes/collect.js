@@ -2455,7 +2455,8 @@ router.post('/agent/fund-collect-wallet', protect, async (req, res) => {
     }
 
     const { amount } = req.body
-    const amt = Math.round(Number(amount) || 0)
+    const rawAmt = typeof amount === 'object' && amount !== null ? amount?.amount : amount
+    const amt = Math.round(Number(rawAmt) || 0)
     if (!amt || amt <= 0) {
       return res.status(400).json({ message: 'Veuillez saisir un montant valide (minimum 100 FCFA).' })
     }

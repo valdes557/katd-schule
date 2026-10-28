@@ -68,7 +68,7 @@ export default function UserMerchantPage() {
             onClick={() => setShowTransferCollect(true)}
             className="btn-primary text-xs py-2 px-3.5 flex items-center gap-1.5 rounded-xl shadow-xs"
           >
-            <Send size={14} /> Transférer vers client collecte
+            <Send size={14} /> Transférer vers compte client
           </button>
         )}
       </div>
@@ -126,10 +126,10 @@ export default function UserMerchantPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                <Send size={16} className="text-orange-600" /> Transfert vers compte collecte client
+                <Send size={16} className="text-orange-600" /> Transfert vers compte client (Collecte ou Portefeuille)
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Alimentez directement le compte d'épargne collecte d'un client à l'aide de son numéro de compte (ex : CL-123456).
+                Alimentez directement le compte d'un client par son numéro de collecte (CL-XXXXXX), compte KATD (KS-XXXXXX), téléphone ou email.
               </p>
             </div>
             <button
@@ -182,27 +182,32 @@ export default function UserMerchantPage() {
   )
 }
 
-// Modal pour transférer depuis le solde marchand vers le numéro de compte d'un client collecte
+// Modal pour transférer depuis le solde marchand vers le compte d'un client (collecte ou utilisateur)
 function MerchantTransferToCollectModal({ merchantBalance, onClose, onSuccess }) {
   const [accountNumber, setAccountNumber] = useState('')
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
   const [clientInfo, setClientInfo] = useState(null)
+  const [clientType, setClientType] = useState('')
   const [searching, setSearching] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
 
   const handleLookup = async (accToSearch) => {
-    const acc = (accToSearch || accountNumber).trim().toUpperCase()
-    if (!acc) return
+    const acc = (accToSearch || accountNumber).trim()
+    if (!acc) return null
     setSearching(true)
     setErr('')
     try {
       const res = await merchantApi.lookupCollectClient(acc)
       setClientInfo(res.client)
+      setClientType(res.type || 'collect')
+      return res.client
     } catch (e) {
       setClientInfo(null)
-      setErr(e.message || 'Numéro de compte client introuvable.')
+      setClientType('')
+      setErr(e.message || 'Numéro de compte, téléphone ou email introuvable.')
+      return null
     } finally {
       setSearching(false)
     }
@@ -211,17 +216,20 @@ function MerchantTransferToCollectModal({ merchantBalance, onClose, onSuccess })
   const handleSubmit = async (e) => {
     e.preventDefault()
     setErr('')
-    const amt = Number(amount)
+    const amt = Math.round(Number(amount) || 0)
     if (!accountNumber.trim()) {
-      setErr('Veuillez renseigner le numéro de compte client.')
+      setErr('Veuillez renseigner le numéro de compte, téléphone ou email du client.')
       return
     }
-    if (!clientInfo) {
-      setErr('Veuillez vérifier et valider le numéro de compte client avant de confirmer.')
-      return
+
+    let targetClient = clientInfo
+    if (!targetClient) {
+      targetClient = await handleLookup(accountNumber.trim())
+      if (!targetClient) return
     }
+
     if (!amt || amt <= 0) {
-      setErr('Veuillez saisir un montant supérieur à 0.')
+      setErr('Veuillez saisir un montant supérieur à 0 FCFA.')
       return
     }
     if (amt > merchantBalance) {
@@ -232,7 +240,7 @@ function MerchantTransferToCollectModal({ merchantBalance, onClose, onSuccess })
     setSubmitting(true)
     try {
       const res = await merchantApi.transferToCollectClient({
-        accountNumber: accountNumber.trim().toUpperCase(),
+        accountNumber: accountNumber.trim(),
         amount: amt,
         notes: notes.trim(),
       })
@@ -269,19 +277,25 @@ function MerchantTransferToCollectModal({ merchantBalance, onClose, onSuccess })
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs font-bold text-gray-700 block mb-1">
-              Numéro de compte du client (ex: CL-849201) *
+              Numéro de compte client (CL-XXXXXX, KS-XXXXXX, Téléphone ou Email) *
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={accountNumber}
                 onChange={(e) => {
-                  setAccountNumber(e.target.value.toUpperCase())
+                  setAccountNumber(e.target.value)
                   setClientInfo(null)
+                  setClientType('')
                   setErr('')
                 }}
-                placeholder="CL-XXXXXX"
-                className="input text-xs w-full font-mono uppercase font-bold"
+                onBlur={() => {
+                  if (accountNumber.trim() && !clientInfo && !searching) {
+                    handleLookup()
+                  }
+                }}
+                placeholder="Ex: CL-849201, KS930021 ou 690..."
+                className="input text-xs w-full font-mono font-bold"
               />
               <button
                 type="button"
@@ -297,15 +311,29 @@ function MerchantTransferToCollectModal({ merchantBalance, onClose, onSuccess })
 
           {clientInfo && (
             <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs space-y-1.5 animate-fade-in">
-              <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
-                <CheckCircle2 size={15} className="text-emerald-600" /> Client identifié :
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                  <CheckCircle2 size={15} className="text-emerald-600" /> Client identifié :
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  clientType === 'collect'
+                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                }`}>
+                  {clientType === 'collect' ? 'Compte Épargne Collecte' : 'Compte Utilisateur KATD'}
+                </span>
               </div>
               <div className="font-black text-gray-900 text-sm flex items-center gap-1.5">
                 <User size={14} className="text-gray-500" /> {clientInfo.fullName}
               </div>
-              <div className="text-gray-600 flex items-center gap-1.5">
-                <MapPin size={13} className="text-gray-400" /> Quartier : <b>{clientInfo.neighborhood || 'Non spécifié'}</b>
+              <div className="text-gray-600 font-mono text-[11px]">
+                N° Compte : <b>{clientInfo.accountNumber}</b>
               </div>
+              {clientInfo.neighborhood && (
+                <div className="text-gray-600 flex items-center gap-1.5">
+                  <MapPin size={13} className="text-gray-400" /> Quartier : <b>{clientInfo.neighborhood}</b>
+                </div>
+              )}
               {clientInfo.phone && (
                 <div className="text-gray-600 flex items-center gap-1.5">
                   <Phone size={13} className="text-gray-400" /> Contact : <b>{clientInfo.phone}</b>
@@ -359,8 +387,8 @@ function MerchantTransferToCollectModal({ merchantBalance, onClose, onSuccess })
             </button>
             <button
               type="submit"
-              disabled={submitting || !clientInfo || !amount}
-              className="btn-primary text-xs py-2 px-4 rounded-xl flex items-center gap-1.5"
+              disabled={submitting || searching || !accountNumber.trim() || !amount || Number(amount) <= 0}
+              className="btn-primary text-xs py-2 px-4 rounded-xl flex items-center gap-1.5 bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50"
             >
               {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
               <span>Confirmer le transfert</span>

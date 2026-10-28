@@ -3,12 +3,12 @@ const mongoose = require('mongoose')
 
 const dailyCollectionSchema = new mongoose.Schema(
   {
-    agent: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectAgent', required: true, index: true },
-    agentUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    agent: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectAgent', default: null, index: true },
+    agentUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectClient', required: true, index: true },
     clientName: { type: String, required: true },
     clientPhone: { type: String, default: '' },
-    neighborhood: { type: String, required: true }, // Quartier
+    neighborhood: { type: String, default: 'Quartier principal' }, // Quartier
     date: { type: String, required: true, index: true }, // Format 'YYYY-MM-DD'
     datetime: { type: Date, default: Date.now },
     amount: { type: Number, default: 0 },
