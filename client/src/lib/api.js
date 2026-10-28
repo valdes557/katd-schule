@@ -1434,4 +1434,24 @@ export const adminCoAccountsApi = {
   withdraw: (data) => api.post('/admin/co-accounts/withdraw', data),
 }
 
+// Zones géographiques & Attribution (Arrondissements, Régions, National, International)
+export const zonesApi = {
+  list: (type = '') => api.get(`/zones${type ? `?type=${type}` : ''}`),
+  adminList: () => api.get('/zones/admin'),
+  adminCreate: (data) => api.post('/zones/admin', data),
+  adminUpdate: (id, data) => api.put(`/zones/admin/${id}`, data),
+  adminDelete: (id) => api.del(`/zones/admin/${id}`),
+  adminUsers: (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.search) q.append('search', params.search)
+    if (params.zoneType) q.append('zoneType', params.zoneType)
+    if (params.zoneId) q.append('zoneId', params.zoneId)
+    if (params.unassigned) q.append('unassigned', 'true')
+    if (params.page) q.append('page', params.page)
+    if (params.limit) q.append('limit', params.limit)
+    return api.get(`/zones/admin/users?${q.toString()}`)
+  },
+  adminAssignUser: (data) => api.put('/zones/admin/assign-user', data),
+}
+
 export default api

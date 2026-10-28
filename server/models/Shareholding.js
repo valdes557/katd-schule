@@ -15,6 +15,7 @@ const shareholdingSchema = new mongoose.Schema(
     durationYears: { type: Number, default: 35 },
     // Délimitation géographique (arrondissement/ville/région/pays selon le plan)
     zone: { type: String, default: '' },
+    zoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
     startAt: { type: Date, default: Date.now },
     endAt: { type: Date },                              // startAt + durationYears
     status: { type: String, enum: ['active', 'expired', 'revoked'], default: 'active', index: true },

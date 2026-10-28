@@ -85,6 +85,12 @@ const userSchema = new mongoose.Schema(
     // Acceptation de la politique de confidentialité
     privacyPolicyAccepted: { type: Boolean, default: false },
     privacyPolicyAcceptedAt: { type: Date, default: null },
+    // Zone géographique rattachée (arrondissement, région, national, international)
+    geographicZone: {
+      zoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      zoneType: { type: String, enum: ['arrondissement', 'regional', 'national', 'international', null], default: null },
+      zoneName: { type: String, default: '', trim: true },
+    },
   },
   { timestamps: true }
 )

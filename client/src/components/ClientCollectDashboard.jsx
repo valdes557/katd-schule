@@ -953,11 +953,14 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
       />
 
       {/* MODALE DE VISUALISATION DU CONTRAT / PREUVE DE BLOCAGE */}
-      <CagnotteLockProofModal
-        contract={data?.cagnotte?.lockContract}
-        client={client}
-        onClose={() => setProofModalOpen(false)}
-      />
+      {proofModalOpen && data?.cagnotte?.lockContract && (
+        <CagnotteLockProofModal
+          isOpen={proofModalOpen}
+          contract={data?.cagnotte?.lockContract}
+          client={client}
+          onClose={() => setProofModalOpen(false)}
+        />
+      )}
 
       {/* MODAL 2 : RETIRER MON ARGENT */}
       {withdrawModal && (

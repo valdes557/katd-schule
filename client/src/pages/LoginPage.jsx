@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, X, GraduationCap, Users, User, UserPlus, Gift } from 'lucide-react'
+import { BookOpen, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, X, GraduationCap, Users, User, UserPlus, Gift, MapPin } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { authApi } from '../lib/api'
+import { authApi, zonesApi } from '../lib/api'
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 
 export default function LoginPage() {
@@ -17,6 +17,29 @@ export default function LoginPage() {
   // Parrainage : lien .../login?ref=CODE → pré-remplit et force l'inscription utilisateur.
   const initialRef = (searchParams.get('ref') || '').trim().toUpperCase()
   const [referralCode, setReferralCode] = useState(initialRef)
+  const [zones, setZones] = useState([])
+  const [selectedZoneType, setSelectedZoneType] = useState('arrondissement')
+  const [selectedZoneId, setSelectedZoneId] = useState('')
+  const [selectedZoneName, setSelectedZoneName] = useState('')
+
+  useEffect(() => {
+    zonesApi.list().then((res) => {
+      if (res?.zones) setZones(res.zones)
+    }).catch(() => {})
+  }, [])
+
+  const filteredZones = zones.filter((z) => !selectedZoneType || z.type === selectedZoneType)
+
+  const handleZoneChange = (zId) => {
+    setSelectedZoneId(zId)
+    const found = zones.find((z) => String(z._id) === String(zId))
+    if (found) {
+      setSelectedZoneName(found.name)
+      setSelectedZoneType(found.type)
+    } else {
+      setSelectedZoneName('')
+    }
+  }
 
   // Si l'utilisateur est déjà connecté, rediriger automatiquement vers son espace dédié
   useEffect(() => {
@@ -77,7 +100,11 @@ export default function LoginPage() {
     setLoading(true)
     const result =
       userMode === 'signup'
-        ? await register(name, email, password, referralCode, acceptPrivacy)
+        ? await register(name, email, password, referralCode, acceptPrivacy, {
+            zoneType: selectedZoneType,
+            zoneId: selectedZoneId,
+            zoneName: selectedZoneName,
+          })
         : await login(email, password, 'user')
     setLoading(false)
     if (result.success && result.requiresVerification) {

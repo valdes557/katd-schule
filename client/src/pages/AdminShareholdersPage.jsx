@@ -9,7 +9,8 @@ import {
   Landmark, Loader2, Save, Users, Coins, MapPin, Ban, RefreshCw, Pencil, Trash2,
   CheckCircle2, X, Megaphone, Plus, Banknote, CalendarClock, Receipt, Gift, Lock, Sparkles,
 } from 'lucide-react'
-import { shareholdersApi } from '../lib/api'
+import { shareholdersApi, zonesApi } from '../lib/api'
+import AdminZonesManagementTab from '../components/AdminZonesManagementTab'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
 const PLAN_NAMES = { arrondissement: 'Arrondissement', regional: 'Régional', national: 'National', international: 'International', mondial: 'Mondial' }
@@ -31,11 +32,12 @@ export default function AdminShareholdersPage() {
         <p className="text-sm text-gray-500">Termes, plans de souscription (promo 10% max), liste des associés et publications.</p>
       </div>
       <div className="flex gap-2 flex-wrap">
-        {[['config', 'Configuration & Plans'], ['list', 'Associés'], ['posts', 'Publications']].map(([k, l]) => (
+        {[['config', 'Configuration & Plans'], ['zones', 'Zones Géographiques & Attribution'], ['list', 'Associés'], ['posts', 'Publications']].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`text-sm px-4 py-2 rounded-xl font-medium ${tab === k ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>{l}</button>
         ))}
       </div>
       {tab === 'config' && <ConfigPanel />}
+      {tab === 'zones' && <AdminZonesManagementTab />}
       {tab === 'list' && <ListPanel />}
       {tab === 'posts' && <PostsPanel />}
     </div>
@@ -329,6 +331,11 @@ function EditModal({ s, onClose, onSaved }) {
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [registeredZones, setRegisteredZones] = useState([])
+
+  useEffect(() => {
+    zonesApi.list().then((r) => { if (r?.zones) setRegisteredZones(r.zones) }).catch(() => {})
+  }, [])
 
   const save = async () => {
     setBusy(true); setErr('')

@@ -51,6 +51,11 @@ router.post(
         role: role || 'directeur',
         privacyPolicyAccepted: true,
         privacyPolicyAcceptedAt: new Date(),
+        geographicZone: {
+          zoneId: zoneId || null,
+          zoneType: zoneType || null,
+          zoneName: zoneName || '',
+        },
       })
       const token = generateToken(user._id)
 
@@ -79,7 +84,7 @@ router.post(
       return res.status(400).json({ errors: errors.array() })
     }
     try {
-      const { name, password } = req.body
+      const { name, password, zoneType, zoneName, zoneId } = req.body
       const email = (req.body.email || '').trim().toLowerCase()
 
       if (req.body.privacyPolicyAccepted !== true && req.body.privacyPolicyAccepted !== 'true') {

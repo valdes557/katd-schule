@@ -202,6 +202,7 @@ router.post('/subscribe', protect, async (req, res) => {
       meta: {
         planKey: plan.key, planLabel: plan.label, percent: requestedPercent,
         durationYears: plan.durationYears, zone: String(zone || '').trim(),
+        zoneId: req.body.zoneId || null,
         rawPrice, discountRate,
       },
     })
@@ -299,7 +300,7 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
     const shareholding = await Shareholding.create({
       user: req.user._id, planKey: plan.key, planLabel: plan.label || '',
       percent: requestedPercent, amount: price, durationYears: years,
-      zone: z, startAt, endAt, status: 'active', paymentIntent: null,
+      zone: z, zoneId: req.body.zoneId || null, startAt, endAt, status: 'active', paymentIntent: null,
     })
 
     // Crédit de l'admin plateforme (best-effort)

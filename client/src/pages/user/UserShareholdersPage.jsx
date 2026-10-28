@@ -256,6 +256,23 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
   const [method, setMethod] = useState('wallet')   // 'wallet' (portefeuille) | 'momo' (Mobile Money)
   const [balance, setBalance] = useState(null)      // solde du portefeuille
   const [f, setF] = useState({ zone: '', phone: '', operator: 'mtn', pin: '' })
+  const [zoneId, setZoneId] = useState('')
+  const [zonesList, setZonesList] = useState([])
+
+  useEffect(() => {
+    zonesApi.list().then((res) => {
+      if (res?.zones) setZonesList(res.zones)
+    }).catch(() => {})
+  }, [])
+
+  const availableZonesForPlan = zonesList.filter((z) => {
+    if (!selected) return false
+    if (selected.key === 'arrondissement') return z.type === 'arrondissement'
+    if (selected.key === 'regional') return z.type === 'regional'
+    if (selected.key === 'national') return z.type === 'national'
+    if (selected.key === 'international' || selected.key === 'mondial') return z.type === 'international'
+    return false
+  })
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [err, setErr] = useState('')
@@ -304,7 +321,7 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
       setBusy(true)
       setStatus('Paiement depuis votre portefeuille...')
       try {
-        await shareholdersApi.subscribeWallet({ planKey: selected.key, percent, zone: f.zone.trim(), pin: f.pin })
+        await shareholdersApi.subscribeWallet({ planKey: selected.key, percent, zone: f.zone.trim(), zoneId: zoneId || undefined, pin: f.pin })
         onDone()
       } catch (e) { setErr(e.message); setStatus('') } finally { setBusy(false) }
       return
@@ -312,7 +329,7 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
 
     // ── Paiement Mobile Money (Direct Charge H2H) ──
     inline.start(
-      (momo = {}) => shareholdersApi.subscribe({ planKey: selected.key, percent, zone: f.zone.trim(), ...momo }),
+      (momo = {}) => shareholdersApi.subscribe({ planKey: selected.key, percent, zone: f.zone.trim(), zoneId: zoneId || undefined, ...momo }),
       async () => { onDone() },
       { amount: finalPrice, title: 'Souscription associé (' + percent + '%) — ' + (selected.label || '') }
     )
@@ -491,15 +508,41 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">
-                      {ZONE_LABELS[selected.key] || "Zone d'attribution"}{needZone ? ' *' : ''}
+                    <label className="text-xs font-medium text-gray-600 mb-1 block flex items-center justify-between">
+                      <span>{ZONE_LABELS[selected.key] || "Zone d'attribution"}{needZone ? ' *' : ''}</span>
+                      {availableZonesForPlan.length > 0 && (
+                        <span className="text-[10px] text-indigo-600 font-semibold">{availableZonesForPlan.length} zone(s) configurée(s)</span>
+                      )}
                     </label>
-                    <input
-                      value={f.zone}
-                      onChange={(e) => setF({ ...f, zone: e.target.value })}
-                      className="input w-full"
-                      placeholder={ZONE_LABELS[selected.key] || "Zone d'attribution"}
-                    />
+                    {availableZonesForPlan.length > 0 ? (
+                      <select
+                        value={zoneId}
+                        onChange={(e) => {
+                          const zid = e.target.value
+                          setZoneId(zid)
+                          const zObj = availableZonesForPlan.find((x) => String(x._id) === String(zid))
+                          setF({ ...f, zone: zObj ? zObj.name : '' })
+                        }}
+                        className="input w-full font-medium"
+                      >
+                        <option value="">-- Choisir dans la liste ({ZONE_LABELS[selected.key] || selected.key}) --</option>
+                        {availableZonesForPlan.map((z) => (
+                          <option key={z._id} value={z._id}>
+                            {z.name} {z.code ? `(${z.code})` : ''} — {z.country}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={f.zone}
+                        onChange={(e) => {
+                          setZoneId('')
+                          setF({ ...f, zone: e.target.value })
+                        }}
+                        className="input w-full"
+                        placeholder={ZONE_LABELS[selected.key] || "Zone d'attribution (saisie libre)"}
+                      />
+                    )}
                   </div>
 
                   {/* Choix du mode de paiement */}

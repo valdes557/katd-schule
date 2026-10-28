@@ -10,8 +10,8 @@ const fmtDateTime = (d) => (d ? new Date(d).toLocaleString('fr-FR', {
   hour: '2-digit', minute: '2-digit',
 }) : '—')
 
-export default function CagnotteLockProofModal({ contract, client, onClose }) {
-  if (!contract) return null
+export default function CagnotteLockProofModal({ isOpen = true, contract, client, onClose }) {
+  if (!isOpen || !contract) return null
 
   const handlePrint = () => {
     window.print()
@@ -22,7 +22,12 @@ export default function CagnotteLockProofModal({ contract, client, onClose }) {
   const lockUntilDate = contract.lockUntil
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget && onClose) onClose()
+      }}
+      className="fixed inset-0 z-[80] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in overflow-y-auto"
+    >
       <style>{`
         @media print {
           body * {

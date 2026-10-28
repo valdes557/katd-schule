@@ -81,7 +81,7 @@ export function AuthProvider({ children }) {
   }
 
   // Inscription publique en tant qu'utilisateur (grand public)
-  const register = async (name, email, password, referralCode, privacyPolicyAccepted = true) => {
+  const register = async (name, email, password, referralCode, privacyPolicyAccepted = true, zoneData = {}) => {
     try {
       const res = await authApi.registerUser({
         name,
@@ -89,6 +89,9 @@ export function AuthProvider({ children }) {
         password,
         referralCode: referralCode || undefined,
         privacyPolicyAccepted,
+        zoneType: zoneData?.zoneType || undefined,
+        zoneName: zoneData?.zoneName || undefined,
+        zoneId: zoneData?.zoneId || undefined,
       })
       // Vérification email obligatoire : pas de token tant que non confirmé
       if (res.requiresVerification) {
