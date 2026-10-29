@@ -340,6 +340,9 @@ export default function App() {
       {/* Public routes */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<LoginPage defaultUserMode="signup" />} />
+      <Route path="/signup" element={<LoginPage defaultUserMode="signup" />} />
+      <Route path="/inscription" element={<LoginPage defaultUserMode="signup" />} />
       <Route path="/explorer" element={<ExplorerPage />} />
       <Route path="/ecoles" element={<EcolesPage />} />
       <Route path="/inscription/:schoolId" element={<EnrollmentPage />} />
