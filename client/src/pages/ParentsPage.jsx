@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { exportParentsFichePdf } from '../lib/exportFichesPdf'
+import GeographicZoneSelector from '../components/common/GeographicZoneSelector'
 
 export default function ParentsPage() {
   const { user, school } = useAuth()
@@ -49,7 +50,7 @@ export default function ParentsPage() {
   const [selected, setSelected] = useState([])
   const [linkEmail, setLinkEmail] = useState('')
   const [modal, setModal] = useState(null) // student
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' })
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', zoneData: null })
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState(null)
 
@@ -71,7 +72,7 @@ export default function ParentsPage() {
 
   const openModal = (s) => {
     setModal(s)
-    setForm({ name: s.parent?.name || '', email: s.parent?.email || '', phone: s.parent?.phone || '', password: '' })
+    setForm({ name: s.parent?.name || '', email: s.parent?.email || '', phone: s.parent?.phone || '', password: '', zoneData: s.geographicZone || null })
     setResult(null)
   }
 
@@ -79,7 +80,7 @@ export default function ParentsPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      const r = await studentsApi.createParentAccount(modal._id, form)
+      const r = await studentsApi.createParentAccount(modal._id, { ...form, ...(form.zoneData || {}) })
       if (r.success) { setResult(r); refreshAll() } else alert(r.message || 'Erreur')
     } catch (e) { alert(e.message) }
     setSaving(false)
@@ -87,7 +88,7 @@ export default function ParentsPage() {
 
   // ════════════════ ONGLET « GESTION DES PARENTS » ════════════════
   const [pModal, setPModal] = useState(null) // { mode: 'create' | 'edit', parent? }
-  const [pForm, setPForm] = useState({ name: '', email: '', phone: '', password: '', studentIds: [] })
+  const [pForm, setPForm] = useState({ name: '', email: '', phone: '', password: '', studentIds: [], zoneData: null })
   const [pStudentSearch, setPStudentSearch] = useState('')
   const [pSaving, setPSaving] = useState(false)
   const [pError, setPError] = useState('')
@@ -95,13 +96,13 @@ export default function ParentsPage() {
 
   const openCreateParent = () => {
     setPModal({ mode: 'create' })
-    setPForm({ name: '', email: '', phone: '', password: '', studentIds: [] })
+    setPForm({ name: '', email: '', phone: '', password: '', studentIds: [], zoneData: null })
     setPStudentSearch(''); setPError(''); setPResult(null)
   }
 
   const openEditParent = (p) => {
     setPModal({ mode: 'edit', parent: p })
-    setPForm({ name: p.name || '', email: p.email || '', phone: p.phone || '', password: '', studentIds: (p.children || []).map((c) => c._id) })
+    setPForm({ name: p.name || '', email: p.email || '', phone: p.phone || '', password: '', studentIds: (p.children || []).map((c) => c._id), zoneData: p.geographicZone || null })
     setPStudentSearch(''); setPError(''); setPResult(null)
   }
 
@@ -122,6 +123,7 @@ export default function ParentsPage() {
         const r = await parentsApi.create({
           name: pForm.name, email: pForm.email, phone: pForm.phone,
           password: pForm.password || undefined, studentIds: pForm.studentIds,
+          ...(pForm.zoneData || {}),
         })
         setPResult(r.data)
         refreshAll()
@@ -130,6 +132,7 @@ export default function ParentsPage() {
         await parentsApi.update(id, {
           name: pForm.name, email: pForm.email, phone: pForm.phone,
           ...(pForm.password ? { password: pForm.password } : {}),
+          ...(pForm.zoneData || {}),
         })
         await parentsApi.setStudents(id, pForm.studentIds)
         refreshAll()
@@ -392,6 +395,11 @@ export default function ParentsPage() {
                   <label className="text-xs font-medium text-gray-600">Mot de passe <span className="text-gray-400">(laisser vide = auto)</span></label>
                   <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="input text-sm mt-1 w-full" placeholder="Auto si vide" />
                 </div>
+                <GeographicZoneSelector
+                  value={form.zoneData}
+                  onChange={(zd) => setForm(f => ({ ...f, zoneData: zd }))}
+                  helperText="Par défaut : hérite de la zone de l'établissement"
+                />
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setModal(null)} className="btn-ghost flex-1 justify-center">Annuler</button>
                   <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
@@ -451,6 +459,11 @@ export default function ParentsPage() {
                   </label>
                   <input value={pForm.password} onChange={(e) => setPForm({ ...pForm, password: e.target.value })} className="input text-sm mt-1 w-full" placeholder={pModal.mode === 'create' ? 'Auto si vide' : 'Inchangé si vide'} />
                 </div>
+                <GeographicZoneSelector
+                  value={pForm.zoneData}
+                  onChange={(zd) => setPForm(f => ({ ...f, zoneData: zd }))}
+                  helperText="Par défaut : le parent hérite de la zone de l'établissement"
+                />
 
                 <div>
                   <label className="text-xs font-medium text-gray-600">Élèves associés ({pForm.studentIds.length})</label>

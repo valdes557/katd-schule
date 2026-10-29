@@ -24,6 +24,21 @@ const staffSchema = new mongoose.Schema(
     hireDate: { type: Date, default: Date.now },
     status: { type: String, enum: ['active', 'inactive', 'on_leave'], default: 'active' },
     address: { city: { type: String }, neighborhood: { type: String } },
+    // Zone géographique rattachée (par défaut: héritée de l'établissement)
+    geographicZone: {
+      zoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null, index: true },
+      zoneType: { type: String, enum: ['arrondissement', 'regional', 'national', 'international', 'mondial', null], default: null },
+      zoneName: { type: String, default: '', trim: true },
+      arrondissementId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null, index: true },
+      arrondissementName: { type: String, default: '', trim: true },
+      regionId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null, index: true },
+      regionName: { type: String, default: '', trim: true },
+      countryId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      countryName: { type: String, default: 'Cameroun', trim: true },
+      mondialId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      mondialName: { type: String, default: '', trim: true },
+      allZoneIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone' }],
+    },
     notes: { type: String },
   },
   { timestamps: true }

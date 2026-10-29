@@ -6,6 +6,7 @@ import {
 import { staffAccountsApi } from '../../lib/api'
 import { useCachedFetch } from '../../hooks/useCachedFetch'
 import { cache } from '../../lib/cache'
+import GeographicZoneSelector from '../../components/common/GeographicZoneSelector'
 
 const ROLE_OPTIONS = [
   { value: 'vice_principal', label: 'Vice-Principal' },
@@ -56,7 +57,7 @@ export default function StaffAccountsPage() {
 
   const [showModal, setShowModal] = useState(false)
   const [editMember, setEditMember] = useState(null)
-  const [form, setForm] = useState({ role: 'vice_principal', firstName: '', lastName: '', email: '', phone: '' })
+  const [form, setForm] = useState({ role: 'vice_principal', firstName: '', lastName: '', email: '', phone: '', zoneData: null })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [credentials, setCredentials] = useState(null)
@@ -72,11 +73,11 @@ export default function StaffAccountsPage() {
         await staffAccountsApi.update(editMember._id, { name: `${form.lastName} ${form.firstName}`.trim(), phone: form.phone, role: form.role })
         setShowModal(false)
       } else {
-        const res = await staffAccountsApi.create(form)
+        const res = await staffAccountsApi.create({ ...form, ...(form.zoneData || {}) })
         setCredentials({ credentials: res.credentials, whatsappLink: res.whatsappLink })
         setShowModal(false)
       }
-      setForm({ role: 'vice_principal', firstName: '', lastName: '', email: '', phone: '' })
+      setForm({ role: 'vice_principal', firstName: '', lastName: '', email: '', phone: '', zoneData: null })
       setEditMember(null)
       refresh()
     } catch (err) { setError(err.message) } finally { setSaving(false) }
@@ -102,7 +103,7 @@ export default function StaffAccountsPage() {
   const openEdit = (m) => {
     const [lastName = '', ...rest] = (m.name || '').split(' ')
     setEditMember(m)
-    setForm({ role: m.role, firstName: rest.join(' '), lastName, email: m.email, phone: m.phone || '' })
+    setForm({ role: m.role, firstName: rest.join(' '), lastName, email: m.email, phone: m.phone || '', zoneData: m.geographicZone || null })
     setShowModal(true)
   }
 
@@ -209,6 +210,11 @@ export default function StaffAccountsPage() {
               <label className="text-xs font-semibold text-gray-600">Téléphone (WhatsApp)</label>
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input mt-1" placeholder="237 6XX XX XX XX" />
             </div>
+            <GeographicZoneSelector
+              value={form.zoneData}
+              onChange={(zd) => setForm(f => ({ ...f, zoneData: zd }))}
+              helperText="Par défaut : le membre hérite de la zone de l'établissement"
+            />
             {!editMember && <p className="text-[11px] text-gray-400">Un mot de passe sera généré automatiquement et envoyé par email. Vous pourrez aussi le copier ou l'envoyer via WhatsApp.</p>}
 
             <button type="submit" disabled={saving} className="btn-primary w-full justify-center text-sm">

@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react'
 import {
   Landmark, Loader2, X, CheckCircle2, MapPin, Users, ArrowLeftRight, Coins,
   TrendingUp, Crown, Megaphone, CalendarClock, Video, Banknote, Receipt, Wallet,
-  Lock, Sparkles, AlertCircle, ShieldAlert,
+  Lock, Sparkles, AlertCircle, ShieldAlert, Smartphone, History,
 } from 'lucide-react'
 import { shareholdersApi, paymentsApi, walletApi, zonesApi } from '../../lib/api'
 import { useInlineCheckout } from '../../components/payments/useInlineCheckout'
@@ -130,7 +130,7 @@ export default function UserShareholdersPage() {
 
       {err && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm">{err}</div>}
 
-      {dash ? <ShareholderWallet dash={dash} /> : (
+      {dash ? <ShareholderWallet dash={dash} onRefresh={load} /> : (
         !showPlans && (
           <div className="text-center py-16 text-gray-400">
             <Landmark size={36} className="mx-auto mb-3 opacity-30" />
@@ -160,13 +160,35 @@ export default function UserShareholdersPage() {
 
 // ── Portefeuille d'associé ──
 // CONFIDENTIALITÉ : uniquement des agrégats — pas de transferts individuels ni de soldes.
-function ShareholderWallet({ dash }) {
-  const { stats = {}, zone = {}, posts = [], shareholdings = [] } = dash || {}
+function ShareholderWallet({ dash, onRefresh }) {
+  const { stats = {}, zone = {}, posts = [], shareholdings = [], withdrawals = [] } = dash || {}
   const activeHoldings = Array.isArray(shareholdings) ? shareholdings : []
   const primaryHolding = activeHoldings[0] || {}
   const currentPercent = primaryHolding.percent || 1
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [successMsg, setSuccessMsg] = useState('')
+
+  const availableFees = stats?.availableFeesBalance != null
+    ? stats.availableFeesBalance
+    : Math.max(0, (stats?.shareholderCalculatedShare || 0) - (stats?.totalFeesWithdrawn || 0))
+  const totalFeesEarned = stats?.totalFeesEarned != null
+    ? stats.totalFeesEarned
+    : (stats?.shareholderCalculatedShare || 0)
+  const totalWithdrawn = stats?.totalFeesWithdrawn || 0
+
   return (
     <div className="space-y-5">
+      {successMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl p-4 flex items-center justify-between shadow-sm animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+            <span className="text-xs font-bold">{successMsg}</span>
+          </div>
+          <button onClick={() => setSuccessMsg('')} className="text-emerald-500 hover:text-emerald-700 p-1">
+            <X size={15} />
+          </button>
+        </div>
+      )}
       {/* Zone d'attribution */}
       <div className="bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl p-5 shadow-lg">
         <div className="flex items-center gap-2 opacity-90"><Crown size={16} /><span className="text-xs font-semibold uppercase">Zone d'attribution</span></div>
@@ -259,6 +281,102 @@ function ShareholderWallet({ dash }) {
           </div>
         )}
       </div>
+
+      {/* Retraits Mobile Money des Frais d'Associé */}
+      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
+              <Smartphone size={22} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                Retrait Mobile Money des Frais
+                <span className="text-[10px] bg-white/20 font-extrabold px-2 py-0.5 rounded-full">MTN & Orange</span>
+              </h3>
+              <p className="text-[11px] text-emerald-100">Retirez vos frais et quote-parts imputés à votre plan</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowWithdrawModal(true)}
+            disabled={availableFees <= 0}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-2 ${
+              availableFees > 0
+                ? 'bg-white text-emerald-800 hover:bg-emerald-50 active:scale-95 cursor-pointer ring-2 ring-white/50'
+                : 'bg-white/30 text-white/70 cursor-not-allowed opacity-60'
+            }`}
+          >
+            <Banknote size={16} /> Effectuer un retrait
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div className="bg-white/10 rounded-xl p-3.5 backdrop-blur-xs border border-white/10 space-y-0.5">
+            <span className="text-[10px] text-emerald-100 uppercase font-semibold block">Total frais imputés</span>
+            <span className="text-base font-black text-white block">{fmt(totalFeesEarned)} FCFA</span>
+          </div>
+          <div className="bg-white/10 rounded-xl p-3.5 backdrop-blur-xs border border-white/10 space-y-0.5">
+            <span className="text-[10px] text-emerald-100 uppercase font-semibold block">Frais déjà retirés</span>
+            <span className="text-base font-black text-white block">{fmt(totalWithdrawn)} FCFA</span>
+          </div>
+          <div className="bg-white/25 rounded-xl p-3.5 backdrop-blur-xs border border-white/30 space-y-0.5">
+            <span className="text-[10px] text-amber-200 uppercase font-black block">Solde retirable disponible</span>
+            <span className="text-lg font-black text-white block">{fmt(availableFees)} FCFA</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Historique des retraits d'associé */}
+      {Array.isArray(withdrawals) && withdrawals.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-150 shadow-sm p-4 space-y-3">
+          <div className="flex items-center gap-2 text-gray-800 font-bold text-xs">
+            <History size={16} className="text-emerald-600" />
+            <span>Historique de mes retraits Mobile Money</span>
+          </div>
+          <div className="overflow-x-auto border border-gray-100 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-gray-50 text-gray-500 font-semibold">
+                <tr>
+                  <th className="py-2 px-3">Date</th>
+                  <th className="py-2 px-3">Bénéficiaire</th>
+                  <th className="py-2 px-3 text-right">Montant brut</th>
+                  <th className="py-2 px-3 text-right">Frais (1%)</th>
+                  <th className="py-2 px-3 text-right">Net perçu</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {withdrawals.map((w) => (
+                  <tr key={w._id}>
+                    <td className="py-2 px-3 text-gray-500 whitespace-nowrap">
+                      {new Date(w.createdAt).toLocaleDateString('fr-FR')} {new Date(w.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="py-2 px-3">
+                      <span className="font-bold text-gray-800 block uppercase text-[11px]">
+                        {w.meta?.momoOperator || 'MOMO'} · {w.meta?.momoNumber || '—'}
+                      </span>
+                      {w.meta?.accountName && <span className="text-[10px] text-gray-400 block">{w.meta.accountName}</span>}
+                    </td>
+                    <td className="py-2 px-3 text-right font-bold text-gray-700">{fmt(w.amount)} F</td>
+                    <td className="py-2 px-3 text-right text-gray-400">{fmt(w.meta?.fee || 0)} F</td>
+                    <td className="py-2 px-3 text-right font-extrabold text-emerald-700">{fmt(w.meta?.netAmount || w.amount)} F</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {showWithdrawModal && (
+        <ShareholderWithdrawModal
+          availableBalance={availableFees}
+          onClose={() => setShowWithdrawModal(false)}
+          onSuccess={(msg) => {
+            setSuccessMsg(msg)
+            if (typeof onRefresh === 'function') onRefresh()
+          }}
+        />
+      )}
 
       {/* Gains accumulés */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center justify-between">
@@ -724,3 +842,254 @@ function TermSection({ title, text }) {
   )
 }
 
+
+
+function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) {
+  const [amount, setAmount] = useState('')
+  const [operator, setOperator] = useState('orange')
+  const [phone, setPhone] = useState('')
+  const [accountName, setAccountName] = useState('')
+  const [pin, setPin] = useState('')
+  const [savedAccounts, setSavedAccounts] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    walletApi
+      .getSavedMomoAccounts()
+      .then((res) => {
+        if (Array.isArray(res?.savedMomoAccounts)) {
+          setSavedAccounts(res.savedMomoAccounts)
+          if (res.savedMomoAccounts.length > 0) {
+            const def = res.savedMomoAccounts.find((a) => a.isDefault) || res.savedMomoAccounts[0]
+            setOperator(def.operator || 'orange')
+            setPhone(def.phone || def.number || '')
+            setAccountName(def.accountName || def.name || '')
+          }
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleSelectAccount = (acc) => {
+    setOperator(acc.operator || 'orange')
+    setPhone(acc.phone || acc.number || '')
+    setAccountName(acc.accountName || acc.name || '')
+  }
+
+  const amtNum = Number(amount) || 0
+  const fee = Math.round(amtNum * 0.01)
+  const net = Math.max(0, amtNum - fee)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!amtNum || amtNum < 100) {
+      setError('Le montant minimum de retrait est de 100 FCFA.')
+      return
+    }
+    if (amtNum > availableBalance) {
+      setError(`Solde insuffisant. Vous ne pouvez retirer que jusqu'à ${fmt(availableBalance)} FCFA.`)
+      return
+    }
+    if (!phone.trim()) {
+      setError('Le numéro Mobile Money est requis.')
+      return
+    }
+    if (!accountName.trim()) {
+      setError('Le nom du titulaire du compte est obligatoire.')
+      return
+    }
+    if (!pin.trim()) {
+      setError('Le code PIN de votre portefeuille est requis.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const res = await shareholdersApi.withdraw({
+        amount: amtNum,
+        momoNumber: phone.trim(),
+        momoOperator: operator,
+        accountName: accountName.trim(),
+        pin: pin.trim(),
+      })
+      onSuccess(res.message || 'Demande de retrait effectuée avec succès.')
+      onClose()
+    } catch (err) {
+      setError(err?.message || 'Erreur lors du retrait.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto space-y-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <Smartphone size={20} />
+            <h3 className="font-bold text-gray-900 text-sm">Retrait Mobile Money — Frais d'Associé</h3>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100">
+            <X size={18} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl p-3 flex items-start gap-2">
+            <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-600" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-bold text-emerald-800 block">Solde disponible retirable</span>
+            <p className="text-[11px] text-emerald-600">Quote-part des frais attribués à votre plan</p>
+          </div>
+          <span className="text-lg font-black text-emerald-800">{fmt(availableBalance)} FCFA</span>
+        </div>
+
+        {savedAccounts.length > 0 && (
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-gray-600 block">Vos numéros Mobile Money enregistrés :</label>
+            <div className="flex flex-wrap gap-1.5">
+              {savedAccounts.map((acc, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectAccount(acc)}
+                  className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+                    phone === (acc.phone || acc.number)
+                      ? 'bg-emerald-100 border-emerald-400 text-emerald-900 font-bold shadow-2xs'
+                      : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <span className="uppercase text-[9px] font-black px-1 rounded bg-black/10">
+                    {acc.operator || 'MoMo'}
+                  </span>
+                  <span>{acc.phone || acc.number}</span>
+                  <span className="text-[10px] text-gray-400">({acc.accountName || acc.name})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <div>
+            <label className="text-xs font-medium text-gray-700 mb-1 block">Opérateur de réception *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer text-xs font-semibold ${operator === 'mtn' ? 'border-yellow-500 bg-yellow-50/70 text-yellow-900' : 'border-gray-200 text-gray-600'}`}>
+                <input type="radio" name="momoOp" value="mtn" checked={operator === 'mtn'} onChange={() => setOperator('mtn')} className="text-yellow-600" />
+                <span>MTN Mobile Money</span>
+              </label>
+              <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer text-xs font-semibold ${operator === 'orange' ? 'border-orange-500 bg-orange-50/70 text-orange-900' : 'border-gray-200 text-gray-600'}`}>
+                <input type="radio" name="momoOp" value="orange" checked={operator === 'orange'} onChange={() => setOperator('orange')} className="text-orange-600" />
+                <span>Orange Money</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Numéro Mobile Money *</label>
+              <input
+                type="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="6XX XXX XXX"
+                className="input text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Nom du titulaire *</label>
+              <input
+                type="text"
+                required
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                placeholder="Ex: Jean Dupont"
+                className="input text-xs"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-gray-700">Montant à retirer (FCFA) *</label>
+              <div className="flex gap-1">
+                {[0.25, 0.5, 1].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setAmount(String(Math.floor(availableBalance * pct)))}
+                    className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 hover:bg-emerald-100 text-gray-700 hover:text-emerald-800"
+                  >
+                    {pct === 1 ? 'MAX' : `${pct * 100}%`}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <input
+              type="number"
+              required
+              min={100}
+              max={availableBalance}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Ex: 50000"
+              className="input text-sm font-bold"
+            />
+          </div>
+
+          {amtNum > 0 && (
+            <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-200 text-xs space-y-1">
+              <div className="flex justify-between text-gray-500">
+                <span>Frais de retrait Mobile Money (1%) :</span>
+                <span className="font-semibold text-gray-800">{fmt(fee)} FCFA</span>
+              </div>
+              <div className="flex justify-between text-emerald-800 font-bold border-t border-gray-200 pt-1">
+                <span>Montant net versé :</span>
+                <span className="text-sm font-black text-emerald-700">{fmt(net)} FCFA</span>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs font-medium text-gray-700 mb-1 block">Code PIN du portefeuille *</label>
+            <input
+              type="password"
+              required
+              maxLength={8}
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="••••"
+              className="input text-center text-base tracking-[0.3em] font-mono"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="btn-ghost flex-1 justify-center border border-gray-200 text-xs py-2.5"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={loading || amtNum <= 0 || amtNum > availableBalance}
+              className="btn-primary flex-1 justify-center text-xs py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {loading ? <><Loader2 size={14} className="animate-spin" /> Envoi...</> : 'Valider le retrait'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

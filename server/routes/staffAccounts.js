@@ -1,10 +1,12 @@
 const express = require('express')
 const router = express.Router()
 const User = require('../models/User')
+const School = require('../models/School')
 const { protect, authorize } = require('../middleware/auth')
 const { generateUserMatricule } = require('../utils/matricule')
 const wallet = require('../services/walletService')
 const { sendEmail } = require('../utils/emailService')
+const { resolveMemberZone } = require('../utils/zoneHelper')
 
 // Rôles administratifs du cycle Secondaire, créés par le principal (directeur)
 const ADMIN_ROLES = ['vice_principal', 'surveillant_general', 'caissiere', 'secretaire', 'portier']
@@ -74,12 +76,15 @@ router.post('/', protect, authorize('directeur', 'super_admin'), async (req, res
 
     const rawPassword = password || generatePassword()
     const matricule = await generateUserMatricule(role, schoolId)
+    const schoolDoc = await School.findById(schoolId).select('geographicZone')
+    const geographicZone = resolveMemberZone(req.body, schoolDoc)
     const user = await User.create({
       name: `${lastName} ${firstName}`,
       email,
       password: rawPassword,
       role,
       school: schoolId,
+      geographicZone,
       phone,
       matricule,
     })

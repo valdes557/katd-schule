@@ -2,8 +2,10 @@ const express = require('express')
 const router = express.Router()
 const User = require('../models/User')
 const Student = require('../models/Student')
+const School = require('../models/School')
 const { protect, authorize } = require('../middleware/auth')
 const { generateUserMatricule } = require('../utils/matricule')
+const { resolveMemberZone } = require('../utils/zoneHelper')
 
 // GET /api/parents/directory — annuaire des parents (Surveillant Général : contacts
 // pour joindre les familles). Déclarée AVANT le router.use directeur ci-dessous.
@@ -100,8 +102,11 @@ router.post('/', async (req, res) => {
 
     const rawPassword = password || `parent${Math.floor(10000 + Math.random() * 90000)}`
     const matricule = await generateUserMatricule('parent', schoolId)
+    const schoolDoc = await School.findById(schoolId).select('geographicZone')
+    const geographicZone = resolveMemberZone(req.body, schoolDoc)
     const user = await User.create({
       name, email, phone: phone || '', password: rawPassword, role: 'parent', school: schoolId, matricule,
+      geographicZone,
     })
 
     if (Array.isArray(studentIds) && studentIds.length > 0) {

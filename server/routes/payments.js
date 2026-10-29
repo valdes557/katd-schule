@@ -137,6 +137,11 @@ router.post('/subscription/initiate', async (req, res) => {
         return res.status(400).json({ message: 'Champs requis manquants (école, directeur, email)' })
       }
       meta = { schoolName, directorName, email, whatsapp, cycle: cycle || 'primaire',
+               arrondissementId: req.body.arrondissementId, arrondissementName: req.body.arrondissementName,
+               regionId: req.body.regionId, regionName: req.body.regionName,
+               countryId: req.body.countryId, mondialId: req.body.mondialId, mondialName: req.body.mondialName,
+               zoneId: req.body.zoneId, zoneType: req.body.zoneType, zoneName: req.body.zoneName,
+               geographicZone: req.body.geographicZone,
                plan: plan || 'annual', planId: planId || null, cityName, neighborhoodName, countryName }
       resolved = await resolveSubscriptionAmount(meta.cycle, meta.plan, planId)
     }
@@ -588,6 +593,11 @@ async function applyOutcome(intent, status, raw) {
           schoolName: m.schoolName, directorName: m.directorName, email: m.email,
           whatsapp: m.whatsapp, cycle: m.cycle, plan: m.plan, amount: intent.amount,
           cityName: m.cityName, neighborhoodName: m.neighborhoodName, countryName: m.countryName,
+          arrondissementId: m.arrondissementId, arrondissementName: m.arrondissementName,
+          regionId: m.regionId, regionName: m.regionName,
+          countryId: m.countryId, mondialId: m.mondialId, mondialName: m.mondialName,
+          zoneId: m.zoneId, zoneType: m.zoneType, zoneName: m.zoneName,
+          geographicZone: m.geographicZone,
         })
         // Conserve les identifiants pour les afficher au souscripteur via /status (chantier 1)
         intent.meta = { ...m, credentials: { email: m.email, password: prov.rawPassword, matricule: prov.matricule, whatsapp: m.whatsapp || '' } }

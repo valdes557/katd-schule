@@ -1,8 +1,10 @@
 const express = require('express')
 const router = express.Router()
 const Staff = require('../models/Staff')
+const School = require('../models/School')
 const Teacher = require('../models/Teacher')
 const { protect, authorize } = require('../middleware/auth')
+const { resolveMemberZone } = require('../utils/zoneHelper')
 
 function schoolId(req) { return req.user.school?._id || req.user.school }
 
@@ -35,7 +37,9 @@ router.post('/', ...dirOnly, async (req, res) => {
     const { firstName, lastName } = req.body
     if (!firstName || !lastName) return res.status(400).json({ message: 'Nom et prénom requis' })
 
-    const member = await Staff.create({ ...req.body, school: sid })
+    const schoolDoc = await School.findById(sid).select('geographicZone')
+    const geographicZone = resolveMemberZone(req.body, schoolDoc)
+    const member = await Staff.create({ ...req.body, school: sid, geographicZone })
     res.status(201).json({ success: true, data: member })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })

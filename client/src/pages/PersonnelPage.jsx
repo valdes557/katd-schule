@@ -5,6 +5,7 @@ import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
 import { exportPersonnelFichePdf, exportBadgesPdf } from '../lib/exportFichesPdf'
+import GeographicZoneSelector from '../components/common/GeographicZoneSelector'
 import {
   Loader2, UserCog, UserCheck, Plus, Pencil, Trash2, X, Phone, Mail, Users, Briefcase, Download, Contact
 } from 'lucide-react'
@@ -29,7 +30,7 @@ const STATUS = {
   on_leave: { label: 'En congé', cls: 'bg-amber-100 text-amber-700' },
 }
 
-const EMPTY = { firstName: '', lastName: '', category: 'autre', jobTitle: '', phone: '', email: '', gender: '', salary: '', status: 'active' }
+const EMPTY = { firstName: '', lastName: '', category: 'autre', jobTitle: '', phone: '', email: '', gender: '', salary: '', status: 'active', zoneData: null }
 
 function Avatar({ photo, name, tone = 'bg-indigo-600' }) {
   if (photo) return <img src={photo} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
@@ -63,6 +64,7 @@ export default function PersonnelPage() {
     ...EMPTY, ...m,
     salary: m.salary ?? '',
     gender: m.gender || '',
+    zoneData: m.geographicZone || null,
   })
 
   const handleExportAdministrativeList = () => {
@@ -110,6 +112,7 @@ export default function PersonnelPage() {
         gender: modal.gender || undefined,
         salary: modal.salary === '' ? undefined : Number(modal.salary),
         status: modal.status,
+        ...(modal.zoneData || {}),
       }
       if (modal._id) await staffApi.update(modal._id, payload)
       else await staffApi.create(payload)
@@ -309,6 +312,11 @@ export default function PersonnelPage() {
                   </select>
                 </div>
               </div>
+              <GeographicZoneSelector
+                value={modal.zoneData}
+                onChange={(zd) => setModal(m => ({ ...m, zoneData: zd }))}
+                helperText="Par défaut : le personnel hérite de la zone de l'établissement"
+              />
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setModal(null)} className="btn-ghost border border-gray-200 flex-1 justify-center text-sm">Annuler</button>
                 <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center text-sm">

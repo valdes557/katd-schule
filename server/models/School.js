@@ -17,6 +17,21 @@ const schoolSchema = new mongoose.Schema(
       country: { type: String, default: 'Cameroun' },
       address: { type: String },
     },
+    // Zone géographique rattachée (arrondissement, région, national, international/mondial)
+    geographicZone: {
+      zoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null, index: true },
+      zoneType: { type: String, enum: ['arrondissement', 'regional', 'national', 'international', 'mondial', null], default: null },
+      zoneName: { type: String, default: '', trim: true },
+      arrondissementId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null, index: true },
+      arrondissementName: { type: String, default: '', trim: true },
+      regionId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null, index: true },
+      regionName: { type: String, default: '', trim: true },
+      countryId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      countryName: { type: String, default: 'Cameroun', trim: true },
+      mondialId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      mondialName: { type: String, default: '', trim: true },
+      allZoneIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone' }],
+    },
     phone: { type: String },
     email: { type: String },
     contact: {

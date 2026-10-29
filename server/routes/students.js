@@ -6,6 +6,7 @@ const { protect, authorize } = require('../middleware/auth')
 const School = require('../models/School')
 const Teacher = require('../models/Teacher')
 const { upload } = require('../config/cloudinary')
+const { resolveMemberZone } = require('../utils/zoneHelper')
 
 // When the body comes from multipart/form-data, nested objects (parent, address)
 // arrive as JSON strings — parse them back into objects before saving.
@@ -99,14 +100,15 @@ router.post('/', protect, authorize('directeur', 'super_admin'), upload.single('
   try {
     const body = parseNested(req.body)
     const schoolId = req.user.school?._id || req.user.school
+    const school = await School.findById(schoolId).select('subscription.cycle geographicZone')
     if (req.user.role === 'directeur') {
-      const school = await School.findById(schoolId).select('subscription.cycle')
       if (school?.subscription?.cycle && body.cycle && body.cycle !== school.subscription.cycle) {
         return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ». ` })
       }
     }
     const photo = req.file?.path || body.photo || ''
-    const student = await Student.create({ ...body, photo, school: schoolId })
+    const geographicZone = resolveMemberZone(body, school)
+    const student = await Student.create({ ...body, photo, school: schoolId, geographicZone })
 
     if (body.teacher && student.class) {
       await Teacher.findByIdAndUpdate(body.teacher, { $addToSet: { classes: student.class } })
@@ -201,12 +203,15 @@ router.post('/:id/parent-account', protect, authorize('directeur', 'super_admin'
     const rawPassword = req.body.password || `parent${Math.floor(10000 + Math.random() * 90000)}`
     const { generateUserMatricule } = require('../utils/matricule')
     const matricule = await generateUserMatricule('parent', student.school)
+    const schoolDoc = await School.findById(student.school).select('geographicZone')
+    const parentZone = resolveMemberZone(req.body, (student?.geographicZone?.zoneId || student?.geographicZone?.allZoneIds?.length) ? student : schoolDoc)
     const user = await User.create({
       name: req.body.name || student.parent?.name || `Parent de ${student.firstName}`,
       email,
       password: rawPassword,
       role: 'parent',
       school: student.school,
+      geographicZone: parentZone,
       phone: req.body.phone || student.parent?.phone,
       matricule,
     })
@@ -296,12 +301,15 @@ router.post('/:id/student-account', protect, authorize('directeur', 'super_admin
     if (matricule && (await User.findOne({ matricule }))) matricule = null
     if (!matricule) matricule = await generateUserMatricule('eleve', student.school)
 
+    const schoolDoc = await School.findById(student.school).select('geographicZone')
+    const eleveZone = resolveMemberZone(req.body, (student?.geographicZone?.zoneId || student?.geographicZone?.allZoneIds?.length) ? student : schoolDoc)
     const user = await User.create({
       name: `${student.lastName} ${student.firstName}`,
       email,
       password: rawPassword,
       role: 'eleve',
       school: student.school,
+      geographicZone: eleveZone,
       matricule,
     })
     student.user = user._id

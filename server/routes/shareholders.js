@@ -320,7 +320,33 @@ router.get('/dashboard', protect, async (req, res) => {
       .filter((c) => c.isAllowed)
       .reduce((s, c) => s + c.shareholderShare, 0)
 
-    // 6. Publications du super admin (dépenses, sommes à payer, réunions…)
+    // 6. Retraits cumulés de frais et solde retirable disponible
+    const totalFeesEarned = Math.max(shareholderCalculatedShare, gains.total)
+
+    const withdrawnRows = await WalletTransaction.aggregate([
+      {
+        $match: {
+          owner: req.user._id,
+          type: 'shareholder_fee_withdrawal',
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+    ])
+    const totalFeesWithdrawn = withdrawnRows[0]?.total || 0
+    const availableFeesBalance = Math.max(0, totalFeesEarned - totalFeesWithdrawn)
+
+    const recentWithdrawals = await WalletTransaction.find({
+      owner: req.user._id,
+      type: 'shareholder_fee_withdrawal',
+    }).sort({ createdAt: -1 }).limit(20)
+
+    // 7. Publications du super admin (dépenses, sommes à payer, réunions…)
     const posts = await ShareholderPost.find({ isPublished: true }).sort({ createdAt: -1 }).limit(50)
 
     res.json({
@@ -338,12 +364,217 @@ router.get('/dashboard', protect, async (req, res) => {
         gainsCount: gains.count,
         eligiblePlatformFees,
         shareholderCalculatedShare,
+        totalFeesEarned,
+        totalFeesWithdrawn,
+        availableFeesBalance,
       },
+      withdrawals: recentWithdrawals,
       allowedFeeCategories: allowedCategories,
       categoryBreakdown,
       posts,
     })
   } catch (err) { res.status(500).json({ message: err.message }) }
+})
+
+// POST /api/shareholders/withdraw — retrait Mobile Money des frais d'associé
+router.post('/withdraw', protect, async (req, res) => {
+  try {
+    const holdings = await Shareholding.find({ user: req.user._id, status: 'active' }).sort({ createdAt: -1 })
+    if (holdings.length === 0) {
+      return res.status(403).json({ message: "Vous n'avez aucune part d'associé active" })
+    }
+    const main = holdings[0]
+    const { amount, momoNumber, momoOperator, accountName, pin, country = 'CM' } = req.body
+    const amt = Number(amount)
+    if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
+    if (!momoNumber) return res.status(400).json({ message: 'Numéro Mobile Money requis' })
+    if (!accountName || !String(accountName).trim()) {
+      return res.status(400).json({ message: 'Le nom du titulaire du numéro est obligatoire' })
+    }
+
+    const minW = 100
+    if (amt < minW) {
+      return res.status(400).json({ message: `Le montant minimum de retrait est de ${minW.toLocaleString('fr-FR')} FCFA` })
+    }
+
+    // Vérification du PIN du portefeuille
+    const walletService = require('../services/walletService')
+    const w = await walletService.getOrCreateWallet(req.user._id, { role: req.user.role, school: req.user.school?._id })
+    if (!w.pinHash) {
+      return res.status(400).json({ message: "Veuillez d'abord configurer votre code PIN de portefeuille dans les paramètres de votre compte." })
+    }
+    const isPinValid = await walletService.verifyPin(w, pin)
+    if (!isPinValid) {
+      return res.status(400).json({ message: 'Code PIN incorrect' })
+    }
+
+    // Calcul du solde disponible en frais
+    const ids = await zoneUserIds(main)
+    const allowedCategories = (Array.isArray(main.allowedFeeCategories) && main.allowedFeeCategories.length > 0)
+      ? main.allowedFeeCategories
+      : ALL_FEE_CATEGORIES.map((x) => x.key)
+
+    const zoneCategoryTotals = {}
+    ALL_FEE_CATEGORIES.forEach((fc) => { zoneCategoryTotals[fc.key] = 0 })
+
+    if (ids === null) {
+      const AdminCoAccount = require('../models/AdminCoAccount')
+      const { acc1 } = await AdminCoAccount.ensureAccounts()
+      const ledger = acc1?.ledger || []
+      for (const fc of ALL_FEE_CATEGORIES) {
+        const matching = ledger.filter((l) => l.category === fc.key)
+        zoneCategoryTotals[fc.key] = matching.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
+      }
+    } else if (ids.length > 0) {
+      const userTxRows = await WalletTransaction.aggregate([
+        { $match: { owner: { $in: ids } } },
+        { $group: { _id: '$type', totalAmount: { $sum: '$amount' } } },
+      ])
+      const byType = {}
+      userTxRows.forEach((r) => { byType[r._id] = r.totalAmount || 0 })
+      zoneCategoryTotals['transfer_fee'] = byType['transfer_fee'] || 0
+      zoneCategoryTotals['withdrawal_fee'] = Math.round((byType['withdrawal'] || 0) * 0.01)
+      zoneCategoryTotals['maintenance_fee'] = byType['maintenance_fee'] || 0
+      zoneCategoryTotals['subscription'] = byType['subscription'] || 0
+      zoneCategoryTotals['ai_subscription'] = (byType['ai_subscription'] || 0) + (byType['ai_subscription_revenue'] || 0)
+      zoneCategoryTotals['collect_fee'] = byType['collect_fee'] || 0
+      zoneCategoryTotals['merchant_signup'] = byType['merchant_signup'] || 0
+      zoneCategoryTotals['agent_signup'] = (byType['agent_subscription'] || 0) + (byType['agent_signup'] || 0)
+      zoneCategoryTotals['client_signup'] = (byType['client_subscription'] || 0) + (byType['client_signup'] || 0)
+      zoneCategoryTotals['shareholder_subscription'] = (byType['shareholder_subscription'] || 0) + (byType['shareholder_payment'] || 0)
+    }
+
+    const calculatedShare = ALL_FEE_CATEGORIES
+      .filter((fc) => allowedCategories.includes(fc.key))
+      .reduce((s, fc) => s + Math.round((zoneCategoryTotals[fc.key] || 0) * ((Number(main.percent) || 1) / 100)), 0)
+
+    const gainRows = await WalletTransaction.aggregate([
+      { $match: { owner: req.user._id, type: 'shareholder_gain' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ])
+    const totalGains = gainRows[0]?.total || 0
+    const totalFeesEarned = Math.max(calculatedShare, totalGains)
+
+    const withdrawnRows = await WalletTransaction.aggregate([
+      { $match: { owner: req.user._id, type: 'shareholder_fee_withdrawal' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ])
+    const totalWithdrawn = withdrawnRows[0]?.total || 0
+    const availableFeesBalance = Math.max(0, totalFeesEarned - totalWithdrawn)
+
+    if (amt > availableFeesBalance) {
+      return res.status(400).json({
+        message: `Solde insuffisant. Vous disposez de ${availableFeesBalance.toLocaleString('fr-FR')} FCFA retirables sur vos frais d'associé.`
+      })
+    }
+
+    const fee = Math.round(amt * 0.01)
+    const netAmount = Math.max(0, amt - fee)
+    const normCountry = String(country || 'CM').trim().toUpperCase()
+    const targetCurrency = normCountry === 'CM' ? 'XAF' : 'XOF'
+    const providerRef = 'sh_wd_' + Date.now().toString(36) + require('crypto').randomBytes(4).toString('hex')
+
+    const ikeepay = require('../services/ikeepayService')
+    let autoPayout = false
+    let payoutResult = null
+    try {
+      payoutResult = await ikeepay.createPayout({
+        amount: netAmount,
+        phone: momoNumber,
+        operator: momoOperator,
+        reference: providerRef,
+        callbackUrl: (process.env.BACKEND_URL || '') + '/api/wallet/webhook',
+        accountName: String(accountName).trim(),
+        country: normCountry,
+        currency: targetCurrency,
+      })
+      autoPayout = true
+    } catch (payErr) {
+      console.warn('[Shareholder withdraw] Payout immédiat non abouti, bascule en file manuelle :', payErr.message)
+    }
+
+    const WithdrawalRequest = require('../models/WithdrawalRequest')
+    const wr = await WithdrawalRequest.create({
+      user: req.user._id,
+      wallet: w._id,
+      role: req.user.role || 'utilisateur',
+      amount: amt,
+      fee,
+      netAmount,
+      currency: targetCurrency,
+      country: normCountry,
+      momoNumber,
+      momoOperator: momoOperator || '',
+      accountName: String(accountName).trim(),
+      reason: `Retrait frais d'associé plan ${main.planLabel || main.planKey} (${main.percent}%)`,
+      status: autoPayout ? 'paid' : 'pending',
+      providerRef,
+      providerPayoutId: payoutResult?.transaction_id || payoutResult?.id || null,
+      dueAt: new Date(Date.now() + 24 * 3600 * 1000),
+    })
+
+    await WalletTransaction.create({
+      wallet: w._id,
+      owner: req.user._id,
+      direction: 'debit',
+      amount: amt,
+      currency: targetCurrency,
+      type: 'shareholder_fee_withdrawal',
+      description: `Retrait frais d'associé vers ${momoOperator ? momoOperator.toUpperCase() + ' ' : ''}${momoNumber} (${accountName}) - Net: ${netAmount.toLocaleString('fr-FR')} ${targetCurrency}`,
+      meta: {
+        isShareholderWithdrawal: true,
+        planKey: main.planKey,
+        percent: main.percent,
+        fee,
+        netAmount,
+        momoNumber,
+        momoOperator,
+        accountName,
+        withdrawalId: wr._id,
+        autoPayout,
+      },
+    })
+
+    try {
+      const userDoc = await User.findById(req.user._id)
+      const existingAccounts = userDoc.savedMomoAccounts || []
+      const exists = existingAccounts.some((a) => a.operator === momoOperator && (a.phone === momoNumber || a.number === momoNumber))
+      if (!exists) {
+        userDoc.savedMomoAccounts.push({
+          operator: momoOperator,
+          phone: momoNumber,
+          accountName: String(accountName).trim(),
+        })
+        await userDoc.save()
+      }
+    } catch (_) {}
+
+    const remainingFeesBalance = Math.max(0, availableFeesBalance - amt)
+
+    res.json({
+      success: true,
+      message: autoPayout
+        ? `Retrait envoyé avec succès ! Vous allez recevoir ${netAmount.toLocaleString('fr-FR')} ${targetCurrency} sur votre compte Mobile Money.`
+        : `Demande de retrait de ${amt.toLocaleString('fr-FR')} FCFA enregistrée (net : ${netAmount.toLocaleString('fr-FR')} ${targetCurrency} vers le ${momoNumber}).`,
+      withdrawal: wr,
+      availableFeesBalance: remainingFeesBalance,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/shareholders/withdrawals — historique des retraits de l'associé
+router.get('/withdrawals', protect, async (req, res) => {
+  try {
+    const list = await WalletTransaction.find({
+      owner: req.user._id,
+      type: 'shareholder_fee_withdrawal',
+    }).sort({ createdAt: -1 }).limit(50)
+    res.json({ success: true, withdrawals: list })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
 })
 
 // POST /api/shareholders/subscribe — souscrit à un plan dynamique (paiement Mobile Money Ikeepay H2H).

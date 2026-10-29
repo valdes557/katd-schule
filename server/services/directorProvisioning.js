@@ -4,6 +4,7 @@ const User = require('../models/User')
 const Wallet = require('../models/Wallet')
 const { generateUserMatricule } = require('../utils/matricule')
 const { sendEmail } = require('../utils/emailService')
+const { buildGeographicZone } = require('../utils/zoneHelper')
 
 // Ajoute la durée d'un plan payé à une date : trimestriel/quarterly = +3 mois, sinon annuel = +1 an.
 function addPlanDuration(date, plan) {
@@ -24,7 +25,9 @@ async function provisionDirector(data) {
   let _endDate = new Date(_now)
   if (_isPaid) _endDate = addPlanDuration(_now, data.plan) // trimestriel = +3 mois, annuel = +1 an
   else _endDate.setMonth(_endDate.getMonth() + 1) // essai = 1 mois
+  const resolvedZone = (data.geographicZone && data.geographicZone.zoneId) ? data.geographicZone : buildGeographicZone(data)
   const school = await School.create({
+    geographicZone: resolvedZone,
     name: data.schoolName,
     cycles: [data.cycle || 'primaire'],
     address: {
@@ -55,6 +58,7 @@ async function provisionDirector(data) {
     email: data.email,
     password: rawPassword,
     role: 'directeur',
+    geographicZone: resolvedZone,
     school: school._id,
     phone: data.whatsapp || '',
     isActive: true,

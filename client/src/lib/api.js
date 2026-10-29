@@ -1329,6 +1329,8 @@ export const shareholdersApi = {
   me: () => api.get('/shareholders/me'),
   // Portefeuille actionnaire : agrégats de la zone + gains + publications admin
   dashboard: () => api.get('/shareholders/dashboard'),
+  withdraw: (payload) => api.post('/shareholders/withdraw', payload),
+  withdrawals: () => api.get('/shareholders/withdrawals'),
   subscribe: (payload) => api.post('/shareholders/subscribe', payload),
   // Souscription payée directement depuis le solde du portefeuille { planKey, zone, pin }
   subscribeWallet: (payload) => api.post('/shareholders/subscribe-wallet', payload),

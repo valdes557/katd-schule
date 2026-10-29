@@ -7,6 +7,7 @@ const School = require('../models/School')
 const { generateUserMatricule } = require('../utils/matricule')
 const wallet = require('../services/walletService')
 const { upload } = require('../config/cloudinary')
+const { resolveMemberZone } = require('../utils/zoneHelper')
 
 // GET /api/teachers
 router.get('/', protect, async (req, res) => {
@@ -90,14 +91,16 @@ router.post('/', protect, authorize('directeur', 'super_admin', 'vice_principal'
     }
 
     // Récupération de l'école pour validation et cycle par défaut
+    let schoolDoc = null
     if (schoolId) {
-      const school = await School.findById(schoolId).select('subscription.cycle cycles')
+      schoolDoc = await School.findById(schoolId).select('subscription.cycle cycles geographicZone')
       if (!cycle) {
-        cycle = school?.subscription?.cycle || (school?.cycles && school.cycles[0]) || 'Primaire'
-      } else if (req.user.role === 'directeur' && school?.subscription?.cycle && cycle !== school.subscription.cycle) {
-        return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${school.subscription.cycle} ».` })
+        cycle = schoolDoc?.subscription?.cycle || (schoolDoc?.cycles && schoolDoc.cycles[0]) || 'Primaire'
+      } else if (req.user.role === 'directeur' && schoolDoc?.subscription?.cycle && cycle !== schoolDoc.subscription.cycle) {
+        return res.status(403).json({ message: `Cycle non autorisé. Votre abonnement est « ${schoolDoc.subscription.cycle} ».` })
       }
     }
+    const geographicZone = resolveMemberZone(req.body, schoolDoc)
 
     let userId = null
     if (email && password) {
@@ -111,6 +114,7 @@ router.post('/', protect, authorize('directeur', 'super_admin', 'vice_principal'
         password,
         role: 'enseignant',
         school: schoolId,
+        geographicZone,
         matricule,
         photo: photo || undefined,
         avatar: photo || undefined,
@@ -131,6 +135,7 @@ router.post('/', protect, authorize('directeur', 'super_admin', 'vice_principal'
       hourlyRate: Number(hourlyRate) || 0,
       weeklyHours: Number(weeklyHours) || 0,
       school: schoolId,
+      geographicZone,
       user: userId,
     })
 

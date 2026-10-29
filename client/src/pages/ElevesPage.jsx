@@ -5,6 +5,7 @@ import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { useAuth } from '../context/AuthContext'
 import { exportElevesFichePdf, exportCarteScolairePdf, exportAttestationPassagePdf } from '../lib/exportFichesPdf'
+import GeographicZoneSelector from '../components/common/GeographicZoneSelector'
 
 const EMPTY = { firstName: '', lastName: '', gender: 'M', cycle: 'Primaire', class: '', teacher: '', dateOfBirth: '', placeOfBirth: '', studentType: 'nouveau', photo: '', photoFile: null, parent: { name: '', phone: '', email: '', relation: 'pere' } }
 
@@ -803,6 +804,12 @@ export default function ElevesPage() {
                   </div>
                 </div>
               </div>
+
+              <GeographicZoneSelector
+                value={form.geographicZone || form}
+                onChange={(zoneData) => setForm({ ...form, ...zoneData, geographicZone: zoneData })}
+                helperText="Par défaut : l'élève hérite de la zone de l'établissement"
+              />
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center border border-gray-200">Annuler</button>

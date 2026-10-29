@@ -2,8 +2,9 @@ import { useEffect, useState, useRef } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import {
   GraduationCap, ArrowLeft, CheckCircle2, Loader2, AlertCircle,
-  CreditCard, Upload, ImageIcon, Check, ChevronRight, KeyRound, Copy, MessageCircle,
+  CreditCard, Upload, ImageIcon, Check, ChevronRight, KeyRound, Copy, MessageCircle, MapPin,
 } from 'lucide-react'
+import { zonesApi } from '../lib/api'
 import PublicHeader from '../components/layout/PublicHeader'
 import Footer from '../components/layout/Footer'
 import { locationsApi, schoolRegistrationApi, platformApi, plansApi, paymentsApi } from '../lib/api'
@@ -25,6 +26,24 @@ export default function SchoolRegistrationPage() {
   const inlineCheckout = useInlineCheckout()
 
   const [selected, setSelected] = useState(null) // { plan, billing: 'annual'|'trimestrial' }
+
+  // Geographic zones
+  const [zones, setZones] = useState([])
+  const [selectedArrondissementId, setSelectedArrondissementId] = useState('')
+  const [selectedRegionId, setSelectedRegionId] = useState('')
+  const [selectedCountryId, setSelectedCountryId] = useState('')
+  const [selectedMondialId, setSelectedMondialId] = useState('')
+
+  useEffect(() => {
+    zonesApi.list().then((res) => {
+      if (res?.zones) setZones(res.zones)
+    }).catch(() => {})
+  }, [])
+
+  const arrondissements = zones.filter((z) => z.type === 'arrondissement')
+  const regions = zones.filter((z) => z.type === 'regional')
+  const nationals = zones.filter((z) => z.type === 'national')
+  const mondials = zones.filter((z) => z.type === 'international' || z.type === 'mondial')
 
   // Form state
   const [step, setStep] = useState(1) // 1 = plan choice, 2 = form
@@ -160,6 +179,26 @@ export default function SchoolRegistrationPage() {
       setError('Vous devez lire et accepter la politique de confidentialité pour continuer.')
       return
     }
+
+    const arrObj = arrondissements.find((z) => String(z._id) === String(selectedArrondissementId))
+    const regObj = regions.find((z) => String(z._id) === String(selectedRegionId))
+    const ctryObj = nationals.find((z) => String(z._id) === String(selectedCountryId))
+    const mondObj = mondials.find((z) => String(z._id) === String(selectedMondialId))
+    const primaryObj = arrObj || regObj || ctryObj || mondObj
+    const zonePayload = {
+      arrondissementId: arrObj?._id,
+      arrondissementName: arrObj?.name,
+      regionId: regObj?._id,
+      regionName: regObj?.name,
+      countryId: ctryObj?._id,
+      countryName: ctryObj?.name,
+      mondialId: mondObj?._id,
+      mondialName: mondObj?.name,
+      zoneId: primaryObj?._id,
+      zoneType: primaryObj?.type,
+      zoneName: primaryObj?.name,
+    }
+
     if (isTrial) {
       setSubmitting(true)
       setStatusMsg("Création de votre espace d'essai gratuit...")
@@ -177,6 +216,7 @@ export default function SchoolRegistrationPage() {
           countryName: form.country,
           cityName: form.city,
           neighborhoodName: form.neighborhood,
+          ...zonePayload,
         })
         if (trialRes?.credentials) setCredentials(trialRes.credentials)
         setSubmitted(true)
@@ -209,6 +249,7 @@ export default function SchoolRegistrationPage() {
         countryName: form.country,
         cityName: form.city,
         neighborhoodName: form.neighborhood,
+        ...zonePayload,
       }),
       async (reference, lastStatus) => {
         if (lastStatus?.credentials) {
@@ -421,6 +462,113 @@ export default function SchoolRegistrationPage() {
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">Nom du directeur / responsable *</label>
               <input required value={form.directorName} onChange={(e) => setForm({ ...form, directorName: e.target.value })} className="input text-sm" placeholder="Ex: M. Jean Nkoulou" />
+            </div>
+
+            {/* Zone géographique d'appartenance de l'établissement */}
+            <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                  <MapPin size={16} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                    Zone géographique d'appartenance de l'établissement
+                  </h4>
+                  <p className="text-[11px] text-indigo-800/80 leading-tight">
+                    Sélectionnez les zones de votre école. Vos élèves, parents et personnels y seront automatiquement rattachés.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {/* 1. Arrondissement */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1 flex items-center justify-between">
+                    <span>Arrondissement</span>
+                    {arrondissements.length > 0 && (
+                      <span className="text-[10px] text-indigo-600 font-bold bg-white px-1.5 py-0.5 rounded border border-indigo-100">{arrondissements.length} dispo</span>
+                    )}
+                  </label>
+                  <select
+                    value={selectedArrondissementId}
+                    onChange={(e) => setSelectedArrondissementId(e.target.value)}
+                    className="input text-xs w-full py-2 bg-white font-medium"
+                  >
+                    <option value="">-- Choisir un arrondissement --</option>
+                    {arrondissements.map((z) => (
+                      <option key={z._id} value={z._id}>
+                        {z.name} {z.code ? `(${z.code})` : ''} - {z.country}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. Régional */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1 flex items-center justify-between">
+                    <span>Région</span>
+                    {regions.length > 0 && (
+                      <span className="text-[10px] text-blue-600 font-bold bg-white px-1.5 py-0.5 rounded border border-blue-100">{regions.length} dispo</span>
+                    )}
+                  </label>
+                  <select
+                    value={selectedRegionId}
+                    onChange={(e) => setSelectedRegionId(e.target.value)}
+                    className="input text-xs w-full py-2 bg-white font-medium"
+                  >
+                    <option value="">-- Choisir une région --</option>
+                    {regions.map((z) => (
+                      <option key={z._id} value={z._id}>
+                        {z.name} {z.code ? `(${z.code})` : ''} - {z.country}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. National (Pays) */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1 flex items-center justify-between">
+                    <span>National (Pays)</span>
+                    {nationals.length > 0 && (
+                      <span className="text-[10px] text-purple-600 font-bold bg-white px-1.5 py-0.5 rounded border border-purple-100">{nationals.length} dispo</span>
+                    )}
+                  </label>
+                  <select
+                    value={selectedCountryId}
+                    onChange={(e) => setSelectedCountryId(e.target.value)}
+                    className="input text-xs w-full py-2 bg-white font-medium"
+                  >
+                    <option value="">-- Choisir le niveau national (Cameroun) --</option>
+                    {nationals.map((z) => (
+                      <option key={z._id} value={z._id}>
+                        {z.name} {z.code ? `(${z.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 4. International / Mondial */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1 flex items-center justify-between">
+                    <span>Mondial / International</span>
+                    {mondials.length > 0 && (
+                      <span className="text-[10px] text-rose-600 font-bold bg-white px-1.5 py-0.5 rounded border border-rose-100">{mondials.length} dispo</span>
+                    )}
+                  </label>
+                  <select
+                    value={selectedMondialId}
+                    onChange={(e) => setSelectedMondialId(e.target.value)}
+                    className="input text-xs w-full py-2 bg-white font-medium"
+                  >
+                    <option value="">-- Choisir le niveau international --</option>
+                    {mondials.map((z) => (
+                      <option key={z._id} value={z._id}>
+                        {z.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

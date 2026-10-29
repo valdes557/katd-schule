@@ -8,6 +8,7 @@ const { protect, authorize } = require('../middleware/auth')
 const { sendEmail } = require('../utils/emailService')
 const { upload } = require('../config/cloudinary')
 const { deleteSchoolCascade } = require('../services/schoolCascade')
+const { buildGeographicZone } = require('../utils/zoneHelper')
 
 // POST /api/school-registrations — Public: submit school registration
 router.post('/', upload.single('paymentProof'), async (req, res) => {
@@ -41,6 +42,7 @@ router.post('/', upload.single('paymentProof'), async (req, res) => {
       countryName: countryDoc?.name || '',
       cityName: cityDoc?.name || '',
       neighborhoodName: neighborhoodDoc?.name || '',
+      geographicZone: buildGeographicZone(req.body),
       paymentProof,
       whatsapp, email,
     })
@@ -121,6 +123,7 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
       name: reg.schoolName,
       cycles: [reg.cycle],
       address: { city: reg.cityName, neighborhood: reg.neighborhoodName, country: reg.countryName },
+      geographicZone: reg.geographicZone || null,
       phone: reg.whatsapp,
       email: reg.email,
       isValidated: true,
@@ -149,6 +152,7 @@ router.put('/:id/approve', protect, authorize('super_admin'), async (req, res) =
       password: rawPassword,
       role: 'directeur',
       school: school._id,
+      geographicZone: reg.geographicZone || null,
       phone: reg.whatsapp,
       isActive: true,
       matricule,
@@ -493,6 +497,7 @@ router.post('/free-trial', async (req, res) => {
       whatsapp: whatsapp || '',
       cycle, plan,
       cityName: cityName || '', neighborhoodName: neighborhoodName || '', countryName: countryName || 'Bénin',
+      geographicZone: buildGeographicZone(req.body),
       paid: false, // ESSAI GRATUIT
       sendCredentialsEmail: true,
     })

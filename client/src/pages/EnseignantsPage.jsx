@@ -9,13 +9,14 @@ import { getInitials } from '../lib/utils'
 import { useCachedFetch } from '../hooks/useCachedFetch'
 import { cache } from '../lib/cache'
 import { exportEnseignantsFichePdf, exportBadgesPdf } from '../lib/exportFichesPdf'
+import GeographicZoneSelector from '../components/common/GeographicZoneSelector'
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4']
 const EMPTY = {
   firstName: '', lastName: '', email: '', phone: '', gender: 'M',
   subjects: '', speciality: '', password: '', classes: [], cycle: '',
   contractType: 'permanent', monthlySalary: '', hourlyRate: '', weeklyHours: '',
-  photo: '', photoFile: null,
+  photo: '', photoFile: null, zoneData: null,
 }
 
 export default function EnseignantsPage() {
@@ -123,6 +124,7 @@ export default function EnseignantsPage() {
         monthlySalary: form.monthlySalary !== '' ? Number(form.monthlySalary) : undefined,
         hourlyRate: form.hourlyRate !== '' ? Number(form.hourlyRate) : undefined,
         weeklyHours: form.weeklyHours !== '' ? Number(form.weeklyHours) : undefined,
+        ...(form.zoneData || {}),
       }
       if (editing) {
         const { password, ...rest } = data
@@ -166,6 +168,7 @@ export default function EnseignantsPage() {
   const openEdit = (t) => {
     setEditing(t)
     setForm({
+      zoneData: t.geographicZone || null,
       firstName: t.firstName,
       lastName: t.lastName,
       email: t.email || '',
@@ -463,6 +466,11 @@ export default function EnseignantsPage() {
                 )}
               </div>
 
+              <GeographicZoneSelector
+                value={form.zoneData}
+                onChange={(zd) => setForm(f => ({ ...f, zoneData: zd }))}
+                helperText="Par défaut : l'enseignant hérite de la zone de l'établissement"
+              />
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Salles de classe attribuées</label>
                 <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-lg">

@@ -18,6 +18,21 @@ const schoolRegistrationSchema = new mongoose.Schema(
     countryName: { type: String },
     cityName: { type: String },
     neighborhoodName: { type: String },
+    // Zone géographique sélectionnée
+    geographicZone: {
+      zoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      zoneType: { type: String, enum: ['arrondissement', 'regional', 'national', 'international', 'mondial', null], default: null },
+      zoneName: { type: String, default: '', trim: true },
+      arrondissementId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      arrondissementName: { type: String, default: '', trim: true },
+      regionId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      regionName: { type: String, default: '', trim: true },
+      countryId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      countryName: { type: String, default: 'Cameroun', trim: true },
+      mondialId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
+      mondialName: { type: String, default: '', trim: true },
+      allZoneIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone' }],
+    },
 
     // Payment proof (image URL)
     paymentProof: { type: String, default: '' },
