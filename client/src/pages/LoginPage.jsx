@@ -94,26 +94,47 @@ export default function LoginPage({ defaultUserMode }) {
       return
     }
     setLoading(true)
-    const result =
-      userMode === 'signup'
-        ? await register(name, email, password, referralCode, acceptPrivacy, {
-            zoneType: selectedZoneType,
-            zoneId: selectedZoneId,
-            zoneName: selectedZoneName,
-          })
-        : await login(email, password, 'user')
-    setLoading(false)
-    if (result.success && result.requiresVerification) {
-      setVerifyMode(true)
-      setVerifyInfo('Un code de vérification a été envoyé à ' + (result.email || email))
-      return
-    }
-    if (result.success) {
-      try { sessionStorage.removeItem('katd_chunk_reloaded') } catch (_) {}
-      const target = result.user?.role === 'utilisateur' ? '/u' : '/dashboard'
-      navigate(target, { replace: true })
-    } else {
-      setError(result.message || "Une erreur est survenue.")
+    try {
+      let result
+      if (userMode === 'signup') {
+        const arrObj = arrondissements.find((z) => String(z._id) === String(selectedArrondissementId))
+        const regObj = regions.find((z) => String(z._id) === String(selectedRegionId))
+        const ctryObj = nationals.find((z) => String(z._id) === String(selectedCountryId))
+        const mondObj = mondials.find((z) => String(z._id) === String(selectedMondialId))
+        const primaryObj = arrObj || regObj || ctryObj || mondObj
+        const zoneData = {
+          arrondissementId: arrObj?._id,
+          arrondissementName: arrObj?.name,
+          regionId: regObj?._id,
+          regionName: regObj?.name,
+          countryId: ctryObj?._id,
+          countryName: ctryObj?.name,
+          mondialId: mondObj?._id,
+          mondialName: mondObj?.name,
+          zoneId: primaryObj?._id,
+          zoneType: primaryObj?.type,
+          zoneName: primaryObj?.name,
+        }
+        result = await register(name, email, password, referralCode, acceptPrivacy, zoneData)
+      } else {
+        result = await login(email, password, 'user')
+      }
+      if (result.success && result.requiresVerification) {
+        setVerifyMode(true)
+        setVerifyInfo('Un code de vérification a été envoyé à ' + (result.email || email))
+        return
+      }
+      if (result.success) {
+        try { sessionStorage.removeItem('katd_chunk_reloaded') } catch (_) {}
+        const target = result.user?.role === 'utilisateur' ? '/u' : '/dashboard'
+        navigate(target, { replace: true })
+      } else {
+        setError(result.message || 'Une erreur est survenue.')
+      }
+    } catch (err) {
+      setError(err?.message || "Une erreur est survenue lors de l'enregistrement.")
+    } finally {
+      setLoading(false)
     }
   }
 

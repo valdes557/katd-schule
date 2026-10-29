@@ -87,6 +87,57 @@ router.get('/me', protect, async (req, res) => {
 // - arrondissement / régional : utilisateurs rattachés aux écoles dont l'adresse
 //   (ville / quartier / adresse) correspond à la zone saisie. Approximation assumée :
 //   les comptes sans école n'ont pas de localisation en base.
+function normalizeZoneText(str) {
+  if (!str) return ''
+  return String(str)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\b1(er|ere)?\b/g, 'i')
+    .replace(/\b2(e|eme|ème)?\b/g, 'ii')
+    .replace(/\b3(e|eme|ème)?\b/g, 'iii')
+    .replace(/\b4(e|eme|ème)?\b/g, 'iv')
+    .replace(/\b5(e|eme|ème)?\b/g, 'v')
+    .replace(/\b6(e|eme|ème)?\b/g, 'vi')
+    .replace(/\b7(e|eme|ème)?\b/g, 'vii')
+    .replace(/\b8(e|eme|ème)?\b/g, 'viii')
+    .replace(/\b9(e|eme|ème)?\b/g, 'ix')
+    .replace(/\b10(e|eme|ème)?\b/g, 'x')
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function buildZoneRegexList(zName) {
+  if (!zName) return []
+  const list = []
+  const escapeRx = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  list.push(new RegExp(escapeRx(zName), 'i'))
+
+  const romanMap = [
+    { num: '1', rx: /(?:1(?:er|ere)?|i)\b/i },
+    { num: '2', rx: /(?:2(?:e|eme|ème)?|ii)\b/i },
+    { num: '3', rx: /(?:3(?:e|eme|ème)?|iii)\b/i },
+    { num: '4', rx: /(?:4(?:e|eme|ème)?|iv)\b/i },
+    { num: '5', rx: /(?:5(?:e|eme|ème)?|v)\b/i },
+    { num: '6', rx: /(?:6(?:e|eme|ème)?|vi)\b/i },
+    { num: '7', rx: /(?:7(?:e|eme|ème)?|vii)\b/i },
+    { num: '8', rx: /(?:8(?:e|eme|ème)?|viii)\b/i },
+    { num: '9', rx: /(?:9(?:e|eme|ème)?|ix)\b/i },
+    { num: '10', rx: /(?:10(?:e|eme|ème)?|x)\b/i },
+  ]
+
+  for (const item of romanMap) {
+    const pattern = new RegExp(`\\b(?:${item.num}(?:e|eme|ème|er|ere)?|${item.rx.source})\\b`, "i")
+    if (pattern.test(zName)) {
+      const baseName = zName.replace(pattern, '').trim()
+      if (baseName.length >= 2) {
+        const flexiblePattern = new RegExp(`${escapeRx(baseName)}[\\s\\-_/]*${item.rx.source}`, "i")
+        list.push(flexiblePattern)
+      }
+    }
+  }
+  return list
+}
+
 async function zoneUserIds(sh) {
   if (!sh) return []
   if (sh.planKey === 'international' || sh.planKey === 'mondial') {
@@ -95,8 +146,28 @@ async function zoneUserIds(sh) {
   }
 
   const zName = String(sh.zone || '').trim()
-  const zId = sh.zoneId ? String(sh.zoneId) : null
+  let zId = sh.zoneId ? String(sh.zoneId) : null
   const mongoose = require('mongoose')
+
+  // Résolution automatique si zoneId manquant
+  if (!zId && zName) {
+    try {
+      const GeographicZone = require('../models/GeographicZone')
+      const allZones = await GeographicZone.find({})
+      const targetNorm = normalizeZoneText(zName)
+      const matched = allZones.find((z) => {
+        const norm = normalizeZoneText(z.name)
+        return norm === targetNorm || (targetNorm.length >= 4 && (norm.includes(targetNorm) || targetNorm.includes(norm)))
+      })
+      if (matched) {
+        zId = String(matched._id)
+        if (typeof sh.save === 'function') {
+          sh.zoneId = matched._id
+          await sh.save().catch(() => {})
+        }
+      }
+    } catch (_) {}
+  }
 
   const userOr = []
 
@@ -111,24 +182,25 @@ async function zoneUserIds(sh) {
     userOr.push({ 'geographicZone.mondialId': objId })
   }
 
-  // 2. Correspondance par libellé textuel de zone
+  // 2. Correspondance par libellé textuel de zone (avec tolérance chiffres romains / arabes)
   if (zName) {
-    const escapeRx = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const rx = new RegExp(escapeRx(zName), 'i')
-    userOr.push({ 'geographicZone.zoneName': rx })
-    userOr.push({ 'geographicZone.arrondissementName': rx })
-    userOr.push({ 'geographicZone.regionName': rx })
-    userOr.push({ 'geographicZone.countryName': rx })
-    userOr.push({ 'geographicZone.mondialName': rx })
+    const regexes = buildZoneRegexList(zName)
+    for (const rx of regexes) {
+      userOr.push({ 'geographicZone.zoneName': rx })
+      userOr.push({ 'geographicZone.arrondissementName': rx })
+      userOr.push({ 'geographicZone.regionName': rx })
+      userOr.push({ 'geographicZone.countryName': rx })
+      userOr.push({ 'geographicZone.mondialName': rx })
 
-    try {
-      const schools = await School.find({
-        $or: [{ 'address.city': rx }, { 'address.neighborhood': rx }, { 'address.address': rx }],
-      }).select('_id')
-      if (schools.length > 0) {
-        userOr.push({ school: { $in: schools.map((s) => s._id) } })
-      }
-    } catch (_) {}
+      try {
+        const schools = await School.find({
+          $or: [{ 'address.city': rx }, { 'address.neighborhood': rx }, { 'address.address': rx }],
+        }).select('_id')
+        if (schools.length > 0) {
+          userOr.push({ school: { $in: schools.map((s) => s._id) } })
+        }
+      } catch (_) {}
+    }
   }
 
   // Plan national sans délimitation particulière : couvre tous les utilisateurs

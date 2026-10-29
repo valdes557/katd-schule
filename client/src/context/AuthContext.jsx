@@ -89,6 +89,7 @@ export function AuthProvider({ children }) {
         password,
         referralCode: referralCode || undefined,
         privacyPolicyAccepted,
+        ...(zoneData || {}),
         zoneType: zoneData?.zoneType || undefined,
         zoneName: zoneData?.zoneName || undefined,
         zoneId: zoneData?.zoneId || undefined,
