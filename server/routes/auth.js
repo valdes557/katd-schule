@@ -7,6 +7,68 @@ const { protect } = require('../middleware/auth')
 const { upload } = require('../config/cloudinary')
 const { sendEmail } = require('../utils/emailService')
 
+const mongoose = require('mongoose')
+
+const buildGeographicZone = (b = {}) => {
+  const {
+    zoneType, zoneName, zoneId,
+    arrondissementId, arrondissementName,
+    regionId, regionName,
+    countryId, countryName,
+    mondialId, mondialName,
+  } = b
+
+  const validId = (id) => (id && mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : null)
+
+  const arrId = validId(arrondissementId)
+  const regId = validId(regionId)
+  const ctryId = validId(countryId)
+  const mondId = validId(mondialId)
+  const zId = validId(zoneId)
+
+  let primaryId = zId
+  let primaryType = zoneType || null
+  let primaryName = zoneName || ''
+
+  if (!primaryId) {
+    if (arrId) {
+      primaryId = arrId
+      primaryType = 'arrondissement'
+      primaryName = arrondissementName || ''
+    } else if (regId) {
+      primaryId = regId
+      primaryType = 'regional'
+      primaryName = regionName || ''
+    } else if (ctryId) {
+      primaryId = ctryId
+      primaryType = 'national'
+      primaryName = countryName || 'Cameroun'
+    } else if (mondId) {
+      primaryId = mondId
+      primaryType = 'mondial'
+      primaryName = mondialName || 'International'
+    }
+  }
+
+  const allZoneIds = [arrId, regId, ctryId, mondId, zId].filter(Boolean)
+
+  return {
+    zoneId: primaryId,
+    zoneType: primaryType,
+    zoneName: primaryName,
+    arrondissementId: arrId,
+    arrondissementName: arrondissementName || '',
+    regionId: regId,
+    regionName: regionName || '',
+    countryId: ctryId,
+    countryName: countryName || 'Cameroun',
+    mondialId: mondId,
+    mondialName: mondialName || '',
+    allZoneIds,
+  }
+}
+
+
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '30d',
@@ -51,11 +113,7 @@ router.post(
         role: role || 'directeur',
         privacyPolicyAccepted: true,
         privacyPolicyAcceptedAt: new Date(),
-        geographicZone: {
-          zoneId: zoneId || null,
-          zoneType: zoneType || null,
-          zoneName: zoneName || '',
-        },
+        geographicZone: buildGeographicZone(req.body),
       })
       const token = generateToken(user._id)
 
@@ -129,6 +187,7 @@ router.post(
         emailVerifyExpires: new Date(Date.now() + 30 * 60000),
         privacyPolicyAccepted: true,
         privacyPolicyAcceptedAt: new Date(),
+        geographicZone: buildGeographicZone(req.body),
       })
       try {
         await sendEmail({

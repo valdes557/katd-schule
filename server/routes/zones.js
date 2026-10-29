@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
   try {
     const { type } = req.query
     const filter = { isActive: true }
-    if (type && ['arrondissement', 'regional', 'national', 'international'].includes(type)) {
+    if (type && ['arrondissement', 'regional', 'national', 'international', 'mondial'].includes(type)) {
       filter.type = type
     }
 
@@ -98,8 +98,8 @@ router.post('/admin', protect, superAdminOnly, async (req, res) => {
   try {
     const { type, name, code = '', country = 'Cameroun', description = '', order = 0, isActive = true } = req.body
 
-    if (!type || !['arrondissement', 'regional', 'national', 'international'].includes(type)) {
-      return res.status(400).json({ message: 'Type de zone invalide (arrondissement, regional, national, international requis).' })
+    if (!type || !['arrondissement', 'regional', 'national', 'international', 'mondial'].includes(type)) {
+      return res.status(400).json({ message: 'Type de zone invalide (arrondissement, regional, national, international, mondial requis).' })
     }
 
     const cleanName = String(name || '').trim()
@@ -180,11 +180,34 @@ router.put('/admin/assign-user', protect, superAdminOnly, async (req, res) => {
       return res.status(404).json({ message: 'Zone géographique sélectionnée introuvable.' })
     }
 
-    user.geographicZone = {
-      zoneId: zone._id,
-      zoneType: zone.type,
-      zoneName: zone.name,
+    user.geographicZone = user.geographicZone || {}
+    user.geographicZone.zoneId = zone._id
+    user.geographicZone.zoneType = zone.type
+    user.geographicZone.zoneName = zone.name
+
+    if (zone.type === 'arrondissement') {
+      user.geographicZone.arrondissementId = zone._id
+      user.geographicZone.arrondissementName = zone.name
+    } else if (zone.type === 'regional') {
+      user.geographicZone.regionId = zone._id
+      user.geographicZone.regionName = zone.name
+    } else if (zone.type === 'national') {
+      user.geographicZone.countryId = zone._id
+      user.geographicZone.countryName = zone.name
+    } else if (zone.type === 'international' || zone.type === 'mondial') {
+      user.geographicZone.mondialId = zone._id
+      user.geographicZone.mondialName = zone.name
     }
+
+    const allIds = [
+      user.geographicZone.arrondissementId,
+      user.geographicZone.regionId,
+      user.geographicZone.countryId,
+      user.geographicZone.mondialId,
+      zone._id,
+    ].filter(Boolean)
+    user.geographicZone.allZoneIds = [...new Set(allIds.map((z) => String(z)))]
+
     await user.save()
 
     res.json({
@@ -214,7 +237,7 @@ router.put('/admin/:id', protect, superAdminOnly, async (req, res) => {
       return res.status(404).json({ message: 'Zone géographique introuvable.' })
     }
 
-    if (type && ['arrondissement', 'regional', 'national', 'international'].includes(type)) {
+    if (type && ['arrondissement', 'regional', 'national', 'international', 'mondial'].includes(type)) {
       zone.type = type
     }
     if (name) zone.name = String(name).trim()
@@ -309,7 +332,7 @@ router.get('/admin/users', protect, superAdminOnly, async (req, res) => {
         ],
       })
     } else {
-      if (zoneType && ['arrondissement', 'regional', 'national', 'international'].includes(zoneType)) {
+      if (zoneType && ['arrondissement', 'regional', 'national', 'international', 'mondial'].includes(zoneType)) {
         filter['geographicZone.zoneType'] = zoneType
       }
       if (zoneId) {

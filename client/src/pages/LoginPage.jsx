@@ -18,9 +18,10 @@ export default function LoginPage() {
   const initialRef = (searchParams.get('ref') || '').trim().toUpperCase()
   const [referralCode, setReferralCode] = useState(initialRef)
   const [zones, setZones] = useState([])
-  const [selectedZoneType, setSelectedZoneType] = useState('arrondissement')
-  const [selectedZoneId, setSelectedZoneId] = useState('')
-  const [selectedZoneName, setSelectedZoneName] = useState('')
+  const [selectedArrondissementId, setSelectedArrondissementId] = useState('')
+  const [selectedRegionId, setSelectedRegionId] = useState('')
+  const [selectedCountryId, setSelectedCountryId] = useState('')
+  const [selectedMondialId, setSelectedMondialId] = useState('')
 
   useEffect(() => {
     zonesApi.list().then((res) => {
@@ -28,18 +29,10 @@ export default function LoginPage() {
     }).catch(() => {})
   }, [])
 
-  const filteredZones = zones.filter((z) => !selectedZoneType || z.type === selectedZoneType)
-
-  const handleZoneChange = (zId) => {
-    setSelectedZoneId(zId)
-    const found = zones.find((z) => String(z._id) === String(zId))
-    if (found) {
-      setSelectedZoneName(found.name)
-      setSelectedZoneType(found.type)
-    } else {
-      setSelectedZoneName('')
-    }
-  }
+  const arrondissements = zones.filter((z) => z.type === 'arrondissement')
+  const regions = zones.filter((z) => z.type === 'regional')
+  const nationals = zones.filter((z) => z.type === 'national')
+  const mondials = zones.filter((z) => z.type === 'international' || z.type === 'mondial')
 
   // Si l'utilisateur est déjà connecté, rediriger automatiquement vers son espace dédié
   useEffect(() => {

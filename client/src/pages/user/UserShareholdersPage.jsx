@@ -344,7 +344,7 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
     if (selected.key === 'arrondissement') return z.type === 'arrondissement'
     if (selected.key === 'regional') return z.type === 'regional'
     if (selected.key === 'national') return z.type === 'national'
-    if (selected.key === 'international' || selected.key === 'mondial') return z.type === 'international'
+    if (selected.key === 'international' || selected.key === 'mondial') return z.type === 'international' || z.type === 'mondial'
     return false
   })
   const [busy, setBusy] = useState(false)

@@ -211,6 +211,99 @@ function ConfigPanel() {
             <input value={p.description || ''} onChange={(e) => setPlan(i, { description: e.target.value })} className="input text-xs w-full mt-0.5" />
           </div>
         ))}
+
+        {/* Attribution directe des frais plateforme par plan */}
+        <div className="space-y-4 pt-4 border-t border-gray-150 mt-4">
+          <div>
+            <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+              <Coins size={16} className="text-indigo-600" />
+              Attribution des frais plateforme aux plans d'associés
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Cochez pour chaque plan les catégories de frais dont bénéficiera l'actionnaire ayant souscrit ce plan.
+              Les pourcentages de dividendes s'appliqueront uniquement sur les frais sélectionnés pour les opérations de sa zone.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {(cfg.plans || []).map((p, i) => {
+              const planFees = Array.isArray(p.allowedFeeCategories)
+                ? p.allowedFeeCategories
+                : ALL_PLATFORM_FEES.map((x) => x.key)
+              const allSelected = ALL_PLATFORM_FEES.every((fee) => planFees.includes(fee.key))
+              const noneSelected = planFees.length === 0
+
+              return (
+                <div key={p.key} className="bg-gradient-to-r from-gray-50 to-indigo-50/30 border border-gray-200 rounded-2xl p-4 space-y-3 shadow-2xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200/60 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-indigo-950 bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                        {PLAN_NAMES[p.key] || p.key}
+                      </span>
+                      <span className="text-xs font-semibold text-gray-800">{p.label}</span>
+                      <span className="text-[11px] font-bold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-100 shadow-2xs">
+                        {planFees.length} / {ALL_PLATFORM_FEES.length} frais alloués
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setPlan(i, { allowedFeeCategories: ALL_PLATFORM_FEES.map((x) => x.key) })}
+                        disabled={allSelected}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white border border-gray-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 shadow-2xs transition-all"
+                      >
+                        Tout cocher
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPlan(i, { allowedFeeCategories: [] })}
+                        disabled={noneSelected}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 shadow-2xs transition-all"
+                      >
+                        Tout décocher
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {ALL_PLATFORM_FEES.map((fee) => {
+                      const checked = planFees.includes(fee.key)
+                      return (
+                        <label
+                          key={fee.key}
+                          className={`flex items-start gap-2.5 p-2.5 rounded-xl border text-xs cursor-pointer select-none transition-all ${
+                            checked
+                              ? 'bg-white border-indigo-300 ring-1 ring-indigo-200 text-indigo-950 shadow-2xs font-semibold'
+                              : 'bg-white/60 border-gray-200 text-gray-500 hover:bg-white hover:text-gray-700'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const updated = e.target.checked
+                                ? [...planFees, fee.key]
+                                : planFees.filter((k) => k !== fee.key)
+                              setPlan(i, { allowedFeeCategories: updated })
+                            }}
+                            className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs leading-snug">{fee.label}</p>
+                            <p className="text-[10px] text-gray-400 font-normal leading-tight mt-0.5 line-clamp-2">
+                              {fee.desc}
+                            </p>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       <button onClick={save} disabled={saving} className="btn-primary">

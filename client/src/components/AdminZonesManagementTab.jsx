@@ -14,6 +14,7 @@ const ZONE_TYPE_LABELS = {
   regional: 'Régional',
   national: 'National',
   international: 'International',
+  mondial: 'Mondial',
 }
 
 const ZONE_TYPE_BADGES = {
@@ -21,6 +22,7 @@ const ZONE_TYPE_BADGES = {
   regional: 'bg-blue-50 text-blue-800 border-blue-200',
   national: 'bg-purple-50 text-purple-800 border-purple-200',
   international: 'bg-amber-50 text-amber-800 border-amber-200',
+  mondial: 'bg-rose-50 text-rose-800 border-rose-200',
 }
 
 export default function AdminZonesManagementTab() {
@@ -206,6 +208,7 @@ export default function AdminZonesManagementTab() {
               { key: 'regional', label: 'Régions' },
               { key: 'national', label: 'National' },
               { key: 'international', label: 'International' },
+              { key: 'mondial', label: 'Mondial' },
             ].map((f) => (
               <button
                 key={f.key}
@@ -459,6 +462,7 @@ function AdminUsersAssignmentList({ zones, onAssignClick, onRefresh }) {
               <option value="regional">Régions</option>
               <option value="national">National</option>
               <option value="international">International</option>
+              <option value="mondial">Mondial</option>
             </select>
           </div>
 
@@ -704,6 +708,7 @@ function ZoneFormModal({ zone, onClose, onSuccess }) {
                 { key: 'regional', label: 'Régional' },
                 { key: 'national', label: 'National' },
                 { key: 'international', label: 'International' },
+                { key: 'mondial', label: 'Mondial' },
               ].map((t) => (
                 <button
                   key={t.key}
@@ -894,7 +899,7 @@ function AssignUserModal({ user, zones, onClose, onSuccess }) {
           <div>
             <label className="font-bold text-gray-700 block mb-1">Filtrer par type de zone</label>
             <div className="grid grid-cols-2 gap-1.5">
-              {['arrondissement', 'regional', 'national', 'international'].map((t) => (
+              {['arrondissement', 'regional', 'national', 'international', 'mondial'].map((t) => (
                 <button
                   key={t}
                   type="button"

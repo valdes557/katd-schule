@@ -88,15 +88,57 @@ router.get('/me', protect, async (req, res) => {
 //   (ville / quartier / adresse) correspond à la zone saisie. Approximation assumée :
 //   les comptes sans école n'ont pas de localisation en base.
 async function zoneUserIds(sh) {
-  if (sh.planKey === 'national' || sh.planKey === 'international' || sh.planKey === 'mondial') return null
-  const z = String(sh.zone || '').trim()
-  if (!z) return []
-  const rx = new RegExp(z.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
-  const schools = await School.find({
-    $or: [{ 'address.city': rx }, { 'address.neighborhood': rx }, { 'address.address': rx }],
-  }).select('_id')
-  if (schools.length === 0) return []
-  const users = await User.find({ school: { $in: schools.map((s) => s._id) } }).select('_id')
+  if (!sh) return []
+  if (sh.planKey === 'international' || sh.planKey === 'mondial') {
+    // Portée mondiale / internationale : ensemble des utilisateurs de la plateforme
+    return null
+  }
+
+  const zName = String(sh.zone || '').trim()
+  const zId = sh.zoneId ? String(sh.zoneId) : null
+  const mongoose = require('mongoose')
+
+  const userOr = []
+
+  // 1. Correspondance par identifiant de zone (zoneId, arrondissementId, regionId, countryId, etc.)
+  if (zId && mongoose.Types.ObjectId.isValid(zId)) {
+    const objId = new mongoose.Types.ObjectId(zId)
+    userOr.push({ 'geographicZone.zoneId': objId })
+    userOr.push({ 'geographicZone.allZoneIds': objId })
+    userOr.push({ 'geographicZone.arrondissementId': objId })
+    userOr.push({ 'geographicZone.regionId': objId })
+    userOr.push({ 'geographicZone.countryId': objId })
+    userOr.push({ 'geographicZone.mondialId': objId })
+  }
+
+  // 2. Correspondance par libellé textuel de zone
+  if (zName) {
+    const escapeRx = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const rx = new RegExp(escapeRx(zName), 'i')
+    userOr.push({ 'geographicZone.zoneName': rx })
+    userOr.push({ 'geographicZone.arrondissementName': rx })
+    userOr.push({ 'geographicZone.regionName': rx })
+    userOr.push({ 'geographicZone.countryName': rx })
+    userOr.push({ 'geographicZone.mondialName': rx })
+
+    try {
+      const schools = await School.find({
+        $or: [{ 'address.city': rx }, { 'address.neighborhood': rx }, { 'address.address': rx }],
+      }).select('_id')
+      if (schools.length > 0) {
+        userOr.push({ school: { $in: schools.map((s) => s._id) } })
+      }
+    } catch (_) {}
+  }
+
+  // Plan national sans délimitation particulière : couvre tous les utilisateurs
+  if (sh.planKey === 'national' && userOr.length === 0) {
+    return null
+  }
+
+  if (userOr.length === 0) return []
+
+  const users = await User.find({ $or: userOr }).select('_id')
   return users.map((u) => u._id)
 }
 
@@ -140,18 +182,53 @@ router.get('/dashboard', protect, async (req, res) => {
     const gains = gainRows[0] || { total: 0, count: 0 }
 
     // Calcul des revenus filtrés selon les catégories de frais attribuées au plan
-    const AdminCoAccount = require('../models/AdminCoAccount')
-    const { acc1 } = await AdminCoAccount.ensureAccounts()
-    const ledger = acc1?.ledger || []
-
+    // et provenant STRICTEMENT des utilisateurs de la zone de l'associé
     const allowedCategories = (Array.isArray(main.allowedFeeCategories) && main.allowedFeeCategories.length > 0)
       ? main.allowedFeeCategories
       : ALL_FEE_CATEGORIES.map((x) => x.key)
 
+    const zoneCategoryTotals = {}
+    ALL_FEE_CATEGORIES.forEach((fc) => { zoneCategoryTotals[fc.key] = 0 })
+
+    if (ids === null) {
+      // Portée mondiale / internationale : prend le grand livre global de la plateforme
+      const AdminCoAccount = require('../models/AdminCoAccount')
+      const { acc1 } = await AdminCoAccount.ensureAccounts()
+      const ledger = acc1?.ledger || []
+      for (const fc of ALL_FEE_CATEGORIES) {
+        const matching = ledger.filter((l) => l.category === fc.key)
+        zoneCategoryTotals[fc.key] = matching.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
+      }
+    } else if (ids.length > 0) {
+      // Portée délimitée (arrondissement, régional, national local) :
+      // agrège les mouvements de frais générés par les utilisateurs de cette zone
+      const userTxRows = await WalletTransaction.aggregate([
+        { $match: { owner: { $in: ids } } },
+        {
+          $group: {
+            _id: '$type',
+            totalAmount: { $sum: '$amount' },
+          },
+        },
+      ])
+      const byType = {}
+      userTxRows.forEach((r) => { byType[r._id] = r.totalAmount || 0 })
+
+      zoneCategoryTotals['transfer_fee'] = byType['transfer_fee'] || 0
+      zoneCategoryTotals['withdrawal_fee'] = Math.round((byType['withdrawal'] || 0) * 0.01)
+      zoneCategoryTotals['maintenance_fee'] = byType['maintenance_fee'] || 0
+      zoneCategoryTotals['subscription'] = byType['subscription'] || 0
+      zoneCategoryTotals['ai_subscription'] = (byType['ai_subscription'] || 0) + (byType['ai_subscription_revenue'] || 0)
+      zoneCategoryTotals['collect_fee'] = byType['collect_fee'] || 0
+      zoneCategoryTotals['merchant_signup'] = byType['merchant_signup'] || 0
+      zoneCategoryTotals['agent_signup'] = (byType['agent_subscription'] || 0) + (byType['agent_signup'] || 0)
+      zoneCategoryTotals['client_signup'] = (byType['client_subscription'] || 0) + (byType['client_signup'] || 0)
+      zoneCategoryTotals['shareholder_subscription'] = (byType['shareholder_subscription'] || 0) + (byType['shareholder_payment'] || 0)
+    }
+
     const categoryBreakdown = ALL_FEE_CATEGORIES.map((fc) => {
       const isAllowed = allowedCategories.includes(fc.key)
-      const matchingEntries = ledger.filter((l) => l.category === fc.key)
-      const totalRevenue = matchingEntries.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
+      const totalRevenue = isAllowed ? (zoneCategoryTotals[fc.key] || 0) : 0
       const shareholderShare = isAllowed ? Math.round(totalRevenue * ((Number(main.percent) || 1) / 100)) : 0
       return {
         key: fc.key,
@@ -184,7 +261,7 @@ router.get('/dashboard', protect, async (req, res) => {
         transfersTotal: agg.transfersTotal,
         withdrawalsTotal: agg.withdrawalsTotal,
         movementsTotal: agg.transfersTotal + agg.withdrawalsTotal,
-        feesTotal: agg.feesTotal,
+        feesTotal: eligiblePlatformFees,
         gainsTotal: gains.total,
         gainsCount: gains.count,
         eligiblePlatformFees,
@@ -253,7 +330,7 @@ router.post('/subscribe', protect, async (req, res) => {
         planKey: plan.key, planLabel: plan.label, percent: requestedPercent,
         durationYears: plan.durationYears, zone: String(zone || '').trim(),
         zoneId: req.body.zoneId || null,
-        allowedFeeCategories: Array.isArray(plan.allowedFeeCategories) && plan.allowedFeeCategories.length > 0 ? plan.allowedFeeCategories : ALL_FEE_CATEGORIES.map((x) => x.key),
+        allowedFeeCategories: Array.isArray(plan.allowedFeeCategories) ? plan.allowedFeeCategories : ALL_FEE_CATEGORIES.map((x) => x.key),
         rawPrice, discountRate,
       },
     })
@@ -348,7 +425,7 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
     })
 
     // Création de l'actionnariat
-    const planFees = Array.isArray(plan.allowedFeeCategories) && plan.allowedFeeCategories.length > 0
+    const planFees = Array.isArray(plan.allowedFeeCategories)
       ? plan.allowedFeeCategories
       : ALL_FEE_CATEGORIES.map((x) => x.key)
 
