@@ -3371,48 +3371,14 @@ function AgentCommissionWithdrawModal({ maxAmount, agentPhone, agentName, onClos
           </div>
 
           {destination === 'momo' && (
-            <div className="space-y-3 p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
-              <SavedMomoSelector
-                selectedPhone={phone}
-                onSelectAccount={(acc) => {
-                  setOperator(acc.operator || 'mtn')
-                  setPhone(acc.phone || '')
-                }}
-              />
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur Mobile Money *</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setOperator('mtn')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold ${
-                      operator === 'mtn' ? 'bg-yellow-500 text-white border-yellow-600' : 'bg-white text-gray-700 border-gray-200'
-                    }`}
-                  >
-                    MTN Mobile Money
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOperator('orange')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold ${
-                      operator === 'orange' ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-gray-700 border-gray-200'
-                    }`}
-                  >
-                    Orange Money
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Numéro Mobile Money *</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Ex : 6XXXXXXXX"
-                  className="input text-xs w-full font-mono"
-                />
-              </div>
-            </div>
+            <SavedMomoSelector
+              selectedOperator={operator}
+              selectedPhone={phone}
+              onSelect={({ operator: op, phone: p }) => {
+                setOperator(op)
+                setPhone(p)
+              }}
+            />
           )}
 
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">

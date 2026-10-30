@@ -506,19 +506,6 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
         </>)}
 
         {type === 'withdraw' && (<>
-          <div className="mb-2">
-            <SavedMomoSelector
-              selectedPhone={f.momoNumber}
-              onSelectAccount={(acc) => {
-                setF((prev) => ({
-                  ...prev,
-                  momoOperator: acc.operator || 'mtn',
-                  momoNumber: acc.phone || '',
-                  accountName: acc.accountName || prev.accountName || '',
-                }))
-              }}
-            />
-          </div>
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">Pays de retrait</label>
             <select
@@ -538,26 +525,22 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
               {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
             </select>
           </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Opérateur de réception ({currentCountry.currency})</label>
-            <select value={f.momoOperator} onChange={up('momoOperator')} className="input w-full">
-              {currentOperators.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Numéro Mobile Money</label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-xs text-gray-400 font-mono font-medium">+{currentCountry.dial}</span>
-              <input
-                type="tel"
-                value={f.momoNumber}
-                onChange={up('momoNumber')}
-                className="input w-full pl-14"
-                placeholder={currentCountry.placeholder}
-              />
-            </div>
-          </div>
-          <div><label className="text-xs font-medium text-gray-600 mb-1 block">Nom du titulaire du numéro <span className="text-red-500">*</span></label><input value={f.accountName} onChange={up('accountName')} className="input w-full" placeholder="Nom du titulaire Mobile Money" required /></div>
+
+          <SavedMomoSelector
+            selectedOperator={f.momoOperator || 'mtn'}
+            selectedPhone={f.momoNumber}
+            selectedName={f.accountName}
+            country={f.country || 'CM'}
+            availableOperators={currentOperators}
+            onSelect={({ operator, phone, accountName }) => {
+              setF((prev) => ({
+                ...prev,
+                momoOperator: operator || 'mtn',
+                momoNumber: phone || '',
+                accountName: accountName || '',
+              }))
+            }}
+          />
           {Number(f.amount) > 0 && (
             <div className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
               <div className="flex justify-between"><span>Montant demandé</span><b>{fmt(Number(f.amount))} FCFA</b></div>

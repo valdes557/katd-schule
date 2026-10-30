@@ -426,8 +426,8 @@ router.get('/saved-momo-accounts', protect, async (req, res) => {
 // POST /api/wallet/saved-momo-accounts
 router.post('/saved-momo-accounts', protect, async (req, res) => {
   try {
-    const { operator, phone, accountName, isDefault } = req.body
-    if (!operator || !['mtn', 'orange'].includes(operator)) {
+    const { operator, phone, accountName, country = 'CM', isDefault } = req.body
+    if (!operator) {
       return res.status(400).json({ message: 'Opérateur invalide (mtn ou orange)' })
     }
     if (!phone || !String(phone).trim()) {
@@ -455,6 +455,7 @@ router.post('/saved-momo-accounts', protect, async (req, res) => {
       operator,
       phone: cleanPhone,
       accountName: cleanName,
+      country: String(country || 'CM').trim().toUpperCase(),
       isDefault: !!makeDefault,
       createdAt: new Date(),
     })
@@ -473,14 +474,15 @@ router.post('/saved-momo-accounts', protect, async (req, res) => {
 // PUT /api/wallet/saved-momo-accounts/:id
 router.put('/saved-momo-accounts/:id', protect, async (req, res) => {
   try {
-    const { operator, phone, accountName, isDefault } = req.body
+    const { operator, phone, accountName, country, isDefault } = req.body
     const user = await User.findById(req.user._id)
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' })
 
     const acc = user.savedMomoAccounts.id(req.params.id)
     if (!acc) return res.status(404).json({ message: 'Compte enregistré introuvable' })
 
-    if (operator && ['mtn', 'orange'].includes(operator)) acc.operator = operator
+    if (operator) acc.operator = operator;
+    if (country) acc.country = String(country).trim().toUpperCase();
     if (phone) acc.phone = String(phone).trim().replace(/\s+/g, '')
     if (accountName) acc.accountName = String(accountName).trim()
     if (typeof isDefault === 'boolean') {

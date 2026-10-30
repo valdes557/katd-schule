@@ -1010,60 +1010,19 @@ export default function AdminCoAccountsPage() {
               )}
 
               {withdrawModal.method === 'momo' && (
-                <>
-                  <SavedMomoSelector
-                    selectedPhone={withdrawModal.phone}
-                    onSelectAccount={(acc) => {
-                      setWithdrawModal((prev) => ({
-                        ...prev,
-                        operator: acc.operator || 'mtn',
-                        phone: acc.phone || '',
-                        accountName: acc.accountName || prev.accountName || '',
-                      }))
-                    }}
-                  />
-
-                  <div className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-100 text-[11px] text-emerald-900 flex items-center gap-2">
-                    <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
-                    <span>Décaissement direct connecté à la passerelle Mobile Money (MTN / Orange Money).</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-1">Opérateur</label>
-                      <select
-                        value={withdrawModal.operator}
-                        onChange={(e) => setWithdrawModal((prev) => ({ ...prev, operator: e.target.value }))}
-                        className="input text-xs w-full font-bold"
-                      >
-                        <option value="mtn">MTN Mobile Money</option>
-                        <option value="orange">Orange Money</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-1">Numéro Mobile Money *</label>
-                      <input
-                        type="tel"
-                        placeholder="6XXXXXXXX"
-                        value={withdrawModal.phone}
-                        onChange={(e) => setWithdrawModal((prev) => ({ ...prev, phone: e.target.value }))}
-                        className="input text-xs w-full font-bold"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 block mb-1">Nom du titulaire du compte</label>
-                    <input
-                      type="text"
-                      placeholder="Nom complet"
-                      value={withdrawModal.accountName}
-                      onChange={(e) => setWithdrawModal((prev) => ({ ...prev, accountName: e.target.value }))}
-                      className="input text-xs w-full"
-                    />
-                  </div>
-                </>
+                <SavedMomoSelector
+                  selectedOperator={withdrawModal.operator}
+                  selectedPhone={withdrawModal.phone}
+                  selectedName={withdrawModal.accountName}
+                  onSelect={({ operator, phone, accountName }) => {
+                    setWithdrawModal((prev) => ({
+                      ...prev,
+                      operator: operator || 'mtn',
+                      phone: phone || '',
+                      accountName: accountName || '',
+                    }))
+                  }}
+                />
               )}
 
               <div>
