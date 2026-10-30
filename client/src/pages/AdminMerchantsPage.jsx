@@ -32,9 +32,7 @@ export default function AdminMerchantsPage() {
   const [acting, setActing] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
-  const [fundFor, setFundFor] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [withdrawOpen, setWithdrawOpen] = useState(false)
   const pdfRef = useRef(null)
 
   // 1. Liste des marchands
@@ -87,12 +85,6 @@ export default function AdminMerchantsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setWithdrawOpen(true)}
-            className="btn-primary text-sm inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700"
-          >
-            <Wallet size={15} /> Retirer vers Mobile Money
-          </button>
           <button
             onClick={() => setAddOpen(true)}
             className="btn-secondary text-sm inline-flex items-center gap-1.5"
@@ -254,12 +246,6 @@ export default function AdminMerchantsPage() {
                         <td className="px-4 py-3 text-right no-pdf">
                           <div className="inline-flex items-center gap-1.5">
                             <button
-                              onClick={() => setFundFor(m)}
-                              className="px-2.5 py-1 text-xs rounded-lg border border-orange-200 text-orange-700 hover:bg-orange-50 font-medium"
-                            >
-                              Approvisionner
-                            </button>
-                            <button
                               onClick={() => revoke(m)}
                               disabled={acting === m._id}
                               className="p-1 text-red-500 hover:bg-red-50 rounded"
@@ -283,7 +269,7 @@ export default function AdminMerchantsPage() {
       {tab === 'subscriptions' && (
         <div className="space-y-6">
           {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="card p-4 border-l-4 border-indigo-500">
               <div className="flex items-center gap-2 text-indigo-600">
                 <Coins size={16} />
@@ -315,21 +301,6 @@ export default function AdminMerchantsPage() {
               <p className="text-[11px] text-gray-400 mt-1">Tarif unique : 6 933 FCFA / compte</p>
             </div>
 
-            <div className="card p-4 border-l-4 border-amber-500 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-amber-600">
-                  <Smartphone size={16} />
-                  <span className="text-xs font-semibold uppercase tracking-wide">Action Directe</span>
-                </div>
-                <div className="text-xs text-gray-500 mt-1">Retirez les fonds encaissés directement sur votre téléphone.</div>
-              </div>
-              <button
-                onClick={() => setWithdrawOpen(true)}
-                className="mt-2 w-full btn-primary text-xs py-2 bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center gap-1.5"
-              >
-                <ArrowDownRight size={14} /> Retirer vers Mobile Money
-              </button>
-            </div>
           </div>
 
           {/* Répartition Mensuelle */}
@@ -493,240 +464,6 @@ export default function AdminMerchantsPage() {
 }
 
 // ── Modal Retrait des souscriptions marchands vers Mobile Money ─────────────────
-function WithdrawSubscriptionsModal({ maxBalance, onClose, onDone, onError }) {
-  const [amount, setAmount] = useState('')
-  const [phone, setPhone] = useState('')
-  const [operator, setOperator] = useState('mtn')
-  const [name, setName] = useState('')
-  const [pin, setPin] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    const amt = Number(amount)
-    if (!amt || amt <= 0) return alert('Veuillez saisir un montant valide.')
-    if (amt > maxBalance) return alert(`Solde disponible insuffisant (${fmt(maxBalance)} FCFA).`)
-    if (!phone.trim()) return alert('Numéro de téléphone Mobile Money requis.')
-    if (!pin && !password) return alert('Code PIN ou mot de passe de confirmation requis.')
-
-    setSubmitting(true)
-    try {
-      const res = await adminMerchantsApi.withdrawSubscriptions({
-        amount: amt,
-        momoNumber: phone.trim(),
-        momoOperator: operator,
-        accountName: name.trim() || 'Admin KATD',
-        country: 'CM',
-        pin: pin.trim() || undefined,
-        password: password || undefined,
-      })
-      onDone(res.message || `Retrait de ${fmt(amt)} FCFA effectué avec succès !`)
-    } catch (err) {
-      onError(err.message || 'Erreur lors du retrait.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2">
-            <Wallet size={18} className="text-emerald-600" />
-            Retrait vers Mobile Money
-          </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 flex items-center justify-between">
-          <span>Solde de souscriptions disponible :</span>
-          <span className="font-bold text-sm text-emerald-800">{fmt(maxBalance)} FCFA</span>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
-          <div>
-            <label className="font-semibold text-gray-700 block mb-1">Montant à retirer (FCFA) *</label>
-            <input
-              type="number"
-              required
-              min="100"
-              max={maxBalance}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="input text-sm w-full font-bold"
-              placeholder="Ex: 50000"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-gray-700 block mb-1">Opérateur MoMo *</label>
-              <select
-                value={operator}
-                onChange={(e) => setOperator(e.target.value)}
-                className="input text-xs w-full"
-              >
-                <option value="mtn">MTN MoMo</option>
-                <option value="orange">Orange Money</option>
-                <option value="moov">Moov Money</option>
-                <option value="celtiis">Celtiis Cash</option>
-              </select>
-            </div>
-            <div>
-              <label className="font-semibold text-gray-700 block mb-1">Numéro Mobile Money *</label>
-              <input
-                type="tel"
-                required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="input text-xs w-full font-mono"
-                placeholder="6XXXXXXXX"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="font-semibold text-gray-700 block mb-1">Nom du compte récepteur</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="input text-xs w-full"
-              placeholder="Ex: Jean Dupont"
-            />
-          </div>
-
-          <div className="pt-2 border-t border-gray-100 space-y-2">
-            <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wider block">
-              Validation de sécurité (PIN ou mot de passe)
-            </span>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="font-medium text-gray-600 block mb-1">Code PIN Portefeuille</label>
-                <input
-                  type="password"
-                  maxLength={6}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  className="input text-xs w-full font-mono"
-                  placeholder="PIN à 4-6 chiffres"
-                />
-              </div>
-              <div>
-                <label className="font-medium text-gray-600 block mb-1">Mot de passe de compte</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="input text-xs w-full pr-8"
-                    placeholder="Votre mot de passe"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
-                  >
-                    {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-ghost flex-1 justify-center text-xs">
-              Annuler
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || maxBalance <= 0}
-              className="btn-primary flex-1 justify-center text-xs bg-emerald-600 hover:bg-emerald-700 inline-flex items-center gap-1.5"
-            >
-              {submitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-              {submitting ? 'Traitement MoMo...' : 'Valider le retrait'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ── Modal Approvisionnement ──────────────────────────────────────────────────
-function FundModal({ merchant, onClose, onDone, onError }) {
-  const [amount, setAmount] = useState('')
-  const [reason, setReason] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const submit = async (e) => {
-    e.preventDefault()
-    const n = Number(amount)
-    if (!n || n <= 0) return alert('Montant invalide')
-    setLoading(true)
-    try {
-      await adminMerchantsApi.fund(merchant._id, n, reason.trim() || undefined)
-      onDone(`${merchant.name} a été approvisionné de ${fmt(n)} XAF.`)
-    } catch (err) {
-      onError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-gray-900">Approvisionner {merchant.name}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={18} />
-          </button>
-        </div>
-        <p className="text-xs text-gray-500">
-          Solde actuel : <b>{fmt(merchant.balance)} XAF</b>. L'approvisionnement virtuel augmente directement le solde disponible du marchand.
-        </p>
-        <form onSubmit={submit} className="space-y-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-700 block mb-1">Montant à créditer (XAF) *</label>
-            <input
-              type="number"
-              min="100"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="Ex. 500000"
-              className="input text-sm w-full font-bold"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-700 block mb-1">Motif (optionnel)</label>
-            <input
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Ex. Rechargement caisse semaine"
-              className="input text-sm w-full"
-            />
-          </div>
-          <div className="flex gap-2 justify-end pt-2">
-            <button type="button" onClick={onClose} className="btn-ghost text-sm">
-              Annuler
-            </button>
-            <button type="submit" disabled={loading} className="btn-primary text-sm inline-flex items-center gap-1.5">
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Coins size={14} />} Créditer
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ── Modal Ajout Marchand ─────────────────────────────────────────────────────
 function AddMerchantModal({ onClose, onDone, onError }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])

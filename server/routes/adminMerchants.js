@@ -368,19 +368,9 @@ router.put('/:id/grant', protect, adminOnly, async (req, res) => {
 
 // PUT /api/admin/merchants/:id/fund — approvisionnement virtuel illimité. body { amount, reason }
 router.put('/:id/fund', protect, adminOnly, async (req, res) => {
-  try {
-    const amount = Number(req.body.amount)
-    if (!amount || amount <= 0) return res.status(400).json({ message: 'Montant invalide' })
-    const target = await User.findById(req.params.id).select('isMerchant role school')
-    if (!target || !target.isMerchant) return res.status(404).json({ message: 'Marchand introuvable' })
-    const { wallet: w } = await wallet.credit(target._id, {
-      amount, type: 'merchant_funding', role: target.role, school: target.school || null,
-      counterparty: req.user._id,
-      description: (req.body.reason && String(req.body.reason).trim()) || 'Approvisionnement marchand (virtuel)',
-      meta: { adminId: String(req.user._id), reason: req.body.reason || '' },
-    })
-    res.json({ success: true, message: 'Compte marchand approvisionné', balance: w.balance })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  return res.status(403).json({
+    message: "L'approvisionnement des comptes marchand par l'administrateur a été désactivé pour des raisons de sécurité.",
+  })
 })
 
 module.exports = router
