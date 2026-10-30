@@ -59,17 +59,27 @@ async function getPromoStats() {
 
 // ───────────────────────── UTILISATEUR ─────────────────────────
 
-// GET /api/shareholders/config — plans actifs + textes (termes, avantages, droits…) + stats promo
+// GET /api/shareholders/config — plans actifs + textes (termes, avantages, droits…) + stats promo + catégories de frais
 router.get('/config', protect, async (req, res) => {
   try {
     const cfg = await ShareholderConfig.getOrCreate()
     const promo = await getPromoStats()
+    const plans = (cfg.plans || [])
+      .filter((p) => p.isActive !== false)
+      .map((p) => {
+        const obj = p.toObject ? p.toObject() : { ...p }
+        if (!Array.isArray(obj.allowedFeeCategories) || obj.allowedFeeCategories.length === 0) {
+          obj.allowedFeeCategories = ALL_FEE_CATEGORIES.map((x) => x.key)
+        }
+        return obj
+      })
     res.json({
       success: true,
       terms: cfg.terms, advantages: cfg.advantages,
       responsibilities: cfg.responsibilities, rights: cfg.rights,
-      plans: (cfg.plans || []).filter((p) => p.isActive !== false),
+      plans,
       promo,
+      feeCategories: ALL_FEE_CATEGORIES,
     })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
@@ -138,11 +148,11 @@ function buildZoneRegexList(zName) {
   return list
 }
 
-async function zoneUserIds(sh) {
-  if (!sh) return []
+async function resolveZoneMembers(sh) {
+  if (!sh) return { ids: [], schoolIds: [] }
   if (sh.planKey === 'international' || sh.planKey === 'mondial') {
-    // Portée mondiale / internationale : ensemble des utilisateurs de la plateforme
-    return null
+    // Portée mondiale / internationale : ensemble de la plateforme
+    return { ids: null, schoolIds: [] }
   }
 
   const zName = String(sh.zone || '').trim()
@@ -170,6 +180,7 @@ async function zoneUserIds(sh) {
   }
 
   const userOr = []
+  const schoolOr = []
 
   // 1. Correspondance par identifiant de zone (zoneId, arrondissementId, regionId, countryId, etc.)
   if (zId && mongoose.Types.ObjectId.isValid(zId)) {
@@ -180,9 +191,15 @@ async function zoneUserIds(sh) {
     userOr.push({ 'geographicZone.regionId': objId })
     userOr.push({ 'geographicZone.countryId': objId })
     userOr.push({ 'geographicZone.mondialId': objId })
+
+    schoolOr.push({ 'geographicZone.zoneId': objId })
+    schoolOr.push({ 'geographicZone.arrondissementId': objId })
+    schoolOr.push({ 'geographicZone.regionId': objId })
+    schoolOr.push({ 'geographicZone.countryId': objId })
+    schoolOr.push({ 'geographicZone.mondialId': objId })
   }
 
-  // 2. Correspondance par libellé textuel de zone (avec tolérance chiffres romains / arabes)
+  // 2. Correspondance par libellé textuel de zone
   if (zName) {
     const regexes = buildZoneRegexList(zName)
     for (const rx of regexes) {
@@ -192,26 +209,181 @@ async function zoneUserIds(sh) {
       userOr.push({ 'geographicZone.countryName': rx })
       userOr.push({ 'geographicZone.mondialName': rx })
 
-      try {
-        const schools = await School.find({
-          $or: [{ 'address.city': rx }, { 'address.neighborhood': rx }, { 'address.address': rx }],
-        }).select('_id')
-        if (schools.length > 0) {
-          userOr.push({ school: { $in: schools.map((s) => s._id) } })
-        }
-      } catch (_) {}
+      schoolOr.push({ 'geographicZone.zoneName': rx })
+      schoolOr.push({ 'geographicZone.arrondissementName': rx })
+      schoolOr.push({ 'geographicZone.regionName': rx })
+      schoolOr.push({ 'geographicZone.countryName': rx })
+      schoolOr.push({ 'geographicZone.mondialName': rx })
+      schoolOr.push({ 'address.city': rx })
+      schoolOr.push({ 'address.neighborhood': rx })
+      schoolOr.push({ 'address.address': rx })
     }
+  }
+
+  // Écoles trouvées dans la zone
+  let zoneSchools = []
+  if (schoolOr.length > 0) {
+    try {
+      zoneSchools = await School.find({ $or: schoolOr }).select('_id')
+    } catch (_) {}
+  }
+  const schoolIds = zoneSchools.map((s) => s._id)
+  if (schoolIds.length > 0) {
+    userOr.push({ school: { $in: schoolIds } })
   }
 
   // Plan national sans délimitation particulière : couvre tous les utilisateurs
   if (sh.planKey === 'national' && userOr.length === 0) {
-    return null
+    return { ids: null, schoolIds: [] }
   }
 
-  if (userOr.length === 0) return []
+  if (userOr.length === 0) return { ids: [], schoolIds: [] }
 
   const users = await User.find({ $or: userOr }).select('_id')
-  return users.map((u) => u._id)
+  return { ids: users.map((u) => u._id), schoolIds }
+}
+
+async function zoneUserIds(sh) {
+  const res = await resolveZoneMembers(sh)
+  return res.ids
+}
+
+/**
+ * Moteur unifié de calcul des gains et des commissions attribués à un associé.
+ * Assure la transparence totale et l'application immédiate des catégories de frais
+ * configurées par l'administrateur pour toutes les opérations générées par les utilisateurs de sa zone.
+ */
+async function calculateShareholderEarnings(main) {
+  const cfg = await ShareholderConfig.getOrCreate()
+  const planCfg = (cfg.plans || []).find((p) => p.key === main.planKey)
+
+  // Priorité : catégories configurées sur le plan par l'administrateur,
+  // puis celles figées lors de la souscription, sinon toutes les catégories.
+  const allowedCategories = (Array.isArray(planCfg?.allowedFeeCategories) && planCfg.allowedFeeCategories.length > 0)
+    ? planCfg.allowedFeeCategories
+    : (Array.isArray(main.allowedFeeCategories) && main.allowedFeeCategories.length > 0)
+      ? main.allowedFeeCategories
+      : ALL_FEE_CATEGORIES.map((x) => x.key)
+
+  const { ids, schoolIds } = await resolveZoneMembers(main)
+
+  const zoneCategoryTotals = {}
+  ALL_FEE_CATEGORIES.forEach((fc) => { zoneCategoryTotals[fc.key] = 0 })
+
+  if (ids === null) {
+    // Portée mondiale / internationale : grand livre global de la plateforme
+    const AdminCoAccount = require('../models/AdminCoAccount')
+    const { acc1 } = await AdminCoAccount.ensureAccounts()
+    const ledger = acc1?.ledger || []
+    for (const fc of ALL_FEE_CATEGORIES) {
+      const matching = ledger.filter((l) => l.category === fc.key)
+      zoneCategoryTotals[fc.key] = matching.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
+    }
+  } else if (ids.length > 0 || schoolIds.length > 0) {
+    // Portée délimitée (arrondissement, régional, national local) :
+    // 1. Transactions de portefeuille générées par les utilisateurs de cette zone
+    if (ids.length > 0) {
+      const userTxRows = await WalletTransaction.aggregate([
+        { $match: { owner: { $in: ids } } },
+        {
+          $group: {
+            _id: '$type',
+            totalAmount: { $sum: '$amount' },
+          },
+        },
+      ])
+      const byType = {}
+      userTxRows.forEach((r) => { byType[r._id] = r.totalAmount || 0 })
+
+      zoneCategoryTotals['transfer_fee'] = byType['transfer_fee'] || 0
+      zoneCategoryTotals['withdrawal_fee'] = Math.round((byType['withdrawal'] || 0) * 0.01)
+      zoneCategoryTotals['maintenance_fee'] = byType['maintenance_fee'] || 0
+      zoneCategoryTotals['subscription'] = byType['subscription'] || 0
+      zoneCategoryTotals['ai_subscription'] = (byType['ai_subscription'] || 0) + (byType['ai_subscription_revenue'] || 0)
+      zoneCategoryTotals['collect_fee'] = byType['collect_fee'] || 0
+      zoneCategoryTotals['merchant_signup'] = byType['merchant_signup'] || 0
+      zoneCategoryTotals['agent_signup'] = (byType['agent_subscription'] || 0) + (byType['agent_signup'] || 0)
+      zoneCategoryTotals['client_signup'] = (byType['client_subscription'] || 0) + (byType['client_signup'] || 0)
+      zoneCategoryTotals['shareholder_subscription'] = (byType['shareholder_subscription'] || 0) + (byType['shareholder_payment'] || 0)
+    }
+
+    // 2. Paiements Mobile Money approuvés (PaymentIntent) pour les utilisateurs et écoles de la zone
+    const piOr = []
+    if (ids.length > 0) {
+      piOr.push({ initiatedBy: { $in: ids } })
+      piOr.push({ 'meta.userId': { $in: ids.map(String) } })
+      piOr.push({ 'meta.directorId': { $in: ids } })
+    }
+    if (schoolIds.length > 0) {
+      piOr.push({ school: { $in: schoolIds } })
+      piOr.push({ 'meta.schoolId': { $in: schoolIds.map(String) } })
+    }
+
+    if (piOr.length > 0) {
+      const piRows = await PaymentIntent.aggregate([
+        { $match: { status: 'approved', $or: piOr } },
+        {
+          $group: {
+            _id: '$purpose',
+            totalAmount: { $sum: '$amount' },
+          },
+        },
+      ])
+      const piByType = {}
+      piRows.forEach((r) => { piByType[r._id] = r.totalAmount || 0 })
+
+      if (piByType['subscription']) {
+        zoneCategoryTotals['subscription'] = Math.max(zoneCategoryTotals['subscription'] || 0, piByType['subscription'])
+      }
+      if (piByType['merchant']) {
+        zoneCategoryTotals['merchant_signup'] = (zoneCategoryTotals['merchant_signup'] || 0) + piByType['merchant']
+      }
+      if (piByType['agent_signup']) {
+        zoneCategoryTotals['agent_signup'] = (zoneCategoryTotals['agent_signup'] || 0) + piByType['agent_signup']
+      }
+      if (piByType['client_collect_signup']) {
+        zoneCategoryTotals['client_signup'] = (zoneCategoryTotals['client_signup'] || 0) + piByType['client_collect_signup']
+      }
+      if (piByType['ai_subscription'] || piByType['user_ai_subscription']) {
+        zoneCategoryTotals['ai_subscription'] = (zoneCategoryTotals['ai_subscription'] || 0) + (piByType['ai_subscription'] || 0) + (piByType['user_ai_subscription'] || 0)
+      }
+      if (piByType['shareholder']) {
+        zoneCategoryTotals['shareholder_subscription'] = (zoneCategoryTotals['shareholder_subscription'] || 0) + piByType['shareholder']
+      }
+    }
+  }
+
+  const categoryBreakdown = ALL_FEE_CATEGORIES.map((fc) => {
+    const isAllowed = allowedCategories.includes(fc.key)
+    const totalRevenue = isAllowed ? (zoneCategoryTotals[fc.key] || 0) : 0
+    const shareholderShare = isAllowed ? Math.round(totalRevenue * ((Number(main.percent) || 1) / 100)) : 0
+    return {
+      key: fc.key,
+      label: fc.label,
+      desc: fc.desc,
+      isAllowed,
+      totalRevenue,
+      shareholderShare,
+    }
+  })
+
+  const eligiblePlatformFees = categoryBreakdown
+    .filter((c) => c.isAllowed)
+    .reduce((s, c) => s + c.totalRevenue, 0)
+
+  const shareholderCalculatedShare = categoryBreakdown
+    .filter((c) => c.isAllowed)
+    .reduce((s, c) => s + c.shareholderShare, 0)
+
+  return {
+    ids,
+    schoolIds,
+    allowedCategories,
+    zoneCategoryTotals,
+    categoryBreakdown,
+    eligiblePlatformFees,
+    shareholderCalculatedShare,
+  }
 }
 
 // GET /api/shareholders/dashboard — portefeuille de l'actionnaire connecté.
@@ -223,7 +395,14 @@ router.get('/dashboard', protect, async (req, res) => {
     if (holdings.length === 0) return res.status(403).json({ message: "Vous n'êtes pas encore actionnaire" })
     const main = holdings[0] // part la plus récente = zone d'attribution affichée
 
-    const ids = await zoneUserIds(main)
+    const {
+      ids,
+      allowedCategories,
+      categoryBreakdown,
+      eligiblePlatformFees,
+      shareholderCalculatedShare,
+    } = await calculateShareholderEarnings(main)
+
     const ownerMatch = ids === null ? {} : { owner: { $in: ids } }
 
     // 1. Nombre d'utilisateurs total de la zone d'attribution
@@ -252,73 +431,6 @@ router.get('/dashboard', protect, async (req, res) => {
       { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
     ])
     const gains = gainRows[0] || { total: 0, count: 0 }
-
-    // Calcul des revenus filtrés selon les catégories de frais attribuées au plan
-    // et provenant STRICTEMENT des utilisateurs de la zone de l'associé
-    const allowedCategories = (Array.isArray(main.allowedFeeCategories) && main.allowedFeeCategories.length > 0)
-      ? main.allowedFeeCategories
-      : ALL_FEE_CATEGORIES.map((x) => x.key)
-
-    const zoneCategoryTotals = {}
-    ALL_FEE_CATEGORIES.forEach((fc) => { zoneCategoryTotals[fc.key] = 0 })
-
-    if (ids === null) {
-      // Portée mondiale / internationale : prend le grand livre global de la plateforme
-      const AdminCoAccount = require('../models/AdminCoAccount')
-      const { acc1 } = await AdminCoAccount.ensureAccounts()
-      const ledger = acc1?.ledger || []
-      for (const fc of ALL_FEE_CATEGORIES) {
-        const matching = ledger.filter((l) => l.category === fc.key)
-        zoneCategoryTotals[fc.key] = matching.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
-      }
-    } else if (ids.length > 0) {
-      // Portée délimitée (arrondissement, régional, national local) :
-      // agrège les mouvements de frais générés par les utilisateurs de cette zone
-      const userTxRows = await WalletTransaction.aggregate([
-        { $match: { owner: { $in: ids } } },
-        {
-          $group: {
-            _id: '$type',
-            totalAmount: { $sum: '$amount' },
-          },
-        },
-      ])
-      const byType = {}
-      userTxRows.forEach((r) => { byType[r._id] = r.totalAmount || 0 })
-
-      zoneCategoryTotals['transfer_fee'] = byType['transfer_fee'] || 0
-      zoneCategoryTotals['withdrawal_fee'] = Math.round((byType['withdrawal'] || 0) * 0.01)
-      zoneCategoryTotals['maintenance_fee'] = byType['maintenance_fee'] || 0
-      zoneCategoryTotals['subscription'] = byType['subscription'] || 0
-      zoneCategoryTotals['ai_subscription'] = (byType['ai_subscription'] || 0) + (byType['ai_subscription_revenue'] || 0)
-      zoneCategoryTotals['collect_fee'] = byType['collect_fee'] || 0
-      zoneCategoryTotals['merchant_signup'] = byType['merchant_signup'] || 0
-      zoneCategoryTotals['agent_signup'] = (byType['agent_subscription'] || 0) + (byType['agent_signup'] || 0)
-      zoneCategoryTotals['client_signup'] = (byType['client_subscription'] || 0) + (byType['client_signup'] || 0)
-      zoneCategoryTotals['shareholder_subscription'] = (byType['shareholder_subscription'] || 0) + (byType['shareholder_payment'] || 0)
-    }
-
-    const categoryBreakdown = ALL_FEE_CATEGORIES.map((fc) => {
-      const isAllowed = allowedCategories.includes(fc.key)
-      const totalRevenue = isAllowed ? (zoneCategoryTotals[fc.key] || 0) : 0
-      const shareholderShare = isAllowed ? Math.round(totalRevenue * ((Number(main.percent) || 1) / 100)) : 0
-      return {
-        key: fc.key,
-        label: fc.label,
-        desc: fc.desc,
-        isAllowed,
-        totalRevenue,
-        shareholderShare,
-      }
-    })
-
-    const eligiblePlatformFees = categoryBreakdown
-      .filter((c) => c.isAllowed)
-      .reduce((s, c) => s + c.totalRevenue, 0)
-
-    const shareholderCalculatedShare = categoryBreakdown
-      .filter((c) => c.isAllowed)
-      .reduce((s, c) => s + c.shareholderShare, 0)
 
     // 6. Retraits cumulés de frais et solde retirable disponible
     const totalFeesEarned = Math.max(shareholderCalculatedShare, gains.total)
@@ -409,51 +521,16 @@ router.post('/withdraw', protect, async (req, res) => {
     }
 
     // Calcul du solde disponible en frais
-    const ids = await zoneUserIds(main)
-    const allowedCategories = (Array.isArray(main.allowedFeeCategories) && main.allowedFeeCategories.length > 0)
-      ? main.allowedFeeCategories
-      : ALL_FEE_CATEGORIES.map((x) => x.key)
-
-    const zoneCategoryTotals = {}
-    ALL_FEE_CATEGORIES.forEach((fc) => { zoneCategoryTotals[fc.key] = 0 })
-
-    if (ids === null) {
-      const AdminCoAccount = require('../models/AdminCoAccount')
-      const { acc1 } = await AdminCoAccount.ensureAccounts()
-      const ledger = acc1?.ledger || []
-      for (const fc of ALL_FEE_CATEGORIES) {
-        const matching = ledger.filter((l) => l.category === fc.key)
-        zoneCategoryTotals[fc.key] = matching.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
-      }
-    } else if (ids.length > 0) {
-      const userTxRows = await WalletTransaction.aggregate([
-        { $match: { owner: { $in: ids } } },
-        { $group: { _id: '$type', totalAmount: { $sum: '$amount' } } },
-      ])
-      const byType = {}
-      userTxRows.forEach((r) => { byType[r._id] = r.totalAmount || 0 })
-      zoneCategoryTotals['transfer_fee'] = byType['transfer_fee'] || 0
-      zoneCategoryTotals['withdrawal_fee'] = Math.round((byType['withdrawal'] || 0) * 0.01)
-      zoneCategoryTotals['maintenance_fee'] = byType['maintenance_fee'] || 0
-      zoneCategoryTotals['subscription'] = byType['subscription'] || 0
-      zoneCategoryTotals['ai_subscription'] = (byType['ai_subscription'] || 0) + (byType['ai_subscription_revenue'] || 0)
-      zoneCategoryTotals['collect_fee'] = byType['collect_fee'] || 0
-      zoneCategoryTotals['merchant_signup'] = byType['merchant_signup'] || 0
-      zoneCategoryTotals['agent_signup'] = (byType['agent_subscription'] || 0) + (byType['agent_signup'] || 0)
-      zoneCategoryTotals['client_signup'] = (byType['client_subscription'] || 0) + (byType['client_signup'] || 0)
-      zoneCategoryTotals['shareholder_subscription'] = (byType['shareholder_subscription'] || 0) + (byType['shareholder_payment'] || 0)
-    }
-
-    const calculatedShare = ALL_FEE_CATEGORIES
-      .filter((fc) => allowedCategories.includes(fc.key))
-      .reduce((s, fc) => s + Math.round((zoneCategoryTotals[fc.key] || 0) * ((Number(main.percent) || 1) / 100)), 0)
+    const {
+      shareholderCalculatedShare,
+    } = await calculateShareholderEarnings(main)
 
     const gainRows = await WalletTransaction.aggregate([
       { $match: { owner: req.user._id, type: 'shareholder_gain' } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ])
     const totalGains = gainRows[0]?.total || 0
-    const totalFeesEarned = Math.max(calculatedShare, totalGains)
+    const totalFeesEarned = Math.max(shareholderCalculatedShare, totalGains)
 
     const withdrawnRows = await WalletTransaction.aggregate([
       { $match: { owner: req.user._id, type: 'shareholder_fee_withdrawal' } },
@@ -801,8 +878,20 @@ router.put('/admin/config', protect, superAdminOnly, async (req, res) => {
         key: p.key, label: String(p.label || p.key), price: Number(p.price),
         percent: Number(p.percent) || 1, durationYears: Number(p.durationYears) || 35,
         description: String(p.description || ''), isActive: p.isActive !== false,
-        allowedFeeCategories: Array.isArray(p.allowedFeeCategories) ? p.allowedFeeCategories : [],
+        allowedFeeCategories: Array.isArray(p.allowedFeeCategories) && p.allowedFeeCategories.length > 0
+          ? p.allowedFeeCategories
+          : ALL_FEE_CATEGORIES.map((x) => x.key),
       }))
+
+      // Synchronisation immédiate des frais attribués pour tous les associés actifs de ces plans
+      for (const p of cfg.plans) {
+        if (Array.isArray(p.allowedFeeCategories)) {
+          await Shareholding.updateMany(
+            { planKey: p.key, status: 'active' },
+            { $set: { allowedFeeCategories: p.allowedFeeCategories } }
+          )
+        }
+      }
     }
     await cfg.save()
     const promo = await getPromoStats()

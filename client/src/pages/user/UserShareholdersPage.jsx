@@ -35,6 +35,19 @@ const PLAN_GRADIENTS = {
   international: 'from-purple-600 to-fuchsia-600',
   mondial: 'from-rose-600 via-pink-600 to-purple-700',
 }
+
+const ALL_FEE_CATALOG = [
+  { key: 'subscription', label: "Souscriptions d'écoles", desc: "Licences et abonnements annuels des établissements scolaires" },
+  { key: 'transfer_fee', label: "Transferts d'argent", desc: "Frais de transferts P2P entre utilisateurs de la plateforme" },
+  { key: 'withdrawal_fee', label: "Retraits Mobile Money", desc: "Commissions sur les retraits vers MTN et Orange Money" },
+  { key: 'collect_fee', label: "Collecte mensuelle", desc: "Frais de tenue de compte mensuels (1 000 FCFA) sur les collectes" },
+  { key: 'client_signup', label: "Souscription client collecte", desc: "Frais d'adhésion client d'épargne journalière (4 995 FCFA)" },
+  { key: 'agent_signup', label: "Ouverture compte agent", desc: "Frais d'activation des agences et points de collecte (4 800 FCFA)" },
+  { key: 'merchant_signup', label: "Ouverture compte Marchand", desc: "Frais d'adhésion et intégration des commerces partenaires" },
+  { key: 'shareholder_subscription', label: "Souscription des associés", desc: "Revenus issus des parts d'actions souscrites sur la plateforme" },
+  { key: 'ai_subscription', label: "Souscription IA", desc: "Crédits et souscriptions aux fonctionnalités d'intelligence artificielle" },
+  { key: 'maintenance_fee', label: "Maintenance système", desc: "Frais généraux d'infrastructure et de maintenance de la plateforme" },
+]
 const POST_META = {
   depense: { label: 'Dépense', icon: Receipt, cls: 'bg-orange-100 text-orange-700' },
   paiement: { label: 'Somme à payer', icon: Banknote, cls: 'bg-red-100 text-red-700' },
@@ -243,7 +256,18 @@ function ShareholderWallet({ dash, onRefresh }) {
         {/* Détail ventilé par catégorie de frais */}
         {Array.isArray(dash?.categoryBreakdown) && dash.categoryBreakdown.length > 0 && (
           <div className="space-y-2 pt-1">
-            <span className="text-xs font-bold text-gray-700 block">Détail des frais par catégorie :</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-gray-800 block">Détail des frais par catégorie :</span>
+              <span className="text-[10px] text-gray-500 font-semibold">
+                {dash.categoryBreakdown.filter((x) => x.isAllowed).length} / {dash.categoryBreakdown.length} flux rémunérés
+              </span>
+            </div>
+            <div className="text-[11px] text-gray-600 bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100 flex items-center gap-2">
+              <Sparkles size={14} className="text-amber-500 shrink-0" />
+              <span>
+                <b>Transparence garantie :</b> Vos quote-parts sont immédiatement calculées et créditées sur chaque opération effectuée par les utilisateurs enregistrés dans votre zone d'attribution.
+              </span>
+            </div>
             <div className="overflow-x-auto border border-gray-150 rounded-xl">
               <table className="w-full text-left text-xs">
                 <thead className="bg-gray-50 text-gray-500 font-semibold">
@@ -442,7 +466,13 @@ function StatCard({ icon: Icon, color, border, label, value }) {
 
 // ── POP-UP des plans (s'ouvre au clic sur le bouton « Actions » / « Associés ») ──
 function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
-  const [selected, setSelected] = useState(null)   // plan choisi
+  const allFeeCatalog = (Array.isArray(cfg?.feeCategories) && cfg.feeCategories.length > 0)
+    ? cfg.feeCategories
+    : ALL_FEE_CATALOG
+
+  const [selected, setSelected] = useState(() => {
+    return (cfg?.plans || []).find((p) => !ownedKeys.has(p.key) && p.isActive !== false) || (cfg?.plans || [])[0] || null
+  })
   const [percent, setPercent] = useState(1)        // pourcentage d'actions choisi
   const [showTerms, setShowTerms] = useState(false) // lecture des conditions
   const [accepted, setAccepted] = useState(false)
@@ -601,6 +631,10 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
                 {(cfg.plans || []).map((p) => {
                   const owned = ownedKeys.has(p.key)
                   const isSel = selected?.key === p.key
+                  const pFees = (Array.isArray(p.allowedFeeCategories) && p.allowedFeeCategories.length > 0)
+                    ? p.allowedFeeCategories
+                    : allFeeCatalog.map((x) => x.key)
+
                   return (
                     <button
                       key={p.key}
@@ -623,16 +657,102 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
                         <p className="text-lg font-bold">{fmt(p.price)} <span className="text-xs">F</span></p>
                         <p className="text-[10px] opacity-80">{p.percent}% · {p.durationYears} ans · non remboursable</p>
                       </div>
+                      <div className="px-2.5 py-1.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-[10px]">
+                        <span className="font-semibold text-gray-600 flex items-center gap-1">
+                          <Coins size={11} className="text-amber-500" />
+                          <span className="font-bold text-indigo-700">{pFees.length}</span>/{allFeeCatalog.length} flux inclus
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                          {p.percent}% part
+                        </span>
+                      </div>
                       {isSel && !owned && (
-                        <div className="p-1.5 text-center text-[11px] font-semibold text-indigo-600 flex items-center justify-center gap-1">
-                          <CheckCircle2 size={12} /> Plan sélectionné
+                        <div className="p-1 text-center text-[10px] font-bold text-indigo-700 bg-indigo-50 border-t border-indigo-100 flex items-center justify-center gap-1">
+                          <CheckCircle2 size={11} /> Plan sélectionné
                         </div>
                       )}
-                      {owned && <div className="p-1.5 text-center text-[11px] text-gray-400">Déjà souscrit</div>}
+                      {owned && <div className="p-1 text-center text-[10px] text-gray-400 bg-gray-50">Déjà souscrit</div>}
                     </button>
                   )
                 })}
               </div>
+
+              {/* Transparence des frais et commissions inclus dans le plan sélectionné */}
+              {selected && (() => {
+                const selectedPlanFees = (Array.isArray(selected.allowedFeeCategories) && selected.allowedFeeCategories.length > 0)
+                  ? selected.allowedFeeCategories
+                  : allFeeCatalog.map((x) => x.key)
+
+                return (
+                  <div className="bg-gradient-to-br from-indigo-50/70 via-purple-50/40 to-white rounded-2xl p-4 border border-indigo-200 shadow-xs space-y-3">
+                    <div className="flex items-center justify-between gap-2 border-b border-indigo-100/80 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-2xs">
+                          <Coins size={16} />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                            Frais et commissions inclus dans ce plan
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              {selectedPlanFees.length} / {allFeeCatalog.length} flux rémunérés
+                            </span>
+                          </h4>
+                          <p className="text-[10px] text-gray-500">
+                            En souscrivant, vous gagnerez <b className="text-indigo-700">{percent}% de quote-part</b> sur chaque opération effectuée dans votre zone :
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Grille transparente des flux de frais */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                      {allFeeCatalog.map((fee) => {
+                        const isIncluded = selectedPlanFees.includes(fee.key)
+                        return (
+                          <div
+                            key={fee.key}
+                            className={`p-2.5 rounded-xl border text-xs transition-all ${
+                              isIncluded
+                                ? 'bg-white border-emerald-200 shadow-2xs ring-1 ring-emerald-100/60'
+                                : 'bg-gray-50/60 border-gray-200/60 opacity-50'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className={`mt-0.5 shrink-0 ${isIncluded ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                {isIncluded ? <CheckCircle2 size={15} /> : <X size={15} />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className={`text-[11px] font-bold ${isIncluded ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
+                                    {fee.label}
+                                  </span>
+                                  <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${
+                                    isIncluded
+                                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                      : 'bg-gray-100 text-gray-400'
+                                  }`}>
+                                    {isIncluded ? `${percent}%` : 'Exclu'}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-gray-500 leading-tight mt-0.5">
+                                  {fee.desc}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <div className="text-[10px] text-gray-600 bg-white/90 rounded-xl p-2.5 border border-indigo-100 flex items-center gap-1.5">
+                      <Sparkles size={13} className="text-amber-500 shrink-0" />
+                      <span>
+                        <b>Transparence totale garantie :</b> Tous les frais cochés par l'administrateur pour ce plan s'appliquent immédiatement à chaque opération effectuée par les utilisateurs rattachés à votre zone géographique.
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Formulaire (zone + mode de paiement) — visible dès qu'un plan est choisi */}
               {selected && (

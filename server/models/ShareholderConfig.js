@@ -4,31 +4,49 @@
 const mongoose = require('mongoose')
 
 // Plans par défaut : 1% d'action, non remboursable, durée 35 ans.
+const DEFAULT_ALLOWED_FEES = [
+  'subscription',
+  'transfer_fee',
+  'withdrawal_fee',
+  'collect_fee',
+  'client_signup',
+  'agent_signup',
+  'merchant_signup',
+  'shareholder_subscription',
+  'ai_subscription',
+  'maintenance_fee',
+]
+
 const DEFAULT_PLANS = [
   {
     key: 'arrondissement', label: "1% à l'arrondissement", price: 100000,
     percent: 1, durationYears: 35,
     description: "1% d'action dans un arrondissement. Somme non remboursable, valable 35 ans.",
+    allowedFeeCategories: DEFAULT_ALLOWED_FEES,
   },
   {
     key: 'regional', label: '1% régional', price: 496000,
     percent: 1, durationYears: 35,
     description: "1% d'action au niveau régional. Somme non remboursable, valable 35 ans.",
+    allowedFeeCategories: DEFAULT_ALLOWED_FEES,
   },
   {
     key: 'national', label: '1% national', price: 1263980,
     percent: 1, durationYears: 35,
     description: "1% d'action sur le territoire national. Somme non remboursable, valable 35 ans.",
+    allowedFeeCategories: DEFAULT_ALLOWED_FEES,
   },
   {
     key: 'international', label: '1% international', price: 5000000,
     percent: 1, durationYears: 35,
     description: "1% d'action au niveau international. Somme non remboursable, valable 35 ans.",
+    allowedFeeCategories: DEFAULT_ALLOWED_FEES,
   },
   {
     key: 'mondial', label: '1% mondial', price: 10000000,
     percent: 1, durationYears: 35,
     description: "1% d'action au niveau mondial. Somme non remboursable, valable 35 ans.",
+    allowedFeeCategories: DEFAULT_ALLOWED_FEES,
   },
 ]
 
@@ -76,11 +94,26 @@ shareholderConfigSchema.statics.getOrCreate = async function () {
   let cfg = await this.findOne({ key: 'main' })
   if (!cfg) {
     cfg = await this.create({ key: 'main' })
-  } else if (cfg.plans && !cfg.plans.some((p) => p.key === 'mondial')) {
-    // Si la configuration existe déjà sans le plan mondial, on l'ajoute automatiquement
-    const mondialPlan = DEFAULT_PLANS.find((p) => p.key === 'mondial')
-    if (mondialPlan) {
-      cfg.plans.push(mondialPlan)
+  } else {
+    let modified = false
+    if (cfg.plans && !cfg.plans.some((p) => p.key === 'mondial')) {
+      // Si la configuration existe déjà sans le plan mondial, on l'ajoute automatiquement
+      const mondialPlan = DEFAULT_PLANS.find((p) => p.key === 'mondial')
+      if (mondialPlan) {
+        cfg.plans.push(mondialPlan)
+        modified = true
+      }
+    }
+    // S'assurer que tous les plans ont allowedFeeCategories initialisé
+    if (Array.isArray(cfg.plans)) {
+      for (const p of cfg.plans) {
+        if (!Array.isArray(p.allowedFeeCategories) || p.allowedFeeCategories.length === 0) {
+          p.allowedFeeCategories = DEFAULT_ALLOWED_FEES
+          modified = true
+        }
+      }
+    }
+    if (modified) {
       await cfg.save()
     }
   }
