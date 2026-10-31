@@ -299,34 +299,35 @@ async function calculateShareholderEarnings(main) {
           $group: {
             _id: '$type',
             totalAmount: { $sum: '$amount' },
+            totalFee: { $sum: { $ifNull: ['$meta.fee', 0] } },
             count: { $sum: 1 },
           },
         },
       ])
       const byType = {}
-      userTxRows.forEach((r) => { byType[r._id] = r.totalAmount || 0 })
+      userTxRows.forEach((r) => { byType[r._id] = r })
 
-      // Volumes des opérations générées par les utilisateurs de cette zone :
-      // Transferts : montant envoyé
-      zoneCategoryVolumes['transfer_fee'] = (byType['transfer_sent'] || 0) + (byType['transfer_fee'] || 0)
-      // Retraits : montant retiré
-      zoneCategoryVolumes['withdrawal_fee'] = byType['withdrawal'] || 0
-      // Maintenance système
-      zoneCategoryVolumes['maintenance_fee'] = byType['maintenance_fee'] || 0
-      // Collecte mensuelle
-      zoneCategoryVolumes['collect_fee'] = byType['collect_fee'] || 0
-      // Adhésion Marchand
-      zoneCategoryVolumes['merchant_signup'] = byType['merchant_signup'] || 0
-      // Agence de collecte
-      zoneCategoryVolumes['agent_signup'] = (byType['agent_subscription'] || 0) + (byType['agent_signup'] || 0)
-      // Client collecte
-      zoneCategoryVolumes['client_signup'] = (byType['client_subscription'] || 0) + (byType['client_signup'] || 0)
-      // IA
-      zoneCategoryVolumes['ai_subscription'] = (byType['ai_subscription'] || 0) + (byType['ai_subscription_revenue'] || 0)
-      // Souscription associés
-      zoneCategoryVolumes['shareholder_subscription'] = (byType['shareholder_subscription'] || 0) + (byType['shareholder_payment'] || 0)
-      // Souscription écoles
-      zoneCategoryVolumes['subscription'] = byType['subscription'] || 0
+      // Frais réels prélevés par la plateforme sur les opérations des utilisateurs de cette zone :
+      // 1. Transferts : commissions prélevées sur les transferts (type 'transfer_fee')
+      zoneCategoryVolumes['transfer_fee'] = byType['transfer_fee']?.totalAmount || 0
+      // 2. Retraits : commissions prélevées sur les retraits (meta.fee ou 1% du montant retiré)
+      zoneCategoryVolumes['withdrawal_fee'] = byType['withdrawal']?.totalFee || Math.round((byType['withdrawal']?.totalAmount || 0) * 0.01)
+      // 3. Maintenance système
+      zoneCategoryVolumes['maintenance_fee'] = byType['maintenance_fee']?.totalAmount || 0
+      // 4. Collecte mensuelle
+      zoneCategoryVolumes['collect_fee'] = byType['collect_fee']?.totalAmount || 0
+      // 5. Adhésion Marchand
+      zoneCategoryVolumes['merchant_signup'] = byType['merchant_signup']?.totalAmount || 0
+      // 6. Agence de collecte
+      zoneCategoryVolumes['agent_signup'] = (byType['agent_subscription']?.totalAmount || 0) + (byType['agent_signup']?.totalAmount || 0)
+      // 7. Client collecte
+      zoneCategoryVolumes['client_signup'] = (byType['client_subscription']?.totalAmount || 0) + (byType['client_signup']?.totalAmount || 0)
+      // 8. IA
+      zoneCategoryVolumes['ai_subscription'] = (byType['ai_subscription']?.totalAmount || 0) + (byType['ai_subscription_revenue']?.totalAmount || 0)
+      // 9. Souscription associés
+      zoneCategoryVolumes['shareholder_subscription'] = (byType['shareholder_subscription']?.totalAmount || 0) + (byType['shareholder_payment']?.totalAmount || 0)
+      // 10. Souscription écoles
+      zoneCategoryVolumes['subscription'] = byType['subscription']?.totalAmount || 0
     }
 
     // 2. Paiements Mobile Money approuvés (PaymentIntent) postérieurs à la souscription de l'associé
@@ -386,10 +387,9 @@ async function calculateShareholderEarnings(main) {
   const categoryBreakdown = ALL_FEE_CATEGORIES.map((fc) => {
     const isAllowed = allowedCategories.includes(fc.key)
     const totalVolume = isAllowed ? (zoneCategoryVolumes[fc.key] || 0) : 0
-    // L'associé bénéficie de sa quote-part (ex: 1%) sur chaque opération de sa zone, avec 1 FCFA minimum garanti dès qu'une opération existe
-    const shareholderShare = isAllowed && totalVolume > 0
-      ? Math.max(1, Math.round(totalVolume * (percent / 100)))
-      : 0
+    // Valeur exacte sans arrondi : conserve les centimes exacts (ex : 0.01 FCFA pour 1% d'un frais de 1 FCFA)
+    const rawShare = isAllowed && totalVolume > 0 ? (totalVolume * percent) / 100 : 0
+    const shareholderShare = rawShare > 0 ? Number(rawShare.toFixed(4)) : 0
     return {
       key: fc.key,
       label: fc.label,
@@ -404,9 +404,12 @@ async function calculateShareholderEarnings(main) {
     .filter((c) => c.isAllowed)
     .reduce((s, c) => s + c.totalRevenue, 0)
 
-  const shareholderCalculatedShare = categoryBreakdown
-    .filter((c) => c.isAllowed)
-    .reduce((s, c) => s + c.shareholderShare, 0)
+  const shareholderCalculatedShare = Number(
+    categoryBreakdown
+      .filter((c) => c.isAllowed)
+      .reduce((s, c) => s + c.shareholderShare, 0)
+      .toFixed(4)
+  )
 
   return {
     ids,
@@ -466,7 +469,7 @@ router.get('/dashboard', protect, async (req, res) => {
     const gains = gainRows[0] || { total: 0, count: 0 }
 
     // 6. Retraits cumulés de frais et solde retirable disponible
-    const totalFeesEarned = Math.max(shareholderCalculatedShare, gains.total)
+    const totalFeesEarned = Number(Math.max(shareholderCalculatedShare, gains.total).toFixed(4))
 
     const withdrawnRows = await WalletTransaction.aggregate([
       {
@@ -483,8 +486,8 @@ router.get('/dashboard', protect, async (req, res) => {
         },
       },
     ])
-    const totalFeesWithdrawn = withdrawnRows[0]?.total || 0
-    const availableFeesBalance = Math.max(0, totalFeesEarned - totalFeesWithdrawn)
+    const totalFeesWithdrawn = Number((withdrawnRows[0]?.total || 0).toFixed(4))
+    const availableFeesBalance = Number(Math.max(0, totalFeesEarned - totalFeesWithdrawn).toFixed(4))
 
     const recentWithdrawals = await WalletTransaction.find({
       owner: req.user._id,
@@ -533,9 +536,13 @@ router.post('/withdraw', protect, async (req, res) => {
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
 
-    const minW = 100
+    const minW = method === 'wallet' ? 0.01 : 100
     if (amt < minW) {
-      return res.status(400).json({ message: `Le montant minimum de retrait est de ${minW.toLocaleString('fr-FR')} FCFA` })
+      return res.status(400).json({
+        message: method === 'wallet'
+          ? 'Le montant minimum de virement est de 0,01 FCFA'
+          : `Le montant minimum de retrait Mobile Money est de ${minW.toLocaleString('fr-FR')} FCFA`,
+      })
     }
 
     // Vérification du PIN du portefeuille
@@ -559,18 +566,19 @@ router.post('/withdraw', protect, async (req, res) => {
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ])
     const totalGains = gainRows[0]?.total || 0
-    const totalFeesEarned = Math.max(shareholderCalculatedShare, totalGains)
+    const totalFeesEarned = Number(Math.max(shareholderCalculatedShare, totalGains).toFixed(4))
 
     const withdrawnRows = await WalletTransaction.aggregate([
       { $match: { owner: req.user._id, type: 'shareholder_fee_withdrawal' } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ])
-    const totalWithdrawn = withdrawnRows[0]?.total || 0
-    const availableFeesBalance = Math.max(0, totalFeesEarned - totalWithdrawn)
+    const totalWithdrawn = Number((withdrawnRows[0]?.total || 0).toFixed(4))
+    const availableFeesBalance = Number(Math.max(0, totalFeesEarned - totalWithdrawn).toFixed(4))
 
-    if (amt > availableFeesBalance) {
+    if (amt > availableFeesBalance + 0.0001) {
+      const fmtBal = Number(availableFeesBalance.toFixed(4)).toLocaleString('fr-FR', { maximumFractionDigits: 4 })
       return res.status(400).json({
-        message: `Solde insuffisant. Vous disposez de ${availableFeesBalance.toLocaleString('fr-FR')} FCFA retirables sur vos frais d'associé.`
+        message: `Solde insuffisant. Vous disposez de ${fmtBal} FCFA retirables sur vos frais d'associé.`,
       })
     }
 

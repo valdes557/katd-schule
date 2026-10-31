@@ -16,7 +16,13 @@ import { shareholdersApi, paymentsApi, walletApi, zonesApi } from '../../lib/api
 import SavedMomoSelector from '../../components/SavedMomoSelector'
 import { useInlineCheckout } from '../../components/payments/useInlineCheckout'
 
-const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
+const fmt = (n, maxDecimals = 4) => {
+  const num = Number(n) || 0
+  return num.toLocaleString('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDecimals,
+  })
+}
 const OPERATORS = [
   { value: 'mtn', label: 'MTN Mobile Money' },
   { value: 'orange', label: 'Orange Money' },
@@ -993,11 +999,12 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    if (!amtNum || amtNum < 100) {
-      setError('Le montant minimum de retrait est de 100 FCFA.')
+    const minW = isWallet ? 0.01 : 100
+    if (!amtNum || amtNum < minW) {
+      setError(isWallet ? 'Le montant minimum de virement est de 0,01 FCFA.' : 'Le montant minimum de retrait Mobile Money est de 100 FCFA.')
       return
     }
-    if (amtNum > availableBalance) {
+    if (amtNum > availableBalance + 0.0001) {
       setError(`Solde insuffisant. Vous ne pouvez retirer que jusqu'à ${fmt(availableBalance)} FCFA.`)
       return
     }
@@ -1045,8 +1052,8 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
 
   const isSubmitDisabled =
     loading ||
-    amtNum < 100 ||
-    amtNum > availableBalance ||
+    amtNum < (isWallet ? 0.01 : 100) ||
+    amtNum > availableBalance + 0.0001 ||
     !pin.trim() ||
     (!isWallet && (!phone || !accountName.trim()))
 
@@ -1151,7 +1158,10 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
                   <button
                     key={pct}
                     type="button"
-                    onClick={() => setAmount(String(Math.floor(availableBalance * pct)))}
+                    onClick={() => {
+                      const val = pct === 1 ? availableBalance : Number((availableBalance * pct).toFixed(4))
+                      setAmount(String(val))
+                    }}
                     className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 hover:bg-emerald-100 text-gray-700 hover:text-emerald-800"
                   >
                     {pct === 1 ? 'MAX' : `${pct * 100}%`}
@@ -1161,12 +1171,13 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
             </div>
             <input
               type="number"
+              step="any"
               required
-              min={100}
+              min={isWallet ? 0.01 : 100}
               max={availableBalance}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="Ex: 50000"
+              placeholder={isWallet ? "Ex: 0.68 ou 5000" : "Ex: 50000"}
               className="input text-sm font-bold"
             />
           </div>
