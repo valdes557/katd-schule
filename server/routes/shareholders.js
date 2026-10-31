@@ -199,9 +199,21 @@ async function resolveZoneMembers(sh) {
     schoolOr.push({ 'geographicZone.mondialId': objId })
   }
 
-  // 2. Correspondance par libellé textuel de zone
-  if (zName) {
-    const regexes = buildZoneRegexList(zName)
+  // 2. Correspondance par libellé textuel de zone (nom enregistré ou nom officiel de la zone)
+  const zoneNames = []
+  if (zName) zoneNames.push(zName)
+  if (zId && mongoose.Types.ObjectId.isValid(zId)) {
+    try {
+      const GeographicZone = require('../models/GeographicZone')
+      const gz = await GeographicZone.findById(zId).select('name')
+      if (gz?.name && !zoneNames.includes(gz.name)) {
+        zoneNames.push(gz.name)
+      }
+    } catch (_) {}
+  }
+
+  for (const name of zoneNames) {
+    const regexes = buildZoneRegexList(name)
     for (const rx of regexes) {
       userOr.push({ 'geographicZone.zoneName': rx })
       userOr.push({ 'geographicZone.arrondissementName': rx })
@@ -455,6 +467,18 @@ async function calculateShareholderEarnings(main) {
         .lean()
 
       piList.forEach((pi) => {
+        const initiatorId = String(pi.initiatedBy?._id || pi.initiatedBy || pi.meta?.userId || pi.meta?.directorId || '')
+        const initiatorUser = usersInZone.find((u) => String(u._id) === initiatorId)
+        let effectiveCutoff = shareholdingStartAt
+        if (initiatorUser) {
+          if (initiatorUser.geographicZone?.assignedAt) {
+            effectiveCutoff = new Date(Math.max(new Date(shareholdingStartAt).getTime(), new Date(initiatorUser.geographicZone.assignedAt).getTime()))
+          } else if (initiatorUser.createdAt && new Date(initiatorUser.createdAt) >= new Date(shareholdingStartAt)) {
+            effectiveCutoff = new Date(initiatorUser.createdAt)
+          }
+        }
+        if (new Date(pi.createdAt) < new Date(effectiveCutoff)) return
+
         let catKey = null
         let label = ''
         if (pi.purpose === 'subscription') {

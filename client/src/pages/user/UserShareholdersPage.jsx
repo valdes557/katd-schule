@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react'
 import {
   Landmark, Loader2, X, CheckCircle2, MapPin, Users, ArrowLeftRight, Coins,
-  TrendingUp, Crown, Megaphone, CalendarClock, Video, Banknote, Receipt, Wallet,
+  TrendingUp, RefreshCw, Crown, Megaphone, CalendarClock, Video, Banknote, Receipt, Wallet,
   Lock, Sparkles, AlertCircle, ShieldAlert, Smartphone, History,
 } from 'lucide-react'
 import { shareholdersApi, paymentsApi, walletApi, zonesApi } from '../../lib/api'
@@ -65,11 +65,13 @@ export default function UserShareholdersPage() {
   const [cfg, setCfg] = useState(null)
   const [dash, setDash] = useState(null)          // portefeuille associé (403 si pas associé)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [err, setErr] = useState('')
   const [showPlans, setShowPlans] = useState(false) // pop-up des plans
 
-  const load = async () => {
-    setLoading(true)
+  const load = async (showSpinner = true) => {
+    if (showSpinner) setLoading(true)
+    else setRefreshing(true)
     try {
       const c = await shareholdersApi.config()
       setCfg(c)
@@ -82,9 +84,20 @@ export default function UserShareholdersPage() {
         setDash(null)
         setShowPlans(true)
       }
-    } catch (e) { setErr(e.message) } finally { setLoading(false) }
+    } catch (e) { setErr(e.message) } finally {
+      if (showSpinner) setLoading(false)
+      else setRefreshing(false)
+    }
   }
-  useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    load(true)
+    // Synchronisation en arrière-plan toutes les 25 secondes des transactions et nouveaux utilisateurs de la zone
+    const timer = setInterval(() => {
+      load(false)
+    }, 25000)
+    return () => clearInterval(timer)
+  }, [])
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-600" /></div>
 
@@ -98,14 +111,26 @@ export default function UserShareholdersPage() {
           <h1 className="text-xl font-bold text-gray-900">{dash ? "Portefeuille d'associé" : 'Associés'}</h1>
         </div>
         {dash && (
-          <button
-            onClick={() => setShowPlans(true)}
-            disabled={isSoldOut}
-            className={`btn-ghost text-xs border border-gray-200 ${isSoldOut ? 'opacity-60 cursor-not-allowed' : ''}`}
-            title={isSoldOut ? 'Souscriptions bloquées (quota 10% atteint)' : 'Souscrire d\'autres parts'}
-          >
-            {isSoldOut ? '🔒 Plans fermés' : 'Autres plans'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => load(false)}
+              disabled={refreshing}
+              className="btn-ghost text-xs border border-gray-200 flex items-center gap-1.5 hover:bg-gray-50 active:scale-95"
+              title="Actualiser les transactions et utilisateurs en direct"
+            >
+              <RefreshCw size={14} className={refreshing ? 'animate-spin text-indigo-600' : 'text-gray-500'} />
+              <span>Actualiser</span>
+            </button>
+            <button
+              onClick={() => setShowPlans(true)}
+              disabled={isSoldOut}
+              className={`btn-ghost text-xs border border-gray-200 ${isSoldOut ? 'opacity-60 cursor-not-allowed' : ''}`}
+              title={isSoldOut ? 'Souscriptions bloquées (quota 10% atteint)' : 'Souscrire d\'autres parts'}
+            >
+              {isSoldOut ? '🔒 Plans fermés' : 'Autres plans'}
+            </button>
+          </div>
         )}
       </div>
 
