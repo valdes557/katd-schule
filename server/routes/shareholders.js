@@ -149,10 +149,10 @@ function buildZoneRegexList(zName) {
 }
 
 async function resolveZoneMembers(sh) {
-  if (!sh) return { ids: [], schoolIds: [] }
+  if (!sh) return { ids: [], schoolIds: [], usersInZone: [] }
   if (sh.planKey === 'international' || sh.planKey === 'mondial') {
     // Portée mondiale / internationale : ensemble de la plateforme
-    return { ids: null, schoolIds: [] }
+    return { ids: null, schoolIds: [], usersInZone: [] }
   }
 
   const zName = String(sh.zone || '').trim()
@@ -234,13 +234,13 @@ async function resolveZoneMembers(sh) {
 
   // Plan national sans délimitation particulière : couvre tous les utilisateurs
   if (sh.planKey === 'national' && userOr.length === 0) {
-    return { ids: null, schoolIds: [] }
+    return { ids: null, schoolIds: [], usersInZone: [] }
   }
 
-  if (userOr.length === 0) return { ids: [], schoolIds: [] }
+  if (userOr.length === 0) return { ids: [], schoolIds: [], usersInZone: [] }
 
-  const users = await User.find({ $or: userOr }).select('_id')
-  return { ids: users.map((u) => u._id), schoolIds }
+  const users = await User.find({ $or: userOr }).select('_id name email geographicZone createdAt')
+  return { ids: users.map((u) => u._id), schoolIds, usersInZone: users }
 }
 
 async function zoneUserIds(sh) {
@@ -250,64 +250,86 @@ async function zoneUserIds(sh) {
 
 /**
  * Moteur unifié de calcul des gains et des commissions attribués à un associé.
- * Assure la transparence totale et l'application immédiate des catégories de frais
- * configurées par l'administrateur pour toutes les opérations générées par les utilisateurs de sa zone.
+ * RÈGLE D'ANTÉRIORITÉ TEMPORELLE STRICTE :
+ * - L'associé commence à bénéficier des frais à partir du jour de sa souscription (startAt || createdAt).
+ * - Si un utilisateur existait avant d'être rattaché à sa zone, ses anciennes opérations sont ignorées :
+ *   seules ses opérations effectuées après son affectation à la zone comptent.
+ * - Le pourcentage du plan (ex: 1%) s'applique sur chaque opération de sa zone avec 1 FCFA minimum garanti.
  */
 async function calculateShareholderEarnings(main) {
   const cfg = await ShareholderConfig.getOrCreate()
   const planCfg = (cfg.plans || []).find((p) => p.key === main.planKey)
 
-  // Priorité : catégories configurées sur le plan par l'administrateur,
-  // puis celles figées lors de la souscription, sinon toutes les catégories.
   const allowedCategories = (Array.isArray(planCfg?.allowedFeeCategories) && planCfg.allowedFeeCategories.length > 0)
     ? planCfg.allowedFeeCategories
     : (Array.isArray(main.allowedFeeCategories) && main.allowedFeeCategories.length > 0)
       ? main.allowedFeeCategories
       : ALL_FEE_CATEGORIES.map((x) => x.key)
 
-  const { ids, schoolIds } = await resolveZoneMembers(main)
+  const shareholdingStartAt = main.startAt || main.createdAt || new Date(0)
+  const { ids, schoolIds, usersInZone = [] } = await resolveZoneMembers(main)
 
-  const zoneCategoryTotals = {}
-  ALL_FEE_CATEGORIES.forEach((fc) => { zoneCategoryTotals[fc.key] = 0 })
+  const zoneCategoryVolumes = {}
+  ALL_FEE_CATEGORIES.forEach((fc) => { zoneCategoryVolumes[fc.key] = 0 })
 
   if (ids === null) {
-    // Portée mondiale / internationale : grand livre global de la plateforme
+    // Portée mondiale / internationale : grand livre global de la plateforme postérieur à la souscription
     const AdminCoAccount = require('../models/AdminCoAccount')
     const { acc1 } = await AdminCoAccount.ensureAccounts()
     const ledger = acc1?.ledger || []
     for (const fc of ALL_FEE_CATEGORIES) {
-      const matching = ledger.filter((l) => l.category === fc.key)
-      zoneCategoryTotals[fc.key] = matching.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
+      const matching = ledger.filter((l) => l.category === fc.key && new Date(l.date || l.createdAt) >= shareholdingStartAt)
+      zoneCategoryVolumes[fc.key] = matching.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
     }
   } else if (ids.length > 0 || schoolIds.length > 0) {
-    // Portée délimitée (arrondissement, régional, national local) :
-    // 1. Transactions de portefeuille générées par les utilisateurs de cette zone
-    if (ids.length > 0) {
+    // Portée délimitée : filtre individuel par utilisateur pour respecter l'antériorité et la date d'affectation
+    const userConditions = usersInZone.map((u) => {
+      const userAssignedAt = u.geographicZone?.assignedAt || u.createdAt || shareholdingStartAt
+      const effectiveCutoff = new Date(Math.max(new Date(shareholdingStartAt).getTime(), new Date(userAssignedAt).getTime()))
+      return {
+        owner: u._id,
+        createdAt: { $gte: effectiveCutoff },
+      }
+    })
+
+    if (userConditions.length > 0) {
       const userTxRows = await WalletTransaction.aggregate([
-        { $match: { owner: { $in: ids } } },
+        { $match: { $or: userConditions } },
         {
           $group: {
             _id: '$type',
             totalAmount: { $sum: '$amount' },
+            count: { $sum: 1 },
           },
         },
       ])
       const byType = {}
       userTxRows.forEach((r) => { byType[r._id] = r.totalAmount || 0 })
 
-      zoneCategoryTotals['transfer_fee'] = byType['transfer_fee'] || 0
-      zoneCategoryTotals['withdrawal_fee'] = Math.round((byType['withdrawal'] || 0) * 0.01)
-      zoneCategoryTotals['maintenance_fee'] = byType['maintenance_fee'] || 0
-      zoneCategoryTotals['subscription'] = byType['subscription'] || 0
-      zoneCategoryTotals['ai_subscription'] = (byType['ai_subscription'] || 0) + (byType['ai_subscription_revenue'] || 0)
-      zoneCategoryTotals['collect_fee'] = byType['collect_fee'] || 0
-      zoneCategoryTotals['merchant_signup'] = byType['merchant_signup'] || 0
-      zoneCategoryTotals['agent_signup'] = (byType['agent_subscription'] || 0) + (byType['agent_signup'] || 0)
-      zoneCategoryTotals['client_signup'] = (byType['client_subscription'] || 0) + (byType['client_signup'] || 0)
-      zoneCategoryTotals['shareholder_subscription'] = (byType['shareholder_subscription'] || 0) + (byType['shareholder_payment'] || 0)
+      // Volumes des opérations générées par les utilisateurs de cette zone :
+      // Transferts : montant envoyé
+      zoneCategoryVolumes['transfer_fee'] = (byType['transfer_sent'] || 0) + (byType['transfer_fee'] || 0)
+      // Retraits : montant retiré
+      zoneCategoryVolumes['withdrawal_fee'] = byType['withdrawal'] || 0
+      // Maintenance système
+      zoneCategoryVolumes['maintenance_fee'] = byType['maintenance_fee'] || 0
+      // Collecte mensuelle
+      zoneCategoryVolumes['collect_fee'] = byType['collect_fee'] || 0
+      // Adhésion Marchand
+      zoneCategoryVolumes['merchant_signup'] = byType['merchant_signup'] || 0
+      // Agence de collecte
+      zoneCategoryVolumes['agent_signup'] = (byType['agent_subscription'] || 0) + (byType['agent_signup'] || 0)
+      // Client collecte
+      zoneCategoryVolumes['client_signup'] = (byType['client_subscription'] || 0) + (byType['client_signup'] || 0)
+      // IA
+      zoneCategoryVolumes['ai_subscription'] = (byType['ai_subscription'] || 0) + (byType['ai_subscription_revenue'] || 0)
+      // Souscription associés
+      zoneCategoryVolumes['shareholder_subscription'] = (byType['shareholder_subscription'] || 0) + (byType['shareholder_payment'] || 0)
+      // Souscription écoles
+      zoneCategoryVolumes['subscription'] = byType['subscription'] || 0
     }
 
-    // 2. Paiements Mobile Money approuvés (PaymentIntent) pour les utilisateurs et écoles de la zone
+    // 2. Paiements Mobile Money approuvés (PaymentIntent) postérieurs à la souscription de l'associé
     const piOr = []
     if (ids.length > 0) {
       piOr.push({ initiatedBy: { $in: ids } })
@@ -321,7 +343,13 @@ async function calculateShareholderEarnings(main) {
 
     if (piOr.length > 0) {
       const piRows = await PaymentIntent.aggregate([
-        { $match: { status: 'approved', $or: piOr } },
+        {
+          $match: {
+            status: 'approved',
+            createdAt: { $gte: shareholdingStartAt },
+            $or: piOr,
+          },
+        },
         {
           $group: {
             _id: '$purpose',
@@ -333,36 +361,41 @@ async function calculateShareholderEarnings(main) {
       piRows.forEach((r) => { piByType[r._id] = r.totalAmount || 0 })
 
       if (piByType['subscription']) {
-        zoneCategoryTotals['subscription'] = Math.max(zoneCategoryTotals['subscription'] || 0, piByType['subscription'])
+        zoneCategoryVolumes['subscription'] = Math.max(zoneCategoryVolumes['subscription'] || 0, piByType['subscription'])
       }
       if (piByType['merchant']) {
-        zoneCategoryTotals['merchant_signup'] = (zoneCategoryTotals['merchant_signup'] || 0) + piByType['merchant']
+        zoneCategoryVolumes['merchant_signup'] = (zoneCategoryVolumes['merchant_signup'] || 0) + piByType['merchant']
       }
       if (piByType['agent_signup']) {
-        zoneCategoryTotals['agent_signup'] = (zoneCategoryTotals['agent_signup'] || 0) + piByType['agent_signup']
+        zoneCategoryVolumes['agent_signup'] = (zoneCategoryVolumes['agent_signup'] || 0) + piByType['agent_signup']
       }
       if (piByType['client_collect_signup']) {
-        zoneCategoryTotals['client_signup'] = (zoneCategoryTotals['client_signup'] || 0) + piByType['client_collect_signup']
+        zoneCategoryVolumes['client_signup'] = (zoneCategoryVolumes['client_signup'] || 0) + piByType['client_collect_signup']
       }
       if (piByType['ai_subscription'] || piByType['user_ai_subscription']) {
-        zoneCategoryTotals['ai_subscription'] = (zoneCategoryTotals['ai_subscription'] || 0) + (piByType['ai_subscription'] || 0) + (piByType['user_ai_subscription'] || 0)
+        zoneCategoryVolumes['ai_subscription'] = (zoneCategoryVolumes['ai_subscription'] || 0) + (piByType['ai_subscription'] || 0) + (piByType['user_ai_subscription'] || 0)
       }
       if (piByType['shareholder']) {
-        zoneCategoryTotals['shareholder_subscription'] = (zoneCategoryTotals['shareholder_subscription'] || 0) + piByType['shareholder']
+        zoneCategoryVolumes['shareholder_subscription'] = (zoneCategoryVolumes['shareholder_subscription'] || 0) + piByType['shareholder']
       }
     }
   }
 
+  const percent = Number(main.percent) || 1
+
   const categoryBreakdown = ALL_FEE_CATEGORIES.map((fc) => {
     const isAllowed = allowedCategories.includes(fc.key)
-    const totalRevenue = isAllowed ? (zoneCategoryTotals[fc.key] || 0) : 0
-    const shareholderShare = isAllowed ? Math.round(totalRevenue * ((Number(main.percent) || 1) / 100)) : 0
+    const totalVolume = isAllowed ? (zoneCategoryVolumes[fc.key] || 0) : 0
+    // L'associé bénéficie de sa quote-part (ex: 1%) sur chaque opération de sa zone, avec 1 FCFA minimum garanti dès qu'une opération existe
+    const shareholderShare = isAllowed && totalVolume > 0
+      ? Math.max(1, Math.round(totalVolume * (percent / 100)))
+      : 0
     return {
       key: fc.key,
       label: fc.label,
       desc: fc.desc,
       isAllowed,
-      totalRevenue,
+      totalRevenue: totalVolume,
       shareholderShare,
     }
   })
@@ -379,7 +412,7 @@ async function calculateShareholderEarnings(main) {
     ids,
     schoolIds,
     allowedCategories,
-    zoneCategoryTotals,
+    zoneCategoryTotals: zoneCategoryVolumes,
     categoryBreakdown,
     eligiblePlatformFees,
     shareholderCalculatedShare,
@@ -488,7 +521,7 @@ router.get('/dashboard', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/shareholders/withdraw — retrait Mobile Money des frais d'associé
+// POST /api/shareholders/withdraw — retrait des frais d'associé (vers Mobile Money OU vers portefeuille Katd-Schüle)
 router.post('/withdraw', protect, async (req, res) => {
   try {
     const holdings = await Shareholding.find({ user: req.user._id, status: 'active' }).sort({ createdAt: -1 })
@@ -496,13 +529,9 @@ router.post('/withdraw', protect, async (req, res) => {
       return res.status(403).json({ message: "Vous n'avez aucune part d'associé active" })
     }
     const main = holdings[0]
-    const { amount, momoNumber, momoOperator, accountName, pin, country = 'CM' } = req.body
+    const { amount, pin, method = 'momo', momoNumber, momoOperator, accountName, country = 'CM' } = req.body
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
-    if (!momoNumber) return res.status(400).json({ message: 'Numéro Mobile Money requis' })
-    if (!accountName || !String(accountName).trim()) {
-      return res.status(400).json({ message: 'Le nom du titulaire du numéro est obligatoire' })
-    }
 
     const minW = 100
     if (amt < minW) {
@@ -543,6 +572,60 @@ router.post('/withdraw', protect, async (req, res) => {
       return res.status(400).json({
         message: `Solde insuffisant. Vous disposez de ${availableFeesBalance.toLocaleString('fr-FR')} FCFA retirables sur vos frais d'associé.`
       })
+    }
+
+    // ──────────────── OPTION 1 : VIREMENT VERS LE PORTEFEUILLE KATD-SCHÜLE ────────────────
+    if (method === 'wallet') {
+      // Crédite immédiatement le portefeuille principal de l'associé
+      await walletService.credit(req.user._id, {
+        amount: amt,
+        type: 'shareholder_gain',
+        role: req.user.role,
+        school: req.user.school?._id || null,
+        description: `Virement frais d'associé vers votre portefeuille Katd-Schüle (${main.planLabel || main.planKey})`,
+        meta: {
+          isShareholderTransferToWallet: true,
+          planKey: main.planKey,
+          percent: main.percent,
+          zone: main.zone,
+          originalAmount: amt,
+        },
+      })
+
+      // Débit de la réserve de frais d'associé
+      const txDebit = await WalletTransaction.create({
+        wallet: w._id,
+        owner: req.user._id,
+        direction: 'debit',
+        amount: amt,
+        currency: 'XAF',
+        type: 'shareholder_fee_withdrawal',
+        description: `Virement de vos frais d'associé vers votre portefeuille Katd-Schüle (+${amt.toLocaleString('fr-FR')} FCFA)`,
+        meta: {
+          isShareholderWithdrawal: true,
+          targetMethod: 'wallet',
+          planKey: main.planKey,
+          percent: main.percent,
+          destination: 'katd_wallet',
+        },
+      })
+
+      const freshWallet = await walletService.getOrCreateWallet(req.user._id)
+      const remainingFeesBalance = Math.max(0, availableFeesBalance - amt)
+
+      return res.json({
+        success: true,
+        message: `Virement réussi ! ${amt.toLocaleString('fr-FR')} FCFA ont été immédiatement crédités sur votre portefeuille Katd-Schüle.`,
+        availableFeesBalance: remainingFeesBalance,
+        walletBalance: freshWallet.balance,
+        transaction: txDebit,
+      })
+    }
+
+    // ──────────────── OPTION 2 : RETRAIT VERS MOBILE MONEY (MTN / ORANGE) ────────────────
+    if (!momoNumber) return res.status(400).json({ message: 'Numéro Mobile Money requis' })
+    if (!accountName || !String(accountName).trim()) {
+      return res.status(400).json({ message: 'Le nom du titulaire du numéro est obligatoire' })
     }
 
     const fee = Math.round(amt * 0.01)
@@ -600,6 +683,7 @@ router.post('/withdraw', protect, async (req, res) => {
       description: `Retrait frais d'associé vers ${momoOperator ? momoOperator.toUpperCase() + ' ' : ''}${momoNumber} (${accountName}) - Net: ${netAmount.toLocaleString('fr-FR')} ${targetCurrency}`,
       meta: {
         isShareholderWithdrawal: true,
+        targetMethod: 'momo',
         planKey: main.planKey,
         percent: main.percent,
         fee,
@@ -1052,4 +1136,5 @@ router.delete('/admin/posts/:id', protect, superAdminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
+router.calculateShareholderEarnings = calculateShareholderEarnings
 module.exports = router

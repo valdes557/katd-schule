@@ -100,6 +100,7 @@ const userSchema = new mongoose.Schema(
       mondialId: { type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone', default: null },
       mondialName: { type: String, default: '', trim: true },
       allZoneIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'GeographicZone' }],
+      assignedAt: { type: Date, default: null },
     },
   },
   { timestamps: true }

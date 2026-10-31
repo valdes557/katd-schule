@@ -65,6 +65,7 @@ const buildGeographicZone = (b = {}) => {
     mondialId: mondId,
     mondialName: mondialName || '',
     allZoneIds,
+    assignedAt: new Date(),
   }
 }
 

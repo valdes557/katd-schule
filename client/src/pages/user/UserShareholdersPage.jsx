@@ -307,19 +307,19 @@ function ShareholderWallet({ dash, onRefresh }) {
         )}
       </div>
 
-      {/* Retraits Mobile Money des Frais d'Associé */}
+      {/* Retraits & Virements des Frais d'Associé */}
       <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white rounded-2xl p-5 shadow-lg space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
-              <Smartphone size={22} className="text-white" />
+              <Banknote size={22} className="text-white" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                Retrait Mobile Money des Frais
-                <span className="text-[10px] bg-white/20 font-extrabold px-2 py-0.5 rounded-full">MTN & Orange</span>
+                Retrait & Virement des Frais d'Associé
+                <span className="text-[10px] bg-white/20 font-extrabold px-2 py-0.5 rounded-full">Portefeuille & MoMo</span>
               </h3>
-              <p className="text-[11px] text-emerald-100">Retirez vos frais et quote-parts imputés à votre plan</p>
+              <p className="text-[11px] text-emerald-100">Virement instantané vers votre portefeuille Katd-Schüle ou retrait Mobile Money</p>
             </div>
           </div>
           <button
@@ -356,17 +356,17 @@ function ShareholderWallet({ dash, onRefresh }) {
         <div className="bg-white rounded-2xl border border-gray-150 shadow-sm p-4 space-y-3">
           <div className="flex items-center gap-2 text-gray-800 font-bold text-xs">
             <History size={16} className="text-emerald-600" />
-            <span>Historique de mes retraits Mobile Money</span>
+            <span>Historique de mes retraits & virements de frais</span>
           </div>
           <div className="overflow-x-auto border border-gray-100 rounded-xl">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-50 text-gray-500 font-semibold">
                 <tr>
                   <th className="py-2 px-3">Date</th>
-                  <th className="py-2 px-3">Bénéficiaire</th>
+                  <th className="py-2 px-3">Destination</th>
                   <th className="py-2 px-3 text-right">Montant brut</th>
-                  <th className="py-2 px-3 text-right">Frais (1%)</th>
-                  <th className="py-2 px-3 text-right">Net perçu</th>
+                  <th className="py-2 px-3 text-right">Frais</th>
+                  <th className="py-2 px-3 text-right">Net crédité / perçu</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -376,13 +376,23 @@ function ShareholderWallet({ dash, onRefresh }) {
                       {new Date(w.createdAt).toLocaleDateString('fr-FR')} {new Date(w.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="py-2 px-3">
-                      <span className="font-bold text-gray-800 block uppercase text-[11px]">
-                        {w.meta?.momoOperator || 'MOMO'} · {w.meta?.momoNumber || '—'}
-                      </span>
-                      {w.meta?.accountName && <span className="text-[10px] text-gray-400 block">{w.meta.accountName}</span>}
+                      {w.meta?.targetMethod === 'wallet' ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full text-[10px]">
+                          <Wallet size={12} /> Portefeuille Katd-Schüle
+                        </span>
+                      ) : (
+                        <>
+                          <span className="font-bold text-gray-800 block uppercase text-[11px]">
+                            {w.meta?.momoOperator || 'MOMO'} · {w.meta?.momoNumber || '—'}
+                          </span>
+                          {w.meta?.accountName && <span className="text-[10px] text-gray-400 block">{w.meta.accountName}</span>}
+                        </>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-right font-bold text-gray-700">{fmt(w.amount)} F</td>
-                    <td className="py-2 px-3 text-right text-gray-400">{fmt(w.meta?.fee || 0)} F</td>
+                    <td className="py-2 px-3 text-right text-gray-400">
+                      {w.meta?.targetMethod === 'wallet' ? '0 F (Gratuit)' : `${fmt(w.meta?.fee || 0)} F`}
+                    </td>
                     <td className="py-2 px-3 text-right font-extrabold text-emerald-700">{fmt(w.meta?.netAmount || w.amount)} F</td>
                   </tr>
                 ))}
@@ -966,6 +976,7 @@ function TermSection({ title, text }) {
 
 
 function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) {
+  const [method, setMethod] = useState('wallet') // 'wallet' | 'momo'
   const [amount, setAmount] = useState('')
   const [operator, setOperator] = useState('orange')
   const [phone, setPhone] = useState('')
@@ -975,8 +986,9 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
   const [error, setError] = useState('')
 
   const amtNum = Number(amount) || 0
-  const fee = Math.round(amtNum * 0.01)
-  const net = Math.max(0, amtNum - fee)
+  const isWallet = method === 'wallet'
+  const fee = isWallet ? 0 : Math.round(amtNum * 0.01)
+  const net = isWallet ? amtNum : Math.max(0, amtNum - fee)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -989,13 +1001,15 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
       setError(`Solde insuffisant. Vous ne pouvez retirer que jusqu'à ${fmt(availableBalance)} FCFA.`)
       return
     }
-    if (!phone || !phone.trim()) {
-      setError('Veuillez sélectionner un numéro Mobile Money pour effectuer votre retrait.')
-      return
-    }
-    if (!accountName || !accountName.trim()) {
-      setError('Le nom du titulaire du compte est obligatoire.')
-      return
+    if (!isWallet) {
+      if (!phone || !phone.trim()) {
+        setError('Veuillez sélectionner un numéro Mobile Money pour effectuer votre retrait.')
+        return
+      }
+      if (!accountName || !accountName.trim()) {
+        setError('Le nom du titulaire du compte est obligatoire.')
+        return
+      }
     }
     if (!pin.trim()) {
       setError('Le code PIN de votre portefeuille est requis.')
@@ -1004,14 +1018,23 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
 
     setLoading(true)
     try {
-      const res = await shareholdersApi.withdraw({
-        amount: amtNum,
-        momoNumber: phone.trim(),
-        momoOperator: operator,
-        accountName: accountName.trim(),
-        pin: pin.trim(),
-      })
-      onSuccess(res.message || 'Demande de retrait effectuée avec succès.')
+      const payload = isWallet
+        ? {
+            amount: amtNum,
+            pin: pin.trim(),
+            method: 'wallet',
+          }
+        : {
+            amount: amtNum,
+            momoNumber: phone.trim(),
+            momoOperator: operator,
+            accountName: accountName.trim(),
+            pin: pin.trim(),
+            method: 'momo',
+          }
+
+      const res = await shareholdersApi.withdraw(payload)
+      onSuccess(res.message || (isWallet ? 'Frais virés sur votre portefeuille avec succès.' : 'Demande de retrait Mobile Money effectuée avec succès.'))
       onClose()
     } catch (err) {
       setError(err?.message || 'Erreur lors du retrait.')
@@ -1020,13 +1043,22 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
     }
   }
 
+  const isSubmitDisabled =
+    loading ||
+    amtNum < 100 ||
+    amtNum > availableBalance ||
+    !pin.trim() ||
+    (!isWallet && (!phone || !accountName.trim()))
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto space-y-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-100 pb-3">
           <div className="flex items-center gap-2 text-emerald-700">
-            <Smartphone size={20} />
-            <h3 className="font-bold text-gray-900 text-sm">Retrait Mobile Money — Frais d'Associé</h3>
+            {isWallet ? <Wallet size={20} /> : <Smartphone size={20} />}
+            <h3 className="font-bold text-gray-900 text-sm">
+              {isWallet ? "Virement Frais d'Associé → Portefeuille" : "Retrait Frais d'Associé → Mobile Money"}
+            </h3>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100">
             <X size={18} />
@@ -1040,6 +1072,40 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
           </div>
         )}
 
+        {/* Choix de la destination : Portefeuille Katd-Schüle ou Mobile Money */}
+        <div className="grid grid-cols-2 gap-2 bg-gray-100 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setMethod('wallet')}
+            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+              isWallet
+                ? 'bg-white text-emerald-700 shadow-sm border border-emerald-200'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Wallet size={16} className={isWallet ? 'text-emerald-600' : 'text-gray-400'} />
+            <div className="text-left leading-tight">
+              <div>Portefeuille</div>
+              <span className="text-[10px] font-normal text-emerald-600 block">0% frais • Immédiat</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMethod('momo')}
+            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+              !isWallet
+                ? 'bg-white text-emerald-700 shadow-sm border border-emerald-200'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Smartphone size={16} className={!isWallet ? 'text-emerald-600' : 'text-gray-400'} />
+            <div className="text-left leading-tight">
+              <div>Mobile Money</div>
+              <span className="text-[10px] font-normal text-gray-500 block">MTN / Orange (1%)</span>
+            </div>
+          </button>
+        </div>
+
         <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200 flex items-center justify-between">
           <div>
             <span className="text-[10px] uppercase font-bold text-emerald-800 block">Solde disponible retirable</span>
@@ -1048,22 +1114,38 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
           <span className="text-lg font-black text-emerald-800">{fmt(availableBalance)} FCFA</span>
         </div>
 
+        {isWallet && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 flex items-start gap-2">
+            <Sparkles size={16} className="shrink-0 mt-0.5 text-blue-600" />
+            <div className="space-y-0.5">
+              <span className="font-bold block">Virement direct et gratuit</span>
+              <p className="text-[11px] text-blue-700">
+                Vos frais d'associé seront instantanément crédités sur votre portefeuille principal Katd-Schüle avec <strong>0 FCFA de frais</strong>. Vous pourrez ensuite les utiliser pour des transferts, paiements ou achats.
+              </p>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          {/* Sélecteur de compte Mobile Money (MTN / Orange) avec recherche et défilement */}
-          <SavedMomoSelector
-            selectedOperator={operator}
-            selectedPhone={phone}
-            selectedName={accountName}
-            onSelect={({ operator: op, phone: p, accountName: n }) => {
-              setOperator(op)
-              setPhone(p)
-              setAccountName(n)
-            }}
-          />
+          {/* Si Mobile Money : Sélecteur de compte Mobile Money (MTN / Orange) avec recherche et défilement */}
+          {!isWallet && (
+            <SavedMomoSelector
+              selectedOperator={operator}
+              selectedPhone={phone}
+              selectedName={accountName}
+              onSelect={({ operator: op, phone: p, accountName: n }) => {
+                setOperator(op)
+                setPhone(p)
+                setAccountName(n)
+              }}
+            />
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium text-gray-700">Montant à retirer (FCFA) *</label>
+              <label className="text-xs font-medium text-gray-700">
+                {isWallet ? 'Montant à virer (FCFA) *' : 'Montant à retirer (FCFA) *'}
+              </label>
               <div className="flex gap-1">
                 {[0.25, 0.5, 1].map((pct) => (
                   <button
@@ -1091,14 +1173,29 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
 
           {amtNum > 0 && (
             <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-200 text-xs space-y-1">
-              <div className="flex justify-between text-gray-500">
-                <span>Frais de retrait Mobile Money (1%) :</span>
-                <span className="font-semibold text-gray-800">{fmt(fee)} FCFA</span>
-              </div>
-              <div className="flex justify-between text-emerald-800 font-bold border-t border-gray-200 pt-1">
-                <span>Montant net versé :</span>
-                <span className="text-sm font-black text-emerald-700">{fmt(net)} FCFA</span>
-              </div>
+              {isWallet ? (
+                <>
+                  <div className="flex justify-between text-gray-500">
+                    <span>Frais de virement portefeuille (0%) :</span>
+                    <span className="font-semibold text-emerald-600">0 FCFA (Gratuit)</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-800 font-bold border-t border-gray-200 pt-1">
+                    <span>Montant crédité sur votre portefeuille :</span>
+                    <span className="text-sm font-black text-emerald-700">{fmt(net)} FCFA</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between text-gray-500">
+                    <span>Frais de retrait Mobile Money (1%) :</span>
+                    <span className="font-semibold text-gray-800">{fmt(fee)} FCFA</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-800 font-bold border-t border-gray-200 pt-1">
+                    <span>Montant net versé :</span>
+                    <span className="text-sm font-black text-emerald-700">{fmt(net)} FCFA</span>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1126,10 +1223,16 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
             </button>
             <button
               type="submit"
-              disabled={loading || amtNum <= 0 || amtNum > availableBalance || !phone}
+              disabled={isSubmitDisabled}
               className="btn-primary flex-1 justify-center text-xs py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
             >
-              {loading ? <><Loader2 size={14} className="animate-spin" /> Envoi...</> : 'Valider le retrait'}
+              {loading ? (
+                <><Loader2 size={14} className="animate-spin" /> Traitement...</>
+              ) : isWallet ? (
+                'Virer vers mon portefeuille'
+              ) : (
+                'Valider le retrait Mobile Money'
+              )}
             </button>
           </div>
         </form>

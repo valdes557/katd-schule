@@ -207,6 +207,7 @@ router.put('/admin/assign-user', protect, superAdminOnly, async (req, res) => {
       zone._id,
     ].filter(Boolean)
     user.geographicZone.allZoneIds = [...new Set(allIds.map((z) => String(z)))]
+    user.geographicZone.assignedAt = new Date()
 
     await user.save()
 
