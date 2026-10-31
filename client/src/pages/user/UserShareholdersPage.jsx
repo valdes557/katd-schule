@@ -226,9 +226,9 @@ function ShareholderWallet({ dash, onRefresh }) {
       {/* Statistiques agrégées de la zone */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard icon={Users} color="text-blue-600" border="border-blue-500" label="Utilisateurs de la zone" value={fmt(stats?.userCount)} />
-        <StatCard icon={ArrowLeftRight} color="text-indigo-600" border="border-indigo-500" label="Transactions effectuées" value={fmt(stats?.txCount)} />
-        <StatCard icon={Wallet} color="text-amber-600" border="border-amber-500" label="Transferts + retraits" value={fmt(stats?.movementsTotal) + ' F'} />
-        <StatCard icon={Coins} color="text-emerald-600" border="border-emerald-500" label="Frais de transactions" value={fmt(stats?.feesTotal) + ' F'} />
+        <StatCard icon={ArrowLeftRight} color="text-indigo-600" border="border-indigo-500" label="Transactions effectuées" value={fmt(stats?.txCount || 0)} />
+        <StatCard icon={Wallet} color="text-amber-600" border="border-amber-500" label="Transferts et retraits de frais" value={fmt(stats?.movementsTotal || 0) + ' F'} />
+        <StatCard icon={Coins} color="text-emerald-600" border="border-emerald-500" label="Frais de transactions" value={fmt(stats?.feesTotal || 0) + ' F'} />
       </div>
 
       {/* Section des droits de perception sur les frais plateforme */}
@@ -309,6 +309,111 @@ function ShareholderWallet({ dash, onRefresh }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Opérations rémunérées des utilisateurs de la zone */}
+      <div className="bg-white rounded-2xl border border-gray-150 shadow-sm p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3 flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100">
+              <TrendingUp size={18} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                Opérations Rémunérées de votre Zone
+                <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                  {dash?.zoneOperations?.length || 0} opération{(dash?.zoneOperations?.length || 0) > 1 ? 's' : ''}
+                </span>
+              </h3>
+              <p className="text-[11px] text-gray-500">
+                Suivi en direct de chaque opération réalisée par les utilisateurs attribués à votre zone avec votre quote-part ({currentPercent}%)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {Array.isArray(dash?.zoneOperations) && dash.zoneOperations.length > 0 ? (
+          <div className="overflow-x-auto border border-gray-150 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
+                <tr>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Date & Heure</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Utilisateur</th>
+                  <th className="py-2.5 px-3">Nature de l'Opération</th>
+                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Montant Opération</th>
+                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Frais Plateforme</th>
+                  <th className="py-2.5 px-3 text-center whitespace-nowrap">Taux Associé</th>
+                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Votre Quote-part</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {dash.zoneOperations.map((op) => (
+                  <tr key={op.id || op.date} className="hover:bg-emerald-50/30 transition-colors">
+                    <td className="py-2.5 px-3 text-[11px] text-gray-600 whitespace-nowrap font-medium">
+                      {new Date(op.date).toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <span className="font-bold text-gray-900 block">{op.userName || 'Utilisateur'}</span>
+                      {op.userEmail && <span className="text-[10px] text-gray-400 block">{op.userEmail}</span>}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="inline-flex items-center gap-1 font-semibold text-gray-800 text-xs">
+                        {op.categoryLabel || op.categoryKey}
+                      </span>
+                      {op.description && (
+                        <span className="text-[10px] text-gray-500 block line-clamp-1">{op.description}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-semibold text-gray-700 whitespace-nowrap">
+                      {fmt(op.operationAmount)} FCFA
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-bold text-gray-900 whitespace-nowrap">
+                      {fmt(op.platformFee)} FCFA
+                    </td>
+                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <span className="text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
+                        {op.shareholderPercent}%
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-black text-emerald-700 whitespace-nowrap text-sm">
+                      +{fmt(op.shareholderShare)} FCFA
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-emerald-50/60 border-t border-emerald-100 font-bold">
+                <tr>
+                  <td colSpan={4} className="py-2 px-3 text-emerald-900 font-extrabold text-xs">
+                    Total quote-parts générées par les utilisateurs de votre zone :
+                  </td>
+                  <td className="py-2 px-3 text-right text-emerald-950 font-black">
+                    {fmt(stats?.eligiblePlatformFees || 0)} FCFA
+                  </td>
+                  <td className="py-2 px-3 text-center text-emerald-900 font-extrabold">
+                    {currentPercent}%
+                  </td>
+                  <td className="py-2 px-3 text-right text-emerald-800 font-black text-sm">
+                    {fmt(stats?.shareholderCalculatedShare || 0)} FCFA
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+            <Coins size={28} className="mx-auto mb-2 opacity-40 text-emerald-600" />
+            <p className="text-xs font-semibold text-gray-600">Aucune opération rémunérée enregistrée pour le moment</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Toute opération effectuée par les utilisateurs de votre zone apparaîtra immédiatement ici avec votre quote-part ({currentPercent}%).
+            </p>
           </div>
         )}
       </div>

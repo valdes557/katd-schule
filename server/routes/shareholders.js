@@ -120,7 +120,7 @@ function buildZoneRegexList(zName) {
   if (!zName) return []
   const list = []
   const escapeRx = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  list.push(new RegExp(escapeRx(zName), 'i'))
+  list.push(new RegExp(`\\b${escapeRx(zName)}\\b`, 'i'))
 
   const romanMap = [
     { num: '1', rx: /(?:1(?:er|ere)?|i)\b/i },
@@ -239,7 +239,8 @@ async function resolveZoneMembers(sh) {
 
   if (userOr.length === 0) return { ids: [], schoolIds: [], usersInZone: [] }
 
-  const users = await User.find({ $or: userOr }).select('_id name email geographicZone createdAt')
+  const userFilter = sh.user ? { $and: [{ $or: userOr }, { _id: { $ne: sh.user } }] } : { $or: userOr }
+  const users = await User.find(userFilter).select('_id name email geographicZone createdAt')
   return { ids: users.map((u) => u._id), schoolIds, usersInZone: users }
 }
 
@@ -271,6 +272,8 @@ async function calculateShareholderEarnings(main) {
 
   const zoneCategoryVolumes = {}
   ALL_FEE_CATEGORIES.forEach((fc) => { zoneCategoryVolumes[fc.key] = 0 })
+  const zoneOperations = []
+  const percent = Number(main.percent) || 1
 
   if (ids === null) {
     // Portée mondiale / internationale : grand livre global de la plateforme postérieur à la souscription
@@ -278,56 +281,155 @@ async function calculateShareholderEarnings(main) {
     const { acc1 } = await AdminCoAccount.ensureAccounts()
     const ledger = acc1?.ledger || []
     for (const fc of ALL_FEE_CATEGORIES) {
+      if (!allowedCategories.includes(fc.key)) continue
       const matching = ledger.filter((l) => l.category === fc.key && new Date(l.date || l.createdAt) >= shareholdingStartAt)
       zoneCategoryVolumes[fc.key] = matching.reduce((sum, e) => sum + (Number(e.totalPlatformAmount) || 0), 0)
+      matching.forEach((m) => {
+        const pFee = Number(m.totalPlatformAmount) || 0
+        if (pFee > 0) {
+          const sShare = Number(((pFee * percent) / 100).toFixed(4))
+          zoneOperations.push({
+            id: m._id || `${fc.key}_${m.date}`,
+            date: m.date || m.createdAt,
+            categoryKey: fc.key,
+            categoryLabel: fc.label,
+            operationType: fc.key,
+            userName: 'Plateforme Globale',
+            userEmail: '',
+            operationAmount: Number(m.grossAmount || pFee),
+            platformFee: pFee,
+            shareholderPercent: percent,
+            shareholderShare: sShare,
+            description: m.description || fc.label,
+          })
+        }
+      })
     }
   } else if (ids.length > 0 || schoolIds.length > 0) {
     // Portée délimitée : filtre individuel par utilisateur pour respecter l'antériorité et la date d'affectation
-    const userConditions = usersInZone.map((u) => {
-      const userAssignedAt = u.geographicZone?.assignedAt || u.createdAt || shareholdingStartAt
-      const effectiveCutoff = new Date(Math.max(new Date(shareholdingStartAt).getTime(), new Date(userAssignedAt).getTime()))
-      return {
-        owner: u._id,
-        createdAt: { $gte: effectiveCutoff },
+    const userConditions = []
+    usersInZone.forEach((u) => {
+      let effectiveCutoff = null
+      if (u.geographicZone?.assignedAt) {
+        effectiveCutoff = new Date(Math.max(new Date(shareholdingStartAt).getTime(), new Date(u.geographicZone.assignedAt).getTime()))
+      } else if (u.createdAt && new Date(u.createdAt) >= new Date(shareholdingStartAt)) {
+        effectiveCutoff = new Date(u.createdAt)
+      }
+      if (effectiveCutoff) {
+        userConditions.push({
+          owner: u._id,
+          createdAt: { $gte: effectiveCutoff },
+        })
       }
     })
 
     if (userConditions.length > 0) {
-      const userTxRows = await WalletTransaction.aggregate([
-        { $match: { $or: userConditions } },
-        {
-          $group: {
-            _id: '$type',
-            totalAmount: { $sum: '$amount' },
-            totalFee: { $sum: { $ifNull: ['$meta.fee', 0] } },
-            count: { $sum: 1 },
-          },
+      const eligibleTxs = await WalletTransaction.find({
+        $or: userConditions,
+        type: {
+          $in: [
+            'transfer_fee',
+            'withdrawal',
+            'maintenance_fee',
+            'collect_fee',
+            'merchant_signup',
+            'agent_subscription',
+            'agent_signup',
+            'client_subscription',
+            'client_signup',
+            'ai_subscription',
+            'ai_subscription_revenue',
+            'shareholder_subscription',
+            'shareholder_payment',
+            'subscription',
+          ],
         },
-      ])
-      const byType = {}
-      userTxRows.forEach((r) => { byType[r._id] = r })
+      })
+        .populate('owner', 'name email phone')
+        .sort({ createdAt: -1 })
+        .lean()
 
-      // Frais réels prélevés par la plateforme sur les opérations des utilisateurs de cette zone :
-      // 1. Transferts : commissions prélevées sur les transferts (type 'transfer_fee')
-      zoneCategoryVolumes['transfer_fee'] = byType['transfer_fee']?.totalAmount || 0
-      // 2. Retraits : commissions prélevées sur les retraits (meta.fee ou 1% du montant retiré)
-      zoneCategoryVolumes['withdrawal_fee'] = byType['withdrawal']?.totalFee || Math.round((byType['withdrawal']?.totalAmount || 0) * 0.01)
-      // 3. Maintenance système
-      zoneCategoryVolumes['maintenance_fee'] = byType['maintenance_fee']?.totalAmount || 0
-      // 4. Collecte mensuelle
-      zoneCategoryVolumes['collect_fee'] = byType['collect_fee']?.totalAmount || 0
-      // 5. Adhésion Marchand
-      zoneCategoryVolumes['merchant_signup'] = byType['merchant_signup']?.totalAmount || 0
-      // 6. Agence de collecte
-      zoneCategoryVolumes['agent_signup'] = (byType['agent_subscription']?.totalAmount || 0) + (byType['agent_signup']?.totalAmount || 0)
-      // 7. Client collecte
-      zoneCategoryVolumes['client_signup'] = (byType['client_subscription']?.totalAmount || 0) + (byType['client_signup']?.totalAmount || 0)
-      // 8. IA
-      zoneCategoryVolumes['ai_subscription'] = (byType['ai_subscription']?.totalAmount || 0) + (byType['ai_subscription_revenue']?.totalAmount || 0)
-      // 9. Souscription associés
-      zoneCategoryVolumes['shareholder_subscription'] = (byType['shareholder_subscription']?.totalAmount || 0) + (byType['shareholder_payment']?.totalAmount || 0)
-      // 10. Souscription écoles
-      zoneCategoryVolumes['subscription'] = byType['subscription']?.totalAmount || 0
+      eligibleTxs.forEach((tx) => {
+        let catKey = null
+        let label = ''
+        let pFee = 0
+        let desc = ''
+        let opAmount = Number(tx.amount || 0)
+
+        if (tx.type === 'transfer_fee') {
+          catKey = 'transfer_fee'
+          label = "Frais de transfert d'argent"
+          pFee = Number(tx.amount || 0)
+          opAmount = Number(tx.meta?.baseAmount || tx.amount || 0)
+          desc = `Transfert d'argent de ${opAmount.toLocaleString('fr-FR')} FCFA`
+        } else if (tx.type === 'withdrawal') {
+          catKey = 'withdrawal_fee'
+          label = 'Frais de retrait Mobile Money'
+          pFee = tx.meta?.fee != null ? Number(tx.meta.fee) : Math.round(Number(tx.amount || 0) * 0.01)
+          opAmount = Number(tx.amount || 0)
+          const op = tx.meta?.momoOperator ? String(tx.meta.momoOperator).toUpperCase() : 'MoMo'
+          desc = `Retrait Mobile Money ${op} de ${opAmount.toLocaleString('fr-FR')} FCFA`
+        } else if (tx.type === 'maintenance_fee') {
+          catKey = 'maintenance_fee'
+          label = 'Maintenance système'
+          pFee = Number(tx.amount || 0)
+          desc = 'Frais de maintenance système'
+        } else if (tx.type === 'collect_fee') {
+          catKey = 'collect_fee'
+          label = 'Collecte mensuelle'
+          pFee = Number(tx.amount || 0)
+          desc = 'Frais de collecte mensuelle'
+        } else if (tx.type === 'merchant_signup') {
+          catKey = 'merchant_signup'
+          label = 'Adhésion Marchand'
+          pFee = Number(tx.amount || 0)
+          desc = 'Frais adhésion marchand'
+        } else if (tx.type === 'agent_subscription' || tx.type === 'agent_signup') {
+          catKey = 'agent_signup'
+          label = 'Adhésion Agence de collecte'
+          pFee = Number(tx.amount || 0)
+          desc = 'Frais adhésion agence de collecte'
+        } else if (tx.type === 'client_subscription' || tx.type === 'client_signup') {
+          catKey = 'client_signup'
+          label = 'Adhésion Client collecte'
+          pFee = Number(tx.amount || 0)
+          desc = 'Frais adhésion client de collecte'
+        } else if (tx.type === 'ai_subscription' || tx.type === 'ai_subscription_revenue') {
+          catKey = 'ai_subscription'
+          label = 'Abonnement IA Enseignante'
+          pFee = Number(tx.amount || 0)
+          desc = 'Abonnement IA Enseignante'
+        } else if (tx.type === 'shareholder_subscription' || tx.type === 'shareholder_payment') {
+          catKey = 'shareholder_subscription'
+          label = 'Souscription Associés'
+          pFee = Number(tx.amount || 0)
+          desc = "Souscription part d'associé"
+        } else if (tx.type === 'subscription') {
+          catKey = 'subscription'
+          label = 'Souscription Établissement'
+          pFee = Number(tx.amount || 0)
+          desc = 'Souscription établissement scolaire'
+        }
+
+        if (catKey && allowedCategories.includes(catKey) && pFee > 0) {
+          zoneCategoryVolumes[catKey] = (zoneCategoryVolumes[catKey] || 0) + pFee
+          const sShare = Number(((pFee * percent) / 100).toFixed(4))
+          zoneOperations.push({
+            id: tx._id,
+            date: tx.createdAt,
+            categoryKey: catKey,
+            categoryLabel: label,
+            operationType: tx.type,
+            userName: tx.owner?.name || 'Utilisateur de la zone',
+            userEmail: tx.owner?.email || '',
+            operationAmount: opAmount,
+            platformFee: pFee,
+            shareholderPercent: percent,
+            shareholderShare: sShare,
+            description: desc,
+          })
+        }
+      })
     }
 
     // 2. Paiements Mobile Money approuvés (PaymentIntent) postérieurs à la souscription de l'associé
@@ -343,51 +445,69 @@ async function calculateShareholderEarnings(main) {
     }
 
     if (piOr.length > 0) {
-      const piRows = await PaymentIntent.aggregate([
-        {
-          $match: {
-            status: 'approved',
-            createdAt: { $gte: shareholdingStartAt },
-            $or: piOr,
-          },
-        },
-        {
-          $group: {
-            _id: '$purpose',
-            totalAmount: { $sum: '$amount' },
-          },
-        },
-      ])
-      const piByType = {}
-      piRows.forEach((r) => { piByType[r._id] = r.totalAmount || 0 })
+      const piList = await PaymentIntent.find({
+        status: 'approved',
+        createdAt: { $gte: shareholdingStartAt },
+        $or: piOr,
+      })
+        .populate('initiatedBy', 'name email phone')
+        .sort({ createdAt: -1 })
+        .lean()
 
-      if (piByType['subscription']) {
-        zoneCategoryVolumes['subscription'] = Math.max(zoneCategoryVolumes['subscription'] || 0, piByType['subscription'])
-      }
-      if (piByType['merchant']) {
-        zoneCategoryVolumes['merchant_signup'] = (zoneCategoryVolumes['merchant_signup'] || 0) + piByType['merchant']
-      }
-      if (piByType['agent_signup']) {
-        zoneCategoryVolumes['agent_signup'] = (zoneCategoryVolumes['agent_signup'] || 0) + piByType['agent_signup']
-      }
-      if (piByType['client_collect_signup']) {
-        zoneCategoryVolumes['client_signup'] = (zoneCategoryVolumes['client_signup'] || 0) + piByType['client_collect_signup']
-      }
-      if (piByType['ai_subscription'] || piByType['user_ai_subscription']) {
-        zoneCategoryVolumes['ai_subscription'] = (zoneCategoryVolumes['ai_subscription'] || 0) + (piByType['ai_subscription'] || 0) + (piByType['user_ai_subscription'] || 0)
-      }
-      if (piByType['shareholder']) {
-        zoneCategoryVolumes['shareholder_subscription'] = (zoneCategoryVolumes['shareholder_subscription'] || 0) + piByType['shareholder']
-      }
+      piList.forEach((pi) => {
+        let catKey = null
+        let label = ''
+        if (pi.purpose === 'subscription') {
+          catKey = 'subscription'
+          label = 'Souscription Établissement'
+        } else if (pi.purpose === 'merchant') {
+          catKey = 'merchant_signup'
+          label = 'Adhésion Marchand'
+        } else if (pi.purpose === 'agent_signup') {
+          catKey = 'agent_signup'
+          label = 'Adhésion Agence de collecte'
+        } else if (pi.purpose === 'client_collect_signup') {
+          catKey = 'client_signup'
+          label = 'Adhésion Client collecte'
+        } else if (pi.purpose === 'ai_subscription' || pi.purpose === 'user_ai_subscription') {
+          catKey = 'ai_subscription'
+          label = 'Abonnement IA Enseignante'
+        } else if (pi.purpose === 'shareholder') {
+          catKey = 'shareholder_subscription'
+          label = 'Souscription Associés'
+        }
+
+        if (catKey && allowedCategories.includes(catKey)) {
+          const pFee = Number(pi.amount || 0)
+          if (pFee > 0) {
+            zoneCategoryVolumes[catKey] = (zoneCategoryVolumes[catKey] || 0) + pFee
+            const sShare = Number(((pFee * percent) / 100).toFixed(4))
+            zoneOperations.push({
+              id: pi._id,
+              date: pi.createdAt,
+              categoryKey: catKey,
+              categoryLabel: label,
+              operationType: `momo_${pi.purpose}`,
+              userName: pi.initiatedBy?.name || pi.accountName || 'Adhérent zone',
+              userEmail: pi.initiatedBy?.email || '',
+              operationAmount: pFee,
+              platformFee: pFee,
+              shareholderPercent: percent,
+              shareholderShare: sShare,
+              description: `Paiement Mobile Money ${pi.operator ? String(pi.operator).toUpperCase() : ''} (${pFee.toLocaleString('fr-FR')} FCFA)`,
+            })
+          }
+        }
+      })
     }
   }
 
-  const percent = Number(main.percent) || 1
+  // Tri antichronologique des opérations de la zone
+  zoneOperations.sort((a, b) => new Date(b.date) - new Date(a.date))
 
   const categoryBreakdown = ALL_FEE_CATEGORIES.map((fc) => {
     const isAllowed = allowedCategories.includes(fc.key)
     const totalVolume = isAllowed ? (zoneCategoryVolumes[fc.key] || 0) : 0
-    // Valeur exacte sans arrondi : conserve les centimes exacts (ex : 0.01 FCFA pour 1% d'un frais de 1 FCFA)
     const rawShare = isAllowed && totalVolume > 0 ? (totalVolume * percent) / 100 : 0
     const shareholderShare = rawShare > 0 ? Number(rawShare.toFixed(4)) : 0
     return {
@@ -405,26 +525,23 @@ async function calculateShareholderEarnings(main) {
     .reduce((s, c) => s + c.totalRevenue, 0)
 
   const shareholderCalculatedShare = Number(
-    categoryBreakdown
-      .filter((c) => c.isAllowed)
-      .reduce((s, c) => s + c.shareholderShare, 0)
-      .toFixed(4)
+    zoneOperations.reduce((s, op) => s + op.shareholderShare, 0).toFixed(4)
   )
 
   return {
     ids,
     schoolIds,
     allowedCategories,
+    percent,
     zoneCategoryTotals: zoneCategoryVolumes,
     categoryBreakdown,
+    zoneOperations,
     eligiblePlatformFees,
     shareholderCalculatedShare,
   }
 }
 
 // GET /api/shareholders/dashboard — portefeuille de l'actionnaire connecté.
-// CONFIDENTIALITÉ : ne renvoie QUE des agrégats (compteurs et totaux) — jamais les
-// transferts individuels, ni les soldes, ni l'identité des autres utilisateurs.
 router.get('/dashboard', protect, async (req, res) => {
   try {
     const holdings = await Shareholding.find({ user: req.user._id, status: 'active' }).sort({ createdAt: -1 })
@@ -434,43 +551,24 @@ router.get('/dashboard', protect, async (req, res) => {
     const {
       ids,
       allowedCategories,
+      percent,
       categoryBreakdown,
+      zoneOperations = [],
       eligiblePlatformFees,
       shareholderCalculatedShare,
     } = await calculateShareholderEarnings(main)
 
-    const ownerMatch = ids === null ? {} : { owner: { $in: ids } }
-
     // 1. Nombre d'utilisateurs total de la zone d'attribution
     const userCount = ids === null ? await User.countDocuments({}) : ids.length
 
-    // 2-4. Agrégats de transactions de la zone (compteur, transferts+retraits, frais)
-    const TRANSFER_TYPES = ['transfer_sent', 'salary_transfer', 'pension_payment']
-    const FEE_TYPES = ['transfer_fee', 'maintenance_fee']
-    const rows = await WalletTransaction.aggregate([
-      { $match: ownerMatch },
-      {
-        $group: {
-          _id: null,
-          txCount: { $sum: 1 },
-          transfersTotal: { $sum: { $cond: [{ $in: ['$type', TRANSFER_TYPES] }, '$amount', 0] } },
-          withdrawalsTotal: { $sum: { $cond: [{ $eq: ['$type', 'withdrawal'] }, '$amount', 0] } },
-          feesTotal: { $sum: { $cond: [{ $in: ['$type', FEE_TYPES] }, '$amount', 0] } },
-        },
-      },
-    ])
-    const agg = rows[0] || { txCount: 0, transfersTotal: 0, withdrawalsTotal: 0, feesTotal: 0 }
-
-    // 5. Gains accumulés de l'actionnaire (dividendes versés par l'admin)
+    // 2. Gains accumulés de l'actionnaire (dividendes versés par l'admin)
     const gainRows = await WalletTransaction.aggregate([
       { $match: { owner: req.user._id, type: 'shareholder_gain' } },
       { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
     ])
     const gains = gainRows[0] || { total: 0, count: 0 }
 
-    // 6. Retraits cumulés de frais et solde retirable disponible
-    const totalFeesEarned = Number(Math.max(shareholderCalculatedShare, gains.total).toFixed(4))
-
+    // 3. Retraits cumulés de frais (soit vers Mobile Money, soit vers le portefeuille Katd-Schüle)
     const withdrawnRows = await WalletTransaction.aggregate([
       {
         $match: {
@@ -487,14 +585,22 @@ router.get('/dashboard', protect, async (req, res) => {
       },
     ])
     const totalFeesWithdrawn = Number((withdrawnRows[0]?.total || 0).toFixed(4))
+    const totalFeesEarned = Number(Math.max(shareholderCalculatedShare, gains.total).toFixed(4))
     const availableFeesBalance = Number(Math.max(0, totalFeesEarned - totalFeesWithdrawn).toFixed(4))
+
+    // 4. Nombre de transactions effectuées UNIQUEMENT par les utilisateurs de la zone de l'associé selon les attributs du plan
+    // Initialisé à 0 à la souscription, et comptabilisé suite aux opérations effectuées par les utilisateurs de sa zone (ex: 2 opérations)
+    const txCount = zoneOperations.length
+
+    // 5. Total des transferts et retraits de ces frais (soit vers Mobile Money, soit vers le portefeuille) : initialisé à 0 à la souscription
+    const movementsTotal = totalFeesWithdrawn
 
     const recentWithdrawals = await WalletTransaction.find({
       owner: req.user._id,
       type: 'shareholder_fee_withdrawal',
     }).sort({ createdAt: -1 }).limit(20)
 
-    // 7. Publications du super admin (dépenses, sommes à payer, réunions…)
+    // 6. Publications du super admin (dépenses, sommes à payer, réunions…)
     const posts = await ShareholderPost.find({ isPublished: true }).sort({ createdAt: -1 }).limit(50)
 
     res.json({
@@ -503,10 +609,8 @@ router.get('/dashboard', protect, async (req, res) => {
       zone: { planKey: main.planKey, label: main.planLabel, zone: main.zone },
       stats: {
         userCount,
-        txCount: agg.txCount,
-        transfersTotal: agg.transfersTotal,
-        withdrawalsTotal: agg.withdrawalsTotal,
-        movementsTotal: agg.transfersTotal + agg.withdrawalsTotal,
+        txCount,
+        movementsTotal,
         feesTotal: eligiblePlatformFees,
         gainsTotal: gains.total,
         gainsCount: gains.count,
@@ -519,12 +623,13 @@ router.get('/dashboard', protect, async (req, res) => {
       withdrawals: recentWithdrawals,
       allowedFeeCategories: allowedCategories,
       categoryBreakdown,
+      zoneOperations,
       posts,
     })
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// POST /api/shareholders/withdraw — retrait des frais d'associé (vers Mobile Money OU vers portefeuille Katd-Schüle)
+// POST /api/shareholders/withdraw — retrait des frais d'associé
 router.post('/withdraw', protect, async (req, res) => {
   try {
     const holdings = await Shareholding.find({ user: req.user._id, status: 'active' }).sort({ createdAt: -1 })

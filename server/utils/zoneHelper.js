@@ -52,6 +52,7 @@ function buildGeographicZone(body = {}) {
     mondialId: mondId,
     mondialName: body.mondialName || '',
     allZoneIds,
+    assignedAt: new Date(),
   }
 }
 
@@ -90,6 +91,7 @@ function resolveMemberZone(reqBody = {}, schoolDoc = null) {
       mondialId: sz.mondialId || null,
       mondialName: sz.mondialName || '',
       allZoneIds: Array.isArray(sz.allZoneIds) ? sz.allZoneIds : (sz.zoneId ? [sz.zoneId] : []),
+      assignedAt: new Date(),
     }
   }
 
