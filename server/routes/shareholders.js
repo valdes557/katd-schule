@@ -188,12 +188,14 @@ async function resolveZoneMembers(sh) {
     userOr.push({ 'geographicZone.zoneId': objId })
     userOr.push({ 'geographicZone.allZoneIds': objId })
     userOr.push({ 'geographicZone.arrondissementId': objId })
+    userOr.push({ 'geographicZone.departementId': objId })
     userOr.push({ 'geographicZone.regionId': objId })
     userOr.push({ 'geographicZone.countryId': objId })
     userOr.push({ 'geographicZone.mondialId': objId })
 
     schoolOr.push({ 'geographicZone.zoneId': objId })
     schoolOr.push({ 'geographicZone.arrondissementId': objId })
+    schoolOr.push({ 'geographicZone.departementId': objId })
     schoolOr.push({ 'geographicZone.regionId': objId })
     schoolOr.push({ 'geographicZone.countryId': objId })
     schoolOr.push({ 'geographicZone.mondialId': objId })
@@ -217,12 +219,14 @@ async function resolveZoneMembers(sh) {
     for (const rx of regexes) {
       userOr.push({ 'geographicZone.zoneName': rx })
       userOr.push({ 'geographicZone.arrondissementName': rx })
+      userOr.push({ 'geographicZone.departementName': rx })
       userOr.push({ 'geographicZone.regionName': rx })
       userOr.push({ 'geographicZone.countryName': rx })
       userOr.push({ 'geographicZone.mondialName': rx })
 
       schoolOr.push({ 'geographicZone.zoneName': rx })
       schoolOr.push({ 'geographicZone.arrondissementName': rx })
+      schoolOr.push({ 'geographicZone.departementName': rx })
       schoolOr.push({ 'geographicZone.regionName': rx })
       schoolOr.push({ 'geographicZone.countryName': rx })
       schoolOr.push({ 'geographicZone.mondialName': rx })
@@ -568,9 +572,19 @@ async function calculateShareholderEarnings(main) {
 // GET /api/shareholders/dashboard — portefeuille de l'actionnaire connecté.
 router.get('/dashboard', protect, async (req, res) => {
   try {
-    const holdings = await Shareholding.find({ user: req.user._id, status: 'active' }).sort({ createdAt: -1 })
+    const holdings = await Shareholding.find({ user: req.user._id, status: 'active' }).sort({ createdAt: 1 })
     if (holdings.length === 0) return res.status(403).json({ message: "Vous n'êtes pas encore actionnaire" })
-    const main = holdings[0] // part la plus récente = zone d'attribution affichée
+
+    let main = null
+    const requestedId = req.query.shareholdingId ? String(req.query.shareholdingId).trim() : null
+    const requestedPlanKey = req.query.planKey ? String(req.query.planKey).trim() : null
+
+    if (requestedId) {
+      main = holdings.find((h) => String(h._id) === requestedId)
+    } else if (requestedPlanKey) {
+      main = holdings.find((h) => h.planKey === requestedPlanKey)
+    }
+    if (!main) main = holdings[0]
 
     const {
       ids,
@@ -592,21 +606,22 @@ router.get('/dashboard', protect, async (req, res) => {
     ])
     const gains = gainRows[0] || { total: 0, count: 0 }
 
-    // 3. Retraits cumulés de frais (soit vers Mobile Money, soit vers le portefeuille Katd-Schüle)
+    // 3. Retraits cumulés de frais (imputés au plan sélectionné ou globaux)
+    const withdrawnFilter = {
+      owner: req.user._id,
+      type: 'shareholder_fee_withdrawal',
+    }
+    if (holdings.length > 1) {
+      withdrawnFilter.$or = [
+        { 'meta.shareholdingId': main._id },
+        { 'meta.shareholdingId': String(main._id) },
+        { 'meta.planKey': main.planKey },
+        { 'meta.shareholdingId': { $exists: false }, 'meta.planKey': { $exists: false } },
+      ]
+    }
     const withdrawnRows = await WalletTransaction.aggregate([
-      {
-        $match: {
-          owner: req.user._id,
-          type: 'shareholder_fee_withdrawal',
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: '$amount' },
-          count: { $sum: 1 },
-        },
-      },
+      { $match: withdrawnFilter },
+      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
     ])
     const totalFeesWithdrawn = Number((withdrawnRows[0]?.total || 0).toFixed(4))
     const totalFeesEarned = Number(Math.max(shareholderCalculatedShare, gains.total).toFixed(4))
@@ -629,8 +644,31 @@ router.get('/dashboard', protect, async (req, res) => {
 
     res.json({
       success: true,
-      shareholdings: holdings,
-      zone: { planKey: main.planKey, label: main.planLabel, zone: main.zone },
+      selectedHoldingId: main._id,
+      selectedPlanKey: main.planKey,
+      shareholdings: holdings.map((h) => ({
+        _id: h._id,
+        planKey: h.planKey,
+        planLabel: h.planLabel || h.planKey,
+        zone: h.zone,
+        zoneId: h.zoneId,
+        percent: h.percent,
+        amount: h.amount,
+        durationYears: h.durationYears,
+        startAt: h.startAt,
+        endAt: h.endAt,
+        status: h.status,
+      })),
+      zone: {
+        holdingId: main._id,
+        planKey: main.planKey,
+        label: main.planLabel || main.planKey,
+        zone: main.zone,
+        percent: main.percent,
+        amount: main.amount,
+        startAt: main.startAt,
+        endAt: main.endAt,
+      },
       stats: {
         userCount,
         txCount,
@@ -656,12 +694,18 @@ router.get('/dashboard', protect, async (req, res) => {
 // POST /api/shareholders/withdraw — retrait des frais d'associé
 router.post('/withdraw', protect, async (req, res) => {
   try {
-    const holdings = await Shareholding.find({ user: req.user._id, status: 'active' }).sort({ createdAt: -1 })
+    const holdings = await Shareholding.find({ user: req.user._id, status: 'active' }).sort({ createdAt: 1 })
     if (holdings.length === 0) {
       return res.status(403).json({ message: "Vous n'avez aucune part d'associé active" })
     }
-    const main = holdings[0]
-    const { amount, pin, method = 'momo', momoNumber, momoOperator, accountName, country = 'CM' } = req.body
+    const { shareholdingId, planKey, amount, pin, method = 'momo', momoNumber, momoOperator, accountName, country = 'CM' } = req.body
+    let main = null
+    if (shareholdingId) {
+      main = holdings.find((h) => String(h._id) === String(shareholdingId))
+    } else if (planKey) {
+      main = holdings.find((h) => h.planKey === planKey)
+    }
+    if (!main) main = holdings[0]
     const amt = Number(amount)
     if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
 
@@ -892,9 +936,16 @@ router.post('/subscribe', protect, async (req, res) => {
     const plan = (cfg.plans || []).find((p) => p.key === planKey && p.isActive !== false)
     if (!plan) return res.status(404).json({ message: 'Plan introuvable ou désactivé' })
 
-    // Un même plan ne peut être souscrit qu'une fois par utilisateur (tant qu'il est actif)
-    const existing = await Shareholding.findOne({ user: req.user._id, planKey, status: 'active' })
-    if (existing) return res.status(400).json({ message: 'Vous avez déjà souscrit à ce plan' })
+    // Un même plan ne peut être souscrit qu'une fois pour la même zone (tant qu'il est actif)
+    const z = String(zone || '').trim()
+    const query = { user: req.user._id, planKey, status: 'active' }
+    if (z) query.zone = z
+    const existing = await Shareholding.findOne(query)
+    if (existing) {
+      return res.status(400).json({
+        message: z ? `Vous avez déjà souscrit au plan « ${plan.label} » pour la zone « ${z} ». Vous pouvez choisir une autre zone ou un autre palier.` : `Vous avez déjà souscrit au plan « ${plan.label} ».`
+      })
+    }
 
     // Calcul dynamique du pourcentage et du prix
     const requestedPercent = Math.max(1, Math.min(100, Math.floor(Number(percent) || Number(plan.percent) || 1)))
@@ -950,7 +1001,9 @@ router.post('/subscribe', protect, async (req, res) => {
         console.error('[shareholders:subscribe] auto-apply error:', e.message)
       }
     }
-    const paymentLink = result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null
+    const paymentLink = (mode === 'direct' && rawPhone && operator)
+      ? null
+      : (result.payment_link || result.redirect_url || (result.data && (result.data.payment_link || result.data.redirect_url)) || null)
     res.json({
       success: true, reference, amount: finalPrice, mode, currency: targetCurrency,
       payment_link: paymentLink, message: 'Validez le paiement sur votre téléphone Mobile Money.'
@@ -975,9 +1028,15 @@ router.post('/subscribe-wallet', protect, async (req, res) => {
     const z = String(zone || '').trim()
     if (planKey !== 'international' && !z) return res.status(400).json({ message: 'Zone d\'attribution requise pour ce plan' })
 
-    // Un même plan ne peut être souscrit qu'une fois par utilisateur (tant qu'il est actif)
-    const existing = await Shareholding.findOne({ user: req.user._id, planKey, status: 'active' })
-    if (existing) return res.status(400).json({ message: 'Vous avez déjà souscrit à ce plan' })
+    // Un même plan ne peut être souscrit qu'une fois pour la même zone (tant qu'il est actif)
+    const walletQuery = { user: req.user._id, planKey, status: 'active' }
+    if (z) walletQuery.zone = z
+    const existing = await Shareholding.findOne(walletQuery)
+    if (existing) {
+      return res.status(400).json({
+        message: z ? `Vous avez déjà souscrit au plan « ${plan.label} » pour la zone « ${z} ». Vous pouvez choisir une autre zone ou un autre palier.` : `Vous avez déjà souscrit au plan « ${plan.label} ».`
+      })
+    }
 
     // Vérifie le PIN du portefeuille
     const bcrypt = require('bcryptjs')

@@ -29,6 +29,7 @@ const OPERATORS = [
 ]
 const ZONE_LABELS = {
   arrondissement: "Nom de l'arrondissement",
+  departement: "Nom du département",
   regional: 'Nom de la région',
   national: 'Pays',
   international: 'Zone internationale (optionnel)',
@@ -36,6 +37,7 @@ const ZONE_LABELS = {
 }
 const PLAN_GRADIENTS = {
   arrondissement: 'from-emerald-500 to-teal-600',
+  departement: 'from-cyan-600 to-teal-700',
   regional: 'from-blue-500 to-indigo-600',
   national: 'from-amber-500 to-orange-600',
   international: 'from-purple-600 to-fuchsia-600',
@@ -66,18 +68,23 @@ export default function UserShareholdersPage() {
   const [dash, setDash] = useState(null)          // portefeuille associé (403 si pas associé)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [selectedHoldingId, setSelectedHoldingId] = useState('')
   const [err, setErr] = useState('')
   const [showPlans, setShowPlans] = useState(false) // pop-up des plans
 
-  const load = async (showSpinner = true) => {
+  const load = async (showSpinner = true, holdingId = selectedHoldingId) => {
     if (showSpinner) setLoading(true)
     else setRefreshing(true)
     try {
       const c = await shareholdersApi.config()
       setCfg(c)
       try {
-        const d = await shareholdersApi.dashboard()
+        const params = holdingId ? { shareholdingId: holdingId } : {}
+        const d = await shareholdersApi.dashboard(params)
         setDash(d)
+        if (d?.selectedHoldingId) {
+          setSelectedHoldingId(d.selectedHoldingId)
+        }
         setShowPlans(false)
       } catch {
         // Pas encore associé → le pop-up des plans s'ouvre directement
@@ -91,13 +98,13 @@ export default function UserShareholdersPage() {
   }
 
   useEffect(() => {
-    load(true)
+    load(true, selectedHoldingId)
     // Synchronisation en arrière-plan toutes les 25 secondes des transactions et nouveaux utilisateurs de la zone
     const timer = setInterval(() => {
-      load(false)
+      load(false, selectedHoldingId)
     }, 25000)
     return () => clearInterval(timer)
-  }, [])
+  }, [selectedHoldingId])
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-600" /></div>
 
@@ -175,7 +182,16 @@ export default function UserShareholdersPage() {
 
       {err && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm">{err}</div>}
 
-      {dash ? <ShareholderWallet dash={dash} onRefresh={load} /> : (
+      {dash ? (
+        <ShareholderWallet
+          dash={dash}
+          onRefresh={() => load(false, selectedHoldingId)}
+          onSelectHolding={(id) => {
+            setSelectedHoldingId(id)
+            load(false, id)
+          }}
+        />
+      ) : (
         !showPlans && (
           <div className="text-center py-16 text-gray-400">
             <Landmark size={36} className="mx-auto mb-3 opacity-30" />
@@ -194,9 +210,10 @@ export default function UserShareholdersPage() {
       {showPlans && cfg && (
         <PlansPopup
           cfg={cfg}
+          shareholdings={dash?.shareholdings || []}
           ownedKeys={new Set((dash?.shareholdings || []).map((s) => s.planKey))}
           onClose={() => setShowPlans(false)}
-          onDone={async () => { setShowPlans(false); await load() }}
+          onDone={async () => { setShowPlans(false); await load(true) }}
         />
       )}
     </div>
@@ -205,11 +222,11 @@ export default function UserShareholdersPage() {
 
 // ── Portefeuille d'associé ──
 // CONFIDENTIALITÉ : uniquement des agrégats — pas de transferts individuels ni de soldes.
-function ShareholderWallet({ dash, onRefresh }) {
+function ShareholderWallet({ dash, onRefresh, onSelectHolding }) {
   const { stats = {}, zone = {}, posts = [], shareholdings = [], withdrawals = [] } = dash || {}
   const activeHoldings = Array.isArray(shareholdings) ? shareholdings : []
-  const primaryHolding = activeHoldings[0] || {}
-  const currentPercent = primaryHolding.percent || 1
+  const currentHolding = activeHoldings.find((h) => String(h._id) === String(dash?.selectedHoldingId || zone?.holdingId)) || activeHoldings[0] || {}
+  const currentPercent = currentHolding.percent || zone?.percent || 1
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
 
@@ -234,17 +251,92 @@ function ShareholderWallet({ dash, onRefresh }) {
           </button>
         </div>
       )}
-      {/* Zone d'attribution */}
-      <div className="bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl p-5 shadow-lg">
-        <div className="flex items-center gap-2 opacity-90"><Crown size={16} /><span className="text-xs font-semibold uppercase">Zone d'attribution</span></div>
-        <p className="text-xl font-bold mt-1">{zone?.label || zone?.planKey || "Zone d'attribution"}</p>
-        {zone?.zone && <p className="text-sm opacity-85 flex items-center gap-1 mt-0.5"><MapPin size={13} /> {zone.zone}</p>}
-        <div className="flex flex-wrap gap-2 mt-3">
-          {activeHoldings.map((s) => (
-            <span key={s._id || s.planKey} className="text-[10px] font-semibold bg-white/20 rounded-full px-2.5 py-1">
-              {s.planLabel || s.planKey} · {s.percent}% · jusqu'au {s.endAt ? new Date(s.endAt).toLocaleDateString('fr-FR') : '—'}
+      {/* Sélecteur de dashboard par plan / part d'associé */}
+      {activeHoldings.length > 1 && (
+        <div className="bg-white rounded-2xl p-3 border border-indigo-150 shadow-sm space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+            <span className="flex items-center gap-1.5 text-indigo-700">
+              <Crown size={15} />
+              <span>Vos plans d'associé souscrits ({activeHoldings.length}) — Sélectionnez un tableau de bord :</span>
             </span>
-          ))}
+            <span className="text-[10px] font-semibold text-gray-400">
+              Chaque plan possède son propre journal et ses statistiques
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {activeHoldings.map((h) => {
+              const isSelected = String(h._id) === String(dash?.selectedHoldingId || zone?.holdingId)
+              return (
+                <button
+                  key={h._id}
+                  type="button"
+                  onClick={() => onSelectHolding?.(h._id)}
+                  className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                    isSelected
+                      ? 'bg-gradient-to-br from-indigo-600 to-violet-700 text-white border-transparent shadow-md ring-2 ring-indigo-300 scale-[1.02]'
+                      : 'bg-gray-50 text-gray-800 border-gray-200 hover:bg-gray-100 hover:border-indigo-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 w-full">
+                    <span className="text-xs font-black truncate">{h.planLabel || h.planKey}</span>
+                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                      isSelected ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-800'
+                    }`}>
+                      {h.percent}%
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-1 text-[11px] opacity-90 w-full">
+                    <span className="truncate flex items-center gap-1">
+                      <MapPin size={12} className={isSelected ? 'text-indigo-200' : 'text-gray-400'} />
+                      {h.zone || 'Global'}
+                    </span>
+                    {isSelected && (
+                      <span className="text-[10px] font-bold bg-white text-indigo-700 px-2 py-0.5 rounded-full shadow-2xs">
+                        Actif
+                      </span>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Zone d'attribution du plan sélectionné */}
+      <div className="bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl p-5 shadow-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 opacity-90">
+            <Crown size={16} />
+            <span className="text-xs font-semibold uppercase">Dashboard du plan : {zone?.label || zone?.planKey}</span>
+          </div>
+          <span className="text-xs font-black bg-white/20 rounded-full px-3 py-1">
+            Part active : {currentPercent}%
+          </span>
+        </div>
+        <p className="text-2xl font-bold mt-2">{zone?.label || zone?.planKey || "Zone d'attribution"}</p>
+        {zone?.zone && (
+          <p className="text-sm opacity-90 flex items-center gap-1.5 mt-1">
+            <MapPin size={14} className="text-amber-300" /> <b>Zone géographique couverte :</b> {zone.zone}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-white/20">
+          <span className="text-xs opacity-85">Toutes vos parts d'associé :</span>
+          {activeHoldings.map((s) => {
+            const isThis = String(s._id) === String(dash?.selectedHoldingId || zone?.holdingId)
+            return (
+              <button
+                key={s._id || s.planKey}
+                type="button"
+                onClick={() => onSelectHolding?.(s._id)}
+                className={`text-[10px] font-bold rounded-full px-2.5 py-1 transition-all ${
+                  isThis ? 'bg-white text-indigo-800 shadow-sm ring-1 ring-white' : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+              >
+                {s.planLabel || s.planKey} ({s.zone || 'Global'}) · {s.percent}%
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -541,6 +633,8 @@ function ShareholderWallet({ dash, onRefresh }) {
       {showWithdrawModal && (
         <ShareholderWithdrawModal
           availableBalance={availableFees}
+          selectedHoldingId={zone?.holdingId}
+          selectedPlanKey={zone?.planKey}
           onClose={() => setShowWithdrawModal(false)}
           onSuccess={(msg) => {
             setSuccessMsg(msg)
@@ -611,7 +705,7 @@ function StatCard({ icon: Icon, color, border, label, value }) {
 }
 
 // ── POP-UP des plans (s'ouvre au clic sur le bouton « Actions » / « Associés ») ──
-function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
+function PlansPopup({ cfg, shareholdings = [], ownedKeys, onClose, onDone }) {
   const allFeeCatalog = (Array.isArray(cfg?.feeCategories) && cfg.feeCategories.length > 0)
     ? cfg.feeCategories
     : ALL_FEE_CATALOG
@@ -637,6 +731,7 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
   const availableZonesForPlan = zonesList.filter((z) => {
     if (!selected) return false
     if (selected.key === 'arrondissement') return z.type === 'arrondissement'
+    if (selected.key === 'departement') return z.type === 'departement'
     if (selected.key === 'regional') return z.type === 'regional'
     if (selected.key === 'national') return z.type === 'national'
     if (selected.key === 'international' || selected.key === 'mondial') return z.type === 'international' || z.type === 'mondial'
@@ -775,7 +870,8 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
               {/* Plans par zone */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(cfg.plans || []).map((p) => {
-                  const owned = ownedKeys.has(p.key)
+                  const existingForPlan = (shareholdings || []).filter((s) => s.planKey === p.key)
+                  const isFullyOwned = (p.key === 'mondial' || p.key === 'international') && existingForPlan.length > 0
                   const isSel = selected?.key === p.key
                   const pFees = (Array.isArray(p.allowedFeeCategories) && p.allowedFeeCategories.length > 0)
                     ? p.allowedFeeCategories
@@ -785,13 +881,13 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
                     <button
                       key={p.key}
                       type="button"
-                      disabled={owned}
+                      disabled={isFullyOwned}
                       onClick={() => {
                         setSelected(p)
                         setPercent(Math.min(maxPercentAllowed, Math.max(1, Number(p.percent) || 1)))
                       }}
                       className={`text-left rounded-xl overflow-hidden border-2 transition-all ${
-                        owned ? 'opacity-50 cursor-not-allowed border-gray-100'
+                        isFullyOwned ? 'opacity-50 cursor-not-allowed border-gray-100'
                           : isSel ? 'border-indigo-600 ring-2 ring-indigo-200 scale-[1.02]' : 'border-gray-100 hover:border-indigo-200'
                       }`}
                     >
@@ -812,12 +908,16 @@ function PlansPopup({ cfg, ownedKeys, onClose, onDone }) {
                           {p.percent}% part
                         </span>
                       </div>
-                      {isSel && !owned && (
+                      {isSel && (
                         <div className="p-1 text-center text-[10px] font-bold text-indigo-700 bg-indigo-50 border-t border-indigo-100 flex items-center justify-center gap-1">
                           <CheckCircle2 size={11} /> Plan sélectionné
                         </div>
                       )}
-                      {owned && <div className="p-1 text-center text-[10px] text-gray-400 bg-gray-50">Déjà souscrit</div>}
+                      {!isSel && existingForPlan.length > 0 && (
+                        <div className="p-1 text-center text-[10px] text-indigo-700 bg-indigo-50/70 border-t border-indigo-100 font-semibold">
+                          {isFullyOwned ? '✓ Déjà souscrit (mondial)' : `✓ Déjà souscrit (${existingForPlan.length} zone${existingForPlan.length > 1 ? 's' : ''}) · Ajouter une zone`}
+                        </div>
+                      )}
                     </button>
                   )
                 })}
@@ -1111,7 +1211,7 @@ function TermSection({ title, text }) {
 
 
 
-function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) {
+function ShareholderWithdrawModal({ availableBalance = 0, selectedHoldingId, selectedPlanKey, onClose, onSuccess }) {
   const [method, setMethod] = useState('wallet') // 'wallet' | 'momo'
   const [amount, setAmount] = useState('')
   const [operator, setOperator] = useState('orange')
@@ -1160,6 +1260,8 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
             amount: amtNum,
             pin: pin.trim(),
             method: 'wallet',
+            shareholdingId: selectedHoldingId,
+            planKey: selectedPlanKey,
           }
         : {
             amount: amtNum,
@@ -1168,6 +1270,8 @@ function ShareholderWithdrawModal({ availableBalance = 0, onClose, onSuccess }) 
             accountName: accountName.trim(),
             pin: pin.trim(),
             method: 'momo',
+            shareholdingId: selectedHoldingId,
+            planKey: selectedPlanKey,
           }
 
       const res = await shareholdersApi.withdraw(payload)

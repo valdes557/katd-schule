@@ -5,7 +5,7 @@ const geographicZoneSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ['arrondissement', 'regional', 'national', 'international', 'mondial'],
+      enum: ['arrondissement', 'departement', 'regional', 'national', 'international', 'mondial'],
       required: true,
       index: true,
     },

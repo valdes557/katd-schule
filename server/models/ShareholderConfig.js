@@ -25,6 +25,12 @@ const DEFAULT_PLANS = [
     allowedFeeCategories: DEFAULT_ALLOWED_FEES,
   },
   {
+    key: 'departement', label: '1% au département', price: 250000,
+    percent: 1, durationYears: 35,
+    description: "1% d'action au niveau départemental. Somme non remboursable, valable 35 ans.",
+    allowedFeeCategories: DEFAULT_ALLOWED_FEES,
+  },
+  {
     key: 'regional', label: '1% régional', price: 496000,
     percent: 1, durationYears: 35,
     description: "1% d'action au niveau régional. Somme non remboursable, valable 35 ans.",
@@ -96,6 +102,13 @@ shareholderConfigSchema.statics.getOrCreate = async function () {
     cfg = await this.create({ key: 'main' })
   } else {
     let modified = false
+    if (cfg.plans && !cfg.plans.some((p) => p.key === 'departement')) {
+      const depPlan = DEFAULT_PLANS.find((p) => p.key === 'departement')
+      if (depPlan) {
+        cfg.plans.splice(1, 0, depPlan)
+        modified = true
+      }
+    }
     if (cfg.plans && !cfg.plans.some((p) => p.key === 'mondial')) {
       // Si la configuration existe déjà sans le plan mondial, on l'ajoute automatiquement
       const mondialPlan = DEFAULT_PLANS.find((p) => p.key === 'mondial')

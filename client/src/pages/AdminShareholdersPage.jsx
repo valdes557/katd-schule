@@ -13,7 +13,7 @@ import { shareholdersApi, zonesApi } from '../lib/api'
 import AdminZonesManagementTab from '../components/AdminZonesManagementTab'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR')
-const PLAN_NAMES = { arrondissement: 'Arrondissement', regional: 'Régional', national: 'National', international: 'International', mondial: 'Mondial' }
+const PLAN_NAMES = { arrondissement: 'Arrondissement', departement: 'Département', regional: 'Régional', national: 'National', international: 'International', mondial: 'Mondial' }
 
 const ALL_PLATFORM_FEES = [
   { key: 'subscription', label: "Souscriptions d'écoles", desc: "Licences et abonnements des établissements" },

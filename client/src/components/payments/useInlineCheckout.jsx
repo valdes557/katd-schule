@@ -140,23 +140,24 @@ function DirectChargeModal({ checkout, onClose, busy, setBusy, status, setStatus
         return
       }
 
-      // Cas 2 : Lien de redirection externe (ex. Wave ou portail opérateur)
+      // Cas 2 : Débit direct USSD / Push notification avec référence (reste sur la page sans redirection brusque)
+      const reference = res?.reference || res?.external_reference || res?.transaction_id
+      if (reference) {
+        setStatus(`Demande envoyée au +${currentCountry.dial} ${rawPhone} ! Confirmez le débit avec votre code secret Mobile Money sur votre téléphone…`)
+        const finalStatus = await poll(reference)
+        setDone(true)
+        setTimeout(() => onSuccess(reference, finalStatus), 1200)
+        return
+      }
+
+      // Cas 3 : Lien de redirection externe sans référence directe (ex. Wave ou portail opérateur externe)
       if (res && res.payment_link) {
         setStatus('Redirection vers la page de paiement sécurisée…')
         window.location.href = res.payment_link
         return
       }
 
-      // Cas 3 : Débit direct USSD / Push notification avec référence
-      const reference = res?.reference || res?.external_reference || res?.transaction_id
-      if (!reference) {
-        throw new Error(res?.message || "Impossible d'initier la transaction Mobile Money.")
-      }
-
-      setStatus(`Demande envoyée au +${currentCountry.dial} ${rawPhone} ! Confirmez le débit avec votre code PIN Mobile Money sur votre téléphone…`)
-      const finalStatus = await poll(reference)
-      setDone(true)
-      setTimeout(() => onSuccess(reference, finalStatus), 1200)
+      throw new Error(res?.message || "Impossible d'initier la transaction Mobile Money.")
     } catch (err) {
       const msg = err.message || 'Erreur lors du débit Mobile Money'
       let friendly = msg

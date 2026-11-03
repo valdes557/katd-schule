@@ -1327,8 +1327,11 @@ export const adminMerchantsApi = {
 export const shareholdersApi = {
   config: () => api.get('/shareholders/config'),
   me: () => api.get('/shareholders/me'),
-  // Portefeuille actionnaire : agrégats de la zone + gains + publications admin
-  dashboard: () => api.get('/shareholders/dashboard'),
+  // Portefeuille actionnaire : agrégats de la zone + gains + publications admin (séparé par plan/part)
+  dashboard: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString()
+    return api.get('/shareholders/dashboard' + (qs ? '?' + qs : ''))
+  },
   withdraw: (payload) => api.post('/shareholders/withdraw', payload),
   withdrawals: () => api.get('/shareholders/withdrawals'),
   subscribe: (payload) => api.post('/shareholders/subscribe', payload),
