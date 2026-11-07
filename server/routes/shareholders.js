@@ -326,42 +326,50 @@ async function calculateShareholderEarnings(main) {
     // Portée délimitée : filtre individuel par utilisateur pour respecter l'antériorité et la date d'affectation
     const userConditions = []
     usersInZone.forEach((u) => {
-      let effectiveCutoff = null
+      let effectiveCutoff = new Date(shareholdingStartAt)
       if (u.geographicZone?.assignedAt) {
         effectiveCutoff = new Date(Math.max(new Date(shareholdingStartAt).getTime(), new Date(u.geographicZone.assignedAt).getTime()))
-      } else if (u.createdAt && new Date(u.createdAt) >= new Date(shareholdingStartAt)) {
-        effectiveCutoff = new Date(u.createdAt)
       }
-      if (effectiveCutoff) {
-        userConditions.push({
-          owner: u._id,
-          createdAt: { $gte: effectiveCutoff },
-        })
-      }
+      userConditions.push({
+        owner: u._id,
+        createdAt: { $gte: effectiveCutoff },
+      })
     })
 
     if (userConditions.length > 0) {
       const eligibleTxs = await WalletTransaction.find({
         $or: userConditions,
-        type: {
-          $in: [
-            'transfer_fee',
-            'withdrawal',
-            'maintenance_fee',
-            'collect_fee',
-            'merchant_signup',
-            'agent_subscription',
-            'agent_signup',
-            'client_subscription',
-            'client_signup',
-            'ai_subscription',
-            'ai_subscription_revenue',
-            'shareholder_subscription',
-            'shareholder_payment',
-            'subscription',
-            'deposit_fee',
-          ],
-        },
+        $and: [
+          {
+            $or: [
+              {
+                type: {
+                  $in: [
+                    'transfer_fee',
+                    'withdrawal',
+                    'maintenance_fee',
+                    'collect_fee',
+                    'merchant_signup',
+                    'agent_subscription',
+                    'agent_signup',
+                    'client_subscription',
+                    'client_signup',
+                    'ai_subscription',
+                    'ai_subscription_revenue',
+                    'shareholder_subscription',
+                    'shareholder_payment',
+                    'subscription',
+                    'deposit_fee',
+                  ],
+                },
+              },
+              {
+                type: 'transfer_sent',
+                'meta.reason': { $in: ['client_collect_signup', 'merchant_signup', 'agent_signup'] },
+              },
+            ],
+          },
+        ],
       })
         .populate('owner', 'name email phone')
         .sort({ createdAt: -1 })
@@ -404,20 +412,31 @@ async function calculateShareholderEarnings(main) {
           label = 'Collecte mensuelle'
           pFee = Number(tx.amount || 0)
           desc = 'Frais de collecte mensuelle'
-        } else if (tx.type === 'merchant_signup') {
+        } else if (
+          tx.type === 'merchant_signup' ||
+          (tx.type === 'transfer_sent' && (tx.meta?.reason === 'merchant_signup' || tx.reason === 'merchant_signup'))
+        ) {
           catKey = 'merchant_signup'
           label = 'Adhésion Marchand'
-          pFee = Number(tx.amount || 0)
+          pFee = Number(tx.meta?.fee || tx.amount || 0)
           desc = 'Frais adhésion marchand'
-        } else if (tx.type === 'agent_subscription' || tx.type === 'agent_signup') {
+        } else if (
+          tx.type === 'agent_subscription' ||
+          tx.type === 'agent_signup' ||
+          (tx.type === 'transfer_sent' && (tx.meta?.reason === 'agent_signup' || tx.reason === 'agent_signup'))
+        ) {
           catKey = 'agent_signup'
           label = 'Adhésion Agence de collecte'
-          pFee = Number(tx.amount || 0)
+          pFee = Number(tx.meta?.fee || tx.amount || 0)
           desc = 'Frais adhésion agence de collecte'
-        } else if (tx.type === 'client_subscription' || tx.type === 'client_signup') {
+        } else if (
+          tx.type === 'client_subscription' ||
+          tx.type === 'client_signup' ||
+          (tx.type === 'transfer_sent' && (tx.meta?.reason === 'client_collect_signup' || tx.reason === 'client_collect_signup'))
+        ) {
           catKey = 'client_signup'
           label = 'Adhésion Client collecte'
-          pFee = Number(tx.amount || 0)
+          pFee = Number(tx.meta?.fee || tx.amount || 0)
           desc = 'Frais adhésion client de collecte'
         } else if (tx.type === 'ai_subscription' || tx.type === 'ai_subscription_revenue') {
           catKey = 'ai_subscription'
@@ -482,13 +501,9 @@ async function calculateShareholderEarnings(main) {
       piList.forEach((pi) => {
         const initiatorId = String(pi.initiatedBy?._id || pi.initiatedBy || pi.meta?.userId || pi.meta?.directorId || '')
         const initiatorUser = usersInZone.find((u) => String(u._id) === initiatorId)
-        let effectiveCutoff = shareholdingStartAt
-        if (initiatorUser) {
-          if (initiatorUser.geographicZone?.assignedAt) {
-            effectiveCutoff = new Date(Math.max(new Date(shareholdingStartAt).getTime(), new Date(initiatorUser.geographicZone.assignedAt).getTime()))
-          } else if (initiatorUser.createdAt && new Date(initiatorUser.createdAt) >= new Date(shareholdingStartAt)) {
-            effectiveCutoff = new Date(initiatorUser.createdAt)
-          }
+        let effectiveCutoff = new Date(shareholdingStartAt)
+        if (initiatorUser?.geographicZone?.assignedAt) {
+          effectiveCutoff = new Date(Math.max(new Date(shareholdingStartAt).getTime(), new Date(initiatorUser.geographicZone.assignedAt).getTime()))
         }
         if (new Date(pi.createdAt) < new Date(effectiveCutoff)) return
 

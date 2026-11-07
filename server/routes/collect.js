@@ -1919,9 +1919,15 @@ router.post('/client/subscribe-wallet', protect, async (req, res) => {
     // Vérifier si cet utilisateur a déjà été débité de son portefeuille pour la souscription client
     const WalletTransaction = require('../models/WalletTransaction')
     const existingDebit = await WalletTransaction.findOne({
-      user: req.user._id,
-      type: 'transfer_sent',
-      'meta.reason': 'client_collect_signup',
+      $and: [
+        { $or: [{ owner: req.user._id }, { user: req.user._id }] },
+        {
+          $or: [
+            { type: 'client_subscription' },
+            { type: 'transfer_sent', 'meta.reason': 'client_collect_signup' },
+          ],
+        },
+      ],
       createdAt: { $gte: new Date(Date.now() - 48 * 3600 * 1000) },
     }).sort({ createdAt: -1 })
 
@@ -1932,7 +1938,7 @@ router.post('/client/subscribe-wallet', protect, async (req, res) => {
       try {
         await wallet.debit(req.user._id, {
           amount: fee,
-          type: 'transfer_sent',
+          type: 'client_subscription',
           description: `Souscription Client Collecte Journalière (${interval === 'monthly' ? 'Mensuelle' : 'Annuelle'})`,
           meta: { reason: 'client_collect_signup', fee, interval },
         })
