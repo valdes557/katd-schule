@@ -11,6 +11,7 @@ import { collectApi, walletApi } from '../lib/api'
 import SavedMomoSelector from './SavedMomoSelector'
 import CagnotteLockModal from './CagnotteLockModal'
 import CagnotteLockProofModal from './CagnotteLockProofModal'
+import ClientAgentMessagingTab from './ClientAgentMessagingTab'
 import { Lock, Unlock, MessageSquare, FileText } from 'lucide-react'
 import { useInlineCheckout } from './payments/useInlineCheckout'
 
@@ -390,7 +391,7 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
 
               <button
                 type="button"
-                onClick={() => navigate('/u/messages')}
+                onClick={() => setNavTab('messages')}
                 className="text-[11px] font-bold text-gray-600 hover:text-gray-900 flex items-center gap-1 py-1 px-2.5 rounded-xl hover:bg-gray-100 transition-colors"
               >
                 <MessageSquare size={13} className="text-indigo-500" />
@@ -705,6 +706,16 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
               <p><b>Contact :</b> {agent.phone || 'Non renseigné'}</p>
               <p><b>Secteur :</b> {agent.neighborhood || 'Quartier général'}</p>
             </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setNavTab('messages')}
+                className="w-full py-2.5 bg-[#0f9755] hover:bg-[#0c7c45] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all"
+              >
+                <MessageSquare size={15} />
+                <span>Écrire à mon agent de collecte</span>
+              </button>
+            </div>
             <div className="mt-3 pt-3 border-t border-gray-150 text-[11px] text-gray-500 leading-relaxed">
               <b>Garantie de protection :</b> Conformément aux règles strictes de la plateforme, ni l'agent ni l'administrateur n'ont l'autorisation de retirer votre argent. Vos fonds sont sanctuarisés et retirables uniquement par vous-même.
             </div>
@@ -744,13 +755,21 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
         </div>
       )}
 
+      {/* ONGLET MESSAGES : DISCUSSION DIRECTE CLIENT <-> AGENT */}
+      {navTab === 'messages' && (
+        <div className="px-4 pt-3 pb-6">
+          <ClientAgentMessagingTab showToast={showToast} />
+        </div>
+      )}
+
       {/* DOCK DE NAVIGATION INFÉRIEUR IDENTIQUE À LA CAPTURE */}
       <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-gray-200/90 z-30 max-w-md mx-auto py-2 px-3 shadow-[0_-4px_16px_rgba(0,0,0,0.05)]">
-        <div className="grid grid-cols-4 text-center">
+        <div className="grid grid-cols-5 text-center">
           {[
             { key: 'home', label: 'Accueil', icon: Home },
             { key: 'stats', label: 'Stats', icon: BarChart3 },
             { key: 'history', label: 'Historique', icon: History },
+            { key: 'messages', label: 'Messages', icon: MessageSquare },
             { key: 'profile', label: 'Profil', icon: User },
           ].map((item) => {
             const active = navTab === item.key

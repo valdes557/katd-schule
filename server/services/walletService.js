@@ -8,6 +8,8 @@ const User = require('../models/User')
 const TRANSFER_FEE_RATE = 0.0025
 // Frais de retrait vers un opérateur externe : 1% du montant, DÉDUITS du montant reçu.
 const WITHDRAWAL_FEE_RATE = 0.01
+// Frais de dépôt Mobile Money vers Katd-Schüle : 1% du montant déposé.
+const DEPOSIT_FEE_RATE = 0.01
 // Commission marchand : 0,20% du montant, bonus virtuel crédité au marchand (envoyeur) sur ses transferts.
 const MERCHANT_COMMISSION_RATE = 0.002
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'valdeslando15@gmail.com').toLowerCase()
@@ -201,6 +203,13 @@ function computeWithdrawalFee(amount) {
   return Math.round(amt * WITHDRAWAL_FEE_RATE)
 }
 
+// Calcule les frais de dépôt Mobile Money vers Katd-Schüle (1%, arrondi à l'entier).
+function computeDepositFee(amount) {
+  const amt = Number(amount)
+  if (!amt || amt <= 0) return 0
+  return Math.max(1, Math.round(amt * DEPOSIT_FEE_RATE))
+}
+
 // Calcule la commission marchand (0,20%, arrondi à l'entier) — bonus virtuel au marchand.
 function computeMerchantCommission(amount) {
   const amt = Number(amount)
@@ -217,7 +226,14 @@ async function collectFee({ fee, fromUserId, description, meta = {} }) {
   // 1. Répartition automatique 60% Compte 1 / 40% Compte 2
   try {
     const { recordPlatformFee } = require('./adminCoAccountsService')
-    const fCat = meta?.feeType === 'maintenance' ? 'maintenance_fee' : meta?.feeType === 'withdrawal' ? 'withdrawal_fee' : 'transfer_fee'
+    const fCat =
+      meta?.feeType === 'maintenance'
+        ? 'maintenance_fee'
+        : meta?.feeType === 'withdrawal'
+          ? 'withdrawal_fee'
+          : meta?.feeType === 'deposit'
+            ? 'deposit_fee'
+            : 'transfer_fee'
     await recordPlatformFee({
       category: fCat,
       amount: f,
@@ -349,6 +365,6 @@ async function transferBetweenUsers(fromUserId, toUserId, { amount, description 
 module.exports = {
   getOrCreateWallet, credit, debit, lock, settleLocked, unlock, transfer,
   ensureAccountNo, ensureReferralCode, getPlatformAdmin, computeTransferFee, transferBetweenUsers,
-  computeWithdrawalFee, collectFee, computeMerchantCommission,
-  TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE, MERCHANT_COMMISSION_RATE,
+  computeWithdrawalFee, computeDepositFee, collectFee, computeMerchantCommission,
+  TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE, DEPOSIT_FEE_RATE, MERCHANT_COMMISSION_RATE,
 }

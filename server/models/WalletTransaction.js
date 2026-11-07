@@ -44,6 +44,7 @@ const txSchema = new mongoose.Schema(
         'client_subscription', // souscription client collecte journalière (débit client)
         'collect_deposit',     // approvisionnement compte collecte client depuis le portefeuille
         'collect_fee',         // commission ou frais de fonctionnement collecte journalière
+        'deposit_fee',         // frais de dépôt Mobile Money 1% prélevés à l'utilisateur (débit)
       ],
       required: true,
       index: true,

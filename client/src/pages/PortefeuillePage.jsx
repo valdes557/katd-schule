@@ -138,6 +138,9 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
   // Aperçu des frais de retrait (1%, arrondi, déduits du montant reçu)
   const withdrawFee = Math.round((Number(f.amount) || 0) * 0.01)
   const withdrawNet = (Number(f.amount) || 0) - withdrawFee
+  // Aperçu des frais de dépôt (1%, arrondi, prélevés)
+  const depositFee = Math.round((Number(f.amount) || 0) * 0.01)
+  const depositNet = (Number(f.amount) || 0) - depositFee
 
   // Résout le numéro de compte du destinataire (KS######) -> nom
   const lookupRecipient = async () => {
@@ -483,6 +486,23 @@ function ActionModal({ type, setModal, teachers, hasPin, busy, setBusy, onDone, 
               />
             </div>
           </div>
+
+          {Number(f.amount) > 0 && (
+            <div className="text-xs bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-1">
+              <div className="flex justify-between text-gray-700">
+                <span>Montant débité de Mobile Money</span>
+                <b>{fmt(Number(f.amount))} FCFA</b>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>Frais de dépôt (1%)</span>
+                <span>− {fmt(depositFee)} FCFA</span>
+              </div>
+              <div className="flex justify-between border-t border-emerald-200 pt-1 mt-1 text-emerald-900 font-bold">
+                <span>Crédité sur votre portefeuille</span>
+                <span className="text-emerald-700 text-sm">+{fmt(depositNet)} {currentCountry.currency}</span>
+              </div>
+            </div>
+          )}
 
           {(f.country || '') === 'BF' && String(f.momoOperator || '').toLowerCase().includes('orange') && (
             <div>

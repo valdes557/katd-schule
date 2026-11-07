@@ -20,12 +20,13 @@ const ALL_PLATFORM_FEES = [
   { key: 'transfer_fee', label: "Transferts d'argent", desc: "Frais de transferts P2P utilisateurs" },
   { key: 'withdrawal_fee', label: "Retraits Mobile Money", desc: "Frais de retrait MTN & Orange Money" },
   { key: 'collect_fee', label: "Collecte mensuelle", desc: "1 000 FCFA mensuels de tenue de compte" },
-  { key: 'client_signup', label: "Souscription client collecte", desc: "4 995 FCFA par nouveau client" },
-  { key: 'agent_signup', label: "Ouverture compte agent", desc: "4 800 FCFA par nouvelle agence de collecte" },
+  { key: 'client_signup', label: "Souscription client collecte", desc: "2 166 FCFA par nouveau client" },
+  { key: 'agent_signup', label: "Ouverture compte agent", desc: "Frais d'ouverture compte agence de collecte" },
   { key: 'merchant_signup', label: "Ouverture compte Marchand", desc: "Frais d'adhésion commerces partenaires" },
   { key: 'shareholder_subscription', label: "Souscription associés (actions)", desc: "Revenus des actions vendues" },
   { key: 'ai_subscription', label: "Souscription IA", desc: "Crédits et outils IA" },
   { key: 'maintenance_fee', label: "Maintenance système", desc: "Frais généraux plateforme" },
+  { key: 'deposit_fee', label: "Frais de dépôt Mobile Money (1%)", desc: "1% sur les dépôts MTN & Orange Money vers le portefeuille" },
 ]
 
 const POST_CATEGORIES = [

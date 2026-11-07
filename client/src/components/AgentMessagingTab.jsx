@@ -60,24 +60,17 @@ export default function AgentMessagingTab({ showBanner }) {
   }
 
   // Chargement de la conversation avec le contact sélectionné
-  const loadConversation = async (contact) => {
+  const loadConversation = async (contact, silent = false) => {
     const contactId = contact?._id || contact?.userId
     if (!contactId) return
     try {
-      setLoadingMsgs(true)
-      const res = await messagesApi.conversations()
-      const convList = res.data || []
-      const found = convList.find((c) => c.contact && (c.contact._id === contactId || c.contact._id === contact._id))
-      if (found) {
-        const detail = await messagesApi.conversation(found.conversationId)
-        setMessages(detail.data || [])
-      } else {
-        setMessages([])
-      }
+      if (!silent) setLoadingMsgs(true)
+      const res = await messagesApi.withUser(contactId)
+      setMessages(res.data || res.messages || [])
     } catch (_) {
-      setMessages([])
+      if (!silent) setMessages([])
     } finally {
-      setLoadingMsgs(false)
+      if (!silent) setLoadingMsgs(false)
     }
   }
 
@@ -86,9 +79,12 @@ export default function AgentMessagingTab({ showBanner }) {
   }, [])
 
   useEffect(() => {
-    if (selectedContact) {
-      loadConversation(selectedContact)
-    }
+    if (!selectedContact) return
+    loadConversation(selectedContact)
+    const timer = setInterval(() => {
+      loadConversation(selectedContact, true)
+    }, 5000)
+    return () => clearInterval(timer)
   }, [selectedContact])
 
   useEffect(() => {
@@ -114,10 +110,12 @@ export default function AgentMessagingTab({ showBanner }) {
       if (activeCls.length > 0) {
         setSelectedContact({
           _id: activeCls[0].userId,
+          userId: activeCls[0].userId,
           name: activeCls[0].fullName,
           phone: activeCls[0].phone,
           accountNumber: activeCls[0].accountNumber,
           avatar: activeCls[0].avatar,
+          hasUserAccount: activeCls[0].hasUserAccount,
           displayRole: 'Client (' + activeCls[0].accountNumber + ')',
         })
       } else {
@@ -137,8 +135,14 @@ export default function AgentMessagingTab({ showBanner }) {
 
     setUploadingFile(true)
     try {
-      const res = await uploadToCloudinary(file)
-      const url = res.secure_url || res.url
+      let url = ''
+      try {
+        const upDocs = await messagesApi.uploadDocs([file])
+        url = upDocs?.attachments?.[0]?.url || ''
+      } catch (_) {
+        const res = await uploadToCloudinary(file)
+        url = res.secure_url || res.secureUrl || res.url
+      }
       setAttachments((prev) => [
         ...prev,
         {

@@ -51,23 +51,16 @@ export default function AdminAgentMessagingTab({ showBanner }) {
     }
   }
 
-  const loadConversation = async (agent) => {
+  const loadConversation = async (agent, silent = false) => {
     if (!agent || !agent._id) return
     try {
-      setLoadingMsgs(true)
-      const res = await messagesApi.conversations()
-      const convList = res.data || []
-      const found = convList.find((c) => c.contact && c.contact._id === agent._id)
-      if (found) {
-        const detail = await messagesApi.conversation(found.conversationId)
-        setMessages(detail.data || [])
-      } else {
-        setMessages([])
-      }
+      if (!silent) setLoadingMsgs(true)
+      const res = await messagesApi.withUser(agent._id)
+      setMessages(res.data || res.messages || [])
     } catch (_) {
-      setMessages([])
+      if (!silent) setMessages([])
     } finally {
-      setLoadingMsgs(false)
+      if (!silent) setLoadingMsgs(false)
     }
   }
 
@@ -76,9 +69,12 @@ export default function AdminAgentMessagingTab({ showBanner }) {
   }, [])
 
   useEffect(() => {
-    if (selectedAgent) {
-      loadConversation(selectedAgent)
-    }
+    if (!selectedAgent) return
+    loadConversation(selectedAgent)
+    const timer = setInterval(() => {
+      loadConversation(selectedAgent, true)
+    }, 5000)
+    return () => clearInterval(timer)
   }, [selectedAgent])
 
   // Défilement automatique vers le bas
@@ -116,8 +112,14 @@ export default function AdminAgentMessagingTab({ showBanner }) {
 
     try {
       setSending(true)
-      const uploadRes = await uploadToCloudinary(file)
-      const secureUrl = uploadRes.secureUrl || uploadRes.url
+      let secureUrl = ''
+      try {
+        const upDocs = await messagesApi.uploadDocs([file])
+        secureUrl = upDocs?.attachments?.[0]?.url || ''
+      } catch (_) {
+        const uploadRes = await uploadToCloudinary(file)
+        secureUrl = uploadRes.secureUrl || uploadRes.secure_url || uploadRes.url
+      }
 
       await messagesApi.send({
         recipientId: selectedAgent._id,
@@ -147,8 +149,14 @@ export default function AdminAgentMessagingTab({ showBanner }) {
 
     try {
       setUploadingFile(true)
-      const uploadRes = await uploadToCloudinary(file)
-      const secureUrl = uploadRes.secureUrl || uploadRes.url
+      let secureUrl = ''
+      try {
+        const upDocs = await messagesApi.uploadDocs([file])
+        secureUrl = upDocs?.attachments?.[0]?.url || ''
+      } catch (_) {
+        const uploadRes = await uploadToCloudinary(file)
+        secureUrl = uploadRes.secureUrl || uploadRes.secure_url || uploadRes.url
+      }
 
       setBroadcastAttachments((prev) => [
         ...prev,

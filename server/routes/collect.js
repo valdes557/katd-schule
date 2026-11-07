@@ -225,7 +225,7 @@ router.get('/config', protect, async (req, res) => {
       termsAndConditions: cfg.termsAndConditions,
       monthlyFee: cfg.monthlyFee,
       agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4995,
-      clientSubscriptionFee: cfg.clientSubscriptionFee ?? 4995,
+      clientSubscriptionFee: cfg.clientSubscriptionFee ?? 2166,
       clientSubscriptionInterval: cfg.clientSubscriptionInterval ?? 'annual',
       defaultDailyTarget: cfg.defaultDailyTarget,
       cagnotteLockTerms: cfg.cagnotteLockTerms,
@@ -291,7 +291,7 @@ router.get('/my-agent-status', protect, async (req, res) => {
       subscriptionPaid: !!agent?.subscriptionPaid,
       subscriptionAmount: agent?.subscriptionAmount || 0,
       agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4995,
-      clientSubscriptionFee: cfg.clientSubscriptionFee ?? 4995,
+      clientSubscriptionFee: cfg.clientSubscriptionFee ?? 2166,
       clientSubscriptionInterval: cfg.clientSubscriptionInterval ?? 'annual',
       status: agent ? agent.status : null,
       isClient: !!clientDoc,
@@ -1640,7 +1640,7 @@ router.get('/admin/subscription-history', protect, adminOnly, async (req, res) =
         action: 'client_subscribed',
         performerName: cl.subscriptionPaymentMethod === 'wallet' ? 'Portefeuille KATD' : 'Mobile Money Direct',
         date: cl.subscriptionPaidAt || cl.createdAt,
-        notes: `Souscription client ${cl.subscriptionInterval === 'monthly' ? 'mensuelle' : 'annuelle'} (${(cl.subscriptionAmount || 4995).toLocaleString('fr-FR')} FCFA)`,
+        notes: `Souscription client ${cl.subscriptionInterval === 'monthly' ? 'mensuelle' : 'annuelle'} (${(cl.subscriptionAmount || 2166).toLocaleString('fr-FR')} FCFA)`,
       })
     }
 
@@ -1829,7 +1829,7 @@ router.put('/admin/terms', protect, adminOnly, async (req, res) => {
 router.post('/client/subscribe-wallet', protect, async (req, res) => {
   try {
     const cfg = await CollectConfig.getOrCreate()
-    const fee = Number(cfg.clientSubscriptionFee) || 4995
+    const fee = Number(cfg.clientSubscriptionFee) || 2166
     const interval = cfg.clientSubscriptionInterval || 'annual'
 
     // 1. Débit du portefeuille personnel de l'utilisateur

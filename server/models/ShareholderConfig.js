@@ -15,6 +15,7 @@ const DEFAULT_ALLOWED_FEES = [
   'shareholder_subscription',
   'ai_subscription',
   'maintenance_fee',
+  'deposit_fee',
 ]
 
 const DEFAULT_PLANS = [
@@ -77,6 +78,7 @@ const planSchema = new mongoose.Schema({
       'shareholder_subscription',
       'ai_subscription',
       'maintenance_fee',
+      'deposit_fee',
     ],
   },
 }, { _id: false })

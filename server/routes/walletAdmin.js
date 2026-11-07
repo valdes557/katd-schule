@@ -439,12 +439,13 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
       withdrawal: 'Frais de retrait (1%)',
       maintenance: 'Frais de maintenance',
       collect: 'Frais de collecte journalière (1 100 FCFA / client)',
+      deposit: 'Frais de dépôt Mobile Money (1%)',
     }
     let fees = docs.map((tx) => {
       const p = tx.counterparty || {}
-      // Distingue frais de transfert (0,25%), retrait (1%), maintenance et collecte via meta.feeType.
+      // Distingue frais de transfert (0,25%), retrait (1%), maintenance, collecte et dépôt (1%) via meta.feeType.
       const ft = tx.meta && tx.meta.feeType
-      const kind = ft === 'withdrawal' ? 'withdrawal' : ft === 'maintenance' ? 'maintenance' : ft === 'collect' ? 'collect' : 'transfer'
+      const kind = ft === 'withdrawal' ? 'withdrawal' : ft === 'maintenance' ? 'maintenance' : ft === 'collect' ? 'collect' : ft === 'deposit' ? 'deposit' : 'transfer'
       const isCollect = kind === 'collect'
       const agencyName = tx.meta?.agencyName || tx.meta?.agentName || ''
       const agentDisplayName = isCollect && agencyName
@@ -457,7 +458,7 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
         feeLabel: FEE_LABELS[kind] || FEE_LABELS.transfer,
         amount: tx.amount, currency: tx.currency || 'XOF',
         baseAmount: (tx.meta && tx.meta.baseAmount) || null,
-        rate: (tx.meta && tx.meta.rate) || (kind === 'withdrawal' ? 0.01 : kind === 'maintenance' ? null : kind === 'collect' ? null : 0.0025),
+        rate: (tx.meta && tx.meta.rate) || (kind === 'withdrawal' || kind === 'deposit' ? 0.01 : kind === 'maintenance' ? null : kind === 'collect' ? null : 0.0025),
         isCollect,
         clientCount: tx.meta?.clientCount || (isCollect ? Math.round(tx.amount / 1100) : null),
         agencyName: tx.meta?.agencyName || null,
@@ -470,7 +471,7 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
       }
     })
 
-    if (['transfer', 'withdrawal', 'maintenance', 'collect'].includes(feeType)) fees = fees.filter((f) => f.feeType === feeType)
+    if (['transfer', 'withdrawal', 'maintenance', 'collect', 'deposit'].includes(feeType)) fees = fees.filter((f) => f.feeType === feeType)
     if (group) {
       if (group === 'staff' || group === 'users' || group === 'collect') fees = fees.filter((f) => f.payer.group === group)
       else fees = fees.filter((f) => f.payer.role === group)
@@ -486,7 +487,7 @@ router.get('/transaction-fees', protect, adminOnly, async (req, res) => {
     const stats = {
       totalCount: fees.length, totalAmount: 0, avg: 0,
       byGroup: { staff: { count: 0, total: 0 }, users: { count: 0, total: 0 }, collect: { count: 0, total: 0 } },
-      byType: { transfer: { count: 0, total: 0 }, withdrawal: { count: 0, total: 0 }, maintenance: { count: 0, total: 0 }, collect: { count: 0, total: 0 } },
+      byType: { transfer: { count: 0, total: 0 }, withdrawal: { count: 0, total: 0 }, maintenance: { count: 0, total: 0 }, collect: { count: 0, total: 0 }, deposit: { count: 0, total: 0 } },
       collectAgenciesSummary: {},
       byPeriod: [], period,
     }

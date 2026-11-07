@@ -49,12 +49,13 @@ const ALL_FEE_CATALOG = [
   { key: 'transfer_fee', label: "Transferts d'argent", desc: "Frais de transferts P2P entre utilisateurs de la plateforme" },
   { key: 'withdrawal_fee', label: "Retraits Mobile Money", desc: "Commissions sur les retraits vers MTN et Orange Money" },
   { key: 'collect_fee', label: "Collecte mensuelle", desc: "Frais de tenue de compte mensuels (1 000 FCFA) sur les collectes" },
-  { key: 'client_signup', label: "Souscription client collecte", desc: "Frais d'adhésion client d'épargne journalière (4 995 FCFA)" },
-  { key: 'agent_signup', label: "Ouverture compte agent", desc: "Frais d'activation des agences et points de collecte (4 800 FCFA)" },
+  { key: 'client_signup', label: "Souscription client collecte", desc: "Frais d'adhésion client d'épargne journalière (2 166 FCFA)" },
+  { key: 'agent_signup', label: "Ouverture compte agent", desc: "Frais d'activation des agences et points de collecte" },
   { key: 'merchant_signup', label: "Ouverture compte Marchand", desc: "Frais d'adhésion et intégration des commerces partenaires" },
   { key: 'shareholder_subscription', label: "Souscription des associés", desc: "Revenus issus des parts d'actions souscrites sur la plateforme" },
   { key: 'ai_subscription', label: "Souscription IA", desc: "Crédits et souscriptions aux fonctionnalités d'intelligence artificielle" },
   { key: 'maintenance_fee', label: "Maintenance système", desc: "Frais généraux d'infrastructure et de maintenance de la plateforme" },
+  { key: 'deposit_fee', label: "Frais de dépôt Mobile Money (1%)", desc: "Frais de 1% prélevés sur les dépôts MTN MoMo et Orange Money vers Katd-Schüle" },
 ]
 const POST_META = {
   depense: { label: 'Dépense', icon: Receipt, cls: 'bg-orange-100 text-orange-700' },

@@ -276,6 +276,21 @@ export const messagesApi = {
   getAdminAgents: () => api.get('/messages/admin-agents'),
   broadcastAgents: (data) => api.post('/messages/broadcast-agents', data),
   getAgentClients: () => api.get('/messages/agent-clients'),
+  getClientContacts: () => api.get('/messages/client-contacts'),
+  withUser: (userId) => api.get(`/messages/with/${userId}`),
+  uploadDocs: async (files) => {
+    const fd = new FormData()
+    for (const f of files || []) fd.append('files', f)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/messages/upload-docs`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
 }
 
 export const mediaApi = {
@@ -1303,6 +1318,7 @@ export const adminBoostsApi = {
 export const merchantApi = {
   me: () => api.get('/merchant/me'),
   initiate: (payload) => api.post('/merchant/initiate', payload),
+  subscribeWallet: (payload = {}) => api.post('/merchant/subscribe-wallet', payload),
   lookupCollectClient: (accountNumber) => api.get('/merchant/collect-client-lookup?accountNumber=' + encodeURIComponent(accountNumber)),
   transferToCollectClient: (payload) => api.post('/merchant/transfer-to-collect-client', payload),
 }
@@ -1430,6 +1446,19 @@ export const collectApi = {
   lockCagnotte: (data) => api.post('/collect/client/lock-cagnotte', data),
   transferCagnotteToWallet: () => api.post('/collect/client/transfer-to-wallet'),
   getAdminLockedContracts: () => api.get('/collect/admin/locked-contracts'),
+  uploadDocs: async (files) => {
+    const fd = new FormData()
+    for (const f of files || []) fd.append('files', f)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_URL}/messages/upload-docs`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
+    return json
+  },
 }
 
 // Gestion des comptes administrateurs associés (60% / 40%)

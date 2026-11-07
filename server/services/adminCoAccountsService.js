@@ -16,6 +16,7 @@ const CATEGORY_LABELS = {
   agent_signup: "Frais d'ouverture compte agent de collecte",
   client_signup: "Frais de souscription client collecte journalière",
   shareholder_subscription: "Frais de souscription des associés (actions)",
+  deposit_fee: "Frais de dépôt Mobile Money (1%)",
 }
 
 /**

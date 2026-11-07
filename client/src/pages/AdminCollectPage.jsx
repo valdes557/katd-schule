@@ -206,7 +206,7 @@ export default function AdminCollectPage() {
           { key: 'locked_contracts', label: 'Contrats Cagnotte Bloquée', icon: Lock },
           { key: 'subscriptions', label: 'Historique des Validations & Souscriptions', icon: Shield },
           { key: 'withdrawals', label: 'Historique des retraits Administrateur', icon: ArrowDownCircle },
-          { key: 'terms', label: "Termes & Conditions d'adhésion", icon: FileText },
+          { key: 'terms', label: "Tarifs de Souscription & Termes d'adhésion", icon: FileText },
         ].map((t) => (
           <button
             key={t.key}
@@ -991,7 +991,7 @@ function AdminTermsTab({ showBanner }) {
   const [cagnotteLockTerms, setCagnotteLockTerms] = useState('')
   const [monthlyFee, setMonthlyFee] = useState(1000)
   const [agentSubscriptionFee, setAgentSubscriptionFee] = useState(4995)
-  const [clientSubscriptionFee, setClientSubscriptionFee] = useState(4995)
+  const [clientSubscriptionFee, setClientSubscriptionFee] = useState(2166)
   const [clientSubscriptionInterval, setClientSubscriptionInterval] = useState('annual')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -1003,7 +1003,7 @@ function AdminTermsTab({ showBanner }) {
         setCagnotteLockTerms(res.cagnotteLockTerms || '')
         setMonthlyFee(res.monthlyFee ?? 1000)
         setAgentSubscriptionFee(res.agentSubscriptionFee ?? 4995)
-        setClientSubscriptionFee(res.clientSubscriptionFee ?? 4995)
+        setClientSubscriptionFee(res.clientSubscriptionFee ?? 2166)
         setClientSubscriptionInterval(res.clientSubscriptionInterval ?? 'annual')
       })
       .catch(() => {})
@@ -1035,20 +1035,20 @@ function AdminTermsTab({ showBanner }) {
   return (
     <div className="card p-5 sm:p-6 max-w-3xl space-y-5">
       <div>
-        <h2 className="text-base font-bold text-gray-900">Rédaction des Termes & Conditions d'adhésion</h2>
+        <h2 className="text-base font-bold text-gray-900">Tarifs de Souscription & Termes d'adhésion</h2>
         <p className="text-xs text-gray-500 mt-0.5">
-          Ce texte sera présenté à tout utilisateur souhaitant activer son compte d'agent de collecte. Il devra obligatoirement l'accepter avant d'accéder au service.
+          Modifiez librement les frais d'ouverture de compte collecte Client (par défaut : 2 166 FCFA), les frais de souscription Agent et les conditions générales d'adhésion.
         </p>
       </div>
 
-      <form onSubmit={handleSave} className="space-y-4">
+      <form onSubmit={handleSave} noValidate className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-bold text-gray-700 block mb-1">Frais mensuels par client (XAF)</label>
             <input
               type="number"
               min="0"
-              step="100"
+              step="1"
               value={monthlyFee}
               onChange={(e) => setMonthlyFee(e.target.value)}
               className="input text-xs w-full font-bold"
@@ -1061,25 +1061,25 @@ function AdminTermsTab({ showBanner }) {
             <input
               type="number"
               min="0"
-              step="100"
+              step="1"
               value={agentSubscriptionFee}
               onChange={(e) => setAgentSubscriptionFee(e.target.value)}
               className="input text-xs w-full font-bold text-indigo-700"
             />
-            <span className="text-[11px] text-gray-400 mt-0.5 block">Frais d'ouverture compte agent (défaut : 4 800 F)</span>
+            <span className="text-[11px] text-gray-400 mt-0.5 block">Frais d'ouverture compte agent (modifiable)</span>
           </div>
 
           <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Frais de souscription Client (XAF)</label>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Frais d'ouverture / souscription Client (XAF)</label>
             <input
               type="number"
               min="0"
-              step="100"
+              step="1"
               value={clientSubscriptionFee}
               onChange={(e) => setClientSubscriptionFee(e.target.value)}
               className="input text-xs w-full font-bold text-emerald-700"
             />
-            <span className="text-[11px] text-gray-400 mt-0.5 block">Souscription client (défaut : 4 995 FCFA)</span>
+            <span className="text-[11px] text-gray-400 mt-0.5 block">Frais d'ouverture compte collecte client (défaut : 2 166 FCFA, modifiable)</span>
           </div>
 
           <div>

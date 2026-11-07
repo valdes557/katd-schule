@@ -38,6 +38,7 @@ const adminRevenueLedgerSchema = new mongoose.Schema(
         'agent_signup',            // 8. Frais d'ouverture compte agent de collecte
         'client_signup',           // 9. Frais de souscription client collecte journalière
         'shareholder_subscription',// 10. Frais de souscription des associés (actions)
+        'deposit_fee',             // 11. Frais de dépôt Mobile Money (1%)
       ],
       required: true,
       index: true,

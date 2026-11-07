@@ -88,6 +88,73 @@ router.post('/initiate', protect, async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ message: err.message }) }
 })
 
+// POST /api/merchant/subscribe-wallet — paie les 6933 F directement avec le solde du portefeuille utilisateur KATD-SCHÜLE
+router.post('/subscribe-wallet', protect, async (req, res) => {
+  try {
+    const u = await User.findById(req.user._id).select('name email isMerchant role school')
+    if (!u) return res.status(404).json({ message: 'Utilisateur introuvable.' })
+    if (u.isMerchant) {
+      return res.json({ success: true, alreadyMerchant: true, message: 'Votre compte marchand est déjà actif.' })
+    }
+
+    const w = await wallet.getOrCreateWallet(req.user._id, { role: u.role, school: u.school })
+    if ((w.balance || 0) < MERCHANT_FEE) {
+      return res.status(400).json({
+        message: `Solde de portefeuille insuffisant (${(w.balance || 0).toLocaleString('fr-FR')} FCFA disponibles). Il vous faut ${MERCHANT_FEE.toLocaleString('fr-FR')} FCFA pour activer votre compte marchand.`,
+      })
+    }
+
+    const ref = genRef('mch_wal')
+
+    // 1. Débit du portefeuille utilisateur
+    await wallet.debit(req.user._id, {
+      amount: MERCHANT_FEE,
+      type: 'merchant_signup',
+      description: `Activation du compte marchand KATD-SCHÜLE (${MERCHANT_FEE.toLocaleString('fr-FR')} FCFA)`,
+      meta: { reason: 'merchant_signup', paymentMethod: 'wallet', reference: ref },
+    })
+
+    // 2. Activation du statut marchand sur le compte utilisateur
+    await User.updateOne({ _id: req.user._id }, { $set: { isMerchant: true, merchantSince: new Date() } })
+
+    // 3. Crédit du portefeuille administrateur plateforme
+    try {
+      const admin = await wallet.getPlatformAdmin()
+      if (admin && String(admin._id) !== String(req.user._id)) {
+        await wallet.credit(admin._id, {
+          amount: MERCHANT_FEE,
+          type: 'merchant_signup',
+          counterparty: req.user._id,
+          description: `Souscription compte marchand via portefeuille — ${u.name || u.email || ''}`,
+          meta: { paymentMethod: 'wallet', reference: ref },
+        })
+      }
+    } catch (e) {
+      console.error('[Merchant Wallet] Erreur crédit admin:', e.message)
+    }
+
+    // 4. Répartition 60% / 40% aux comptes administrateurs & associés
+    try {
+      const adminCoAccountsService = require('../services/adminCoAccountsService')
+      await adminCoAccountsService.recordPlatformFee({
+        category: 'merchant_signup',
+        amount: MERCHANT_FEE,
+        description: `Ouverture compte Marchand via portefeuille (${u.name || u.email || 'Utilisateur'})`,
+        reference: ref,
+      })
+    } catch (e) {
+      console.error('[AdminCoAccounts] Erreur répartition merchant_signup (wallet):', e.message)
+    }
+
+    res.json({
+      success: true,
+      message: `Félicitations ! Votre compte marchand a été activé avec succès via votre portefeuille (${MERCHANT_FEE.toLocaleString('fr-FR')} FCFA).`,
+    })
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message })
+  }
+})
+
 
 const CollectClient = require('../models/CollectClient')
 const DailyCollection = require('../models/DailyCollection')

@@ -644,6 +644,48 @@ async function applyOutcome(intent, status, raw) {
           meta: { ...(intent.meta || {}), reason: depositReason || undefined },
         })
 
+        // Frais de dépôt Mobile Money vers Katd-Schüle (1%) :
+        // Pour 10 000 F déposés = 100 F de frais prélevés et reversés aux associés et administrateurs selon leurs pourcentages
+        try {
+          const depositFee = wallet.computeDepositFee ? wallet.computeDepositFee(intent.amount) : Math.round(Number(intent.amount) * 0.01)
+          if (depositFee > 0) {
+            const opLabel = (intent.payerOperator || intent.operator || 'Mobile Money').toUpperCase()
+            await wallet.debit(targetUserId, {
+              amount: depositFee,
+              type: 'deposit_fee',
+              description: `Frais de dépôt ${opLabel} vers portefeuille (1%)`,
+              reason: 'deposit_fee',
+              meta: {
+                feeType: 'deposit',
+                baseAmount: intent.amount,
+                rate: wallet.DEPOSIT_FEE_RATE || 0.01,
+                operator: intent.payerOperator || intent.operator || '',
+                phone: intent.payerPhone || '',
+                paymentIntent: String(intent._id),
+                reference: intent.reference,
+              },
+            })
+
+            const uTarget = await User.findById(targetUserId).select('name email phone')
+            await wallet.collectFee({
+              fee: depositFee,
+              fromUserId: targetUserId,
+              description: `Frais de dépôt Mobile Money (1%) — ${uTarget?.name || 'Utilisateur'}`,
+              meta: {
+                feeType: 'deposit',
+                rate: wallet.DEPOSIT_FEE_RATE || 0.01,
+                baseAmount: intent.amount,
+                reference: intent.reference,
+                operator: intent.payerOperator || intent.operator || '',
+                payerPhone: intent.payerPhone || '',
+                paymentIntent: String(intent._id),
+              },
+            })
+          }
+        } catch (depFeeErr) {
+          console.error('[deposit:deposit_fee]', depFeeErr.message)
+        }
+
         // Commission Marchand sur dépôt (0,20%) :
         // 1. Le marchand recevant le dépôt (son propre dépôt OU reçu d'un autre utilisateur)
         // 2. Le marchand initiateur (effectuant un dépôt pour un tiers)

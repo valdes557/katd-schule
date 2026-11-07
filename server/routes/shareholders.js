@@ -35,6 +35,7 @@ const ALL_FEE_CATEGORIES = [
   { key: 'shareholder_subscription', label: "Frais de souscription des associés", desc: "Revenus issus des nouvelles parts d'actions souscrites" },
   { key: 'ai_subscription', label: "Frais de souscription IA", desc: "Crédits et souscriptions aux fonctionnalités d'intelligence artificielle" },
   { key: 'maintenance_fee', label: "Frais de maintenance système", desc: "Frais généraux d'infrastructure et de maintenance de la plateforme" },
+  { key: 'deposit_fee', label: "Frais de dépôt Mobile Money (1%)", desc: "Frais de 1% prélevés sur les dépôts MTN MoMo et Orange Money vers Katd-Schüle" },
 ]
 
 const MAX_PROMO_PERCENT = 10
@@ -358,6 +359,7 @@ async function calculateShareholderEarnings(main) {
             'shareholder_subscription',
             'shareholder_payment',
             'subscription',
+            'deposit_fee',
           ],
         },
       })
@@ -385,6 +387,13 @@ async function calculateShareholderEarnings(main) {
           opAmount = Number(tx.amount || 0)
           const op = tx.meta?.momoOperator ? String(tx.meta.momoOperator).toUpperCase() : 'MoMo'
           desc = `Retrait Mobile Money ${op} de ${opAmount.toLocaleString('fr-FR')} FCFA`
+        } else if (tx.type === 'deposit_fee') {
+          catKey = 'deposit_fee'
+          label = 'Frais de dépôt Mobile Money (1%)'
+          pFee = Number(tx.amount || 0)
+          opAmount = Number(tx.meta?.baseAmount || (tx.amount ? tx.amount * 100 : 0))
+          const op = tx.meta?.operator ? String(tx.meta.operator).toUpperCase() : 'MoMo'
+          desc = `Dépôt Mobile Money ${op} de ${opAmount.toLocaleString('fr-FR')} FCFA (frais 1%)`
         } else if (tx.type === 'maintenance_fee') {
           catKey = 'maintenance_fee'
           label = 'Maintenance système'

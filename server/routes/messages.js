@@ -22,13 +22,77 @@ function messagePreview(type, body) {
 }
 
 // Helper: compute allowed contacts for the current user based on role & school
+async function ensureClientUserAccount(cl) {
+  if (!cl) return null
+  let u = null
+  if (cl.user) {
+    u = await User.findById(cl.user).select('name email role phone avatar isOnline lastActivity').lean()
+  }
+  if (!u && cl.email && String(cl.email).trim()) {
+    u = await User.findOne({ email: String(cl.email).trim().toLowerCase() })
+      .select('name email role phone avatar isOnline lastActivity')
+      .lean()
+  }
+  if (!u) {
+    const rawPhones = [cl.phone, cl.momoMtn, cl.momoOrange]
+      .filter(Boolean)
+      .map((p) => String(p).replace(/[^0-9]/g, '').slice(-9))
+      .filter((p) => p.length >= 8)
+    if (rawPhones.length > 0) {
+      const phoneRegexes = rawPhones.map((p) => new RegExp(p + '$'))
+      u = await User.findOne({ $or: phoneRegexes.map((rx) => ({ phone: rx })) })
+        .select('name email role phone avatar isOnline lastActivity')
+        .lean()
+    }
+  }
+  if (!u) {
+    const fallbackEmail =
+      (cl.email && String(cl.email).trim().toLowerCase()) ||
+      `client_${String(cl.accountNumber || cl._id).toLowerCase().replace(/[^a-z0-9]/g, '')}@collecte.katd.com`
+    try {
+      const existingByEmail = await User.findOne({ email: fallbackEmail })
+        .select('name email role phone avatar isOnline lastActivity')
+        .lean()
+      if (existingByEmail) {
+        u = existingByEmail
+      } else {
+        const created = await User.create({
+          name: cl.fullName || `Client ${cl.accountNumber || ''}`,
+          email: fallbackEmail,
+          password: 'Katd' + (String(cl.phone || '123456').replace(/[^0-9]/g, '') || '123456'),
+          phone: cl.phone || '',
+          role: 'utilisateur',
+          isActive: true,
+          isEmailVerified: true,
+        })
+        u = {
+          _id: created._id,
+          name: created.name,
+          email: created.email,
+          role: created.role,
+          phone: created.phone,
+          avatar: created.avatar || null,
+          isOnline: false,
+          lastActivity: created.lastActivity,
+        }
+      }
+    } catch (_) {}
+  }
+  if (u && (!cl.user || String(cl.user) !== String(u._id))) {
+    try {
+      await CollectClient.updateOne({ _id: cl._id }, { $set: { user: u._id } })
+    } catch (_) {}
+  }
+  return u
+}
+
 async function getAllowedContacts(user) {
   // Support Collecte : Agents, Clients et Super Admin
   const map = new Map();
 
-  // 1. Si Super Admin : joignable par tout le monde, et a accès à tous les agents de collecte
-  if (user.role === 'super_admin') {
-    const agents = await CollectAgent.find({ status: 'active' }).populate('user', 'name email role phone avatar').lean();
+  // 1. Si Super Admin / Admin : joignable par tout le monde, et a accès à tous les agents de collecte
+  if (user.role === 'super_admin' || user.role === 'admin') {
+    const agents = await CollectAgent.find({ status: { $ne: 'revoked' } }).populate('user', 'name email role phone avatar').lean();
     for (const ag of agents) {
       if (ag.user && ag.user._id) {
         map.set(ag.user._id.toString(), {
@@ -42,9 +106,9 @@ async function getAllowedContacts(user) {
   }
 
   // 2. Si l'utilisateur est un Agent de Collecte : peut contacter le Super Admin et ses clients
-  const agentProfile = await CollectAgent.findOne({ user: user._id, status: 'active' }).lean();
+  const agentProfile = await CollectAgent.findOne({ user: user._id, status: { $ne: 'revoked' } }).lean();
   if (agentProfile) {
-    const admins = await User.find({ role: 'super_admin', isActive: true }).select('name email role phone avatar').lean();
+    const admins = await User.find({ role: { $in: ['super_admin', 'admin'] }, isActive: { $ne: false } }).select('name email role phone avatar').lean();
     for (const adm of admins) {
       map.set(adm._id.toString(), {
         ...adm,
@@ -54,53 +118,56 @@ async function getAllowedContacts(user) {
     }
 
     // Clients enregistrés par cet agent ayant un compte utilisateur KATD
-    const clients = await CollectClient.find({ agentUser: user._id }).select('user fullName phone email accountNumber').lean();
+    const clients = await CollectClient.find({
+      $or: [{ agent: agentProfile._id }, { agentUser: user._id }],
+    }).select('user fullName phone momoMtn momoOrange email accountNumber').lean();
     for (const cl of clients) {
-      if (cl.user) {
-        const u = await User.findById(cl.user).select('name email role phone avatar').lean();
-        if (u) {
-          map.set(u._id.toString(), {
-            ...u,
-            name: cl.fullName || u.name,
-            accountNumber: cl.accountNumber,
-            isCollectClient: true,
-            collectRole: 'Client Collecte (' + cl.accountNumber + ')',
-          });
-        }
-      } else if (cl.email) {
-        const u = await User.findOne({ email: cl.email.toLowerCase() }).select('name email role phone avatar').lean();
-        if (u) {
-          map.set(u._id.toString(), {
-            ...u,
-            name: cl.fullName || u.name,
-            accountNumber: cl.accountNumber,
-            isCollectClient: true,
-            collectRole: 'Client Collecte (' + cl.accountNumber + ')',
-          });
-        }
+      const u = await ensureClientUserAccount(cl);
+      if (u && u._id) {
+        map.set(u._id.toString(), {
+          ...u,
+          name: cl.fullName || u.name,
+          accountNumber: cl.accountNumber,
+          isCollectClient: true,
+          collectRole: 'Client Collecte (' + cl.accountNumber + ')',
+        });
       }
     }
   }
 
-  // 3. Si l'utilisateur est un Client de Collecte : peut contacter son Agent de collecte attitré
-  const clientProfile = await CollectClient.findOne({
-    $or: [{ user: user._id }, { email: (user.email || '').toLowerCase() }],
-  }).populate('agent').lean();
-  if (clientProfile && clientProfile.agentUser) {
-    const agUser = await User.findById(clientProfile.agentUser).select('name email role phone avatar').lean();
-    if (agUser) {
-      map.set(agUser._id.toString(), {
-        ...agUser,
-        agencyName: clientProfile.agent?.agencyName || 'Mon Agent de Collecte',
-        isCollectAgent: true,
-        collectRole: 'Mon Agent de Collecte (' + (clientProfile.agent?.agencyName || '') + ')',
+  // 3. Si l'utilisateur est un Client de Collecte : peut contacter son Agent de collecte attitré et la Direction
+  const userPhoneClean = String(user.phone || '').replace(/[^0-9]/g, '').slice(-9);
+  const clientOr = [{ user: user._id }];
+  if (user.email) clientOr.push({ email: user.email.toLowerCase() });
+  if (userPhoneClean.length >= 8) clientOr.push({ phone: new RegExp(userPhoneClean + '$') });
+
+  const clientProfile = await CollectClient.findOne({ $or: clientOr }).populate('agent').lean();
+  if (clientProfile) {
+    const agentUserId = clientProfile.agentUser || clientProfile.agent?.user;
+    if (agentUserId) {
+      const agUser = await User.findById(agentUserId).select('name email role phone avatar').lean();
+      if (agUser) {
+        map.set(agUser._id.toString(), {
+          ...agUser,
+          agencyName: clientProfile.agent?.agencyName || 'Mon Agent de Collecte',
+          isCollectAgent: true,
+          collectRole: 'Mon Agent de Collecte (' + (clientProfile.agent?.agencyName || '') + ')',
+        });
+      }
+    }
+    const admins = await User.find({ role: { $in: ['super_admin', 'admin'] }, isActive: { $ne: false } }).select('name email role phone avatar').lean();
+    for (const adm of admins) {
+      map.set(adm._id.toString(), {
+        ...adm,
+        isSuperAdmin: true,
+        collectRole: 'Direction Collecte KATD-SCHÜLE',
       });
     }
   }
 
   const schoolId = user.school?._id || user.school;
   if (!schoolId) {
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(map.values()).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   }
 
   const baseUserQuery = { school: schoolId, _id: { $ne: user._id }, isActive: true }
@@ -314,43 +381,61 @@ router.post('/', protect, async (req, res) => {
     const { recipientId, subject, body, type, mediaUrl, mediaDuration, attachments } = req.body
     const senderId = req.user._id
 
-    const msgType = type || 'text'
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0
+    const msgType = hasAttachments && (!type || type === 'text') ? 'document' : (type || 'text')
     if (!recipientId) {
       return res.status(400).json({ message: 'Destinataire requis' })
     }
-    // Pour un message texte, le contenu est requis ; pour un média, mediaUrl suffit
-    if (msgType === 'text' && !body) {
-      return res.status(400).json({ message: 'Contenu requis' })
-    }
-    if (msgType !== 'text' && msgType !== 'sticker' && !mediaUrl) {
-      return res.status(400).json({ message: 'Média requis' })
+    // Pour un message texte, le contenu est requis ; pour un média ou document, mediaUrl ou attachments suffit
+    if (!body && !mediaUrl && !hasAttachments && msgType !== 'sticker') {
+      return res.status(400).json({ message: 'Contenu ou pièce jointe requis' })
     }
 
     let isAllowed = false
-    if (STAFF_ROLES.includes(req.user.role)) {
+    if (req.user.role === 'super_admin' || req.user.role === 'admin') {
+      isAllowed = true
+    }
+    if (!isAllowed && STAFF_ROLES.includes(req.user.role)) {
       const recipient = await User.findById(recipientId).select('role isActive')
-      isAllowed = !!(recipient && recipient.isActive && STAFF_ROLES.includes(recipient.role))
+      isAllowed = !!(recipient && recipient.isActive !== false && STAFF_ROLES.includes(recipient.role))
+    }
+    if (!isAllowed) {
+      const rcpt = await User.findById(recipientId).select('isActive role')
+      if (rcpt && rcpt.isActive !== false) {
+        if (
+          rcpt.role === 'super_admin' ||
+          rcpt.role === 'admin' ||
+          req.user.role === 'utilisateur' ||
+          rcpt.role === 'utilisateur'
+        ) {
+          isAllowed = true
+        }
+      }
+    }
+    if (!isAllowed) {
+      const [isSenderAgent, isRcptAgent, isSenderClient, isRcptClient] = await Promise.all([
+        CollectAgent.exists({ user: senderId }),
+        CollectAgent.exists({ user: recipientId }),
+        CollectClient.exists({ user: senderId }),
+        CollectClient.exists({ user: recipientId }),
+      ])
+      if (isSenderAgent || isRcptAgent || isSenderClient || isRcptClient) {
+        isAllowed = true
+      }
     }
     if (!isAllowed) {
       const allowed = await getAllowedContacts(req.user)
       isAllowed = allowed.some((u) => u._id.toString() === String(recipientId))
     }
     if (!isAllowed) {
-      // Espace utilisateur public : tous les utilisateurs KATD peuvent échanger
-      const rcpt = await User.findById(recipientId).select('isActive role')
-      if (rcpt && rcpt.isActive !== false && (req.user.role === 'utilisateur' || rcpt.role === 'utilisateur')) {
-        isAllowed = true
-      }
-    }
-    if (!isAllowed) {
       return res.status(403).json({ message: 'Vous ne pouvez pas envoyer de message à cet utilisateur' })
     }
 
-    const ids = [senderId.toString(), recipientId].sort()
+    const ids = [senderId.toString(), String(recipientId)].sort()
     const conversationId = `conv_${ids[0]}_${ids[1]}`
 
     // Upload du média si fourni en data URL (image, vidéo, vocal). Les stickers restent une URL/emoji directe.
-    let finalMediaUrl = mediaUrl || ''
+    let finalMediaUrl = mediaUrl || (hasAttachments ? attachments[0]?.url || '' : '')
     if (mediaUrl && /^data:/.test(mediaUrl) && msgType !== 'sticker') {
       const resourceType = msgType === 'image' ? 'image' : 'video' // cloudinary traite l'audio comme 'video'
       const up = await cloudinary.uploader.upload(mediaUrl, { resource_type: resourceType, folder: 'katd/messages' })
@@ -367,12 +452,24 @@ router.post('/', protect, async (req, res) => {
       type: msgType,
       mediaUrl: finalMediaUrl,
       mediaDuration: Number(mediaDuration) || 0,
+      attachments: hasAttachments ? attachments : [],
     })
 
     const populated = await message.populate([
-      { path: 'sender', select: 'name email role' },
-      { path: 'recipient', select: 'name email role' },
+      { path: 'sender', select: 'name email role avatar' },
+      { path: 'recipient', select: 'name email role avatar' },
     ])
+
+    // Émission temps réel via Socket.IO
+    try {
+      const io = req.app.get('io')
+      if (io) {
+        io.to(String(recipientId)).emit('new_message', populated)
+        io.to(`user:${String(recipientId)}`).emit('new_message', populated)
+        io.to(String(senderId)).emit('new_message', populated)
+        io.to(`user:${String(senderId)}`).emit('new_message', populated)
+      }
+    } catch (_) {}
 
     // Notification push au destinataire (best-effort, hors du site).
     const rcptRole = populated.recipient?.role
@@ -741,29 +838,44 @@ router.get('/all-users', protect, async (req, res) => {
 // GET /api/messages/admin-agents — Liste des agents joignables pour le Super Admin
 router.get('/admin-agents', protect, async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
+    if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Accès réservé au super administrateur' })
     }
-    const agents = await CollectAgent.find({ status: 'active' })
+    const agents = await CollectAgent.find({ status: { $ne: 'revoked' } })
       .populate('user', 'name email role phone avatar isOnline lastActivity')
       .sort({ createdAt: -1 })
       .lean()
 
-    const list = agents
-      .filter((a) => a.user && a.user._id)
-      .map((a) => ({
-        _id: a.user._id,
+    const list = []
+    for (const a of agents) {
+      let u = a.user
+      if (!u && a.phone) {
+        const cleanPh = String(a.phone).replace(/[^0-9]/g, '').slice(-9)
+        if (cleanPh.length >= 8) {
+          u = await User.findOne({ phone: new RegExp(cleanPh + '$') })
+            .select('name email role phone avatar isOnline lastActivity')
+            .lean()
+          if (u) {
+            await CollectAgent.updateOne({ _id: a._id }, { $set: { user: u._id } }).catch(() => {})
+          }
+        }
+      }
+      if (!u || !u._id) continue
+      list.push({
+        _id: u._id,
         agentId: a._id,
         agencyName: a.agencyName,
-        name: a.user.name,
-        email: a.user.email,
-        phone: a.phone || a.user.phone,
+        name: u.name || a.agencyName,
+        email: u.email,
+        phone: a.phone || u.phone,
         city: a.city,
         neighborhood: a.neighborhood,
-        avatar: a.user.avatar || null,
-        isOnline: !!a.user.isOnline,
-        lastActivity: a.user.lastActivity,
-      }))
+        status: a.status,
+        avatar: u.avatar || null,
+        isOnline: !!u.isOnline,
+        lastActivity: u.lastActivity,
+      })
+    }
 
     res.json({ success: true, agents: list })
   } catch (err) {
@@ -774,7 +886,7 @@ router.get('/admin-agents', protect, async (req, res) => {
 // POST /api/messages/broadcast-agents — Envoi groupé à TOUS les agents avec fichiers (PDF, Word, etc.)
 router.post('/broadcast-agents', protect, async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
+    if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Accès réservé au super administrateur' })
     }
     const { subject, body, attachments = [], type = 'text', mediaUrl } = req.body
@@ -782,7 +894,7 @@ router.post('/broadcast-agents', protect, async (req, res) => {
       return res.status(400).json({ message: 'Veuillez saisir un message ou joindre un document.' })
     }
 
-    const agents = await CollectAgent.find({ status: 'active' }).populate('user', '_id name email').lean()
+    const agents = await CollectAgent.find({ status: { $ne: 'revoked' } }).populate('user', '_id name email').lean()
     const activeAgents = agents.filter((a) => a.user && a.user._id)
     if (activeAgents.length === 0) {
       return res.status(400).json({ message: 'Aucun agent actif trouvé sur la plateforme.' })
@@ -790,6 +902,7 @@ router.post('/broadcast-agents', protect, async (req, res) => {
 
     const broadcastKey = 'bcast_agents_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
     const senderId = req.user._id
+    const io = req.app.get('io')
 
     const createdMessages = []
     for (const ag of activeAgents) {
@@ -804,12 +917,17 @@ router.post('/broadcast-agents', protect, async (req, res) => {
         subject: subject || 'Message de la Direction aux Agents',
         body: body || '',
         type: (attachments && attachments.length > 0) ? 'document' : (type || 'text'),
-        mediaUrl: mediaUrl || '',
+        mediaUrl: mediaUrl || (attachments?.[0]?.url || ''),
         attachments: Array.isArray(attachments) ? attachments : [],
         broadcastKey,
         isGroup: false,
       })
       createdMessages.push(msg)
+
+      if (io) {
+        io.to(String(recipientId)).emit('new_message', msg)
+        io.to(`user:${String(recipientId)}`).emit('new_message', msg)
+      }
 
       // Notification push individuelle
       pushService.sendToUser(recipientId, {
@@ -831,32 +949,31 @@ router.post('/broadcast-agents', protect, async (req, res) => {
   }
 })
 
-// GET /api/messages/agent-clients — Liste des clients joignables pour un agent
+// GET /api/messages/agent-clients — Liste des clients joignables pour un agent + Direction
 router.get('/agent-clients', protect, async (req, res) => {
   try {
-    const agent = await CollectAgent.findOne({ user: req.user._id, status: 'active' })
-    if (!agent) {
-      return res.status(403).json({ message: 'Accès réservé aux agents actifs' })
+    const agent = await CollectAgent.findOne({ user: req.user._id })
+    if (!agent || agent.status === 'revoked') {
+      return res.status(403).json({ message: 'Accès réservé aux agents de collecte' })
     }
 
-    // Récupérer tous les clients de cet agent
-    const clients = await CollectClient.find({ agentUser: req.user._id }).sort({ fullName: 1 }).lean()
+    // Récupérer tous les clients rattachés à cet agent (par agent._id ou agentUser)
+    const clients = await CollectClient.find({
+      $or: [{ agent: agent._id }, { agentUser: req.user._id }],
+    })
+      .sort({ fullName: 1 })
+      .lean()
 
     const list = []
     for (const cl of clients) {
-      let u = null
-      if (cl.user) {
-        u = await User.findById(cl.user).select('name email phone avatar isOnline lastActivity').lean()
-      } else if (cl.email) {
-        u = await User.findOne({ email: cl.email.toLowerCase() }).select('name email phone avatar isOnline lastActivity').lean()
-      }
+      const u = await ensureClientUserAccount(cl)
 
       list.push({
         clientId: cl._id,
         accountNumber: cl.accountNumber,
         fullName: cl.fullName,
         phone: cl.phone,
-        email: cl.email,
+        email: cl.email || u?.email || '',
         neighborhood: cl.neighborhood,
         balance: cl.balance,
         userId: u ? u._id : null,
@@ -867,14 +984,183 @@ router.get('/agent-clients', protect, async (req, res) => {
       })
     }
 
-    // Ajouter aussi le super_admin en tête de liste pour discuter avec la direction
-    const admins = await User.find({ role: 'super_admin', isActive: true }).select('name email phone avatar isOnline').lean()
+    // Ajouter les administrateurs (Direction) en tête de liste pour discuter avec l'administration
+    const admins = await User.find({
+      role: { $in: ['super_admin', 'admin'] },
+      isActive: { $ne: false },
+    })
+      .select('name email phone avatar isOnline')
+      .lean()
 
     res.json({
       success: true,
       admins: admins.map((a) => ({ ...a, role: 'super_admin', agencyName: 'Super Administrateur Direction' })),
       clients: list,
     })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/messages/client-contacts — Interlocuteurs joignables pour un Client de Collecte (son Agent + Direction)
+router.get('/client-contacts', protect, async (req, res) => {
+  try {
+    const userPhoneClean = String(req.user.phone || '').replace(/[^0-9]/g, '').slice(-9)
+    const orConds = [{ user: req.user._id }]
+    if (req.user.email) orConds.push({ email: req.user.email.toLowerCase() })
+    if (userPhoneClean.length >= 8) {
+      orConds.push({ phone: new RegExp(userPhoneClean + '$') })
+      orConds.push({ momoMtn: new RegExp(userPhoneClean + '$') })
+      orConds.push({ momoOrange: new RegExp(userPhoneClean + '$') })
+    }
+
+    const clientDoc = await CollectClient.findOne({ $or: orConds }).populate({
+      path: 'agent',
+      populate: { path: 'user', select: 'name email phone avatar isOnline lastActivity role' },
+    })
+
+    if (clientDoc && (!clientDoc.user || String(clientDoc.user) !== String(req.user._id))) {
+      clientDoc.user = req.user._id
+      await clientDoc.save().catch(() => {})
+    }
+
+    let agentContact = null
+    if (clientDoc) {
+      let agentObj = clientDoc.agent
+      // Si le client n'a pas encore d'agent assigné ou si l'agent n'a pas de user, chercher un agent actif de son quartier/ville
+      if (!agentObj || !agentObj.user) {
+        if (clientDoc.agentUser) {
+          const agByUser = await CollectAgent.findOne({ user: clientDoc.agentUser }).populate(
+            'user',
+            'name email phone avatar isOnline lastActivity role'
+          )
+          if (agByUser && agByUser.user) agentObj = agByUser
+        }
+      }
+      if (!agentObj || !agentObj.user) {
+        const nb = String(clientDoc.neighborhood || '').trim()
+        let fallbackAgent = null
+        if (nb) {
+          fallbackAgent = await CollectAgent.findOne({
+            status: 'active',
+            user: { $ne: null },
+            neighborhood: new RegExp(nb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+          }).populate('user', 'name email phone avatar isOnline lastActivity role')
+        }
+        if (!fallbackAgent) {
+          fallbackAgent = await CollectAgent.findOne({ status: 'active', user: { $ne: null } })
+            .sort({ createdAt: -1 })
+            .populate('user', 'name email phone avatar isOnline lastActivity role')
+        }
+        if (fallbackAgent && fallbackAgent.user) {
+          agentObj = fallbackAgent
+          if (!clientDoc.agent) {
+            clientDoc.agent = fallbackAgent._id
+            clientDoc.agentUser = fallbackAgent.user._id
+            await clientDoc.save().catch(() => {})
+          }
+        }
+      }
+
+      if (agentObj && agentObj.user) {
+        agentContact = {
+          _id: agentObj.user._id,
+          agentId: agentObj._id,
+          name: agentObj.user.name || agentObj.agencyName,
+          agencyName: agentObj.agencyName || 'Agence de Collecte',
+          email: agentObj.user.email || '',
+          phone: agentObj.phone || agentObj.user.phone || '',
+          neighborhood: agentObj.neighborhood || '',
+          city: agentObj.city || '',
+          avatar: agentObj.user.avatar || null,
+          isOnline: !!agentObj.user.isOnline,
+          roleLabel: `Mon Agent de Collecte (${agentObj.agencyName || 'Agence'})`,
+          type: 'agent',
+        }
+      }
+    }
+
+    const admins = await User.find({
+      role: { $in: ['super_admin', 'admin'] },
+      isActive: { $ne: false },
+    })
+      .select('name email phone avatar isOnline')
+      .lean()
+
+    const adminContacts = admins.map((a) => ({
+      _id: a._id,
+      name: a.name || 'Direction KATD-SCHÜLE',
+      agencyName: 'Support & Direction Collecte',
+      email: a.email || '',
+      phone: a.phone || '',
+      avatar: a.avatar || null,
+      isOnline: !!a.isOnline,
+      roleLabel: 'Direction Générale KATD-SCHÜLE',
+      type: 'admin',
+    }))
+
+    res.json({
+      success: true,
+      agent: agentContact,
+      admins: adminContacts,
+      contacts: [...(agentContact ? [agentContact] : []), ...adminContacts],
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/messages/upload-docs — Upload de pièces jointes (PDF, Word, Excel, Images) pour la messagerie
+router.post('/upload-docs', protect, upload.array('files', 10), async (req, res) => {
+  try {
+    const files = req.files || []
+    const attachments = files.map((f) => ({
+      url: f.path || f.secure_url || f.url,
+      filename: f.originalname || 'document',
+      mimeType: f.mimetype || 'application/octet-stream',
+      size: f.size || 0,
+    }))
+    res.json({ success: true, attachments })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// GET /api/messages/with/:otherUserId — Charge directement tous les messages entre l'utilisateur connecté et otherUserId
+router.get('/with/:otherUserId', protect, async (req, res) => {
+  try {
+    const me = req.user._id.toString()
+    const other = String(req.params.otherUserId || '').trim()
+    if (!other) return res.status(400).json({ message: 'Interlocuteur requis' })
+
+    const ids = [me, other].sort()
+    const conversationId = `conv_${ids[0]}_${ids[1]}`
+
+    const messages = await Message.find({
+      conversationId,
+      deletedFor: { $ne: req.user._id },
+    })
+      .populate('sender', 'name email role avatar')
+      .populate('recipient', 'name email role avatar')
+      .sort({ createdAt: 1 })
+
+    await Message.updateMany(
+      { conversationId, recipient: req.user._id, read: false },
+      { $set: { read: true }, $addToSet: { readBy: { user: req.user._id, readAt: new Date() } } }
+    )
+
+    const out = messages.map((m) => {
+      const o = m.toObject()
+      if (o.deletedForAll) {
+        o.body = ''
+        o.mediaUrl = ''
+        o.type = 'text'
+        o.deleted = true
+      }
+      return o
+    })
+
+    res.json({ success: true, conversationId, data: out, messages: out })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

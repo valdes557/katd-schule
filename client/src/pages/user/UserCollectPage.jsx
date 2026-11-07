@@ -417,7 +417,7 @@ function OptInScreen({ config, onSuccess, onCancel }) {
 // 1bis. ÉCRAN DE SOUSCRIPTION OBLIGATOIRE (FRAIS D'OUVERTURE 4 995 FCFA)
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1TER. SOUSCRIPTION CLIENT COLLECTE JOURNALIÈRE (4 995 FCFA / AN OU MOIS)
+// 1TER. SOUSCRIPTION CLIENT COLLECTE JOURNALIÈRE (2 166 FCFA / AN OU MOIS)
 // ─────────────────────────────────────────────────────────────────────────────
 function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
   const [method, setMethod] = useState('wallet') // 'wallet' | 'momo'
@@ -432,7 +432,7 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
   const [pollMsg, setPollMsg] = useState('')
   const [error, setError] = useState('')
 
-  const fee = Number(config?.clientSubscriptionFee) || 4995
+  const fee = Number(config?.clientSubscriptionFee) || 2166
   const interval = config?.clientSubscriptionInterval || 'annual'
   const intervalLabel = interval === 'monthly' ? 'mois' : 'an'
 

@@ -49,7 +49,7 @@ const collectConfigSchema = new mongoose.Schema(
     monthlyFee: { type: Number, default: 1100, min: 0 },
     defaultDailyTarget: { type: Number, default: 1000 },
     agentSubscriptionFee: { type: Number, default: 4995, min: 0 },
-    clientSubscriptionFee: { type: Number, default: 4995, min: 0 },
+    clientSubscriptionFee: { type: Number, default: 2166, min: 0 },
     clientSubscriptionInterval: { type: String, enum: ['annual', 'monthly'], default: 'annual' },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
@@ -59,13 +59,19 @@ const collectConfigSchema = new mongoose.Schema(
 collectConfigSchema.statics.getOrCreate = async function () {
   let cfg = await this.findOne({ key: 'main' })
   if (!cfg) {
-    cfg = await this.create({ key: 'main', agentSubscriptionFee: 4995, clientSubscriptionFee: 4995 })
+    cfg = await this.create({ key: 'main', agentSubscriptionFee: 4995, clientSubscriptionFee: 2166 })
   } else {
+    let dirty = false
     // Si l'ancien tarif de 4800 FCFA était enregistré, migrer automatiquement vers 4995 FCFA
     if (cfg.agentSubscriptionFee === 4800 || !cfg.agentSubscriptionFee) {
       cfg.agentSubscriptionFee = 4995
-      await cfg.save()
+      dirty = true
     }
+    if (cfg.clientSubscriptionFee == null) {
+      cfg.clientSubscriptionFee = 2166
+      dirty = true
+    }
+    if (dirty) await cfg.save()
   }
   return cfg
 }

@@ -431,31 +431,11 @@ export default function AdminMerchantsPage() {
         </div>
       )}
 
-      {/* Modal Approvisionnement */}
-      {fundFor && (
-        <FundModal
-          merchant={fundFor}
-          onClose={() => setFundFor(null)}
-          onDone={(m) => { setFundFor(null); flash(m); refresh() }}
-          onError={(e) => setErr(e)}
-        />
-      )}
-
       {/* Modal Ajout Marchand */}
       {addOpen && (
         <AddMerchantModal
           onClose={() => setAddOpen(false)}
           onDone={(m) => { setAddOpen(false); flash(m); refresh() }}
-          onError={(e) => setErr(e)}
-        />
-      )}
-
-      {/* Modal Retrait Souscriptions Mobile Money */}
-      {withdrawOpen && (
-        <WithdrawSubscriptionsModal
-          maxBalance={subData.adminBalance}
-          onClose={() => setWithdrawOpen(false)}
-          onDone={(m) => { setWithdrawOpen(false); flash(m); refresh() }}
           onError={(e) => setErr(e)}
         />
       )}

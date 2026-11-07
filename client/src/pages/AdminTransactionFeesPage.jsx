@@ -115,6 +115,7 @@ export default function AdminTransactionFeesPage() {
             <div className="flex items-center gap-2 text-emerald-600"><Users size={16} /><span className="text-xs font-semibold uppercase tracking-wide">Par type</span></div>
             <div className="text-sm font-bold text-gray-900 mt-1">Transferts : {fmt(stats.byType?.transfer?.total)} XAF</div>
             <div className="text-sm font-bold text-gray-900">Retraits : {fmt(stats.byType?.withdrawal?.total)} XAF</div>
+            <div className="text-sm font-bold text-gray-900">Dépôts (1%) : {fmt(stats.byType?.deposit?.total)} XAF</div>
             <div className="text-sm font-bold text-gray-900">Maintenance : {fmt(stats.byType?.maintenance?.total)} XAF</div>
             <div className="text-sm font-bold text-amber-700">Collecte : {fmt(stats.byType?.collect?.total)} XAF</div>
           </div>
@@ -138,6 +139,7 @@ export default function AdminTransactionFeesPage() {
               <option value="">Tous les frais</option>
               <option value="transfer">Frais de transfert (0,25%)</option>
               <option value="withdrawal">Frais de retrait (1%)</option>
+              <option value="deposit">Frais de dépôt Mobile Money (1%)</option>
               <option value="maintenance">Frais de maintenance</option>
               <option value="collect">Frais de collecte (1 100 F/client)</option>
             </select>

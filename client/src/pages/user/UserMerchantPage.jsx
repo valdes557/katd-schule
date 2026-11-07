@@ -165,7 +165,7 @@ export default function UserMerchantPage() {
         </>
       )}
 
-      {showPay && <PayModal fee={data?.fee} onClose={() => setShowPay(false)} onDone={async () => { setShowPay(false); await refreshUser(); load() }} />}
+      {showPay && <PayModal fee={data?.fee} walletBalance={data?.balance || 0} onClose={() => setShowPay(false)} onDone={async (m) => { setShowPay(false); if (m) showMsg(m); await refreshUser(); load() }} />}
 
       {showTransferCollect && (
         <MerchantTransferToCollectModal
@@ -427,23 +427,135 @@ function ReferralCard({ code, count, earned }) {
   )
 }
 
-function PayModal({ fee, onClose, onDone }) {
+function PayModal({ fee, walletBalance = 0, onClose, onDone }) {
+  const [method, setMethod] = useState('wallet') // 'wallet' | 'momo'
+  const [walletBusy, setWalletBusy] = useState(false)
+  const [walletError, setWalletError] = useState('')
   const { start, element, busy, status, error } = useInlineCheckout()
-  const pay = () => start((momo = {}) => merchantApi.initiate(momo), async () => { onDone() }, { amount: fee, title: 'Activation compte marchand' })
+
+  const feeNum = Number(fee) || 6933
+  const balNum = Number(walletBalance) || 0
+  const canPayWallet = balNum >= feeNum
+  const anyBusy = busy || walletBusy
+
+  const payMomo = () =>
+    start(
+      (momo = {}) => merchantApi.initiate(momo),
+      async () => {
+        onDone('Votre compte marchand a été activé avec succès via Mobile Money !')
+      },
+      { amount: feeNum, title: 'Activation compte marchand' }
+    )
+
+  const payWallet = async () => {
+    setWalletError('')
+    setWalletBusy(true)
+    try {
+      const res = await merchantApi.subscribeWallet()
+      onDone(res.message || 'Votre compte marchand a été activé avec succès via votre portefeuille !')
+    } catch (e) {
+      setWalletError(e.message || "Erreur lors de l'activation par portefeuille.")
+    } finally {
+      setWalletBusy(false)
+    }
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && onClose()}>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !anyBusy && onClose()}>
       <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-gray-900">Activation marchand — {fmt(fee)} F</h3>
-          <button onClick={() => !busy && onClose()} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+          <h3 className="font-bold text-gray-900">Activation marchand — {fmt(feeNum)} F</h3>
+          <button onClick={() => !anyBusy && onClose()} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <p className="text-sm text-gray-500">Réglez {fmt(fee)} F par Mobile Money direct (API H2H). Le débit sera validé directement depuis votre numéro Mobile Money.</p>
-        {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{error}</p>}
-        {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
-        <button onClick={pay} disabled={busy} className="btn-primary w-full justify-center">
-          {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : <>Payer {fmt(fee)} F</>}
-        </button>
+
+        {/* Sélecteur de mode de paiement : Portefeuille ou Mobile Money */}
+        <div className="grid grid-cols-2 gap-2.5 pt-1">
+          <button
+            type="button"
+            onClick={() => { setMethod('wallet'); setWalletError('') }}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              method === 'wallet'
+                ? 'border-orange-600 bg-orange-50/70 ring-2 ring-orange-500/20'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-0.5">
+              <Wallet size={15} className={method === 'wallet' ? 'text-orange-600' : 'text-gray-400'} />
+              <span className="text-xs font-bold text-gray-900">Portefeuille KATD</span>
+            </div>
+            <span className="text-[11px] text-gray-500 block">
+              Solde : <b className={canPayWallet ? 'text-emerald-700' : 'text-red-600'}>{fmt(balNum)} F</b>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setMethod('momo'); setWalletError('') }}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              method === 'momo'
+                ? 'border-orange-600 bg-orange-50/70 ring-2 ring-orange-500/20'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-0.5">
+              <Store size={15} className={method === 'momo' ? 'text-orange-600' : 'text-gray-400'} />
+              <span className="text-xs font-bold text-gray-900">Mobile Money</span>
+            </div>
+            <span className="text-[11px] text-gray-500 block">MTN MoMo / Orange</span>
+          </button>
+        </div>
+
+        {method === 'wallet' ? (
+          <div className="space-y-3 pt-1">
+            <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-200 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Solde de votre portefeuille :</span>
+                <b className="text-gray-900">{fmt(balNum)} FCFA</b>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Frais d'ouverture compte marchand :</span>
+                <b className="text-orange-700">{fmt(feeNum)} FCFA</b>
+              </div>
+              <div className="flex justify-between pt-1.5 border-t border-gray-200">
+                <span className="text-gray-600 font-medium">Solde après activation :</span>
+                <b className={canPayWallet ? 'text-emerald-700' : 'text-red-600'}>
+                  {canPayWallet ? `${fmt(balNum - feeNum)} FCFA` : 'Solde insuffisant'}
+                </b>
+              </div>
+            </div>
+
+            {!canPayWallet && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                Votre solde de portefeuille ({fmt(balNum)} FCFA) est inférieur aux {fmt(feeNum)} FCFA requis. Rechargez votre portefeuille ou choisissez <b>Mobile Money</b>.
+              </p>
+            )}
+
+            {walletError && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2.5">{walletError}</p>}
+
+            <button
+              onClick={payWallet}
+              disabled={walletBusy || !canPayWallet}
+              className="btn-primary w-full justify-center disabled:opacity-50"
+            >
+              {walletBusy ? (
+                <><Loader2 size={16} className="animate-spin" /> Activation en cours...</>
+              ) : (
+                <><Wallet size={16} /> Payer {fmt(feeNum)} F avec mon portefeuille</>
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-gray-500">
+              Réglez {fmt(feeNum)} F par Mobile Money direct (API H2H). Le débit sera validé directement depuis votre numéro Mobile Money.
+            </p>
+            {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{error}</p>}
+            {status && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-2 flex items-center gap-2"><Loader2 size={12} className="animate-spin" />{status}</p>}
+            <button onClick={payMomo} disabled={busy} className="btn-primary w-full justify-center">
+              {busy ? <><Loader2 size={16} className="animate-spin" /> Traitement...</> : <>Payer {fmt(feeNum)} F via Mobile Money</>}
+            </button>
+          </div>
+        )}
       </div>
       {element}
     </div>
