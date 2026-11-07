@@ -3,11 +3,39 @@ import { cache } from './cache'
 const rawUrl = import.meta.env.VITE_API_URL || '/api'
 const API_URL = rawUrl.endsWith('/api') ? rawUrl : rawUrl === '/api' ? '/api' : rawUrl + '/api'
 
+export function getStoredToken() {
+  try {
+    const t = localStorage.getItem('token') || sessionStorage.getItem('token')
+    if (t && t !== 'null' && t !== 'undefined') return t
+    const m = typeof document !== 'undefined' ? document.cookie.match(/(?:^|;\s*)katd_token=([^;]+)/) : null
+    if (m && m[1] && m[1] !== 'null' && m[1] !== 'undefined') return decodeURIComponent(m[1])
+  } catch (_) {}
+  return null
+}
+
+export function setStoredToken(token) {
+  try {
+    if (token && token !== 'null' && token !== 'undefined') {
+      localStorage.setItem('token', token)
+      sessionStorage.setItem('token', token)
+      if (typeof document !== 'undefined') {
+        document.cookie = `katd_token=${encodeURIComponent(token)}; path=/; max-age=2592000; SameSite=Lax`
+      }
+    } else {
+      localStorage.removeItem('token')
+      sessionStorage.removeItem('token')
+      if (typeof document !== 'undefined') {
+        document.cookie = 'katd_token=; path=/; max-age=0'
+      }
+    }
+  } catch (_) {}
+}
+
 async function request(path, options = {}, retries = 2) {
-  const token = localStorage.getItem('token')
+  const token = getStoredToken()
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}`, 'x-auth-token': token } : {}),
     ...(options.headers || {}),
   }
 
@@ -34,9 +62,11 @@ async function request(path, options = {}, retries = 2) {
         continue
       }
       if (res.status === 401) {
-        // Token expired or invalid → force re-login
-        try { localStorage.removeItem('token') } catch (_) {}
-        cache.clear() // évite la fuite de données en cache vers un autre compte
+        // N'invalider le token que si l'erreur provient spécifiquement de /auth/me
+        if (path.includes('/auth/me')) {
+          setStoredToken(null)
+          cache.clear()
+        }
       }
       throw new Error(data.message || `Erreur HTTP ${res.status}`)
     }
@@ -71,7 +101,7 @@ export const authApi = {
   uploadAvatar: async (file) => {
     const fd = new FormData()
     fd.append('avatar', file)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/auth/avatar`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
@@ -152,7 +182,7 @@ export const parentsApi = {
 
 const sendTeacherForm = async (path, method, data) => {
   if (data?.photoFile) {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const fd = new FormData()
     Object.entries(data).forEach(([key, value]) => {
       if (key === 'photoFile') {
@@ -257,7 +287,7 @@ export const messagesApi = {
     fd.append('memberRole', data.memberRole || 'enseignant')
     fd.append('memberIds', JSON.stringify(data.memberIds || []))
     if (data.image) fd.append('image', data.image)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/messages/groups`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -281,7 +311,7 @@ export const messagesApi = {
   uploadDocs: async (files) => {
     const fd = new FormData()
     for (const f of files || []) fd.append('files', f)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/messages/upload-docs`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -303,7 +333,7 @@ export const mediaApi = {
     if (category) fd.append('category', category)
     fd.append('isPublic', String(isPublic))
     for (const f of files) fd.append('files', f)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/media`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.message || `Erreur HTTP ${res.status}`)
@@ -324,12 +354,12 @@ export const schoolsApi = {
   mine: () => api.get('/schools/mine'),
   accessStatus: () => api.get('/schools/access-status'),
   create: async (formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/schools`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
   setup: async (id, formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/schools/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
@@ -352,7 +382,7 @@ export const locationsApi = {
 export const schoolRegistrationApi = {
   freeTrial: (data) => api.post('/school-registrations/free-trial', data),
   submit: async (formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const headers = token ? { Authorization: `Bearer ${token}` } : {}
     const res = await fetch(`${API_URL}/school-registrations`, { method: 'POST', headers, body: formData })
     const data = await res.json().catch(() => ({}))
@@ -384,7 +414,7 @@ export const platformApi = {
   uploadImages: async (files) => {
     const fd = new FormData()
     files.forEach((f) => fd.append('images', f))
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/platform/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
     return res.json()
   },
@@ -393,7 +423,7 @@ export const platformApi = {
   // Toutes les vidéos publiques du site (pour la page Vidéos de l'espace utilisateur)
   getVideos: (page = 1) => api.get(`/platform/videos?page=${page}`),
   createPost: async (formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/platform/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
@@ -403,7 +433,7 @@ export const platformApi = {
   // Ancien envoi multipart avec progression (filet de sécurité). Durci : timeout
   // explicite + message d'erreur clair (le VPS reste dans la boucle sur ce chemin).
   createPostWithProgress: (formData, onProgress) => new Promise((resolve, reject) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_URL}/platform/posts`)
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
@@ -445,12 +475,12 @@ export const platformApi = {
   getResources: (category = '') => api.get(`/platform/resources${category ? `?category=${category}` : ''}`),
   getAllResources: () => api.get('/platform/resources/all'),
   createResource: async (formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/platform/resources`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
   updateResource: async (id, formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/platform/resources/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
@@ -501,7 +531,7 @@ export const youtubeApi = {
   downloadProgress: (progressUrl) =>
     api.get(`/youtube/download/progress?url=${encodeURIComponent(progressUrl)}`),
   getDownloadUrl: (videoId, format = '720', quality = '') => {
-    const token = localStorage.getItem('token') || ''
+    const token = getStoredToken() || ''
     const qs = new URLSearchParams({ format, token })
     if (quality) qs.set('quality', quality)
     return `${API_URL}/youtube/download/${videoId}?${qs.toString()}`
@@ -518,7 +548,7 @@ export const blogsApi = {
   createCategory: (data) => api.post('/blogs/categories', data),
   get: (idOrSlug) => api.get(`/blogs/${idOrSlug}`),
   create: async (formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const headers = token ? { Authorization: `Bearer ${token}` } : {}
     const res = await fetch(`${API_URL}/blogs`, { method: 'POST', headers, body: formData })
     const data = await res.json().catch(() => ({}))
@@ -526,7 +556,7 @@ export const blogsApi = {
     return data
   },
   update: async (id, formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const headers = token ? { Authorization: `Bearer ${token}` } : {}
     const res = await fetch(`${API_URL}/blogs/${id}`, { method: 'PUT', headers, body: formData })
     const data = await res.json().catch(() => ({}))
@@ -586,7 +616,7 @@ export const recruitmentApi = {
     fd.append('whatsapp', data.whatsapp || '')
     fd.append('message', data.message || '')
     if (data.cv) fd.append('cv', data.cv)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/recruitment/public/${id}/apply`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -635,7 +665,7 @@ export const newsApi = {
     fd.append('category', data.category || 'demo')
     if (data.link) fd.append('link', data.link)
     if (data.media instanceof File) fd.append('media', data.media)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/news/admin`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
@@ -649,19 +679,19 @@ export const schoolPagesApi = {
   uploadImages: async (schoolId, files) => {
     const fd = new FormData()
     files.forEach((f) => fd.append('images', f))
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/school-pages/${schoolId}/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
     return res.json()
   },
   // Team
   getTeam: (schoolId) => api.get(`/school-pages/${schoolId}/team`),
   addTeamMember: async (schoolId, formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/school-pages/${schoolId}/team`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
   updateTeamMember: async (id, formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/school-pages/team/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
@@ -669,7 +699,7 @@ export const schoolPagesApi = {
   // Posts
   getPosts: (schoolId, page = 1) => api.get(`/school-pages/${schoolId}/posts?page=${page}`),
   createPost: async (schoolId, formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/school-pages/${schoolId}/posts`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
     return res.json()
   },
@@ -677,7 +707,7 @@ export const schoolPagesApi = {
   createPostJson: (schoolId, data) => api.post(`/school-pages/${schoolId}/posts`, data),
   // Ancien envoi multipart avec progression (filet de sécurité, durci timeout).
   createPostWithProgress: (schoolId, formData, onProgress) => new Promise((resolve, reject) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_URL}/school-pages/${schoolId}/posts`)
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
@@ -714,7 +744,7 @@ export const schoolPagesApi = {
 export const enrollmentApi = {
   getClasses: (schoolId) => api.get(`/enrollments/school/${schoolId}/classes`),
   submit: async (formData) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const headers = token ? { Authorization: `Bearer ${token}` } : {}
     const res = await fetch(`${API_URL}/enrollments`, { method: 'POST', headers, body: formData })
     const data = await res.json().catch(() => ({}))
@@ -759,7 +789,7 @@ export const teacherApi = {
     if (data.content) fd.append('content', data.content)
     ;(data.classes || []).forEach((c) => fd.append('classes', c))
     if (data.attachment) fd.append('attachment', data.attachment)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/teacher/reports`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -799,7 +829,7 @@ export const parentApi = {
     fd.append('studentId', studentId)
     if (text) fd.append('text', text)
     if (file) fd.append('file', file)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/parent/homework/${hwId}/justification`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -880,7 +910,7 @@ export const teacherFilesApi = {
     const fd = new FormData()
     fd.append('label', label || '')
     fd.append('file', file)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/teacher-files/${id}/attachments`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -904,7 +934,7 @@ export const mailsApi = {
       if (data[k] !== undefined && data[k] !== null) fd.append(k, data[k])
     }
     if (data.file) fd.append('file', data.file)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/mails`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -986,7 +1016,7 @@ export const aiCoursesApi = {
   generateContent: (data) => api.post('/ai-courses/generate-content', data),
   create: async (data) => {
     const fd = data instanceof FormData ? data : buildCourseFormData(data)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/ai-courses`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -999,7 +1029,7 @@ export const aiCoursesApi = {
   createBatch: (courses) => api.post('/ai-courses/batch', { courses }),
   update: async (id, data) => {
     if (data instanceof FormData) {
-      const token = localStorage.getItem('token')
+      const token = getStoredToken()
       const res = await fetch(`${API_URL}/ai-courses/${id}`, {
         method: 'PUT',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -1011,7 +1041,7 @@ export const aiCoursesApi = {
     }
     if (data.pdf || data.nextPdf || (data.images && data.images.length > 0) || data.existingImages) {
       const fd = buildCourseFormData(data)
-      const token = localStorage.getItem('token')
+      const token = getStoredToken()
       const res = await fetch(`${API_URL}/ai-courses/${id}`, {
         method: 'PUT',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -1055,7 +1085,7 @@ export const documentsApi = {
     fd.append('category', data.category || 'Général')
     if (data.classId) fd.append('classId', data.classId)
     if (data.file) fd.append('file', data.file)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/documents`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -1110,7 +1140,7 @@ export const feesApi = {
   removeModality: (id) => api.del(`/fees/modalities/${id}`),
   assignModality: (id, data = {}) => api.post(`/fees/modalities/${id}/assign`, data),
   downloadReceipt: async (id, paymentIndex) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/fees/${id}/receipt/${paymentIndex}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
     const contentType = res.headers.get('content-type') || ''
     if (!res.ok || !contentType.includes('application/pdf')) {
@@ -1142,7 +1172,7 @@ export const bannersApi = {
     fd.append('link', data.link || '')
     fd.append('isActive', data.isActive !== false)
     fd.append('sortOrder', data.sortOrder || 0)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/banners`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
@@ -1156,7 +1186,7 @@ export const bannersApi = {
     if (data.link !== undefined) fd.append('link', data.link)
     if (data.isActive !== undefined) fd.append('isActive', data.isActive)
     if (data.sortOrder !== undefined) fd.append('sortOrder', data.sortOrder)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/banners/${id}`, { method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(json.message || `Erreur HTTP ${res.status}`)
@@ -1181,7 +1211,7 @@ export const aiApi = {
     const fd = new FormData()
     fd.append('packageId', packageId)
     if (paymentScreenshot) fd.append('paymentScreenshot', paymentScreenshot)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/ai/subscription/request`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -1432,10 +1462,11 @@ export const collectApi = {
   getCommissionWallet: () => api.get('/collect/agent/commission-wallet'),
   withdrawCommissions: (data) => api.post('/collect/agent/commission-withdraw', data),
   // Souscription Agent de Collecte (frais d'ouverture 4 800 FCFA)
-  payAgentSubscriptionWallet: () => api.post('/collect/agent/pay-subscription-wallet'),
+  payAgentSubscriptionWallet: (data = {}) => api.post('/collect/agent/pay-subscription-wallet', data),
   initiateAgentSubscriptionMomo: (data) => api.post('/payments/agent-subscription/initiate', data),
-  // Souscription Client Collecte Journalière (4 995 FCFA)
+  // Souscription Client Collecte Journalière (2 166 FCFA) & Liaison compte agent
   subscribeClientWallet: (data) => api.post('/collect/client/subscribe-wallet', data),
+  linkClientAccount: (data) => api.post('/collect/client/link-account', data),
   initiateClientSubscriptionMomo: (data) => api.post('/payments/client-subscription/initiate', data),
   // Historique des retraits administrateur
   adminWithdrawalsHistory: () => api.get('/collect/admin/withdrawals-history'),
@@ -1449,7 +1480,7 @@ export const collectApi = {
   uploadDocs: async (files) => {
     const fd = new FormData()
     for (const f of files || []) fd.append('files', f)
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const res = await fetch(`${API_URL}/messages/upload-docs`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},

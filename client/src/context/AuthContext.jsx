@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { authApi, presenceApi } from '../lib/api'
+import { authApi, presenceApi, getStoredToken, setStoredToken } from '../lib/api'
 import { cache } from '../lib/cache'
 
 const AuthContext = createContext(null)
@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     const storedCycle = localStorage.getItem('katd_cycle')
     if (storedCycle) setCycle(storedCycle)
 
@@ -65,7 +65,7 @@ export function AuthProvider({ children }) {
       const res = await authApi.login(email, password, space)
       const u = res.user
       const s = res.school || null
-      localStorage.setItem('token', res.token)
+      setStoredToken(res.token)
       localStorage.setItem('katd_user', JSON.stringify(u))
       if (s) {
         localStorage.setItem('katd_school', JSON.stringify(s))
@@ -99,7 +99,7 @@ export function AuthProvider({ children }) {
         return { success: true, requiresVerification: true, email: res.email || email }
       }
       const u = res.user
-      localStorage.setItem('token', res.token)
+      setStoredToken(res.token)
       localStorage.setItem('katd_user', JSON.stringify(u))
       localStorage.removeItem('katd_school')
       setUser(u)
@@ -130,7 +130,7 @@ export function AuthProvider({ children }) {
       const res = await authApi.verifyEmail(email, code)
       const u = res.user
       const s = res.school || null
-      localStorage.setItem('token', res.token)
+      setStoredToken(res.token)
       localStorage.setItem('katd_user', JSON.stringify(u))
       if (s) localStorage.setItem('katd_school', JSON.stringify(s)); else localStorage.removeItem('katd_school')
       setUser(u)
@@ -146,7 +146,7 @@ export function AuthProvider({ children }) {
     presenceApi.logout().catch(() => {})
     setUser(null)
     setSchool(null)
-    localStorage.removeItem('token')
+    setStoredToken(null)
     localStorage.removeItem('katd_user')
     localStorage.removeItem('katd_school')
     cache.clear() // vide le cache SWR pour éviter toute fuite entre comptes

@@ -1,14 +1,44 @@
 const jwt = require('jsonwebtoken')
 const User = require('../models/User')
 
-const protect = async (req, res, next) => {
-  let token
+function extractToken(req) {
+  try {
+    if (req.headers && req.headers.authorization) {
+      const parts = req.headers.authorization.split(' ')
+      if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+        const t = parts[1].trim()
+        if (t && t !== 'null' && t !== 'undefined') return t
+      } else {
+        const raw = req.headers.authorization.trim()
+        if (raw && raw !== 'null' && raw !== 'undefined') return raw
+      }
+    }
+    if (req.headers && req.headers['x-auth-token']) {
+      const t = String(req.headers['x-auth-token']).trim()
+      if (t && t !== 'null' && t !== 'undefined') return t
+    }
+    if (req.headers && req.headers['x-access-token']) {
+      const t = String(req.headers['x-access-token']).trim()
+      if (t && t !== 'null' && t !== 'undefined') return t
+    }
+    if (req.query && req.query.token) {
+      const t = String(req.query.token).trim()
+      if (t && t !== 'null' && t !== 'undefined') return t
+    }
+    if (req.body && typeof req.body === 'object' && req.body.token) {
+      const t = String(req.body.token).trim()
+      if (t && t !== 'null' && t !== 'undefined') return t
+    }
+    if (req.cookies && (req.cookies.token || req.cookies.katd_token)) {
+      const t = String(req.cookies.token || req.cookies.katd_token).trim()
+      if (t && t !== 'null' && t !== 'undefined') return t
+    }
+  } catch (_) {}
+  return null
+}
 
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1]
-  } else if (req.query && req.query.token) {
-    token = String(req.query.token).trim()
-  }
+const protect = async (req, res, next) => {
+  const token = extractToken(req)
 
   if (token) {
     try {
@@ -52,12 +82,7 @@ const protect = async (req, res, next) => {
 }
 
 const protectOptional = async (req, res, next) => {
-  let token
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1]
-  } else if (req.query && req.query.token) {
-    token = String(req.query.token).trim()
-  }
+  const token = extractToken(req)
 
   if (token) {
     try {

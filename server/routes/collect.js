@@ -167,7 +167,15 @@ async function applyMonthlyFeesForAgent(agentId) {
 async function resolveClientForUser(user) {
   if (!user) return null
   let client = await CollectClient.findOne({ user: user._id })
-  if (client) return client
+  if (client) {
+    if ((client.agent || client.agentUser) && !client.subscriptionPaid) {
+      client.subscriptionPaid = true
+      client.subscriptionPaidAt = client.subscriptionPaidAt || client.createdAt || new Date()
+      client.subscriptionPaymentMethod = 'agent_onboarded'
+      await client.save()
+    }
+    return client
+  }
 
   const cleanPh = String(user.phone || '').replace(/[^0-9]/g, '')
   const userEmail = String(user.email || '').trim().toLowerCase()
@@ -186,8 +194,13 @@ async function resolveClientForUser(user) {
     if (client) {
       if (!client.user) {
         client.user = user._id
-        await client.save()
       }
+      if ((client.agent || client.agentUser) && !client.subscriptionPaid) {
+        client.subscriptionPaid = true
+        client.subscriptionPaidAt = client.subscriptionPaidAt || client.createdAt || new Date()
+        client.subscriptionPaymentMethod = 'agent_onboarded'
+      }
+      await client.save()
       return client
     }
   }
@@ -204,9 +217,55 @@ async function resolveClientForUser(user) {
     })
     if (found) {
       found.user = user._id
+      if ((found.agent || found.agentUser) && !found.subscriptionPaid) {
+        found.subscriptionPaid = true
+        found.subscriptionPaidAt = found.subscriptionPaidAt || found.createdAt || new Date()
+        found.subscriptionPaymentMethod = 'agent_onboarded'
+      }
       await found.save()
       return found
     }
+  }
+
+  // Self-healing : vérifier si cet utilisateur a déjà été débité de son portefeuille pour la souscription client
+  try {
+    const WalletTransaction = require('../models/WalletTransaction')
+    const pastDebit = await WalletTransaction.findOne({
+      user: user._id,
+      type: 'transfer_sent',
+      'meta.reason': 'client_collect_signup',
+    }).sort({ createdAt: -1 })
+
+    if (pastDebit) {
+      const cfg = await CollectConfig.getOrCreate()
+      const fee = Number(pastDebit.amount) || Number(cfg.clientSubscriptionFee) || 2166
+      const interval = pastDebit.meta?.interval || cfg.clientSubscriptionInterval || 'annual'
+      const expires = new Date()
+      if (interval === 'monthly') expires.setMonth(expires.getMonth() + 1)
+      else expires.setFullYear(expires.getFullYear() + 1)
+
+      client = await CollectClient.create({
+        user: user._id,
+        fullName: user.name || 'Client Épargne',
+        phone: String(user.phone || 'Non renseigné').trim(),
+        email: user.email || '',
+        neighborhood: 'Quartier principal',
+        isSelfSubscribed: true,
+        subscriptionPaid: true,
+        subscriptionPaidAt: pastDebit.createdAt || new Date(),
+        subscriptionExpiresAt: expires,
+        subscriptionAmount: fee,
+        subscriptionInterval: interval,
+        subscriptionPaymentMethod: 'wallet',
+        status: 'active',
+        termsAccepted: true,
+        termsSignedAt: new Date(),
+      })
+      console.log(`[Self-healing] Compte CollectClient restauré et activé avec succès pour ${user.email} (${client.accountNumber}).`)
+      return client
+    }
+  } catch (shErr) {
+    console.error('[Self-healing collect client error]:', shErr.message)
   }
 
   return null
@@ -356,12 +415,29 @@ router.post('/opt-in', protect, async (req, res) => {
 // POST /api/collect/agent/pay-subscription-wallet — Paiement des frais d'ouverture compte agent (4 995 FCFA) par portefeuille
 router.post('/agent/pay-subscription-wallet', protect, async (req, res) => {
   try {
-    const agent = await CollectAgent.findOne({ user: req.user._id })
+    let agent = await CollectAgent.findOne({ user: req.user._id })
+    if (!agent && req.body?.agentId) {
+      agent = await CollectAgent.findById(req.body.agentId)
+      if (agent && !agent.user) {
+        agent.user = req.user._id
+        await agent.save()
+      }
+    }
     if (!agent) {
       return res.status(404).json({ message: "Compte d'agent introuvable" })
     }
     if (agent.subscriptionPaid) {
       return res.json({ success: true, message: 'Souscription déjà réglée.', agent })
+    }
+
+    // Vérifier si l'agent gère déjà des clients (dispense automatique)
+    const clientCount = await CollectClient.countDocuments({ agent: agent._id })
+    if (clientCount > 0) {
+      agent.subscriptionPaid = true
+      agent.subscriptionPaidAt = agent.subscriptionPaidAt || new Date()
+      agent.subscriptionPaymentMethod = 'grandfathered'
+      await agent.save()
+      return res.json({ success: true, message: 'Souscription validée (compte agent existant avec clients).', agent })
     }
 
     const cfg = await CollectConfig.getOrCreate()
@@ -997,7 +1073,7 @@ router.post('/agent/clients', protect, async (req, res) => {
       agentUser: req.user._id,
       user: linkedUser ? linkedUser._id : null,
       fullName: String(fullName).trim(),
-      phone: String(phone || mtnVal || orangeVal).trim(),
+      phone: String(phone || mtnVal || orangeVal || 'Non renseigné').trim(),
       email: cleanEmail,
       momoMtn: mtnVal,
       momoOrange: orangeVal,
@@ -1008,6 +1084,10 @@ router.post('/agent/clients', protect, async (req, res) => {
       monthlyTarget: mTarget,
       balance: 0,
       notes: notes || '',
+      isSelfSubscribed: false,
+      subscriptionPaid: true,
+      subscriptionPaidAt: new Date(),
+      subscriptionPaymentMethod: 'agent_onboarded',
       termsAccepted: true,
       termsSignedAt: new Date(),
       agentSignature: String(agentSignature || '').trim(),
@@ -1090,7 +1170,7 @@ router.post('/agent/activate-by-email', protect, async (req, res) => {
       agentUser: req.user._id,
       user: targetUser ? targetUser._id : null,
       fullName: targetUser?.name ? targetUser.name : ("Client (" + cleanEmail.split('@')[0] + ")"),
-      phone: userPhone || finalMtn || finalOrange,
+      phone: userPhone || finalMtn || finalOrange || 'Non renseigné',
       email: cleanEmail,
       momoMtn: finalMtn,
       momoOrange: finalOrange,
@@ -1100,6 +1180,10 @@ router.post('/agent/activate-by-email', protect, async (req, res) => {
       monthlyTarget: mTarget,
       balance: 0,
       notes: targetUser ? ("Activé par email via le compte utilisateur de " + targetUser.name) : 'Pré-activé par email',
+      isSelfSubscribed: false,
+      subscriptionPaid: true,
+      subscriptionPaidAt: new Date(),
+      subscriptionPaymentMethod: 'agent_onboarded',
       termsAccepted: true,
       termsSignedAt: new Date(),
       termsContent: (await CollectConfig.getOrCreate()).termsAndConditions,
@@ -1825,25 +1909,38 @@ router.put('/admin/terms', protect, adminOnly, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-// POST /api/collect/client/subscribe-wallet — Souscription client par Portefeuille utilisateur (4 995 FCFA)
+// POST /api/collect/client/subscribe-wallet — Souscription client par Portefeuille utilisateur (2 166 FCFA)
 router.post('/client/subscribe-wallet', protect, async (req, res) => {
   try {
     const cfg = await CollectConfig.getOrCreate()
     const fee = Number(cfg.clientSubscriptionFee) || 2166
     const interval = cfg.clientSubscriptionInterval || 'annual'
 
-    // 1. Débit du portefeuille personnel de l'utilisateur
-    try {
-      await wallet.debit(req.user._id, {
-        amount: fee,
-        type: 'transfer_sent',
-        description: `Souscription Client Collecte Journalière (${interval === 'monthly' ? 'Mensuelle' : 'Annuelle'})`,
-        meta: { reason: 'client_collect_signup', fee, interval },
-      })
-    } catch (wErr) {
-      return res.status(400).json({
-        message: `Solde insuffisant dans votre portefeuille KATD pour payer la souscription (${fee.toLocaleString('fr-FR')} FCFA). Veuillez approvisionner votre portefeuille ou choisir Mobile Money.`,
-      })
+    // Vérifier si cet utilisateur a déjà été débité de son portefeuille pour la souscription client
+    const WalletTransaction = require('../models/WalletTransaction')
+    const existingDebit = await WalletTransaction.findOne({
+      user: req.user._id,
+      type: 'transfer_sent',
+      'meta.reason': 'client_collect_signup',
+      createdAt: { $gte: new Date(Date.now() - 48 * 3600 * 1000) },
+    }).sort({ createdAt: -1 })
+
+    let alreadyDebited = !!existingDebit
+
+    // 1. Débit du portefeuille personnel de l'utilisateur (si pas déjà débité)
+    if (!alreadyDebited) {
+      try {
+        await wallet.debit(req.user._id, {
+          amount: fee,
+          type: 'transfer_sent',
+          description: `Souscription Client Collecte Journalière (${interval === 'monthly' ? 'Mensuelle' : 'Annuelle'})`,
+          meta: { reason: 'client_collect_signup', fee, interval },
+        })
+      } catch (wErr) {
+        return res.status(400).json({
+          message: `Solde insuffisant dans votre portefeuille KATD pour payer la souscription (${fee.toLocaleString('fr-FR')} FCFA). Veuillez approvisionner votre portefeuille ou choisir Mobile Money.`,
+        })
+      }
     }
 
     // 2. Recherche ou création du compte client
@@ -1855,57 +1952,142 @@ router.post('/client/subscribe-wallet', protect, async (req, res) => {
       expires.setFullYear(expires.getFullYear() + 1)
     }
 
-    const { neighborhood, city, cni, momoMtn, momoOrange } = req.body
+    const { neighborhood, city, cni, momoMtn, momoOrange, phone } = req.body
+    const cleanPhone = String(phone || req.user.phone || momoMtn || momoOrange || 'Non renseigné').trim()
+    const cleanNeighborhood = String(neighborhood || 'Quartier principal').trim()
 
-    if (client) {
-      client.subscriptionPaid = true
-      client.subscriptionPaidAt = new Date()
-      client.subscriptionExpiresAt = expires
-      client.subscriptionAmount = fee
-      client.subscriptionInterval = interval
-      client.subscriptionPaymentMethod = 'wallet'
-      client.isSelfSubscribed = true
-      if (neighborhood) client.neighborhood = neighborhood
-      if (city) client.city = city
-      if (cni) client.cni = cni
-      if (momoMtn) client.momoMtn = momoMtn
-      if (momoOrange) client.momoOrange = momoOrange
-      await client.save()
-    } else {
-      client = await CollectClient.create({
-        user: req.user._id,
-        fullName: req.user.name || 'Client Épargne',
-        phone: req.user.phone || momoMtn || momoOrange || '',
-        email: req.user.email || '',
-        momoMtn: momoMtn || '',
-        momoOrange: momoOrange || '',
-        neighborhood: neighborhood || 'Quartier principal',
-        city: city || '',
-        cni: cni || '',
-        isSelfSubscribed: true,
-        subscriptionPaid: true,
-        subscriptionPaidAt: new Date(),
-        subscriptionExpiresAt: expires,
-        subscriptionAmount: fee,
-        subscriptionInterval: interval,
-        subscriptionPaymentMethod: 'wallet',
-        status: 'active',
-        termsAccepted: true,
-        termsSignedAt: new Date(),
-      })
+    try {
+      if (client) {
+        client.subscriptionPaid = true
+        client.subscriptionPaidAt = new Date()
+        client.subscriptionExpiresAt = expires
+        client.subscriptionAmount = fee
+        client.subscriptionInterval = interval
+        client.subscriptionPaymentMethod = 'wallet'
+        client.isSelfSubscribed = true
+        if (cleanNeighborhood) client.neighborhood = cleanNeighborhood
+        if (city) client.city = city
+        if (cni) client.cni = cni
+        if (momoMtn) client.momoMtn = momoMtn
+        if (momoOrange) client.momoOrange = momoOrange
+        if (!client.phone || client.phone === 'Non renseigné') client.phone = cleanPhone
+        await client.save()
+      } else {
+        client = await CollectClient.create({
+          user: req.user._id,
+          fullName: req.user.name || 'Client Épargne',
+          phone: cleanPhone,
+          email: req.user.email || '',
+          momoMtn: momoMtn || '',
+          momoOrange: momoOrange || '',
+          neighborhood: cleanNeighborhood,
+          city: city || '',
+          cni: cni || '',
+          isSelfSubscribed: true,
+          subscriptionPaid: true,
+          subscriptionPaidAt: new Date(),
+          subscriptionExpiresAt: expires,
+          subscriptionAmount: fee,
+          subscriptionInterval: interval,
+          subscriptionPaymentMethod: 'wallet',
+          status: 'active',
+          termsAccepted: true,
+          termsSignedAt: new Date(),
+        })
+      }
+    } catch (createErr) {
+      // Remboursement de précaution si débit tout juste effectué
+      if (!alreadyDebited) {
+        try {
+          await wallet.credit(req.user._id, {
+            amount: fee,
+            type: 'transfer_received',
+            description: `Remboursement suite à erreur d'activation collecte journalière`,
+            meta: { reason: 'refund_client_collect_failed', error: createErr.message },
+          })
+        } catch (_) {}
+      }
+      throw createErr
     }
 
     // 3. Répartition 60% Compte 1 / 40% Compte 2
-    await adminCoAccountsService.recordPlatformFee({
-      category: 'client_signup',
-      amount: fee,
-      description: `Frais de souscription client collecte journalière (${client.fullName})`,
-      reference: 'wal_sub_' + Date.now(),
-    })
+    try {
+      await adminCoAccountsService.recordPlatformFee({
+        category: 'client_signup',
+        amount: fee,
+        description: `Frais de souscription client collecte journalière (${client.fullName})`,
+        reference: 'wal_sub_' + Date.now(),
+      })
+    } catch (coErr) {
+      console.warn('[AdminCoAccounts client_signup warning]:', coErr.message)
+    }
 
     return res.json({
       success: true,
       message: 'Félicitations ! Votre souscription au service Collecte Journalière a été validée avec succès.',
+      client,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// POST /api/collect/client/link-account — Lier immédiatement un compte client créé par un agent (sans payer)
+router.post('/client/link-account', protect, async (req, res) => {
+  try {
+    const { identifier } = req.body
+    if (!identifier || !String(identifier).trim()) {
+      return res.status(400).json({
+        message: "Veuillez renseigner votre numéro de téléphone ou votre numéro de compte collecte (ex: CL-123456).",
+      })
+    }
+
+    const raw = String(identifier).trim()
+    const cleanDigits = raw.replace(/[^0-9]/g, '')
+
+    let client = null
+
+    // 1. Recherche par numéro de compte (ex: CL-849201)
+    if (/^CL-/i.test(raw) || cleanDigits.length === 6) {
+      const accNo = raw.toUpperCase().startsWith('CL-') ? raw.toUpperCase() : `CL-${cleanDigits}`
+      client = await CollectClient.findOne({ accountNumber: accNo })
+    }
+
+    // 2. Recherche par téléphone / MoMo (9 derniers chiffres)
+    if (!client && cleanDigits.length >= 8) {
+      const last9 = cleanDigits.slice(-9)
+      const reg = new RegExp(last9.split('').join('\\D*'))
+      client = await CollectClient.findOne({
+        $or: [{ phone: reg }, { momoMtn: reg }, { momoOrange: reg }],
+      })
+    }
+
+    // 3. Recherche par email
+    if (!client && raw.includes('@')) {
+      client = await CollectClient.findOne({ email: raw.toLowerCase() })
+    }
+
+    if (!client) {
+      return res.status(404).json({
+        message: "Aucun compte client de collecte trouvé avec ces coordonnées. Vérifiez votre saisie ou demandez confirmation à votre agent de collecte.",
+      })
+    }
+
+    // Rattachement immédiat au compte utilisateur connecté
+    client.user = req.user._id
+    if (!client.email && req.user.email) client.email = req.user.email.toLowerCase()
+    if (!client.phone || client.phone === 'Non renseigné') client.phone = req.user.phone || client.phone
+
+    // Règle d'or : tout compte créé par un agent est immédiatement actif sans souscription payante
+    client.subscriptionPaid = true
+    client.subscriptionPaidAt = client.subscriptionPaidAt || client.createdAt || new Date()
+    client.subscriptionPaymentMethod = 'agent_onboarded'
+    client.isSelfSubscribed = false
+    await client.save()
+
+    return res.json({
+      success: true,
+      message: `Compte collecte N° ${client.accountNumber} (${client.fullName}) associé avec succès ! Votre espace d'épargne est maintenant disponible.`,
       client,
     })
   } catch (err) {

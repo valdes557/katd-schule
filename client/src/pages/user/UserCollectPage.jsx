@@ -5,7 +5,7 @@ import {
   TrendingUp, Clock, AlertTriangle, ArrowUpRight, Wallet, Smartphone,
   FileText, Send, ShieldCheck, Edit2, Trash2, MapPin, RefreshCw, ChevronRight, Mail, Lock, PlusCircle, ArrowDownCircle, Check, MessageSquare,
 } from 'lucide-react'
-import { collectApi, walletApi } from '../../lib/api'
+import { collectApi, walletApi, paymentsApi } from '../../lib/api'
 import ClientCollectDashboard from '../../components/ClientCollectDashboard'
 import SignaturePad from '../../components/SignaturePad'
 import ClientContractModal from '../../components/ClientContractModal'
@@ -431,6 +431,10 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
   const [pollRef, setPollRef] = useState(null)
   const [pollMsg, setPollMsg] = useState('')
   const [error, setError] = useState('')
+  const [showLinkBox, setShowLinkBox] = useState(false)
+  const [linkIdentifier, setLinkIdentifier] = useState('')
+  const [linking, setLinking] = useState(false)
+  const [linkSuccess, setLinkSuccess] = useState('')
 
   const fee = Number(config?.clientSubscriptionFee) || 2166
   const interval = config?.clientSubscriptionInterval || 'annual'
@@ -449,7 +453,7 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
     let cancelled = false
     const intervalId = setInterval(async () => {
       try {
-        const res = await fetch(`/api/payments/status/${pollRef}`).then((r) => r.json())
+        const res = await paymentsApi.status(pollRef)
         if (cancelled) return
         if (res.status === 'approved' || res.fulfilled) {
           clearInterval(intervalId)
@@ -487,11 +491,31 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
       await collectApi.subscribeClientWallet({
         neighborhood: neighborhood.trim() || 'Quartier principal',
         city: city.trim(),
+        phone: phone.trim() || undefined,
       })
       onSuccess()
     } catch (e) {
       setError(e.message || 'Erreur lors du paiement par portefeuille.')
       setSubmitting(false)
+    }
+  }
+
+  const handleLinkAccount = async (e) => {
+    e?.preventDefault()
+    setError('')
+    setLinkSuccess('')
+    if (!linkIdentifier.trim()) {
+      setError('Veuillez renseigner votre numéro de téléphone ou votre numéro de compte collecte.')
+      return
+    }
+    setLinking(true)
+    try {
+      const res = await collectApi.linkClientAccount({ identifier: linkIdentifier.trim() })
+      setLinkSuccess(res.message || 'Compte associé avec succès !')
+      setTimeout(() => onSuccess(), 1200)
+    } catch (e) {
+      setError(e.message || 'Erreur lors de la liaison de votre compte.')
+      setLinking(false)
     }
   }
 
@@ -541,6 +565,53 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
           <p className="text-xs sm:text-sm text-gray-500 max-w-md mx-auto">
             Activez votre compte personnel d'épargne journalière. Collectez à votre rythme, visualisez votre cagnotte en temps réel et retirez librement vos fonds.
           </p>
+        </div>
+
+        {/* Accès immédiat pour compte déjà créé par un agent de collecte */}
+        <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs">
+              <ShieldCheck size={16} className="text-indigo-600 shrink-0" />
+              <span>Votre Agent de Collecte vous a déjà créé un compte ?</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setShowLinkBox(!showLinkBox); setError(''); setLinkSuccess('') }}
+              className="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline"
+            >
+              {showLinkBox ? 'Fermer' : 'Accéder sans payer ➔'}
+            </button>
+          </div>
+          {showLinkBox && (
+            <form onSubmit={handleLinkAccount} className="space-y-2 pt-2 border-t border-indigo-150 animate-fade-in">
+              <p className="text-[11px] text-gray-600">
+                Saisissez votre numéro de téléphone ou votre numéro de compte client (ex : <b>CL-849201</b>) pour ouvrir immédiatement votre dashboard d'épargne sans souscription payante.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ex : 690000000 ou CL-849201"
+                  value={linkIdentifier}
+                  onChange={(e) => setLinkIdentifier(e.target.value)}
+                  className="input text-xs flex-1 bg-white"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={linking || !linkIdentifier.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 shrink-0"
+                >
+                  {linking ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                  <span>Lier mon compte</span>
+                </button>
+              </div>
+              {linkSuccess && (
+                <p className="text-xs text-emerald-700 font-bold flex items-center gap-1.5">
+                  <CheckCircle2 size={14} /> {linkSuccess}
+                </p>
+              )}
+            </form>
+          )}
         </div>
 
         {/* Bloc tarifaire */}
@@ -776,7 +847,7 @@ function AgentSubscriptionPaywall({ config, onSuccess, isClient, onBackToClient 
     let cancelled = false
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/payments/status/${pollRef}`).then((r) => r.json())
+        const res = await paymentsApi.status(pollRef)
         if (cancelled) return
         if (res.status === 'approved' || res.fulfilled) {
           clearInterval(interval)
@@ -811,7 +882,9 @@ function AgentSubscriptionPaywall({ config, onSuccess, isClient, onBackToClient 
     setError('')
     setSubmitting(true)
     try {
-      await collectApi.payAgentSubscriptionWallet()
+      await collectApi.payAgentSubscriptionWallet({
+        agentId: config?.agent?._id,
+      })
       onSuccess()
     } catch (e) {
       setError(e.message || 'Erreur lors du paiement par portefeuille.')
@@ -834,6 +907,7 @@ function AgentSubscriptionPaywall({ config, onSuccess, isClient, onBackToClient 
         phone: cleanPh,
         operator,
         agentId: config?.agent?._id,
+        userId: config?.agent?.user || undefined,
       })
       if (res.reference) {
         setPollRef(res.reference)

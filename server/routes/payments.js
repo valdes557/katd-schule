@@ -14,6 +14,7 @@ const User = require('../models/User')
 const SubscriptionPlan = require('../models/SubscriptionPlan')
 const { sendEmail } = require('../utils/emailService')
 const adminCoAccountsService = require('../services/adminCoAccountsService')
+const { protectOptional } = require('../middleware/auth')
 
 const SUBSCRIPTION_FEE_DIRECTOR = Number(process.env.SUBSCRIPTION_FEE_DIRECTOR || 40000)
 
@@ -232,13 +233,15 @@ router.post('/enrollment/initiate', async (req, res) => {
 })
 
 // POST /api/payments/agent-subscription/initiate — souscription agent de collecte
-router.post('/agent-subscription/initiate', async (req, res) => {
+router.post('/agent-subscription/initiate', protectOptional, async (req, res) => {
   try {
     const { phone, operator, agentId, userId, country = 'CM', otp } = req.body
     const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
     if (!rawPhone || !operator) {
       return res.status(400).json({ message: 'Numéro de téléphone et opérateur requis pour le débit direct.' })
     }
+
+    const effectiveUserId = req.user?._id || userId || null
 
     const CollectConfig = require('../models/CollectConfig')
     const config = await CollectConfig.getOrCreate()
@@ -256,9 +259,9 @@ router.post('/agent-subscription/initiate', async (req, res) => {
       currency: targetCurrency,
       payerPhone: rawPhone,
       payerOperator: operator,
-      initiatedBy: userId || null,
+      initiatedBy: effectiveUserId,
       mode,
-      meta: { agentId, userId, purpose: 'agent_signup' },
+      meta: { agentId, userId: effectiveUserId, purpose: 'agent_signup' },
     })
 
     const result = await ikeepay.createCollection({
@@ -294,7 +297,7 @@ router.post('/agent-subscription/initiate', async (req, res) => {
 })
 
 // POST /api/payments/client-subscription/initiate - souscription client collecte journalière
-router.post('/client-subscription/initiate', async (req, res) => {
+router.post('/client-subscription/initiate', protectOptional, async (req, res) => {
   try {
     const { phone, operator, userId, clientId, neighborhood, city, cni, country = 'CM', otp } = req.body
     const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
@@ -302,9 +305,11 @@ router.post('/client-subscription/initiate', async (req, res) => {
       return res.status(400).json({ message: 'Numéro de téléphone et opérateur requis pour le débit direct.' })
     }
 
+    const effectiveUserId = req.user?._id || userId || null
+
     const CollectConfig = require('../models/CollectConfig')
     const config = await CollectConfig.getOrCreate()
-    const fee = Number(config.clientSubscriptionFee) || 4995
+    const fee = Number(config.clientSubscriptionFee) || 2166
     const interval = config.clientSubscriptionInterval || 'annual'
 
     const reference = genRef('clsub')
@@ -319,10 +324,10 @@ router.post('/client-subscription/initiate', async (req, res) => {
       currency: targetCurrency,
       payerPhone: rawPhone,
       payerOperator: operator,
-      initiatedBy: userId || null,
+      initiatedBy: effectiveUserId,
       mode,
       meta: {
-        userId,
+        userId: effectiveUserId,
         clientId,
         neighborhood: neighborhood || '',
         city: city || '',
