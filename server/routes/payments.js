@@ -299,7 +299,7 @@ router.post('/agent-subscription/initiate', protectOptional, async (req, res) =>
 // POST /api/payments/client-subscription/initiate - souscription client collecte journalière
 router.post('/client-subscription/initiate', protectOptional, async (req, res) => {
   try {
-    const { phone, operator, userId, clientId, neighborhood, city, cni, country = 'CM', otp } = req.body
+    const { phone, operator, userId, clientId, neighborhood, city, cni, country = 'CM', otp, clientSignature, termsContent, termsAccepted } = req.body
     const rawPhone = String(phone || '').replace(/[^0-9]/g, '')
     if (!rawPhone || !operator) {
       return res.status(400).json({ message: 'Numéro de téléphone et opérateur requis pour le débit direct.' })
@@ -311,6 +311,7 @@ router.post('/client-subscription/initiate', protectOptional, async (req, res) =
     const config = await CollectConfig.getOrCreate()
     const fee = Number(config.clientSubscriptionFee) || 2166
     const interval = config.clientSubscriptionInterval || 'annual'
+    const finalTerms = String(termsContent || config.clientTermsAndConditions || '').trim()
 
     const reference = genRef('clsub')
     const { mode } = await ikeepay.resolveConfig()
@@ -335,6 +336,9 @@ router.post('/client-subscription/initiate', protectOptional, async (req, res) =
         fee,
         interval,
         purpose: 'client_collect_signup',
+        clientSignature: clientSignature || '',
+        termsContent: finalTerms,
+        termsAccepted: termsAccepted !== undefined ? !!termsAccepted : true,
       },
     })
 
@@ -1122,6 +1126,11 @@ async function applyOutcome(intent, status, raw) {
           client.subscriptionPaymentMethod = 'momo'
           client.subscriptionReference = intent.reference
           client.isSelfSubscribed = true
+          if (m.clientSignature) client.clientSignature = m.clientSignature
+          if (m.termsContent) client.termsContent = m.termsContent
+          client.termsAccepted = m.termsAccepted !== undefined ? !!m.termsAccepted : true
+          client.termsSignedAt = new Date()
+          if (!client.contractNumber) client.contractNumber = `CTR-${client.accountNumber}`
           await client.save()
           console.log(`[payment:client_collect_signup] Souscription client renouvelée/activée pour ${client.fullName} (${client.accountNumber})`)
         } else if (intent.initiatedBy) {
@@ -1145,9 +1154,16 @@ async function applyOutcome(intent, status, raw) {
             subscriptionPaymentMethod: 'momo',
             subscriptionReference: intent.reference,
             status: 'active',
-            termsAccepted: true,
+            termsAccepted: m.termsAccepted !== undefined ? !!m.termsAccepted : true,
             termsSignedAt: new Date(),
+            clientSignature: m.clientSignature || '',
+            termsContent: m.termsContent || '',
+            contractNumber: '',
           })
+          if (!client.contractNumber) {
+            client.contractNumber = `CTR-${client.accountNumber}`
+            await client.save()
+          }
           console.log(`[payment:client_collect_signup] Nouveau compte client créé et souscrit pour ${client.fullName} (${client.accountNumber})`)
         }
 

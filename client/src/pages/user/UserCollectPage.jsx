@@ -427,6 +427,8 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
   const [operator, setOperator] = useState('mtn')
   const [neighborhood, setNeighborhood] = useState('')
   const [city, setCity] = useState('')
+  const [clientSignature, setClientSignature] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [pollRef, setPollRef] = useState(null)
   const [pollMsg, setPollMsg] = useState('')
@@ -436,6 +438,28 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
   const [linking, setLinking] = useState(false)
   const [linkSuccess, setLinkSuccess] = useState('')
 
+  const defaultClientTerms = `CONDITIONS GÉNÉRALES D'ADHÉSION ET D'ENGAGEMENT - COMPTE DE COLLECTE JOURNALIÈRE KATD-SCHULE
+
+1. OBJET DU SERVICE
+Le présent contrat formalise l'ouverture d'un compte de collecte journalière et d'épargne sécurisée sur la plateforme KATD-SCHULE pour le compte du Client titulaire.
+
+2. SANCTUARISATION ET PROPRIÉTÉ STRICTE DES FONDS
+Conformément aux règles de sécurité absolues de la plateforme :
+- Les fonds versés sur le compte de collecte appartiennent exclusivement et en toute circonstance au Client titulaire.
+- Ni l'agent de collecte ni l'administration n'ont le droit de prélever ou retirer les fonds d'un client.
+- Seul le client titulaire peut ordonner le retrait de son épargne vers ses coordonnées Mobile Money enregistrées ou son Portefeuille KATD.
+- L'administration peut décaisser les fonds à la demande expresse et vérifiée du client.
+
+3. COORDONNÉES DE PAIEMENT ET RETRAIT
+Les coordonnées Mobile Money (MTN MoMo, Orange Money) ou le Portefeuille KATD constituent les références certifiées pour tout versement et retrait.
+
+4. ENGAGEMENT DU CLIENT
+Le client s'engage à effectuer des versements journaliers ou périodiques selon son objectif personnel d'épargne.
+
+5. SIGNATURE NUMÉRIQUE ET FORCE PROBANTE
+La signature numérique tactile apposée ci-dessous par le Client a valeur d'engagement juridique ferme et irrévocable, certifiant son adhésion pleine et entière aux présentes conditions.`
+
+  const clientTermsText = config?.clientTermsAndConditions || defaultClientTerms
   const fee = Number(config?.clientSubscriptionFee) || 2166
   const interval = config?.clientSubscriptionInterval || 'annual'
   const intervalLabel = interval === 'monthly' ? 'mois' : 'an'
@@ -486,12 +510,23 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
 
   const handlePayWallet = async () => {
     setError('')
+    if (!termsAccepted) {
+      setError("Veuillez accepter les termes et conditions d'adhésion en cochant la case.")
+      return
+    }
+    if (!clientSignature) {
+      setError("Veuillez apposer votre signature numérique tactile ci-dessous avant de procéder au paiement.")
+      return
+    }
     setSubmitting(true)
     try {
       await collectApi.subscribeClientWallet({
         neighborhood: neighborhood.trim() || 'Quartier principal',
         city: city.trim(),
         phone: phone.trim() || undefined,
+        clientSignature,
+        termsContent: clientTermsText,
+        termsAccepted: true,
       })
       onSuccess()
     } catch (e) {
@@ -522,6 +557,14 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
   const handlePayMomo = async (e) => {
     e.preventDefault()
     setError('')
+    if (!termsAccepted) {
+      setError("Veuillez accepter les termes et conditions d'adhésion en cochant la case.")
+      return
+    }
+    if (!clientSignature) {
+      setError("Veuillez apposer votre signature numérique tactile ci-dessous avant de procéder au paiement.")
+      return
+    }
     const cleanPh = phone.replace(/[^0-9]/g, '')
     if (!cleanPh) {
       setError('Veuillez renseigner votre numéro Mobile Money.')
@@ -535,6 +578,9 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
         operator,
         neighborhood: neighborhood.trim() || 'Quartier principal',
         city: city.trim(),
+        clientSignature,
+        termsContent: clientTermsText,
+        termsAccepted: true,
       })
       if (res.reference) {
         setPollRef(res.reference)
@@ -669,6 +715,50 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
           </div>
         </div>
 
+        {/* Termes et Conditions d'adhésion & Signature numérique tactile */}
+        <div className="space-y-4 pt-3 border-t border-gray-150">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-black uppercase tracking-wider text-gray-800 flex items-center gap-1.5">
+              <FileText size={15} className="text-emerald-600" />
+              <span>Termes & Conditions d'Adhésion Client</span>
+            </label>
+            <span className="text-[11px] text-gray-500 font-medium">À lire attentivement avant adhésion</span>
+          </div>
+
+          <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-2xl max-h-48 overflow-y-auto text-[11px] text-gray-700 whitespace-pre-line leading-relaxed font-sans shadow-inner">
+            {clientTermsText}
+          </div>
+
+          <label className="flex items-start gap-3 p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl cursor-pointer hover:bg-emerald-100/50 transition-colors">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 accent-emerald-600 shrink-0"
+            />
+            <span className="text-xs font-semibold text-emerald-950">
+              J'ai lu, compris et j'accepte sans réserve les termes et conditions d'adhésion au compte de collecte journalière.
+            </span>
+          </label>
+
+          <div className="space-y-2">
+            <SignaturePad
+              label="Votre signature numérique tactile (au doigt ou au stylet sur l'écran) *"
+              onSave={(dataUrl) => setClientSignature(dataUrl)}
+              onChange={(dataUrl) => setClientSignature(dataUrl)}
+            />
+            {clientSignature ? (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-semibold px-1">
+                <CheckCircle2 size={14} /> Signature numérique apposée et prête à être enregistrée sur votre contrat
+              </div>
+            ) : (
+              <div className="text-[11px] text-amber-700 px-1 font-medium">
+                * Veuillez apposer votre signature ci-dessus au doigt pour valider légalement votre ouverture de compte.
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Choix du mode de paiement */}
         <div className="space-y-4 pt-2 border-t border-gray-100">
           <div className="grid grid-cols-2 gap-3">
@@ -721,7 +811,7 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
 
               <button
                 type="button"
-                disabled={submitting || !canPayWallet}
+                disabled={submitting || !canPayWallet || !termsAccepted || !clientSignature}
                 onClick={handlePayWallet}
                 className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white font-bold text-sm rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2"
               >
@@ -784,7 +874,7 @@ function ClientSubscriptionPaywall({ config, onSuccess, onWantAgent }) {
 
               <button
                 type="submit"
-                disabled={submitting || !phone.trim() || !!pollRef}
+                disabled={submitting || !phone.trim() || !!pollRef || !termsAccepted || !clientSignature}
                 className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white font-bold text-sm rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2"
               >
                 {submitting ? (

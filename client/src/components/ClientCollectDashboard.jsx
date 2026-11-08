@@ -12,6 +12,7 @@ import SavedMomoSelector from './SavedMomoSelector'
 import CagnotteLockModal from './CagnotteLockModal'
 import CagnotteLockProofModal from './CagnotteLockProofModal'
 import ClientAgentMessagingTab from './ClientAgentMessagingTab'
+import ClientContractModal from './ClientContractModal'
 import { Lock, Unlock, MessageSquare, FileText } from 'lucide-react'
 import { useInlineCheckout } from './payments/useInlineCheckout'
 
@@ -31,6 +32,7 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
   const [toast, setToast] = useState({ text: '', type: '' })
   const [lockModalOpen, setLockModalOpen] = useState(false)
   const [proofModalOpen, setProofModalOpen] = useState(false)
+  const [contractModalOpen, setContractModalOpen] = useState(false)
   const [transferringWallet, setTransferringWallet] = useState(false)
 
   // Formulaire de versement / paiement
@@ -387,7 +389,14 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                 </button>
               )}
 
-
+              <button
+                type="button"
+                onClick={() => setContractModalOpen(true)}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 py-1 px-2.5 rounded-xl hover:bg-emerald-50 transition-colors"
+              >
+                <FileText size={13} />
+                <span>Mon contrat de souscription signé</span>
+              </button>
 
               <button
                 type="button"
@@ -693,6 +702,17 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
                 <span className="font-bold text-emerald-700">{fmt(client.dailyTarget)} FCFA / jour</span>
               </div>
             </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setContractModalOpen(true)}
+                className="w-full py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-xs"
+              >
+                <FileText size={15} className="text-emerald-600" />
+                <span>Consulter mon contrat de souscription signé</span>
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-150/80 space-y-2">
@@ -968,6 +988,15 @@ export default function ClientCollectDashboard({ clientInfo, isAlsoAgent, onSwit
           contract={data?.cagnotte?.lockContract}
           client={client}
           onClose={() => setProofModalOpen(false)}
+        />
+      )}
+
+      {/* MODALE DE VISUALISATION DU CONTRAT DE SOUSCRIPTION CLIENT */}
+      {contractModalOpen && (
+        <ClientContractModal
+          client={client}
+          agent={agent}
+          onClose={() => setContractModalOpen(false)}
         />
       )}
 

@@ -20,6 +20,26 @@ En cas de force majeure, si le client décide d\'interrompre le blocage ou d\'ef
 5. SIGNATURE NUMÉRIQUE ET PREUVE JURIDIQUE
 La présente convention signée numériquement au doigt ou au stylet par le client fait foi entre les parties et engage la plateforme dans la préservation rigoureuse de ses avoirs.`
 
+const DEFAULT_CLIENT_TERMS = `CONDITIONS GÉNÉRALES DE SOUSCRIPTION ET D'ENGAGEMENT DU CLIENT DE COLLECTE JOURNALIÈRE
+
+1. OBJET DU SERVICE ET ADHÉSION
+Le présent contrat formalise l'adhésion du Client titulaire au service de Collecte Journalière et d'épargne sécurisée sur la plateforme KATD-SCHÜLE. L'ouverture de compte permet au client d'épargner quotidiennement et de sécuriser son capital.
+
+2. FRAIS D'ADHÉSION ET DE SOUSCRIPTION
+- Le client s'acquitte des frais d'ouverture et d'adhésion au service selon le tarif en vigueur fixé par l'administration (2 166 FCFA).
+- Ces frais sont définitifs pour la période souscrite et garantissent l'accès permanent et sécurisé au compte d'épargne.
+
+3. SANCTUARISATION ET PROPRIÉTÉ ABSOLUE DES FONDS
+- Les fonds épargnés sur le compte de collecte appartiennent strictement et exclusivement au Client titulaire en toute circonstance.
+- Ni l'agent de collecte, ni l'administration de la plateforme n'ont le droit de retirer arbitrairement l'argent de collecte d'un client.
+- Les fonds sont sanctuarisés et restituables au client à tout moment selon les modalités de son plan d'épargne (libre ou cagnotte bloquée).
+
+4. FRAIS MENSUELS DE TENUE DE COMPTE
+Une cotisation forfaitaire mensuelle de 1 000 FCFA est appliquée au titre des frais de gestion administrative, de sécurisation et d'assurance de la collecte journalière.
+
+5. SIGNATURE NUMÉRIQUE TACTILE ET VALEUR JURIDIQUE
+La signature numérique tactile apposée au doigt ou au stylet par le Client titulaire matérialise son accord formel, plein et irrévocable aux présentes conditions. Un exemplaire du document contractuel est automatiquement conservé dans le compte du client et consultable dans la gestion des collectes de l'administration.`
+
 const DEFAULT_TERMS = `CONDITIONS GÉNÉRALES D'ADHÉSION ET D'ENGAGEMENT DES AGENTS DE COLLECTE JOURNALIÈRE
 
 1. OBJET ET STATUT DE L'AGENT
@@ -46,6 +66,7 @@ const collectConfigSchema = new mongoose.Schema(
     key: { type: String, default: 'main', unique: true },
     termsAndConditions: { type: String, default: DEFAULT_TERMS },
     cagnotteLockTerms: { type: String, default: DEFAULT_CAGNOTTE_LOCK_TERMS },
+    clientTermsAndConditions: { type: String, default: DEFAULT_CLIENT_TERMS },
     monthlyFee: { type: Number, default: 1100, min: 0 },
     defaultDailyTarget: { type: Number, default: 1000 },
     agentSubscriptionFee: { type: Number, default: 4995, min: 0 },
@@ -59,7 +80,12 @@ const collectConfigSchema = new mongoose.Schema(
 collectConfigSchema.statics.getOrCreate = async function () {
   let cfg = await this.findOne({ key: 'main' })
   if (!cfg) {
-    cfg = await this.create({ key: 'main', agentSubscriptionFee: 4995, clientSubscriptionFee: 2166 })
+    cfg = await this.create({
+      key: 'main',
+      agentSubscriptionFee: 4995,
+      clientSubscriptionFee: 2166,
+      clientTermsAndConditions: DEFAULT_CLIENT_TERMS,
+    })
   } else {
     let dirty = false
     // Si l'ancien tarif de 4800 FCFA était enregistré, migrer automatiquement vers 4995 FCFA
@@ -69,6 +95,10 @@ collectConfigSchema.statics.getOrCreate = async function () {
     }
     if (cfg.clientSubscriptionFee == null) {
       cfg.clientSubscriptionFee = 2166
+      dirty = true
+    }
+    if (!cfg.clientTermsAndConditions) {
+      cfg.clientTermsAndConditions = DEFAULT_CLIENT_TERMS
       dirty = true
     }
     if (dirty) await cfg.save()

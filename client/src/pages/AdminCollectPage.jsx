@@ -988,6 +988,7 @@ function AdminClientWithdrawModal({ client, onClose, onSuccess }) {
 // Onglet Termes & Conditions côté admin
 function AdminTermsTab({ showBanner }) {
   const [terms, setTerms] = useState('')
+  const [clientTerms, setClientTerms] = useState('')
   const [cagnotteLockTerms, setCagnotteLockTerms] = useState('')
   const [monthlyFee, setMonthlyFee] = useState(1000)
   const [agentSubscriptionFee, setAgentSubscriptionFee] = useState(4995)
@@ -1000,6 +1001,7 @@ function AdminTermsTab({ showBanner }) {
     collectApi.getConfig()
       .then((res) => {
         setTerms(res.termsAndConditions || '')
+        setClientTerms(res.clientTermsAndConditions || '')
         setCagnotteLockTerms(res.cagnotteLockTerms || '')
         setMonthlyFee(res.monthlyFee ?? 1000)
         setAgentSubscriptionFee(res.agentSubscriptionFee ?? 4995)
@@ -1016,6 +1018,7 @@ function AdminTermsTab({ showBanner }) {
     try {
       await collectApi.adminUpdateTerms({
         termsAndConditions: terms,
+        clientTermsAndConditions: clientTerms,
         cagnotteLockTerms,
         monthlyFee: Number(monthlyFee),
         agentSubscriptionFee: Number(agentSubscriptionFee),
@@ -1102,6 +1105,20 @@ function AdminTermsTab({ showBanner }) {
             rows={10}
             value={terms}
             onChange={(e) => setTerms(e.target.value)}
+            className="input text-xs w-full resize-y font-mono leading-relaxed"
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-bold text-gray-700">Termes et Conditions d'Adhésion Client (Compte Collecte Journalière)</label>
+            <span className="text-[11px] text-emerald-700 font-semibold">Lus et signés numériquement par les clients à l'ouverture</span>
+          </div>
+          <textarea
+            rows={10}
+            value={clientTerms}
+            onChange={(e) => setClientTerms(e.target.value)}
+            placeholder="Rédigez les conditions générales d'adhésion pour les comptes clients de collecte journalière..."
             className="input text-xs w-full resize-y font-mono leading-relaxed"
           />
         </div>
@@ -1430,12 +1447,13 @@ function AdminSubscriptionHistoryTab({ showBanner }) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState('all') // all | agent | client
+  const [selectedContractClient, setSelectedContractClient] = useState(null)
 
   const loadHistory = async () => {
     try {
       setLoading(true)
       const res = await collectApi.adminSubscriptionHistory()
-      setHistory(res.events || [])
+      setHistory(res.events || res.history || [])
     } catch (e) {
       showBanner(e.message || "Erreur lors du chargement de l'historique des souscriptions", 'error')
     } finally {
@@ -1464,7 +1482,7 @@ function AdminSubscriptionHistoryTab({ showBanner }) {
             Historique des Validations & Souscriptions
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            Registre d'audit officiel attestant des activations manuelles par l'administrateur et des souscriptions enregistrées (4 995 FCFA).
+            Registre d'audit officiel avec date, jour et traçabilité des souscriptions clients et agents, ainsi que l'accès aux contrats signés numériquement.
           </p>
         </div>
         <button
@@ -1531,10 +1549,11 @@ function AdminSubscriptionHistoryTab({ showBanner }) {
           <table className="w-full text-left text-xs sm:text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                <th className="py-3 px-3">Date & Heure</th>
+                <th className="py-3 px-3">Date & Jour</th>
                 <th className="py-3 px-3">Type</th>
                 <th className="py-3 px-3">Bénéficiaire / Agence</th>
                 <th className="py-3 px-3">Action / Statut</th>
+                <th className="py-3 px-3 text-center">Contrat Signé</th>
                 <th className="py-3 px-3">Attestation & Auteur</th>
                 <th className="py-3 px-3">Détails & Notes</th>
               </tr>
@@ -1542,14 +1561,20 @@ function AdminSubscriptionHistoryTab({ showBanner }) {
             <tbody className="divide-y divide-gray-50">
               {filtered.map((item, idx) => {
                 const isAdminAction = item.action === 'admin_activated' || item.action === 'admin_override'
+                const dateObj = item.date ? new Date(item.date) : null
+                const dayName = dateObj ? dateObj.toLocaleDateString('fr-FR', { weekday: 'long' }) : ''
+                const dateFormatted = dateObj ? dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
+                const timeFormatted = dateObj ? dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''
+                const hasContract = item.type === 'client' && (item.clientSignature || item.contractNumber || item.client)
+
                 return (
                   <tr key={idx} className="hover:bg-gray-50/70 transition-colors">
                     <td className="py-3 px-3 whitespace-nowrap text-gray-600">
-                      <div className="font-bold text-gray-800">
-                        {item.date ? new Date(item.date).toLocaleDateString('fr-FR') : '—'}
+                      <div className="font-bold text-gray-800 capitalize">
+                        {dayName ? `${dayName} ${dateFormatted}` : dateFormatted}
                       </div>
                       <div className="text-[11px] text-gray-400">
-                        {item.date ? new Date(item.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                        {timeFormatted ? `à ${timeFormatted}` : ''}
                       </div>
                     </td>
                     <td className="py-3 px-3 whitespace-nowrap">
@@ -1590,6 +1615,33 @@ function AdminSubscriptionHistoryTab({ showBanner }) {
                         </span>
                       )}
                     </td>
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      {hasContract ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const clData = item.client || {
+                              fullName: item.clientName,
+                              accountNumber: item.accountNumber,
+                              phone: item.userPhone,
+                              clientSignature: item.clientSignature,
+                              termsContent: item.termsContent,
+                              termsAccepted: item.termsAccepted,
+                              termsSignedAt: item.termsSignedAt || item.date,
+                              contractNumber: item.contractNumber || `CTR-${item.accountNumber}`,
+                            }
+                            setSelectedContractClient(clData)
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 shadow-2xs transition-all active:scale-95"
+                          title="Consulter le contrat avec signature numérique"
+                        >
+                          <FileText size={13} />
+                          <span>Voir contrat</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 font-mono">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3">
                       {isAdminAction ? (
                         <div>
@@ -1619,6 +1671,15 @@ function AdminSubscriptionHistoryTab({ showBanner }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Modal Consultation du Contrat Client Signé Numériquement */}
+      {selectedContractClient && (
+        <ClientContractModal
+          client={selectedContractClient}
+          agent={selectedContractClient.agent || { agencyName: selectedContractClient.agentName || 'Agence de collecte' }}
+          onClose={() => setSelectedContractClient(null)}
+        />
       )}
     </div>
   )

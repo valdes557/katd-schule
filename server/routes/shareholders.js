@@ -624,8 +624,16 @@ router.get('/dashboard', protect, async (req, res) => {
     const userCount = ids === null ? await User.countDocuments({}) : ids.length
 
     // 2. Gains accumulés de l'actionnaire (dividendes versés par l'admin)
+    const gainMatch = { owner: req.user._id, type: 'shareholder_gain' }
+    if (holdings.length > 1) {
+      gainMatch.$or = [
+        { 'meta.shareholding': String(main._id) },
+        { 'meta.shareholdingId': String(main._id) },
+        { 'meta.planKey': main.planKey },
+      ]
+    }
     const gainRows = await WalletTransaction.aggregate([
-      { $match: { owner: req.user._id, type: 'shareholder_gain' } },
+      { $match: gainMatch },
       { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
     ])
     const gains = gainRows[0] || { total: 0, count: 0 }
@@ -633,15 +641,26 @@ router.get('/dashboard', protect, async (req, res) => {
     // 3. Retraits cumulés de frais (imputés au plan sélectionné ou globaux)
     const withdrawnFilter = {
       owner: req.user._id,
-      type: 'shareholder_fee_withdrawal',
+      createdAt: { $gte: main.startAt || main.createdAt || new Date(0) },
     }
     if (holdings.length > 1) {
-      withdrawnFilter.$or = [
-        { 'meta.shareholdingId': main._id },
-        { 'meta.shareholdingId': String(main._id) },
-        { 'meta.planKey': main.planKey },
-        { 'meta.shareholdingId': { $exists: false }, 'meta.planKey': { $exists: false } },
-      ]
+      if (gains.total > 0) {
+        withdrawnFilter.$or = [
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': main._id },
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': String(main._id) },
+          { type: 'shareholder_fee_withdrawal', 'meta.planKey': main.planKey },
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': { $exists: false }, 'meta.planKey': { $exists: false } },
+          { type: 'withdrawal' }, // Retrait direct du portefeuille issu des gains actionnaire
+        ]
+      } else {
+        withdrawnFilter.$or = [
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': main._id },
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': String(main._id) },
+          { type: 'shareholder_fee_withdrawal', 'meta.planKey': main.planKey },
+        ]
+      }
+    } else {
+      withdrawnFilter.type = { $in: ['shareholder_fee_withdrawal', 'withdrawal'] }
     }
     const withdrawnRows = await WalletTransaction.aggregate([
       { $match: withdrawnFilter },
@@ -758,15 +777,46 @@ router.post('/withdraw', protect, async (req, res) => {
       shareholderCalculatedShare,
     } = await calculateShareholderEarnings(main)
 
+    const gainMatch = { owner: req.user._id, type: 'shareholder_gain' }
+    if (holdings.length > 1) {
+      gainMatch.$or = [
+        { 'meta.shareholding': String(main._id) },
+        { 'meta.shareholdingId': String(main._id) },
+        { 'meta.planKey': main.planKey },
+      ]
+    }
     const gainRows = await WalletTransaction.aggregate([
-      { $match: { owner: req.user._id, type: 'shareholder_gain' } },
+      { $match: gainMatch },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ])
     const totalGains = gainRows[0]?.total || 0
     const totalFeesEarned = Number(Math.max(shareholderCalculatedShare, totalGains).toFixed(4))
 
+    const withdrawnFilter = {
+      owner: req.user._id,
+      createdAt: { $gte: main.startAt || main.createdAt || new Date(0) },
+    }
+    if (holdings.length > 1) {
+      if (totalGains > 0) {
+        withdrawnFilter.$or = [
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': main._id },
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': String(main._id) },
+          { type: 'shareholder_fee_withdrawal', 'meta.planKey': main.planKey },
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': { $exists: false }, 'meta.planKey': { $exists: false } },
+          { type: 'withdrawal' },
+        ]
+      } else {
+        withdrawnFilter.$or = [
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': main._id },
+          { type: 'shareholder_fee_withdrawal', 'meta.shareholdingId': String(main._id) },
+          { type: 'shareholder_fee_withdrawal', 'meta.planKey': main.planKey },
+        ]
+      }
+    } else {
+      withdrawnFilter.type = { $in: ['shareholder_fee_withdrawal', 'withdrawal'] }
+    }
     const withdrawnRows = await WalletTransaction.aggregate([
-      { $match: { owner: req.user._id, type: 'shareholder_fee_withdrawal' } },
+      { $match: withdrawnFilter },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ])
     const totalWithdrawn = Number((withdrawnRows[0]?.total || 0).toFixed(4))

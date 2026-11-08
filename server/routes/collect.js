@@ -282,6 +282,7 @@ router.get('/config', protect, async (req, res) => {
     res.json({
       success: true,
       termsAndConditions: cfg.termsAndConditions,
+      clientTermsAndConditions: cfg.clientTermsAndConditions,
       monthlyFee: cfg.monthlyFee,
       agentSubscriptionFee: cfg.agentSubscriptionFee ?? 4995,
       clientSubscriptionFee: cfg.clientSubscriptionFee ?? 2166,
@@ -356,6 +357,7 @@ router.get('/my-agent-status', protect, async (req, res) => {
       isClient: !!clientDoc,
       client: clientDoc,
       termsAndConditions: cfg.termsAndConditions,
+      clientTermsAndConditions: cfg.clientTermsAndConditions,
       monthlyFee: cfg.monthlyFee,
     })
   } catch (err) {
@@ -1713,7 +1715,12 @@ router.get('/admin/subscription-history', protect, adminOnly, async (req, res) =
     }
 
     // Clients souscrits
-    const subscribedClients = await CollectClient.find({ subscriptionPaid: true }).populate('user', 'name email phone')
+    const subscribedClients = await CollectClient.find({ subscriptionPaid: true })
+      .populate('user', 'name email phone')
+      .populate('agent', 'agencyName phone')
+      .sort({ subscriptionPaidAt: -1, createdAt: -1 })
+      .lean()
+
     for (const cl of subscribedClients) {
       events.push({
         type: 'client',
@@ -1721,16 +1728,24 @@ router.get('/admin/subscription-history', protect, adminOnly, async (req, res) =
         clientName: cl.fullName,
         accountNumber: cl.accountNumber,
         userPhone: cl.phone,
+        userEmail: cl.email || cl.user?.email || '',
         action: 'client_subscribed',
         performerName: cl.subscriptionPaymentMethod === 'wallet' ? 'Portefeuille KATD' : 'Mobile Money Direct',
         date: cl.subscriptionPaidAt || cl.createdAt,
+        amount: cl.subscriptionAmount || 2166,
         notes: `Souscription client ${cl.subscriptionInterval === 'monthly' ? 'mensuelle' : 'annuelle'} (${(cl.subscriptionAmount || 2166).toLocaleString('fr-FR')} FCFA)`,
+        hasContract: true,
+        contractNumber: cl.contractNumber || `CTR-${cl.accountNumber}`,
+        clientSignature: cl.clientSignature || '',
+        termsContent: cl.termsContent || '',
+        termsSignedAt: cl.termsSignedAt || cl.subscriptionPaidAt || cl.createdAt,
+        client: cl,
       })
     }
 
     events.sort((a, b) => new Date(b.date) - new Date(a.date))
 
-    res.json({ success: true, history: events })
+    res.json({ success: true, history: events, events })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -1885,10 +1900,11 @@ router.get('/admin/withdrawals-history', protect, adminOnly, async (req, res) =>
 // PUT /api/collect/admin/terms — Modification des termes et conditions par l'administrateur
 router.put('/admin/terms', protect, adminOnly, async (req, res) => {
   try {
-    const { termsAndConditions, monthlyFee, agentSubscriptionFee, clientSubscriptionFee, clientSubscriptionInterval, cagnotteLockTerms } = req.body
+    const { termsAndConditions, monthlyFee, agentSubscriptionFee, clientSubscriptionFee, clientSubscriptionInterval, cagnotteLockTerms, clientTermsAndConditions } = req.body
     const cfg = await CollectConfig.getOrCreate()
     if (termsAndConditions !== undefined) cfg.termsAndConditions = termsAndConditions
     if (cagnotteLockTerms !== undefined) cfg.cagnotteLockTerms = cagnotteLockTerms
+    if (clientTermsAndConditions !== undefined) cfg.clientTermsAndConditions = clientTermsAndConditions
     if (monthlyFee !== undefined) cfg.monthlyFee = Number(monthlyFee)
     if (agentSubscriptionFee !== undefined) cfg.agentSubscriptionFee = Math.max(0, Number(agentSubscriptionFee) || 0)
     if (clientSubscriptionFee !== undefined) cfg.clientSubscriptionFee = Math.max(0, Number(clientSubscriptionFee) || 0)
@@ -1958,9 +1974,10 @@ router.post('/client/subscribe-wallet', protect, async (req, res) => {
       expires.setFullYear(expires.getFullYear() + 1)
     }
 
-    const { neighborhood, city, cni, momoMtn, momoOrange, phone } = req.body
+    const { neighborhood, city, cni, momoMtn, momoOrange, phone, clientSignature, termsContent, termsAccepted } = req.body
     const cleanPhone = String(phone || req.user.phone || momoMtn || momoOrange || 'Non renseigné').trim()
     const cleanNeighborhood = String(neighborhood || 'Quartier principal').trim()
+    const finalTerms = String(termsContent || cfg.clientTermsAndConditions || '').trim()
 
     try {
       if (client) {
@@ -1977,6 +1994,11 @@ router.post('/client/subscribe-wallet', protect, async (req, res) => {
         if (momoMtn) client.momoMtn = momoMtn
         if (momoOrange) client.momoOrange = momoOrange
         if (!client.phone || client.phone === 'Non renseigné') client.phone = cleanPhone
+        if (clientSignature) client.clientSignature = clientSignature
+        if (finalTerms) client.termsContent = finalTerms
+        client.termsAccepted = termsAccepted !== undefined ? !!termsAccepted : true
+        client.termsSignedAt = new Date()
+        if (!client.contractNumber) client.contractNumber = `CTR-${client.accountNumber}`
         await client.save()
       } else {
         client = await CollectClient.create({
@@ -1997,9 +2019,16 @@ router.post('/client/subscribe-wallet', protect, async (req, res) => {
           subscriptionInterval: interval,
           subscriptionPaymentMethod: 'wallet',
           status: 'active',
-          termsAccepted: true,
+          termsAccepted: termsAccepted !== undefined ? !!termsAccepted : true,
           termsSignedAt: new Date(),
+          clientSignature: clientSignature || '',
+          termsContent: finalTerms,
+          contractNumber: '',
         })
+        if (!client.contractNumber) {
+          client.contractNumber = `CTR-${client.accountNumber}`
+          await client.save()
+        }
       }
     } catch (createErr) {
       // Remboursement de précaution si débit tout juste effectué
