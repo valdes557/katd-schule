@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react'
 import {
   Landmark, Loader2, Save, Users, Coins, MapPin, Ban, RefreshCw, Pencil, Trash2,
-  CheckCircle2, X, Megaphone, Plus, Banknote, CalendarClock, Receipt, Gift, Lock, Sparkles,
+  CheckCircle2, X, Megaphone, Plus, Banknote, CalendarClock, Receipt, Lock, Sparkles,
 } from 'lucide-react'
 import { shareholdersApi, zonesApi } from '../lib/api'
 import AdminZonesManagementTab from '../components/AdminZonesManagementTab'
@@ -321,7 +321,6 @@ function ListPanel() {
   const [err, setErr] = useState('')
   const [planKey, setPlanKey] = useState('')
   const [editing, setEditing] = useState(null)   // souscription en cours d'édition
-  const [paying, setPaying] = useState(null)     // souscription pour versement de gain
 
   const load = async () => {
     setLoading(true); setErr('')
@@ -411,7 +410,6 @@ function ListPanel() {
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <button onClick={() => setEditing(s)} className="text-indigo-600 hover:text-indigo-800" title="Modifier / éditer le plan"><Pencil size={14} /></button>
-                      <button onClick={() => setPaying(s)} className="text-emerald-600 hover:text-emerald-800" title="Verser un gain"><Gift size={14} /></button>
                       {s.status === 'active'
                         ? <button onClick={() => revoke(s)} className="text-amber-600 hover:text-amber-800" title="Révoquer"><Ban size={14} /></button>
                         : <button onClick={() => activate(s)} className="text-emerald-600 hover:text-emerald-800" title="Activer"><CheckCircle2 size={14} /></button>}
@@ -426,7 +424,6 @@ function ListPanel() {
       </div>
 
       {editing && <EditModal s={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
-      {paying && <PayGainModal s={paying} onClose={() => setPaying(null)} onDone={() => { setPaying(null); load() }} />}
     </div>
   )
 }
@@ -527,49 +524,6 @@ function EditModal({ s, onClose, onSaved }) {
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// Modale : verser un gain (dividende) à l'associé — crédite son portefeuille
-function PayGainModal({ s, onClose, onDone }) {
-  const [amount, setAmount] = useState('')
-  const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-
-  const pay = async () => {
-    setErr('')
-    if (!(Number(amount) > 0)) { setErr('Montant invalide'); return }
-    setBusy(true)
-    try {
-      const r = await shareholdersApi.adminPayGain(s._id, Number(amount), note)
-      alert(r.message || 'Gain versé.')
-      onDone()
-    } catch (e) { setErr(e.message) } finally { setBusy(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && onClose()}>
-      <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2"><Gift size={17} className="text-emerald-600" /> Verser un gain</h3>
-          <button onClick={() => !busy && onClose()} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-        </div>
-        <p className="text-xs text-gray-500">{s.user?.name || 'Associé'} — {PLAN_NAMES[s.planKey] || s.planKey} {s.zone ? '(' + s.zone + ')' : ''}</p>
-        <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">Montant (F) *</label>
-          <input type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} className="input w-full" placeholder="Ex. 25000" />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">Note (optionnel)</label>
-          <input value={note} onChange={(e) => setNote(e.target.value)} className="input w-full" placeholder="Dividende T3 2026" />
-        </div>
-        {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{err}</p>}
-        <button onClick={pay} disabled={busy} className="btn-primary w-full justify-center">
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Gift size={14} />} Verser le gain
-        </button>
       </div>
     </div>
   )

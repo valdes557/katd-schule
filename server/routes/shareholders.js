@@ -1332,23 +1332,14 @@ router.delete('/admin/:id', protect, superAdminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 })
 
-// PUT /api/shareholders/admin/:id/pay-gain — verse un gain/dividende à l'actionnaire
-// (crédité sur son portefeuille, type shareholder_gain — alimente « gains accumulés »).
+// PUT /api/shareholders/admin/:id/pay-gain — DÉSACTIVÉ DÉFINITIVEMENT
+// L'approvisionnement manuel de gains d'un associé par l'administrateur est strictement interdit.
+// Les gains doivent provenir exclusivement des pourcentages des transactions réelles de la plateforme.
 router.put('/admin/:id/pay-gain', protect, superAdminOnly, async (req, res) => {
-  try {
-    const { amount, note } = req.body
-    const amt = Number(amount)
-    if (!amt || amt <= 0) return res.status(400).json({ message: 'Montant invalide' })
-    const s = await Shareholding.findById(req.params.id).populate('user', 'name')
-    if (!s) return res.status(404).json({ message: 'Souscription introuvable' })
-    const wallet = require('../services/walletService')
-    await wallet.credit(s.user._id, {
-      amount: amt, type: 'shareholder_gain', counterparty: req.user._id,
-      description: 'Gain actionnaire — ' + (s.planLabel || s.planKey) + (note ? ' : ' + note : ''),
-      meta: { shareholding: String(s._id), planKey: s.planKey, zone: s.zone || '' },
-    })
-    res.json({ success: true, message: 'Gain de ' + amt.toLocaleString('fr-FR') + ' F versé à ' + (s.user?.name || 'l\'actionnaire') })
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  return res.status(403).json({
+    success: false,
+    message: "L'approvisionnement manuel d'un associé par l'administrateur a été définitivement supprimé et désactivé. Les gains d'un associé proviennent exclusivement des pourcentages générés par les transactions réelles de la plateforme.",
+  })
 })
 
 // ── Publications du super admin pour les actionnaires (dépenses, paiements, réunions…) ──

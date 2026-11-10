@@ -1394,7 +1394,6 @@ export const shareholdersApi = {
   // Activer / modifier / éditer / supprimer le plan d'un actionnaire
   adminUpdate: (id, payload) => api.put('/shareholders/admin/' + id, payload),
   adminDelete: (id) => api.del('/shareholders/admin/' + id),
-  adminPayGain: (id, amount, note) => api.put('/shareholders/admin/' + id + '/pay-gain', { amount, note }),
   // Publications destinées aux actionnaires (dépenses, sommes à payer, réunions…)
   adminPosts: () => api.get('/shareholders/admin/posts'),
   adminCreatePost: (payload) => api.post('/shareholders/admin/posts', payload),
