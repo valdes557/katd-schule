@@ -32,6 +32,7 @@ export default function AdminMerchantsPage() {
   const [acting, setActing] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
+  const [fundFor, setFundFor] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
   const pdfRef = useRef(null)
 
@@ -246,6 +247,13 @@ export default function AdminMerchantsPage() {
                         <td className="px-4 py-3 text-right no-pdf">
                           <div className="inline-flex items-center gap-1.5">
                             <button
+                              onClick={() => setFundFor(m)}
+                              className="px-2.5 py-1 text-xs rounded-lg border border-orange-200 text-orange-700 hover:bg-orange-50 font-medium inline-flex items-center gap-1"
+                              title="Approvisionner ce compte marchand"
+                            >
+                              <Coins size={12} /> Approvisionner
+                            </button>
+                            <button
                               onClick={() => revoke(m)}
                               disabled={acting === m._id}
                               className="p-1 text-red-500 hover:bg-red-50 rounded"
@@ -431,6 +439,16 @@ export default function AdminMerchantsPage() {
         </div>
       )}
 
+      {/* Modal Approvisionnement Marchand */}
+      {fundFor && (
+        <FundModal
+          merchant={fundFor}
+          onClose={() => setFundFor(null)}
+          onDone={(m) => { setFundFor(null); flash(m); refresh() }}
+          onError={(e) => setErr(e)}
+        />
+      )}
+
       {/* Modal Ajout Marchand */}
       {addOpen && (
         <AddMerchantModal
@@ -443,7 +461,90 @@ export default function AdminMerchantsPage() {
   )
 }
 
-// ── Modal Retrait des souscriptions marchands vers Mobile Money ─────────────────
+// ── Modal Approvisionnement ──────────────────────────────────────────────────
+function FundModal({ merchant, onClose, onDone, onError }) {
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [localErr, setLocalErr] = useState('')
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setLocalErr('')
+    const n = Number(amount)
+    if (!n || n <= 0) {
+      setLocalErr('Veuillez saisir un montant valide supérieur à 0.')
+      return
+    }
+    setLoading(true)
+    try {
+      await adminMerchantsApi.fund(merchant._id, n, reason.trim() || undefined)
+      onDone(`${merchant.name} a été approvisionné de ${fmt(n)} XAF.`)
+    } catch (err) {
+      setLocalErr(err.message || "Erreur lors de l'approvisionnement")
+      onError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2">
+            <Coins size={18} className="text-orange-600" />
+            Approvisionner {merchant.name}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">
+          Solde actuel : <b>{fmt(merchant.balance)} XAF</b>. L'approvisionnement crédite directement le solde disponible du compte marchand.
+        </p>
+        {localErr && (
+          <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+            {localErr}
+          </div>
+        )}
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-700 block mb-1">Montant à créditer (XAF) *</label>
+            <input
+              type="number"
+              min="1"
+              required
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Ex. 500000"
+              className="input text-sm w-full font-bold"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-700 block mb-1">Motif (optionnel)</label>
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ex. Rechargement caisse semaine"
+              className="input text-sm w-full"
+            />
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <button type="button" onClick={onClose} className="btn-ghost text-sm">
+              Annuler
+            </button>
+            <button type="submit" disabled={loading} className="btn-primary text-sm inline-flex items-center gap-1.5 bg-orange-600 hover:bg-orange-700 text-white">
+              {loading ? <Loader2 size={14} className="animate-spin" /> : <Coins size={14} />} Créditer
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal Ajout Marchand ─────────────────────────────────────────────────────
 function AddMerchantModal({ onClose, onDone, onError }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])
