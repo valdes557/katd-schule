@@ -1408,6 +1408,8 @@ export const adminUsersApi = {
     return api.get('/admin/users' + (qs ? '?' + qs : ''))
   },
   block: (id, blocked) => api.put('/admin/users/' + id + '/block', { blocked }),
+  fund: (id, amount, reason = '') => api.put('/admin/users/' + id + '/fund', { amount, reason }),
+  toggleFundingFeature: (enabled) => api.put('/admin/users/funding-config', { enabled }),
   remove: (id) => api.del('/admin/users/' + id),
 }
 
