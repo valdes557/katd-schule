@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import {
   UserCog, Loader2, RefreshCw, Wallet, Users, Building2, Smartphone,
-  ChevronLeft, ChevronRight, Ban, CheckCircle2, Trash2, Circle, PlusCircle, Power, PowerOff, X,
+  ChevronLeft, ChevronRight, Ban, CheckCircle2, Trash2, Circle,
 } from 'lucide-react'
 import { adminUsersApi } from '../lib/api'
 import { useCachedFetch } from '../hooks/useCachedFetch'
@@ -26,10 +26,6 @@ export default function AdminUsersPage() {
   const [acting, setActing] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
-  const [fundingUser, setFundingUser] = useState(null)
-  const [fundAmount, setFundAmount] = useState('')
-  const [fundReason, setFundReason] = useState('')
-  const [togglingFunding, setTogglingFunding] = useState(false)
   const pdfRef = useRef(null)
 
   const key = `/admin/users?r=${role}&q=${search}&p=${page}`
@@ -42,7 +38,6 @@ export default function AdminUsersPage() {
   const data = query.data || {}
   const users = data.users || []
   const stats = data.stats || { totalUsers: 0, totalBalance: 0, onlineCount: 0, blockedCount: 0 }
-  const userFundingEnabled = data.userFundingEnabled !== false
   const loading = query.loading
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 4000) }
@@ -71,41 +66,6 @@ export default function AdminUsersPage() {
     } catch (e) { setErr(e.message) } finally { setActing('') }
   }
 
-  const toggleFundingFeature = async () => {
-    const next = !userFundingEnabled
-    const confirmMsg = next
-      ? "Réactiver le système d'approvisionnement des portefeuilles utilisateurs ?"
-      : "Désactiver / retirer le système d'approvisionnement des portefeuilles utilisateurs ? (Note : l'historique comptable des transactions passées reste conservé pour la traçabilité.)"
-    if (!window.confirm(confirmMsg)) return
-    setErr('')
-    setTogglingFunding(true)
-    try {
-      const res = await adminUsersApi.toggleFundingFeature(next)
-      flash(res.message || (next ? "Approvisionnement activé." : "Approvisionnement désactivé."))
-      refresh()
-    } catch (e) { setErr(e.message) } finally { setTogglingFunding(false) }
-  }
-
-  const submitFund = async (e) => {
-    e.preventDefault()
-    if (!fundingUser) return
-    const amt = Math.round(Number(fundAmount))
-    if (!Number.isFinite(amt) || amt < 100) {
-      setErr('Veuillez saisir un montant valide (minimum 100 F).')
-      return
-    }
-    setErr('')
-    setActing(fundingUser._id)
-    try {
-      const res = await adminUsersApi.fund(fundingUser._id, amt, fundReason.trim())
-      flash(res.message || `Portefeuille de ${fundingUser.name} crédité de ${fmt(amt)} F.`)
-      setFundingUser(null)
-      setFundAmount('')
-      setFundReason('')
-      refresh()
-    } catch (e) { setErr(e.message) } finally { setActing('') }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -115,20 +75,7 @@ export default function AdminUsersPage() {
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Tous les comptes de la plateforme : soldes, comptes externes, blocage et suppression.</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={toggleFundingFeature}
-            disabled={togglingFunding}
-            className={cn(
-              'text-sm inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-medium border transition disabled:opacity-40',
-              userFundingEnabled
-                ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-            )}
-          >
-            {togglingFunding ? <Loader2 size={15} className="animate-spin" /> : (userFundingEnabled ? <PowerOff size={15} /> : <Power size={15} />)}
-            {userFundingEnabled ? "Retirer l'approvisionnement" : "Activer l'approvisionnement"}
-          </button>
+        <div className="flex items-center gap-2">
           <DownloadPdfButton containerRef={pdfRef} filename="utilisateurs.pdf" title="Utilisateurs de la plateforme" label="Exporter PDF" />
           <button onClick={refresh} className="btn-secondary text-sm inline-flex items-center gap-1.5">
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
@@ -242,31 +189,20 @@ export default function AdminUsersPage() {
                           : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-50 text-red-600"><Ban size={11} /> Bloqué</span>}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap no-pdf">
-                        <div className="inline-flex items-center gap-1.5">
-                          {userFundingEnabled && (
-                            <button
-                              onClick={() => { setErr(''); setFundingUser(u); setFundAmount(''); setFundReason('') }}
-                              disabled={acting === u._id}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
-                            >
-                              <PlusCircle size={12} /> Approvisionner
+                        {u.role !== 'super_admin' && (
+                          <div className="inline-flex items-center gap-1.5">
+                            <button onClick={() => toggleBlock(u)} disabled={acting === u._id}
+                              className={cn('inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium disabled:opacity-40',
+                                u.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100')}>
+                              {acting === u._id ? <Loader2 size={12} className="animate-spin" /> : (u.isActive ? <Ban size={12} /> : <CheckCircle2 size={12} />)}
+                              {u.isActive ? 'Bloquer' : 'Débloquer'}
                             </button>
-                          )}
-                          {u.role !== 'super_admin' && (
-                            <>
-                              <button onClick={() => toggleBlock(u)} disabled={acting === u._id}
-                                className={cn('inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium disabled:opacity-40',
-                                  u.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100')}>
-                                {acting === u._id ? <Loader2 size={12} className="animate-spin" /> : (u.isActive ? <Ban size={12} /> : <CheckCircle2 size={12} />)}
-                                {u.isActive ? 'Bloquer' : 'Débloquer'}
-                              </button>
-                              <button onClick={() => remove(u)} disabled={acting === u._id}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40">
-                                <Trash2 size={12} /> Supprimer
-                              </button>
-                            </>
-                          )}
-                        </div>
+                            <button onClick={() => remove(u)} disabled={acting === u._id}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40">
+                              <Trash2 size={12} /> Supprimer
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -289,63 +225,6 @@ export default function AdminUsersPage() {
           </div>
         )}
       </div>
-
-      {fundingUser && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5 space-y-4">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">Approvisionner le portefeuille</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {fundingUser.name} ({fundingUser.email}) — Solde actuel : <strong className="text-emerald-700">{fmt(fundingUser.balance)} F</strong>
-                </p>
-              </div>
-              <button onClick={() => setFundingUser(null)} className="text-gray-400 hover:text-gray-600 p-1">
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={submitFund} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Montant (XAF)</label>
-                <input
-                  type="number"
-                  min={100}
-                  max={50000000}
-                  step={50}
-                  required
-                  value={fundAmount}
-                  onChange={(e) => setFundAmount(e.target.value)}
-                  placeholder="Ex : 6000"
-                  className="input w-full text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Motif (optionnel)</label>
-                <input
-                  type="text"
-                  maxLength={200}
-                  value={fundReason}
-                  onChange={(e) => setFundReason(e.target.value)}
-                  placeholder="Ex : Approvisionnement manuel administrateur"
-                  className="input w-full text-sm"
-                />
-              </div>
-              <p className="text-[11px] text-gray-400">
-                L'opération est enregistrée dans le journal comptable (WalletTransaction) avec votre identité d'administrateur.
-              </p>
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setFundingUser(null)} className="btn-secondary text-sm">
-                  Annuler
-                </button>
-                <button type="submit" disabled={acting === fundingUser._id} className="btn-primary text-sm inline-flex items-center gap-1.5">
-                  {acting === fundingUser._id && <Loader2 size={14} className="animate-spin" />}
-                  Créditer le portefeuille
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
